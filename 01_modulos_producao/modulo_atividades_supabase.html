@@ -140,6 +140,7 @@ main{padding:16px 22px 60px;}
     <button data-v="nova">➕ Nova Comanda</button>
     <button data-v="planejamento">📅 Planejamento</button>
     <button data-v="mapa">🗺️ Mapa</button>
+    <button data-v="aprovcampo" id="navAprovCampo" style="display:none">✅ Aprovações de campo</button>
   </nav>
 </header>
 
@@ -297,9 +298,12 @@ function rateio(c){
 
 /* ====================== NAVEGAÇÃO ====================== */
 let VIEW='comandas';
+const ADMIN_EMAILS=['leydiovan@gmail.com'];
+let USER_EMAIL='', IS_ADMIN=false, APC=null;
 $('#nav').addEventListener('click',e=>{
   const b=e.target.closest('button'); if(!b)return;
   if(b.dataset.v==='nova') _editCodigo=null;
+  if(b.dataset.v==='aprovcampo') APC=null;
   VIEW=b.dataset.v;
   $$('#nav button').forEach(x=>x.classList.toggle('on',x===b));
   render();
@@ -2811,8 +2815,107 @@ function render(){
   else if(VIEW==='nova'){m.innerHTML=renderNova();bindNova();}
   else if(VIEW==='planejamento'){m.innerHTML=renderPlanejamento();bindPlanejamento();}
   else if(VIEW==='mapa'){m.innerHTML=renderMapa();}
+  else if(VIEW==='aprovcampo'){m.innerHTML=renderAprovCampo();bindAprovCampo();}
 }
 render();
+
+/* ===================== APROVAÇÕES DE CAMPO (execução vinda do tablet) ===================== */
+function _apcEsc(s){ return String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+function _apcT2m(s){ const m=String(s||'').match(/^(\d{1,2}):(\d{2})$/); return m?(+m[1])*60+(+m[2]):null; }
+function _apcHoras(a,b){ const x=_apcT2m(a),y=_apcT2m(b); return (x==null||y==null||y<=x)?null:(y-x)/60; }
+function _apcNum(v){ return (v==null||v==='')?0:(+v||0); }
+function _apcFmt(v){ return _apcNum(v).toLocaleString('pt-BR',{maximumFractionDigits:2}); }
+async function _updNavAprovCampo(){
+  const btn=document.getElementById('navAprovCampo'); if(!btn) return;
+  if(!IS_ADMIN){ btn.style.display='none'; return; }
+  btn.style.display='';
+  try{ const {data}=await SB.from('execucao_campo').select('id').eq('safra',SAFRA).eq('status','enviada'); const n=(data||[]).length; btn.textContent='✅ Aprovações de campo'+(n?(' ('+n+')'):''); }catch(e){}
+}
+async function _loadAprovCampo(){
+  APC={comandas:[], maq:{}, imp:{}, fun:{}};
+  try{
+    const [ex,mq,im,fu]=await Promise.all([
+      SB.from('execucao_campo').select('*').eq('safra',SAFRA).eq('status','enviada').order('data',{ascending:true}),
+      SB.from('maquinas').select('id,nome'),
+      SB.from('implementos').select('id,nome'),
+      SB.from('funcionarios').select('id,nome')
+    ]);
+    (mq.data||[]).forEach(m=>APC.maq[m.id]=m.nome);
+    (im.data||[]).forEach(m=>APC.imp[m.id]=m.nome);
+    (fu.data||[]).forEach(m=>APC.fun[m.id]=m.nome);
+    const byc={};
+    (ex.data||[]).forEach(r=>{ const g=byc[r.comanda_codigo]||(byc[r.comanda_codigo]={codigo:r.comanda_codigo, rows:[]}); g.rows.push(r); });
+    APC.comandas=Object.values(byc).sort((a,b)=>String(a.codigo).localeCompare(String(b.codigo)));
+  }catch(e){ console.warn('loadAprovCampo',e); APC.comandas=[]; }
+}
+function _apcResumo(rows){
+  let area=0,diesel=0,hmaq=0,dias=rows.length,concl=false;
+  rows.forEach(r=>{ area+=_apcNum(r.area_ha); diesel+=_apcNum(r.diesel_litros);
+    if(r.horimetro_ini!=null&&r.horimetro_fim!=null) hmaq+=Math.max(0,_apcNum(r.horimetro_fim)-_apcNum(r.horimetro_ini));
+    if(r.concluiu_lote) concl=true; });
+  return {area,diesel,hmaq,dias,concl};
+}
+function renderAprovCampo(){
+  if(!IS_ADMIN) return '<div class="wrap"><p class="note">🔒 Apenas administrador.</p></div>';
+  if(APC===null) return '<div class="wrap"><p class="note">⏳ Carregando execuções enviadas…</p></div>';
+  if(!APC.comandas.length) return '<div class="wrap"><h2>✅ Aprovações de campo</h2><p class="note">🎉 Nada na fila. O que os operadores enviarem pelo tablet aparece aqui pra você revisar e aprovar.</p></div>';
+  const blocos=APC.comandas.map(g=>{
+    const c=S.comandas.find(x=>x.codigo===g.codigo); const r0=g.rows[0];
+    const tipo=c?c.tipoAtiv:''; const lote=c?c.loteNome:(r0?r0.lote_nome:''); const tot=_apcResumo(g.rows);
+    const linhas=g.rows.map(r=>{
+      const h=_apcHoras(r.hora_inicio,r.hora_fim);
+      const hm=(r.horimetro_ini!=null&&r.horimetro_fim!=null)?Math.max(0,_apcNum(r.horimetro_fim)-_apcNum(r.horimetro_ini)):null;
+      return `<tr>
+        <td>${_apcEsc((r.data||'').split('-').reverse().join('/'))}</td>
+        <td>${_apcEsc(APC.fun[r.funcionario_id]||('#'+r.funcionario_id))}</td>
+        <td>${_apcEsc(APC.maq[r.maquina_id]||'—')}${r.implemento_id?(' + '+_apcEsc(APC.imp[r.implemento_id]||'')):''}</td>
+        <td>${_apcEsc(r.hora_inicio||'—')}–${_apcEsc(r.hora_fim||'—')}${h?(' ('+h.toFixed(1)+'h)'):''}</td>
+        <td style="text-align:right">${hm!=null?hm.toFixed(1)+'h':'—'}</td>
+        <td style="text-align:right">${r.diesel_litros!=null?_apcFmt(r.diesel_litros)+' L':'—'}</td>
+        <td style="text-align:right">${r.area_ha!=null?_apcFmt(r.area_ha)+' ha':'—'}</td>
+        <td style="white-space:nowrap">${r.concluiu_lote?'<b style="color:#2ea043">lote ✓</b> ':''}<button class="btn sm" data-apcdel="${r.id}" title="Descartar este">✕</button></td>
+      </tr>`;
+    }).join('');
+    return `<div class="wrap" style="margin-bottom:16px">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">
+        <div><h2 style="margin:0">${_apcEsc(g.codigo)}${tipo?(' · '+_apcEsc(tipo)):''}</h2>
+          <div class="sub" style="margin:2px 0 0">Lote ${_apcEsc(lote||'—')} · ${tot.dias} dia(s) · ${tot.area?(_apcFmt(tot.area)+' ha'):'—'} · ${tot.diesel?(_apcFmt(tot.diesel)+' L diesel'):'—'}${tot.hmaq?(' · '+tot.hmaq.toFixed(1)+' h-máq'):''}${tot.concl?' · <b style="color:#2ea043">conclui o lote</b>':''}</div></div>
+        <button class="btn success" data-apcok="${_apcEsc(g.codigo)}">✓ Aprovar comanda</button>
+      </div>
+      <table class="tbl" style="margin-top:8px"><thead><tr><th>Data</th><th>Operador</th><th>Máquina</th><th>Atividade</th><th style="text-align:right">H-máq</th><th style="text-align:right">Diesel</th><th style="text-align:right">Área</th><th></th></tr></thead><tbody>${linhas}</tbody></table>
+    </div>`;
+  }).join('');
+  return `<div class="wrap"><h2>✅ Aprovações de campo <span class="sub">(${APC.comandas.length} comanda(s) na fila)</span></h2>
+    <p class="note">Revise o que os operadores enviaram pelo tablet. Ao <b>aprovar</b>, os números são consolidados na comanda (e ela some da fila). Se algum dia estiver marcado como “lote concluído”, a comanda vira <b>Executada</b>. O <b>ponto não é mexido aqui</b> (isso é na coleta).</p></div>${blocos}`;
+}
+function bindAprovCampo(){
+  if(!IS_ADMIN) return;
+  if(APC===null){ (async()=>{ await _loadAprovCampo(); render(); })(); return; }
+  $$('[data-apcok]').forEach(b=>b.onclick=()=>aprovarComandaCampo(b.dataset.apcok));
+  $$('[data-apcdel]').forEach(b=>b.onclick=()=>descartarExecCampo(b.dataset.apcdel));
+}
+async function aprovarComandaCampo(codigo){
+  const g=APC.comandas.find(x=>String(x.codigo)===String(codigo)); if(!g) return;
+  if(!confirm('Aprovar a comanda '+codigo+' com '+g.rows.length+' dia(s)? Os números vão para a comanda.')) return;
+  const tot=_apcResumo(g.rows); const c=S.comandas.find(x=>x.codigo===codigo);
+  try{
+    const retorno=Object.assign({}, (c&&c.geralRetorno)||{}, {
+      campo:{ dias:tot.dias, area_ha:+tot.area.toFixed(2), diesel_l:+tot.diesel.toFixed(2), horas_maquina:+tot.hmaq.toFixed(1),
+        operadores:[...new Set(g.rows.map(r=>APC.fun[r.funcionario_id]||('#'+r.funcionario_id)))], aprovado_em:new Date().toISOString() }
+    });
+    const upd={ geral_retorno:retorno }; if(tot.concl) upd.status='executada';
+    const {error}=await SB.from('comandas').update(upd).eq('codigo',codigo).eq('safra',SAFRA); if(error) throw error;
+    if(c){ c.geralRetorno=retorno; if(tot.concl) c.status='executada'; }
+    await SB.from('execucao_campo').update({status:'aprovada', atualizado_em:new Date().toISOString()}).in('id', g.rows.map(r=>r.id));
+    _statusSB('✅ Comanda '+codigo+' aprovada ('+tot.dias+' dia(s))','#27ae60');
+    await _loadAprovCampo(); _updNavAprovCampo(); renderPills(); render();
+  }catch(e){ _statusSB('❌ '+e.message,'#c0392b'); }
+}
+async function descartarExecCampo(id){
+  if(!confirm('Descartar este lançamento do operador? (não volta)')) return;
+  try{ await SB.from('execucao_campo').delete().eq('id',id); await _loadAprovCampo(); _updNavAprovCampo(); render(); }
+  catch(e){ _statusSB('❌ '+e.message,'#c0392b'); }
+}
 
 /* ===== STANDALONE: cadastros embutidos ===== */
 (function(){
@@ -2978,6 +3081,7 @@ async function carregarDoSupabase(){
     if(!window.supabase){ _statusSB('⚠️ Lib Supabase não carregou (sem internet?)','#c0392b'); return; }
     _statusSB('⏳ Conectando ao Supabase…','#2c3e50');
     if(!SB) SB = window.supabase.createClient(SB_URL, SB_KEY);
+    try{ const {data:u}=await SB.auth.getUser(); USER_EMAIL=(u&&u.user&&u.user.email)||''; IS_ADMIN=ADMIN_EMAILS.includes(USER_EMAIL.toLowerCase()); }catch(e){}
 
     /* ----- LOTES do banco (fonte: módulo Cadastros) ----- */
     try{
@@ -3038,6 +3142,7 @@ async function carregarDoSupabase(){
     S.comandas = (data||[]).map(_comandaDoBanco);
     _recalcContadores();   // contador parte do que existe no banco
     render();
+    _updNavAprovCampo();
     if(S.comandas.length){
       _statusSB('✅ '+S.comandas.length+' comandas + cadastros do banco','#27ae60');
     } else {
