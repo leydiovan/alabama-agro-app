@@ -505,10 +505,11 @@ async function _loadAprov(){
     if(p.enviado_em && (!g.enviado_em || p.enviado_em>g.enviado_em)) g.enviado_em=p.enviado_em;
     if(p.enviado_por && !g.enviado_por) g.enviado_por=p.enviado_por;
     g.items.push({fid:p.funcionario_id, nome:f?f.nome:('#'+p.funcionario_id), tipo:f?f.tipo:''});
-    APE[p.data+'|'+p.funcionario_id]={marcacoes:(p.marcacoes||[]).map(x=>({ent:x.ent||'',sai:x.sai||''})), feriado:!!p.feriado, falta:!!p.falta, folga:!!p.folga, sem_he:!!p.sem_he};
+    APE[p.data+'|'+p.funcionario_id]={marcacoes:(p.marcacoes||[]).map(x=>({ent:x.ent||'',sai:x.sai||''})), feriado:(!!p.feriado||!!S.feriados[p.data]), falta:!!p.falta, folga:!!p.folga, sem_he:!!p.sem_he};
   });
   APROV=Object.values(groups).sort((a,b)=>String(b.data).localeCompare(String(a.data)));
-  APROV.forEach(g=>{ g.items.sort((a,b)=>String(a.nome).localeCompare(String(b.nome),'pt')); g.temFeriado=g.items.some(i=>APE[g.data+'|'+i.fid].feriado)||!!S.feriados[g.data]; });
+  // feriado já embutido em APE.feriado (flag por-card OR feriado cadastrado) -> fonte única
+  APROV.forEach(g=>{ g.items.sort((a,b)=>String(a.nome).localeCompare(String(b.nome),'pt')); g.temFeriado=g.items.some(i=>APE[g.data+'|'+i.fid].feriado); });
 }
 function aprovHTML(){
   if(!IS_ADMIN) return `<div class="box"><div class="hint">🔒 Apenas administrador.</div></div>`;
@@ -517,12 +518,12 @@ function aprovHTML(){
   const cards=APROV.map(g=>{
     const fer=g.temFeriado; let rows='', tExtra=0;
     g.items.forEach(it=>{
-      const e=APE[g.data+'|'+it.fid]; const ferDia=e.feriado||!!S.feriados[g.data]; const dis=e.falta||e.folga;
+      const e=APE[g.data+'|'+it.fid]; const ferDia=e.feriado; const dis=e.falta||e.folga;
       const r=calcDia({data:g.data,marcacoes:e.marcacoes,feriado:ferDia,folga:e.folga,falta:e.falta,sem_he:e.sem_he}); tExtra+=r.extra;
       const mk=(i,k)=>{ const v=(e.marcacoes[i]&&e.marcacoes[i][k])||''; return `<input class="mark" data-ap="${g.data}|${it.fid}" data-i="${i}" data-k="${k}" value="${esc(v)}" placeholder="${k==='ent'?'ent':'sai'}" ${dis?'disabled':''}>`; };
       rows+=`<tr><td><b>${esc(it.nome)}</b><div class="sub">${TIPO_NOME[it.tipo]||it.tipo}</div></td>
         <td>${mk(0,'ent')} ${mk(0,'sai')}</td><td>${mk(1,'ent')} ${mk(1,'sai')}</td><td>${mk(2,'ent')} ${mk(2,'sai')}</td>
-        <td class="num">${r.normal?m2hm(r.normal):'—'}</td><td class="num he">${r.extra?m2hm(r.extra):'—'}</td>
+        <td class="num" id="nr_${g.data}|${it.fid}">${r.normal?m2hm(r.normal):'—'}</td><td class="num he" id="ex_${g.data}|${it.fid}">${r.extra?m2hm(r.extra):'—'}</td>
         <td style="white-space:nowrap"><label class="sub"><input type="checkbox" data-apflag="falta" data-ap="${g.data}|${it.fid}" ${e.falta?'checked':''}> falta</label>
           <label class="sub"><input type="checkbox" data-apflag="folga" data-ap="${g.data}|${it.fid}" ${e.folga?'checked':''}> folga</label></td>
         <td><button class="btn sm danger" data-aprm="${g.data}|${it.fid}" title="Descartar este">✕</button></td></tr>`;
@@ -531,7 +532,7 @@ function aprovHTML(){
     return `<div class="box" style="${fer?'border-color:var(--gold);box-shadow:0 0 0 1px var(--gold) inset':''}">
       <div class="row" style="justify-content:space-between;align-items:center;gap:8px">
         <div><div style="font-weight:800;font-size:15px">${_dataLabel(g.data)} ${ferBadge}</div>
-          <div class="sub">${g.items.length} funcionário(s)${g.enviado_por?(' · por '+esc(g.enviado_por)):''}${g.enviado_em?(' · '+_dtLabel(g.enviado_em)):''} · HE total <b class="he">${m2hm(tExtra)}</b></div></div>
+          <div class="sub">${g.items.length} funcionário(s)${g.enviado_por?(' · por '+esc(g.enviado_por)):''}${g.enviado_em?(' · '+_dtLabel(g.enviado_em)):''} · HE total <b class="he" id="het_${g.data}">${m2hm(tExtra)}</b></div></div>
         <div style="display:flex;gap:8px;flex-wrap:wrap">
           <label class="pill" style="${fer?'border-color:var(--gold)':''}"><input type="checkbox" data-apfer="${g.data}" ${fer?'checked':''}> Feriado (dia todo)</label>
           <button class="btn success" data-apok="${g.data}">✓ Aprovar</button>
@@ -544,11 +545,17 @@ function aprovHTML(){
   return `<div class="box"><h2 style="font-size:15px">📥 Aprovações <span class="sub">(${APROV.length} dia(s) na fila)</span></h2>
     <div class="hint">Revise, ajuste se precisar e aprove. Ao <b>aprovar</b>, os dados são consolidados no ponto (e somem da fila). Dias com <b style="color:var(--gold)">FERIADO</b> ficam destacados — confirme antes de aprovar.</div></div>${cards}`;
 }
+function _aprovRecalc(key){
+  const sp=key.split('|'), data=sp[0]; const e=APE[key];
+  const r=calcDia({data,marcacoes:e.marcacoes,feriado:e.feriado,folga:e.folga,falta:e.falta,sem_he:e.sem_he});
+  const nr=$('nr_'+key), ex=$('ex_'+key); if(nr) nr.textContent=r.normal?m2hm(r.normal):'—'; if(ex) ex.textContent=r.extra?m2hm(r.extra):'—';
+  const g=APROV&&APROV.find(x=>x.data===data); if(g){ let t=0; g.items.forEach(it=>{ const ee=APE[data+'|'+it.fid]; t+=calcDia({data,marcacoes:ee.marcacoes,feriado:ee.feriado,folga:ee.folga,falta:ee.falta,sem_he:ee.sem_he}).extra; }); const ht=$('het_'+data); if(ht) ht.textContent=m2hm(t); }
+}
 function bindAprov(){
   if(!IS_ADMIN) return;
   if(APROV===null){ (async()=>{ await _loadAprov(); route(); })(); return; }
-  document.querySelectorAll('input.mark[data-ap]').forEach(inp=>inp.onchange=()=>{ const e=APE[inp.dataset.ap]; const i=+inp.dataset.i,k=inp.dataset.k; while(e.marcacoes.length<=i) e.marcacoes.push({ent:'',sai:''}); e.marcacoes[i][k]=inp.value.trim(); });
-  document.querySelectorAll('input[data-apflag]').forEach(c=>c.onchange=()=>{ const e=APE[c.dataset.ap]; e[c.dataset.apflag]=c.checked; if(c.checked){ if(c.dataset.apflag==='falta')e.folga=false; else e.falta=false; } route(); });
+  document.querySelectorAll('input.mark[data-ap]').forEach(inp=>inp.onchange=()=>{ const key=inp.dataset.ap, e=APE[key], i=+inp.dataset.i,k=inp.dataset.k; while(e.marcacoes.length<=i) e.marcacoes.push({ent:'',sai:''}); e.marcacoes[i][k]=inp.value.trim(); _aprovRecalc(key); });
+  document.querySelectorAll('input[data-apflag]').forEach(c=>c.onchange=()=>{ const e=APE[c.dataset.ap]; e[c.dataset.apflag]=c.checked; if(c.checked){ if(c.dataset.apflag==='falta')e.folga=false; else e.falta=false; e.marcacoes=[]; } route(); });
   document.querySelectorAll('input[data-apfer]').forEach(c=>c.onchange=()=>{ const data=c.dataset.apfer; const g=APROV.find(x=>x.data===data); if(g){ g.items.forEach(it=>{ APE[data+'|'+it.fid].feriado=c.checked; }); g.temFeriado=c.checked; } route(); });
   document.querySelectorAll('[data-apok]').forEach(b=>b.onclick=()=>aprovarDia(b.dataset.apok));
   document.querySelectorAll('[data-apdel]').forEach(b=>b.onclick=()=>descartarDia(b.dataset.apdel));
@@ -557,11 +564,12 @@ function bindAprov(){
 async function aprovarDia(data){
   const g=APROV.find(x=>x.data===data); if(!g) return;
   if(!confirm('Aprovar e consolidar '+g.items.length+' lançamento(s) de '+data.split('-').reverse().join('/')+'?\n(vira ponto definitivo)')) return;
-  const linhas=g.items.map(it=>{ const e=APE[data+'|'+it.fid]; const marc=(e.marcacoes||[]).filter(x=>x&&(x.ent||x.sai)).map(x=>({ent:x.ent||'',sai:x.sai||''}));
+  const ids=g.items.map(it=>it.fid);
+  const linhas=g.items.map(it=>{ const e=APE[data+'|'+it.fid]; const marc=(e.falta||e.folga)?[]:(e.marcacoes||[]).filter(x=>x&&(x.ent||x.sai)).map(x=>({ent:x.ent||'',sai:x.sai||''}));
     return { funcionario_id:it.fid, data, marcacoes:marc, feriado:!!e.feriado, falta:!!e.falta, folga:!!e.folga, sem_he:!!e.sem_he }; });
   try{
     const {error}=await SB.from('ponto').upsert(linhas,{onConflict:'funcionario_id,data'}); if(error) throw error;
-    await SB.from('ponto_pendente').delete().eq('data',data);
+    await SB.from('ponto_pendente').delete().eq('data',data).in('funcionario_id',ids);   // só os consolidados (não apaga pendência que chegou depois)
     _st('✅ '+linhas.length+' lançamento(s) aprovados','#27ae60');
     await _loadAprov(); _updAprovBadge(); route();
   }catch(e){ _st('❌ '+e.message,'#c0392b'); }

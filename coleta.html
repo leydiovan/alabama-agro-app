@@ -130,7 +130,7 @@ async function iniciar(){
   STEP='preencher'; render();
 }
 function cardPadrao(fid){ if(JA[fid])return; const t=turnosPadrao(DATA); E[fid].m = t.length? t.map(x=>({ent:x.ent,sai:x.sai})) : [{ent:'',sai:''},{ent:'',sai:''}]; render(); }
-function _resumoJa(j){ return j.falta?'Faltou':(j.folga?'Folga':((j.marcacoes||[]).filter(x=>x.ent||x.sai).map(x=>(x.ent||'?')+'-'+(x.sai||'?')).join(' ')||'lançado'+(j.feriado?' · feriado':''))); }
+function _resumoJa(j){ const fer=j.feriado?' · feriado':''; if(j.falta) return 'Faltou'; if(j.folga) return 'Folga'; const ms=(j.marcacoes||[]).filter(x=>x.ent||x.sai).map(x=>(x.ent||'?')+'-'+(x.sai||'?')).join(' '); return (ms||'lançado')+fer; }
 function renderPreencher(){
   let nLanc=0, nEdit=0;
   const cards=FUNCS.map(f=>{
@@ -179,12 +179,21 @@ function renderRevisar(){
 }
 async function enviar(){
   const btn=$('enviar'); if(btn){ btn.disabled=true; btn.textContent='Enviando…'; }
-  const linhas=FUNCS.filter(f=>!JA[f.id]).map(f=>{ const e=E[f.id]; const marc=(e.m||[]).filter(x=>x&&(x.ent||x.sai)).map(x=>({ent:x.ent||'',sai:x.sai||''}));
-    return { funcionario_id:f.id, data:DATA, marcacoes:marc, feriado:!!FERIADO, falta:!!e.falta, folga:!!e.folga, sem_he:false };
-  }).filter(l=>l.marcacoes.length || l.falta || l.folga);   // só envia quem tem algo e nao estava lançado
-  linhas.forEach(l=>l.enviado_por=USER_EMAIL||null);
+  // quem o coletor preencheu (tinha algo e não estava travado ao abrir)
+  const intended=FUNCS.filter(f=>{ const e=E[f.id]; return e && (e.falta||e.folga||(e.m||[]).some(x=>x.ent||x.sai)); });
+  // releitura anti-corrida: se alguém passou a ter registro (ponto/fila) depois que a tela abriu, não sobrescreve
+  try{
+    const a=await SB.from('ponto').select('funcionario_id').eq('data',DATA); (a.data||[]).forEach(p=>{ JA[p.funcionario_id]=JA[p.funcionario_id]||{_st:'lançado'}; });
+    const b=await SB.from('ponto_pendente').select('funcionario_id').eq('data',DATA); (b.data||[]).forEach(p=>{ JA[p.funcionario_id]=JA[p.funcionario_id]||{_st:'enviado'}; });
+  }catch(e){}
+  const blocked=intended.filter(f=>JA[f.id]);
+  const enviar=intended.filter(f=>!JA[f.id]);
+  const linhas=enviar.map(f=>{ const e=E[f.id]; const dis=e.falta||e.folga; const marc=dis?[]:(e.m||[]).filter(x=>x&&(x.ent||x.sai)).map(x=>({ent:x.ent||'',sai:x.sai||''}));
+    return { funcionario_id:f.id, data:DATA, marcacoes:marc, feriado:!!FERIADO, falta:!!e.falta, folga:!!e.folga, sem_he:false, enviado_por:USER_EMAIL||null };
+  });
   try{
     if(linhas.length){ const {error}=await SB.from('ponto_pendente').upsert(linhas,{onConflict:'funcionario_id,data'}); if(error) throw error; }
+    if(blocked.length) alert(blocked.length+' funcionário(s) já tinham sido lançados em outro aparelho e foram ignorados:\n'+blocked.map(f=>f.nome).join(', '));
     STEP='enviado'; E={}; window.scrollTo(0,0); render(); _enviadoN=linhas.length;
   }catch(err){ alert('Falha ao enviar: '+err.message); if(btn){ btn.disabled=false; btn.textContent='📤 Enviar'; } }
 }
