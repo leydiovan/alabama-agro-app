@@ -13,6 +13,7 @@ h2{font-size:17px;margin-bottom:2px}.sub{color:var(--muted);font-size:12px}
 #nav{display:flex;gap:6px;margin:10px 0 14px;flex-wrap:wrap}
 #nav button{background:var(--bg3);color:var(--text);border:1px solid var(--line);border-radius:9px;padding:8px 14px;font-weight:700;cursor:pointer}
 #nav button.on{background:var(--gold);color:#1a1100;border-color:var(--gold)}
+#nav button.alert{border-color:var(--gold);color:var(--gold)}#nav button.alert.on{color:#1a1100}
 .wrap{max-width:1280px}
 table.fit{width:100%;font-size:12px;table-layout:auto}
 table.fit th,table.fit td{padding:4px 6px}
@@ -71,6 +72,7 @@ tr.dom td,tr.fer td{background:#1a1212}
     <button data-v="ponto">Ponto</button>
     <button data-v="rel">Relatório / Folha</button>
     <button data-v="aberto">Em aberto</button>
+    <button data-v="aprov" id="navAprov" style="display:none">Aprovações</button>
   </div>
   <div id="main"></div>
 </div>
@@ -81,6 +83,9 @@ let SB=null;
 const $=id=>document.getElementById(id);
 const esc=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const S={ funcs:[], cfg:{}, ponto:{}, feriados:{} };
+const ADMIN_EMAILS=['leydiovan@gmail.com'];
+let IS_ADMIN=false, USER_EMAIL='';
+let APROV=null, APE={};        // fila de aprovação (coletas) + edição em memória (key 'data|fid')
 let VIEW='func', EDIT=null;
 let PF=null;                 // funcionário selecionado no Ponto
 let MES=null;                // 'AAAA-MM'
@@ -146,8 +151,9 @@ async function carregar(){
     if(!S.cfg.jornada) S.cfg.jornada={"1":[["07:00","12:00"],["13:30","18:00"]],"2":[["07:00","12:00"],["13:30","18:00"]],"3":[["07:00","12:00"],["13:30","18:00"]],"4":[["07:00","12:00"],["13:30","18:00"]],"5":[["07:00","12:00"],["13:30","18:00"]],"6":[["07:00","12:00"]],"0":[]};
     const {data:fs}=await SB.from('funcionarios').select('*').order('nome'); S.funcs=fs||[];
     try{ const {data:fe}=await SB.from('feriados').select('*'); S.feriados={}; (fe||[]).forEach(x=>S.feriados[x.data]=x.nome); }catch(e){}
+    try{ const {data:u}=await SB.auth.getUser(); USER_EMAIL=(u&&u.user&&u.user.email)||''; IS_ADMIN=ADMIN_EMAILS.includes((USER_EMAIL||'').toLowerCase()); }catch(e){}
     _st('✅ Carregado ('+S.funcs.length+' funcionários)','#27ae60');
-    route();
+    route(); _updAprovBadge();
   }catch(e){ _st('❌ '+e.message,'#c0392b'); console.error(e); route(); }
 }
 async function bootSupabase(){
@@ -159,12 +165,13 @@ async function bootSupabase(){
 }
 
 /* ===================== ROUTER ===================== */
-document.getElementById('nav').addEventListener('click',e=>{ const b=e.target.closest('button'); if(!b)return; VIEW=b.dataset.v; EDIT=null; if(VIEW==='aberto') ABERTO=null; if(VIEW==='rel') REL_MES=null; document.querySelectorAll('#nav button').forEach(x=>x.classList.toggle('on',x===b)); route(); });
+document.getElementById('nav').addEventListener('click',e=>{ const b=e.target.closest('button'); if(!b)return; VIEW=b.dataset.v; EDIT=null; if(VIEW==='aberto') ABERTO=null; if(VIEW==='rel') REL_MES=null; if(VIEW==='aprov') APROV=null; document.querySelectorAll('#nav button').forEach(x=>x.classList.toggle('on',x===b)); route(); });
 function route(){
   const m=$('main');
   if(VIEW==='func'){ m.innerHTML=funcHTML(); bindFunc(); }
   else if(VIEW==='ponto'){ m.innerHTML=pontoHTML(); bindPonto(); }
   else if(VIEW==='aberto'){ m.innerHTML=abertoHTML(); bindAberto(); }
+  else if(VIEW==='aprov'){ m.innerHTML=aprovHTML(); bindAprov(); }
   else { m.innerHTML=relHTML(); bindRel(); }
 }
 
@@ -481,6 +488,92 @@ function bindAberto(){
   if($('a_tipo')) $('a_tipo').onchange=()=>{ AB_TIPO=$('a_tipo').value; route(); };
   const bs=$('a_busca'); if(bs) bs.oninput=()=>{ AB_BUSCA=bs.value; const p=bs.selectionStart; route(); const n=$('a_busca'); if(n){ n.focus(); try{n.setSelectionRange(p,p);}catch(e){} } };
   document.querySelectorAll('.ab-col').forEach(c=>c.onchange=()=>{ _abCols()[c.dataset.k]=c.checked; try{localStorage.setItem('rh_aberto_cols',JSON.stringify(AB_COLS));}catch(e){} route(); });
+}
+
+/* ===================== ABA APROVAÇÕES (fila da coleta) ===================== */
+function _dataLabel(ds){ const d=new Date(ds+'T12:00:00'); const dow=['Domingo','Segunda','Terça','Quarta','Quinta','Sexta','Sábado'][d.getDay()]; return ds.split('-').reverse().join('/')+' · '+dow; }
+function _dtLabel(ts){ try{ const d=new Date(ts); return String(d.getDate()).padStart(2,'0')+'/'+String(d.getMonth()+1).padStart(2,'0')+' '+String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0'); }catch(e){ return ''; } }
+async function _updAprovBadge(){ const btn=$('navAprov'); if(!btn) return; if(!IS_ADMIN){ btn.style.display='none'; return; } btn.style.display='';
+  try{ const {data}=await SB.from('ponto_pendente').select('id'); const tot=(data||[]).length; btn.textContent='Aprovações'+(tot?(' ('+tot+')'):''); btn.classList.toggle('alert',tot>0); }catch(e){}
+}
+async function _loadAprov(){
+  const {data}=await SB.from('ponto_pendente').select('*').order('data',{ascending:false});
+  APE={}; const groups={};
+  (data||[]).forEach(p=>{
+    const f=S.funcs.find(x=>x.id===p.funcionario_id);
+    const g=groups[p.data]||(groups[p.data]={data:p.data, enviado_por:p.enviado_por||'', enviado_em:p.enviado_em||'', items:[]});
+    if(p.enviado_em && (!g.enviado_em || p.enviado_em>g.enviado_em)) g.enviado_em=p.enviado_em;
+    if(p.enviado_por && !g.enviado_por) g.enviado_por=p.enviado_por;
+    g.items.push({fid:p.funcionario_id, nome:f?f.nome:('#'+p.funcionario_id), tipo:f?f.tipo:''});
+    APE[p.data+'|'+p.funcionario_id]={marcacoes:(p.marcacoes||[]).map(x=>({ent:x.ent||'',sai:x.sai||''})), feriado:!!p.feriado, falta:!!p.falta, folga:!!p.folga, sem_he:!!p.sem_he};
+  });
+  APROV=Object.values(groups).sort((a,b)=>String(b.data).localeCompare(String(a.data)));
+  APROV.forEach(g=>{ g.items.sort((a,b)=>String(a.nome).localeCompare(String(b.nome),'pt')); g.temFeriado=g.items.some(i=>APE[g.data+'|'+i.fid].feriado)||!!S.feriados[g.data]; });
+}
+function aprovHTML(){
+  if(!IS_ADMIN) return `<div class="box"><div class="hint">🔒 Apenas administrador.</div></div>`;
+  if(APROV===null) return `<div class="box"><div class="hint">⏳ Carregando fila…</div></div>`;
+  if(!APROV.length) return `<div class="box"><h2 style="font-size:15px">📥 Aprovações</h2><div class="hint">🎉 Nada na fila. As coletas enviadas pelo celular aparecem aqui para você revisar e aprovar.</div></div>`;
+  const cards=APROV.map(g=>{
+    const fer=g.temFeriado; let rows='', tExtra=0;
+    g.items.forEach(it=>{
+      const e=APE[g.data+'|'+it.fid]; const ferDia=e.feriado||!!S.feriados[g.data]; const dis=e.falta||e.folga;
+      const r=calcDia({data:g.data,marcacoes:e.marcacoes,feriado:ferDia,folga:e.folga,falta:e.falta,sem_he:e.sem_he}); tExtra+=r.extra;
+      const mk=(i,k)=>{ const v=(e.marcacoes[i]&&e.marcacoes[i][k])||''; return `<input class="mark" data-ap="${g.data}|${it.fid}" data-i="${i}" data-k="${k}" value="${esc(v)}" placeholder="${k==='ent'?'ent':'sai'}" ${dis?'disabled':''}>`; };
+      rows+=`<tr><td><b>${esc(it.nome)}</b><div class="sub">${TIPO_NOME[it.tipo]||it.tipo}</div></td>
+        <td>${mk(0,'ent')} ${mk(0,'sai')}</td><td>${mk(1,'ent')} ${mk(1,'sai')}</td><td>${mk(2,'ent')} ${mk(2,'sai')}</td>
+        <td class="num">${r.normal?m2hm(r.normal):'—'}</td><td class="num he">${r.extra?m2hm(r.extra):'—'}</td>
+        <td style="white-space:nowrap"><label class="sub"><input type="checkbox" data-apflag="falta" data-ap="${g.data}|${it.fid}" ${e.falta?'checked':''}> falta</label>
+          <label class="sub"><input type="checkbox" data-apflag="folga" data-ap="${g.data}|${it.fid}" ${e.folga?'checked':''}> folga</label></td>
+        <td><button class="btn sm danger" data-aprm="${g.data}|${it.fid}" title="Descartar este">✕</button></td></tr>`;
+    });
+    const ferBadge=fer?`<span class="tag" style="background:#3a1d00;border-color:var(--gold);color:var(--gold);font-size:13px;padding:4px 12px">⚠ FERIADO — confirme</span>`:'';
+    return `<div class="box" style="${fer?'border-color:var(--gold);box-shadow:0 0 0 1px var(--gold) inset':''}">
+      <div class="row" style="justify-content:space-between;align-items:center;gap:8px">
+        <div><div style="font-weight:800;font-size:15px">${_dataLabel(g.data)} ${ferBadge}</div>
+          <div class="sub">${g.items.length} funcionário(s)${g.enviado_por?(' · por '+esc(g.enviado_por)):''}${g.enviado_em?(' · '+_dtLabel(g.enviado_em)):''} · HE total <b class="he">${m2hm(tExtra)}</b></div></div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+          <label class="pill" style="${fer?'border-color:var(--gold)':''}"><input type="checkbox" data-apfer="${g.data}" ${fer?'checked':''}> Feriado (dia todo)</label>
+          <button class="btn success" data-apok="${g.data}">✓ Aprovar</button>
+          <button class="btn danger" data-apdel="${g.data}">Descartar</button>
+        </div>
+      </div>
+      <div style="overflow-x:auto;margin-top:8px"><table><thead><tr><th>Funcionário</th><th>Turno 1 (ent/sai)</th><th>Turno 2</th><th>3º turno</th><th class="num">Normal</th><th class="num">Extra</th><th>Flags</th><th></th></tr></thead><tbody>${rows}</tbody></table></div>
+    </div>`;
+  }).join('');
+  return `<div class="box"><h2 style="font-size:15px">📥 Aprovações <span class="sub">(${APROV.length} dia(s) na fila)</span></h2>
+    <div class="hint">Revise, ajuste se precisar e aprove. Ao <b>aprovar</b>, os dados são consolidados no ponto (e somem da fila). Dias com <b style="color:var(--gold)">FERIADO</b> ficam destacados — confirme antes de aprovar.</div></div>${cards}`;
+}
+function bindAprov(){
+  if(!IS_ADMIN) return;
+  if(APROV===null){ (async()=>{ await _loadAprov(); route(); })(); return; }
+  document.querySelectorAll('input.mark[data-ap]').forEach(inp=>inp.onchange=()=>{ const e=APE[inp.dataset.ap]; const i=+inp.dataset.i,k=inp.dataset.k; while(e.marcacoes.length<=i) e.marcacoes.push({ent:'',sai:''}); e.marcacoes[i][k]=inp.value.trim(); });
+  document.querySelectorAll('input[data-apflag]').forEach(c=>c.onchange=()=>{ const e=APE[c.dataset.ap]; e[c.dataset.apflag]=c.checked; if(c.checked){ if(c.dataset.apflag==='falta')e.folga=false; else e.falta=false; } route(); });
+  document.querySelectorAll('input[data-apfer]').forEach(c=>c.onchange=()=>{ const data=c.dataset.apfer; const g=APROV.find(x=>x.data===data); if(g){ g.items.forEach(it=>{ APE[data+'|'+it.fid].feriado=c.checked; }); g.temFeriado=c.checked; } route(); });
+  document.querySelectorAll('[data-apok]').forEach(b=>b.onclick=()=>aprovarDia(b.dataset.apok));
+  document.querySelectorAll('[data-apdel]').forEach(b=>b.onclick=()=>descartarDia(b.dataset.apdel));
+  document.querySelectorAll('[data-aprm]').forEach(b=>b.onclick=()=>descartarUm(b.dataset.aprm));
+}
+async function aprovarDia(data){
+  const g=APROV.find(x=>x.data===data); if(!g) return;
+  if(!confirm('Aprovar e consolidar '+g.items.length+' lançamento(s) de '+data.split('-').reverse().join('/')+'?\n(vira ponto definitivo)')) return;
+  const linhas=g.items.map(it=>{ const e=APE[data+'|'+it.fid]; const marc=(e.marcacoes||[]).filter(x=>x&&(x.ent||x.sai)).map(x=>({ent:x.ent||'',sai:x.sai||''}));
+    return { funcionario_id:it.fid, data, marcacoes:marc, feriado:!!e.feriado, falta:!!e.falta, folga:!!e.folga, sem_he:!!e.sem_he }; });
+  try{
+    const {error}=await SB.from('ponto').upsert(linhas,{onConflict:'funcionario_id,data'}); if(error) throw error;
+    await SB.from('ponto_pendente').delete().eq('data',data);
+    _st('✅ '+linhas.length+' lançamento(s) aprovados','#27ae60');
+    await _loadAprov(); _updAprovBadge(); route();
+  }catch(e){ _st('❌ '+e.message,'#c0392b'); }
+}
+async function descartarDia(data){
+  const g=APROV.find(x=>x.data===data); if(!g) return;
+  if(!confirm('Descartar TODA a coleta de '+data.split('-').reverse().join('/')+'?\nOs dados NÃO serão salvos no ponto.')) return;
+  try{ await SB.from('ponto_pendente').delete().eq('data',data); _st('Coleta descartada','#e67e22'); await _loadAprov(); _updAprovBadge(); route(); }catch(e){ _st('❌ '+e.message,'#c0392b'); }
+}
+async function descartarUm(key){
+  const sp=key.split('|'), data=sp[0], fid=+sp[1]; if(!confirm('Descartar este lançamento?')) return;
+  try{ await SB.from('ponto_pendente').delete().eq('data',data).eq('funcionario_id',fid); await _loadAprov(); _updAprovBadge(); route(); }catch(e){ _st('❌ '+e.message,'#c0392b'); }
 }
 
 window.addEventListener('load',()=>{ setTimeout(bootSupabase,250); });

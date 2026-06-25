@@ -57,7 +57,7 @@ let SB=null;
 const $=id=>document.getElementById(id);
 const esc=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const TIPO={registrado:'Registrado',diarista:'Diarista',temporario:'Temporário'};
-let CFG={}, FUNCS=[], STEP='login', DATA='', FERIADO=false, E={}, JA={};   // E[fid]={m:[{ent,sai}],falta,folga}; JA[fid]=registro já no banco
+let CFG={}, FUNCS=[], STEP='login', DATA='', FERIADO=false, E={}, JA={}, USER_EMAIL='';   // E[fid]={m:[{ent,sai}],falta,folga}; JA[fid]=já no banco ou na fila
 
 /* ---- tempo / cálculo (igual ao módulo) ---- */
 function t2m(s){ if(!s) return null; const m=String(s).match(/^(\d{1,2}):(\d{2})$/); return m?(+m[1])*60+(+m[2]):null; }
@@ -85,6 +85,7 @@ async function entrar(){
   try{ const {data:c}=await SB.from('rh_config').select('*').eq('id','main').limit(1); if(c&&c[0]) CFG=c[0]; }catch(e){}
   if(!CFG.jornada) CFG.jornada={"1":[["07:00","12:00"],["13:30","18:00"]],"2":[["07:00","12:00"],["13:30","18:00"]],"3":[["07:00","12:00"],["13:30","18:00"]],"4":[["07:00","12:00"],["13:30","18:00"]],"5":[["07:00","12:00"],["13:30","18:00"]],"6":[["07:00","12:00"]],"0":[]};
   try{ const {data:f}=await SB.from('funcionarios').select('id,nome,tipo,ativo').order('nome'); FUNCS=(f||[]).filter(x=>x.ativo!==false); }catch(e){ FUNCS=[]; }
+  try{ const {data:u}=await SB.auth.getUser(); USER_EMAIL=(u&&u.user&&u.user.email)||''; }catch(e){}
   STEP='data'; DATA=new Date().toISOString().slice(0,10); render();
 }
 async function login(){
@@ -121,7 +122,8 @@ function renderData(){
 }
 async function iniciar(){
   JA={};
-  try{ const {data}=await SB.from('ponto').select('funcionario_id,marcacoes,falta,folga,feriado').eq('data',DATA); (data||[]).forEach(p=>JA[p.funcionario_id]=p); }catch(e){}
+  try{ const {data}=await SB.from('ponto').select('funcionario_id,marcacoes,falta,folga,feriado').eq('data',DATA); (data||[]).forEach(p=>{p._st='lançado';JA[p.funcionario_id]=p;}); }catch(e){}
+  try{ const {data}=await SB.from('ponto_pendente').select('funcionario_id,marcacoes,falta,folga,feriado').eq('data',DATA); (data||[]).forEach(p=>{ if(!JA[p.funcionario_id]){p._st='enviado';JA[p.funcionario_id]=p;} }); }catch(e){}
   E={};
   // cards começam VAZIOS (sem padrão automático); já-lançados ficam travados
   FUNCS.forEach(f=>{ if(!JA[f.id]) E[f.id]={ m:[{ent:'',sai:''},{ent:'',sai:''}], falta:false, folga:false }; });
@@ -132,7 +134,7 @@ function _resumoJa(j){ return j.falta?'Faltou':(j.folga?'Folga':((j.marcacoes||[
 function renderPreencher(){
   let nLanc=0, nEdit=0;
   const cards=FUNCS.map(f=>{
-    if(JA[f.id]){ nLanc++; return `<div class="card lock"><div class="lockbadge">JÁ LANÇADO</div><div class="nm">${esc(f.nome)}</div><div class="tp">${TIPO[f.tipo]||f.tipo} · ${esc(_resumoJa(JA[f.id]))}</div></div>`; }
+    if(JA[f.id]){ nLanc++; const stl=JA[f.id]._st==='enviado'?'ENVIADO':'JÁ LANÇADO'; return `<div class="card lock"><div class="lockbadge">${stl}</div><div class="nm">${esc(f.nome)}</div><div class="tp">${TIPO[f.tipo]||f.tipo} · ${esc(_resumoJa(JA[f.id]))}</div></div>`; }
     nEdit++; const e=E[f.id]; const dis=e.falta||e.folga;
     const turnos=(e.m||[]).map((mc,i)=>`<div class="turno"><div><label>Entrada ${i+1}</label><input type="time" data-f="${f.id}" data-i="${i}" data-k="ent" value="${esc(mc.ent||'')}"></div><div><label>Saída ${i+1}</label><input type="time" data-f="${f.id}" data-i="${i}" data-k="sai" value="${esc(mc.sai||'')}"></div></div>`).join('');
     const left=dis?`<div class="muted" style="padding:6px 0;font-size:16px;font-weight:700">${e.falta?'Faltou':'Folga'}</div>`:turnos;
@@ -180,8 +182,9 @@ async function enviar(){
   const linhas=FUNCS.filter(f=>!JA[f.id]).map(f=>{ const e=E[f.id]; const marc=(e.m||[]).filter(x=>x&&(x.ent||x.sai)).map(x=>({ent:x.ent||'',sai:x.sai||''}));
     return { funcionario_id:f.id, data:DATA, marcacoes:marc, feriado:!!FERIADO, falta:!!e.falta, folga:!!e.folga, sem_he:false };
   }).filter(l=>l.marcacoes.length || l.falta || l.folga);   // só envia quem tem algo e nao estava lançado
+  linhas.forEach(l=>l.enviado_por=USER_EMAIL||null);
   try{
-    if(linhas.length){ const {error}=await SB.from('ponto').upsert(linhas,{onConflict:'funcionario_id,data'}); if(error) throw error; }
+    if(linhas.length){ const {error}=await SB.from('ponto_pendente').upsert(linhas,{onConflict:'funcionario_id,data'}); if(error) throw error; }
     STEP='enviado'; E={}; window.scrollTo(0,0); render(); _enviadoN=linhas.length;
   }catch(err){ alert('Falha ao enviar: '+err.message); if(btn){ btn.disabled=false; btn.textContent='📤 Enviar'; } }
 }
@@ -191,7 +194,7 @@ function renderEnviado(){
     <div class="big">✅</div>
     <h1 style="font-size:22px;margin:10px 0">Coleta enviada</h1>
     <div class="muted">${_dlabel(DATA)} · ${_enviadoN} funcionário(s)</div>
-    <div class="muted" style="font-size:13px;margin-top:8px">Os dados foram enviados. Este aparelho não acessa o histórico.</div>
+    <div class="muted" style="font-size:13px;margin-top:8px">Enviado para <b>aprovação</b> do administrador. Este aparelho não acessa o histórico.</div>
     <button class="btn g" id="nova" style="max-width:280px;margin:24px auto 0">Nova coleta</button>
     <button class="lk" id="sair2" style="margin:14px auto 0">sair</button></div>`;
   $('nova').onclick=()=>{ STEP='data'; DATA=new Date().toISOString().slice(0,10); FERIADO=false; render(); };
