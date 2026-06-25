@@ -8,17 +8,21 @@
 <style>
 :root{--bg:#0d1117;--bg2:#161b22;--bg3:#1c2333;--line:#30363d;--text:#e6edf3;--muted:#8b949e;--gold:#ffc107;--ok:#27ae60;--err:#f85149;--blue:#388bfd}
 *{box-sizing:border-box;margin:0;padding:0}
-body{background:var(--bg);color:var(--text);font:16px system-ui,Segoe UI,Arial,sans-serif;padding:12px 12px 96px;-webkit-text-size-adjust:100%}
+body{background:var(--bg);color:var(--text);font:17px system-ui,Segoe UI,Arial,sans-serif;padding:12px 12px 96px;-webkit-text-size-adjust:100%}
 .top{position:sticky;top:0;background:var(--bg);padding:8px 0 10px;border-bottom:1px solid var(--line);margin-bottom:10px;z-index:5}
 .top h1{font-size:18px;display:flex;align-items:center;gap:8px}.top h1 .l{color:var(--gold)}
 .top .d{color:var(--muted);font-size:13px}
 .card{background:var(--bg2);border:1px solid var(--line);border-radius:14px;padding:13px 14px;margin-bottom:14px}
 .card .nm{font-size:16px;font-weight:800}.card .tp{color:var(--muted);font-size:12px;margin-top:2px}
 label{font-size:13px;color:var(--muted);display:block;margin-bottom:4px}
-input,select{width:100%;background:var(--bg);border:1px solid var(--line);border-radius:10px;color:var(--text);font-size:17px;padding:11px}
+input,select{width:100%;background:var(--bg);border:1px solid var(--line);border-radius:10px;color:var(--text);font-size:18px;padding:13px}
 input[type=time],input[type=number]{font-variant-numeric:tabular-nums}
 .two{display:flex;gap:10px}.two>div{flex:1}
-.btn{display:block;width:100%;border:0;border-radius:12px;padding:15px;font-size:17px;font-weight:800;cursor:pointer;margin-top:8px}
+.btn{display:block;width:100%;border:0;border-radius:12px;padding:16px;font-size:18px;font-weight:800;cursor:pointer;margin-top:8px}
+.btn.huge{font-size:21px;min-height:68px;padding:18px}
+.daycard{padding:14px 15px}
+.dhead{display:flex;justify-content:space-between;align-items:center;gap:12px}
+.cbtn{width:auto;margin:0;min-height:56px;padding:14px 22px;font-size:17px}
 .btn.g{background:var(--gold);color:#1a1100}.btn.k{background:var(--ok);color:#fff}.btn.s{background:var(--bg3);color:var(--text);border:1px solid var(--line)}
 .btn.b{background:var(--blue);color:#fff}.btn.danger{background:transparent;border:1px solid var(--err);color:var(--err)}
 .btn.sm{padding:9px 12px;font-size:14px;width:auto;display:inline-block;margin:0}
@@ -62,7 +66,6 @@ let DIA='';                 // 'AAAA-MM-DD'
 let DIAREC=null;            // linha de campo_dia de hoje (início/fim do dia = ponto automático)
 let EXECS={};               // comanda_codigo -> execucao_campo de hoje
 let CUR=null;               // comanda aberta
-let EF={};                  // form da execução atual
 let VERTODAS=false;         // fallback: mostrar todas as comandas (sem designação)
 
 /* ---------- helpers ---------- */
@@ -218,102 +221,110 @@ function renderHome(){
 function _botoesSairBar(){ return `<button class="btn s" id="sair2">Sair</button><button class="btn s" id="troca2">Trocar operador</button>`; }
 function _bindSairBar(){ if($('sair2'))$('sair2').onclick=async()=>{ if(SB) await SB.auth.signOut(); location.reload(); }; if($('troca2'))$('troca2').onclick=()=>{ try{localStorage.removeItem('campo_oper');}catch(e){} OPER=null; STEP='quemsou'; render(); }; }
 
-function abrirComanda(cod){
+let CUR_DAYS=[];                 // execuções (1 card por dia) da comanda aberta
+let HDR={maquina_id:'',implemento_id:''};   // máquina/implemento escolhidos no cabeçalho
+async function _carregarDiasComanda(){
+  CUR_DAYS=[];
+  try{ const {data}=await SB.from('execucao_campo').select('*').eq('comanda_codigo',CUR.codigo).eq('funcionario_id',OPER.id).order('data',{ascending:false}); CUR_DAYS=data||[]; }catch(e){ _st('❌ '+e.message,'#c0392b'); }
+  const ult=CUR_DAYS[0];
+  HDR={ maquina_id:(ult&&ult.maquina_id)||'', implemento_id:(ult&&ult.implemento_id)||'' };
+}
+async function abrirComanda(cod){
   CUR=COMANDAS.find(c=>String(c.codigo)===String(cod)); if(!CUR){ _st('Comanda não encontrada.','#c0392b'); return; }
-  const ex=EXECS[cod]||{};
-  EF={ maquina_id:ex.maquina_id||'', implemento_id:ex.implemento_id||'', hora_inicio:ex.hora_inicio||'', hora_fim:ex.hora_fim||'',
-       horimetro_ini:ex.horimetro_ini??'', horimetro_fim:ex.horimetro_fim??'', diesel_litros:ex.diesel_litros??'',
-       area_ha:ex.area_ha??'', obs:ex.obs||'', concluiu_lote:!!ex.concluiu_lote };
+  await _carregarDiasComanda();
   STEP='exec'; render(); window.scrollTo(0,0);
 }
 function renderExec(){
   const c=CUR; const area=areaLote(c.lote_nome);
-  const maqOpt=`<option value="">— trator/máquina —</option>`+MAQS.map(m=>`<option value="${m.id}" ${String(EF.maquina_id)===String(m.id)?'selected':''}>${esc(m.nome)}${m.id_frota?(' ('+esc(m.id_frota)+')'):''}</option>`).join('');
-  const impOpt=`<option value="">— implemento (opcional) —</option>`+IMPS.map(m=>`<option value="${m.id}" ${String(EF.implemento_id)===String(m.id)?'selected':''}>${esc(m.nome)}${m.largura_trabalho?(' · '+m.largura_trabalho+'m'):''}</option>`).join('');
-  const horas=horasEntre(EF.hora_inicio,EF.hora_fim);
-  const hm=(EF.horimetro_ini!==''&&EF.horimetro_fim!=='')?(num(EF.horimetro_fim)-num(EF.horimetro_ini)):null;
+  const maqOpt=`<option value="">— escolher trator/máquina —</option>`+MAQS.map(m=>`<option value="${m.id}" ${String(HDR.maquina_id)===String(m.id)?'selected':''}>${esc(m.nome)}${m.id_frota?(' ('+esc(m.id_frota)+')'):''}</option>`).join('');
+  const impOpt=`<option value="">— implemento (opcional) —</option>`+IMPS.map(m=>`<option value="${m.id}" ${String(HDR.implemento_id)===String(m.id)?'selected':''}>${esc(m.nome)}${m.largura_trabalho?(' · '+m.largura_trabalho+' m'):''}</option>`).join('');
+  const hojeCard=CUR_DAYS.find(r=>r.data===DIA);
+  const emAndamento=hojeCard && !hojeCard.hora_fim;
+  const concluida=CUR_DAYS.some(r=>r.concluiu_lote) || c.status==='executada';
+  const cards=CUR_DAYS.map(r=>_dayCard(r)).join('') || '<div class="card muted" style="text-align:center;padding:22px">Nenhum dia ainda. Toque em <b>Iniciar</b> para começar.</div>';
   $('app').innerHTML=`<div class="top"><h1><span class="l">📋</span> ${esc(c.codigo)}</h1><div class="d">${esc(c.tipo_ativ||'')} · Lote ${esc(c.lote_nome||'—')}${area?(' · '+area+' ha'):''}</div></div>
     <div class="card">
-      <div class="kv"><span>Tipo</span><b>${esc(c.tipo_ativ||'—')}</b></div>
-      <div class="kv"><span>Lote</span><b>${esc(c.lote_nome||'—')}${area?(' · '+area+' ha'):''}</b></div>
-      ${c.prod_texto?`<div class="kv"><span>Produtos</span><b>${esc(c.prod_texto)}</b></div>`:''}
-      ${c.faixa?`<div class="kv"><span>Faixa</span><b>${esc(c.faixa)}</b></div>`:''}
-      ${c.obs?`<div class="kv"><span>Obs</span><b>${esc(c.obs)}</b></div>`:''}
+      <div class="kv"><span>Operador</span><b>${esc(OPER.nome)}</b></div>
+      <label style="margin-top:10px">Trator / máquina</label><select id="h_maq">${maqOpt}</select>
+      <label style="margin-top:12px">Implemento</label><select id="h_imp">${impOpt}</select>
+      ${concluida?'<div class="hint" style="margin-top:14px">✅ Lote concluído e enviado.</div>'
+        : emAndamento?'<div class="hint" style="margin-top:14px">Atividade de hoje em andamento — finalize no card abaixo.</div>'
+        : `<button class="btn b huge" id="btn_ini" style="margin-top:16px">▶ Iniciar${hojeCard?' (novo dia)':''}</button>`}
     </div>
-    <div class="card">
-      <div class="sec" style="margin-top:0">Máquina</div>
-      <label>Trator / máquina</label><select id="f_maq">${maqOpt}</select>
-      <label style="margin-top:10px">Implemento</label><select id="f_imp">${impOpt}</select>
-
-      <div class="sec">Atividade (no talhão)</div>
-      <div class="two">
-        <div><button class="btn ${EF.hora_inicio?'s':'b'}" id="ativ_ini">${EF.hora_inicio?('Início: '+esc(EF.hora_inicio)):'▶ Iniciar atividade'}</button></div>
-        <div><button class="btn ${EF.hora_fim?'s':(EF.hora_inicio?'k':'s')}" id="ativ_fim" ${EF.hora_inicio?'':'disabled'}>${EF.hora_fim?('Fim: '+esc(EF.hora_fim)):'■ Finalizar atividade'}</button></div>
-      </div>
-      ${horas!=null?`<div class="hint">Tempo da atividade hoje: <b class="gold">${horas.toFixed(2)} h</b></div>`:'<div class="hint">Toque em <b>Iniciar</b> quando começar a trabalhar e em <b>Finalizar</b> quando parar.</div>'}
-
-      <div class="sec">Hora-máquina / Diesel</div>
-      <div class="two">
-        <div><label>Horímetro início</label><input type="number" step="any" inputmode="decimal" id="f_hmi" value="${esc(EF.horimetro_ini)}"></div>
-        <div><label>Horímetro fim</label><input type="number" step="any" inputmode="decimal" id="f_hmf" value="${esc(EF.horimetro_fim)}"></div>
-      </div>
-      ${hm!=null&&isFinite(hm)?`<div class="hint">Horas de máquina: <b class="gold">${hm.toFixed(1)} h</b></div>`:''}
-      <label style="margin-top:10px">Diesel abastecido hoje (L)</label><input type="number" step="any" inputmode="decimal" id="f_die" value="${esc(EF.diesel_litros)}" placeholder="litros">
-
-      <div class="sec">Área feita hoje</div>
-      <label>Hectares (manual por enquanto)</label><input type="number" step="any" inputmode="decimal" id="f_area" value="${esc(EF.area_ha)}" placeholder="ha">
-      <label style="margin-top:10px">Observação</label><input id="f_obs" value="${esc(EF.obs)}" placeholder="opcional">
-
-      <div class="fl"><input type="checkbox" id="f_concl" ${EF.concluiu_lote?'checked':''}><label for="f_concl">Concluí o lote (enviar comanda para aprovação)</label></div>
+    ${cards}
+    ${concluida?'' : `<button class="btn s" id="concluir">✔ Concluí o lote — enviar comanda</button>`}
+    <div class="bar"><button class="btn s" id="voltar">◀ Voltar às comandas</button></div>`;
+  if($('h_maq'))$('h_maq').onchange=()=>{ HDR.maquina_id=$('h_maq').value; };
+  if($('h_imp'))$('h_imp').onchange=()=>{ HDR.implemento_id=$('h_imp').value; };
+  if($('btn_ini'))$('btn_ini').onclick=iniciarAtividade;
+  if($('concluir'))$('concluir').onclick=concluirLote;
+  if($('voltar'))$('voltar').onclick=async()=>{ STEP='home'; await carregarDia(); render(); };
+  document.querySelectorAll('[data-fin]').forEach(b=>b.onclick=()=>finalizarAtividade(b.dataset.fin));
+  document.querySelectorAll('.cardf').forEach(inp=>inp.onchange=()=>salvarCampoCard(inp.dataset.d, inp.dataset.f, inp.value));
+}
+function _dayCard(r){
+  const d=r.data; const tempo=horasEntre(r.hora_inicio,r.hora_fim);
+  const hm=(r.horimetro_ini!=null&&r.horimetro_fim!=null)?(num(r.horimetro_fim)-num(r.horimetro_ini)):null;
+  if(!r.hora_fim){
+    return `<div class="card daycard"><div class="dhead">
+      <div><b>${_dlabel(d)}</b><div class="muted" style="font-size:14px;margin-top:2px">início ${esc(r.hora_inicio||'—')} · <span class="gold">em andamento</span></div></div>
+      <button class="btn k cbtn" data-fin="${d}">■ Finalizar</button></div></div>`;
+  }
+  return `<div class="card daycard"><div class="dhead"><div><b>${_dlabel(d)}</b>
+      <div class="muted" style="font-size:14px;margin-top:2px">${esc(r.hora_inicio||'—')}–${esc(r.hora_fim)}${tempo!=null?(' · '+tempo.toFixed(1)+' h'):''}${r.concluiu_lote?' · <span class="ok">lote concluído</span>':''}</div></div></div>
+    <div class="two" style="margin-top:10px">
+      <div><label>Horímetro início</label><input class="cardf" type="number" step="any" inputmode="decimal" data-d="${d}" data-f="horimetro_ini" value="${r.horimetro_ini??''}"></div>
+      <div><label>Horímetro fim</label><input class="cardf" type="number" step="any" inputmode="decimal" data-d="${d}" data-f="horimetro_fim" value="${r.horimetro_fim??''}"></div>
     </div>
-    <div class="bar">
-      <button class="btn s" id="voltar">◀ Voltar</button>
-      <button class="btn k" id="salvar">Salvar / Enviar</button>
-    </div>`;
-  // captura mudanças no estado
-  const bind=(id,k,n)=>{ const el=$(id); if(el) el.onchange=()=>{ EF[k]= n?num(el.value):el.value; if(id==='f_hmi'||id==='f_hmf') render(); }; };
-  bind('f_maq','maquina_id'); bind('f_imp','implemento_id');
-  bind('f_hmi','horimetro_ini'); bind('f_hmf','horimetro_fim'); bind('f_die','diesel_litros'); bind('f_area','area_ha'); bind('f_obs','obs');
-  if($('f_concl'))$('f_concl').onchange=e=>{ EF.concluiu_lote=e.target.checked; };
-  if($('ativ_ini'))$('ativ_ini').onclick=async()=>{ if(EF.hora_inicio && !confirm('Atividade já iniciada às '+EF.hora_inicio+'. Reiniciar agora?')) return; EF.maquina_id=$('f_maq').value; EF.implemento_id=$('f_imp').value; EF.hora_inicio=nowHM(); await _persistExecParcial(); render(); };
-  if($('ativ_fim'))$('ativ_fim').onclick=async()=>{ if(!EF.hora_inicio){ _st('Inicie a atividade primeiro.','#e67e22'); return; } EF.hora_fim=nowHM(); await _persistExecParcial(); render(); };
-  if($('voltar'))$('voltar').onclick=()=>{ STEP='home'; render(); };
-  if($('salvar'))$('salvar').onclick=salvarExec;
+    ${hm!=null&&isFinite(hm)?`<div class="hint">Hora-máquina: <b class="gold">${hm.toFixed(1)} h</b></div>`:''}
+    <label style="margin-top:10px">Diesel (L)</label><input class="cardf" type="number" step="any" inputmode="decimal" data-d="${d}" data-f="diesel_litros" value="${r.diesel_litros??''}" placeholder="litros abastecidos">
+    <label style="margin-top:10px">Área feita (ha)</label><input class="cardf" type="number" step="any" inputmode="decimal" data-d="${d}" data-f="area_ha" value="${r.area_ha??''}" placeholder="manual (GPS na fase 2)">
+    <label style="margin-top:10px">Observação</label><input class="cardf" data-d="${d}" data-f="obs" value="${esc(r.obs||'')}" placeholder="opcional">
+  </div>`;
 }
-function _execReg(status){
-  return { comanda_codigo:CUR.codigo, safra:SAFRA, funcionario_id:OPER.id, lote_nome:CUR.lote_nome||null, data:DIA,
-    maquina_id:EF.maquina_id?+EF.maquina_id:null, implemento_id:EF.implemento_id?+EF.implemento_id:null,
-    hora_inicio:EF.hora_inicio||null, hora_fim:EF.hora_fim||null, horimetro_ini:num(EF.horimetro_ini), horimetro_fim:num(EF.horimetro_fim),
-    diesel_litros:num(EF.diesel_litros), area_ha:num(EF.area_ha), concluiu_lote:!!EF.concluiu_lote, obs:EF.obs||null,
-    status:status, enviado_por:USER_EMAIL||null, atualizado_em:new Date().toISOString() };
-}
-async function _persistExecParcial(){
-  if(!CUR) return;
-  try{ const reg=_execReg('aberto'); const {error}=await SB.from('execucao_campo').upsert(reg,{onConflict:'comanda_codigo,funcionario_id,data'}); if(error) throw error; EXECS[CUR.codigo]=reg; }
+async function iniciarAtividade(){
+  HDR.maquina_id=($('h_maq')&&$('h_maq').value)||HDR.maquina_id;
+  HDR.implemento_id=($('h_imp')&&$('h_imp').value)||HDR.implemento_id;
+  if(!HDR.maquina_id){ _st('Escolha o trator/máquina no cabeçalho.','#e67e22'); return; }
+  const existe=CUR_DAYS.find(r=>r.data===DIA);
+  if(existe && !existe.hora_fim){ _st('Já há atividade em andamento hoje.','#e67e22'); return; }
+  if(existe && existe.hora_fim && !confirm('Já existe um card de hoje. Iniciar de novo vai sobrescrever. Continuar?')) return;
+  const reg={ comanda_codigo:CUR.codigo, safra:SAFRA, funcionario_id:OPER.id, lote_nome:CUR.lote_nome||null, data:DIA,
+    maquina_id:+HDR.maquina_id, implemento_id:HDR.implemento_id?+HDR.implemento_id:null,
+    hora_inicio:nowHM(), hora_fim:null, status:'aberto', enviado_por:USER_EMAIL||null, atualizado_em:new Date().toISOString() };
+  try{ const {error}=await SB.from('execucao_campo').upsert(reg,{onConflict:'comanda_codigo,funcionario_id,data'}); if(error) throw error;
+    _st('▶ Atividade iniciada às '+reg.hora_inicio,'#27ae60'); await _carregarDiasComanda(); render(); }
   catch(e){ _st('❌ '+e.message,'#c0392b'); }
 }
-async function salvarExec(){
-  EF.maquina_id=$('f_maq').value; EF.implemento_id=$('f_imp').value;
-  EF.horimetro_ini=num($('f_hmi').value); EF.horimetro_fim=num($('f_hmf').value); EF.diesel_litros=num($('f_die').value);
-  EF.area_ha=num($('f_area').value); EF.obs=$('f_obs').value.trim(); EF.concluiu_lote=$('f_concl').checked;
-  if(!EF.maquina_id){ _st('Escolha o trator/máquina.','#e67e22'); return; }
-  if(!EF.hora_inicio){ _st('Inicie a atividade (botão ▶).','#e67e22'); return; }
-  const reg=_execReg('enviada');
-  const b=$('salvar'); if(b){ b.disabled=true; b.textContent='Salvando…'; }
-  try{
-    const {error}=await SB.from('execucao_campo').upsert(reg,{onConflict:'comanda_codigo,funcionario_id,data'}); if(error) throw error;
-    EXECS[CUR.codigo]=reg;
-    if(EF.concluiu_lote){ STEP='fim'; render(); }
-    else { _st('✅ Apontamento salvo (enviado para aprovação)','#27ae60'); STEP='home'; await carregarDia(); render(); }
-  }catch(e){ _st('❌ '+e.message,'#c0392b'); if(b){ b.disabled=false; b.textContent='Salvar / Enviar'; } }
+async function finalizarAtividade(d){
+  const r=CUR_DAYS.find(x=>x.data===d); if(!r) return;
+  if(!confirm('Finalizar a atividade agora ('+nowHM()+')?')) return;
+  try{ const {error}=await SB.from('execucao_campo').update({hora_fim:nowHM(), status:'enviada', atualizado_em:new Date().toISOString()}).eq('id',r.id); if(error) throw error;
+    _st('■ Atividade finalizada','#27ae60'); await _carregarDiasComanda(); render(); }
+  catch(e){ _st('❌ '+e.message,'#c0392b'); }
+}
+async function salvarCampoCard(d, campo, valor){
+  const r=CUR_DAYS.find(x=>x.data===d); if(!r) return;
+  const patch={atualizado_em:new Date().toISOString()}; patch[campo]=(campo==='obs')?(valor||null):num(valor);
+  try{ const {error}=await SB.from('execucao_campo').update(patch).eq('id',r.id); if(error) throw error; Object.assign(r,patch);
+    if(campo==='horimetro_ini'||campo==='horimetro_fim') render();
+  }catch(e){ _st('❌ '+e.message,'#c0392b'); }
+}
+async function concluirLote(){
+  if(!CUR_DAYS.length){ _st('Nenhum dia lançado ainda.','#e67e22'); return; }
+  if(!confirm('Concluir o lote e enviar a comanda para aprovação?')) return;
+  const r=CUR_DAYS.find(x=>x.data===DIA)||CUR_DAYS[0];
+  try{ const {error}=await SB.from('execucao_campo').update({concluiu_lote:true, status:'enviada', atualizado_em:new Date().toISOString()}).eq('id',r.id); if(error) throw error;
+    STEP='fim'; render(); }
+  catch(e){ _st('❌ '+e.message,'#c0392b'); }
 }
 function renderFim(){
   $('app').innerHTML=`<div class="center" style="margin-top:46px">
     <div class="big">✅</div>
-    <h1 style="font-size:22px;margin:10px 0">Comanda enviada</h1>
+    <h1 style="font-size:24px;margin:10px 0">Comanda enviada</h1>
     <div class="muted">${esc(CUR.codigo)} · lote ${esc(CUR.lote_nome||'')}</div>
-    <div class="muted" style="font-size:13px;margin-top:8px">Marcada como <b>lote concluído</b> e enviada para aprovação do administrador.</div>
-    <button class="btn g" id="volta" style="max-width:320px;margin:22px auto 0">Voltar às comandas</button>
+    <div class="muted" style="font-size:14px;margin-top:8px">Lote concluído e enviado para aprovação do administrador.</div>
+    <button class="btn g huge" id="volta" style="max-width:340px;margin:24px auto 0">Voltar às comandas</button>
   </div>`;
   $('volta').onclick=async()=>{ STEP='home'; await carregarDia(); render(); };
 }
