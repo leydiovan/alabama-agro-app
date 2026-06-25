@@ -140,7 +140,7 @@ function render(){
   if(STEP==='login') return renderLogin();
   if(STEP==='quemsou') return renderQuemSou();
   if(STEP==='home') return renderHome();
-  if(STEP==='exec') return renderExec();
+  if(STEP==='exec') return EXVIEW==='trabalho'?renderTrabalho():renderExecMenu();
   if(STEP==='fim') return renderFim();
 }
 function _botoesSair(){ return '<button class="lk" id="sair">sair</button> <button class="lk" id="troca" style="margin-left:14px">trocar operador</button>'; }
@@ -191,6 +191,7 @@ function _bindSairBar(){ if($('sair2'))$('sair2').onclick=async()=>{ if(SB) awai
 
 let CUR_DAYS=[];                 // execuções (1 card por dia) da comanda aberta
 let HDR={maquina_id:'',implemento_id:''};   // máquina/implemento escolhidos no cabeçalho
+let EXVIEW='menu';              // dentro da comanda: 'menu' (ícones) | 'trabalho' (apontamento)
 async function _carregarDiasComanda(){
   CUR_DAYS=[];
   try{ const {data}=await SB.from('execucao_campo').select('*').eq('comanda_codigo',CUR.codigo).eq('funcionario_id',OPER.id).order('data',{ascending:false}); CUR_DAYS=data||[]; }catch(e){ _st('❌ '+e.message,'#c0392b'); }
@@ -200,9 +201,36 @@ async function _carregarDiasComanda(){
 async function abrirComanda(cod){
   CUR=COMANDAS.find(c=>String(c.codigo)===String(cod)); if(!CUR){ _st('Comanda não encontrada.','#c0392b'); return; }
   await _carregarDiasComanda();
-  STEP='exec'; render(); window.scrollTo(0,0);
+  EXVIEW='menu'; STEP='exec'; render(); window.scrollTo(0,0);
 }
-function renderExec(){
+/* ---- menu da comanda: dois ícones ---- */
+function renderExecMenu(){
+  const c=CUR; const area=areaLote(c.lote_nome);
+  $('app').innerHTML=`<div class="top"><h1><span class="l">📋</span> ${esc(c.codigo)}</h1><div class="d">${esc(c.tipo_ativ||'')} · Lote ${esc(c.lote_nome||'—')}${area?(' · '+area+' ha'):''}</div></div>
+    <button class="btn b huge" id="ic_cmd" style="margin-top:6px">📋 Ver comanda</button>
+    <div class="hint" style="text-align:center;margin-top:2px">a comanda impressa — dá pra dar zoom com os dedos</div>
+    <button class="btn k huge" id="ic_trab" style="margin-top:16px">🛰️ Tela de trabalho</button>
+    <div class="hint" style="text-align:center;margin-top:2px">apontar o dia (máquina, horímetro, diesel, área)</div>
+    <div class="bar"><button class="btn s" id="voltar">◀ Voltar às comandas</button></div>`;
+  if($('ic_cmd'))$('ic_cmd').onclick=abrirComandaDoc;
+  if($('ic_trab'))$('ic_trab').onclick=()=>{ EXVIEW='trabalho'; render(); window.scrollTo(0,0); };
+  if($('voltar'))$('voltar').onclick=async()=>{ STEP='home'; EXVIEW='menu'; await carregarDia(); render(); };
+}
+/* ---- abre a comanda impressa (idêntica) num overlay com iframe + pinça/zoom ---- */
+async function abrirComandaDoc(){
+  let s=null; try{ const {data}=await SB.auth.getSession(); s=data&&data.session; }catch(e){}
+  if(!s){ _st('Sessão expirada — entre de novo.','#c0392b'); return; }
+  const safra=CUR.safra||SAFRA||'';
+  const src='01_modulos_producao/modulo_atividades_supabase.html#view=comanda&cod='+encodeURIComponent(CUR.codigo)+'&via=auto&safra='+encodeURIComponent(safra)+'&at='+encodeURIComponent(s.access_token)+'&rt='+encodeURIComponent(s.refresh_token);
+  const vp=document.querySelector('meta[name=viewport]'); const vpOrig=vp?vp.getAttribute('content'):null;
+  if(vp) vp.setAttribute('content','width=device-width,initial-scale=1,maximum-scale=5,user-scalable=yes');  // habilita pinça/zoom
+  const ov=document.createElement('div'); ov.id='docov';
+  ov.style.cssText='position:fixed;inset:0;z-index:1000;background:#fff;display:flex;flex-direction:column';
+  ov.innerHTML='<div style="flex:0 0 auto;background:#0d1117;color:#fff;display:flex;align-items:center;gap:12px;padding:10px 12px"><button id="docback" style="font-size:16px;font-weight:700;background:#1c2333;color:#fff;border:1px solid #30363d;border-radius:8px;padding:10px 16px;width:auto;margin:0">← Voltar</button><b>Comanda '+esc(CUR.codigo)+'</b><span style="color:#8b949e;font-size:13px">pinça pra dar zoom</span></div><div style="flex:1;min-height:0"><iframe id="dociframe" src="'+esc(src)+'" style="border:0;width:100%;height:100%"></iframe></div>';
+  document.body.appendChild(ov);
+  ov.querySelector('#docback').onclick=()=>{ ov.remove(); if(vp&&vpOrig!=null) vp.setAttribute('content',vpOrig); };
+}
+function renderTrabalho(){
   const c=CUR; const area=areaLote(c.lote_nome);
   const maqOpt=`<option value="">— escolher trator/máquina —</option>`+MAQS.map(m=>`<option value="${m.id}" ${String(HDR.maquina_id)===String(m.id)?'selected':''}>${esc(m.nome)}${m.id_frota?(' ('+esc(m.id_frota)+')'):''}</option>`).join('');
   const impOpt=`<option value="">— implemento (opcional) —</option>`+IMPS.map(m=>`<option value="${m.id}" ${String(HDR.implemento_id)===String(m.id)?'selected':''}>${esc(m.nome)}${m.largura_trabalho?(' · '+m.largura_trabalho+' m'):''}</option>`).join('');
@@ -221,12 +249,12 @@ function renderExec(){
     </div>
     ${cards}
     ${concluida?'' : `<button class="btn s" id="concluir">✔ Concluí o lote — enviar comanda</button>`}
-    <div class="bar"><button class="btn s" id="voltar">◀ Voltar às comandas</button></div>`;
+    <div class="bar"><button class="btn s" id="voltar">◀ Voltar</button></div>`;
   if($('h_maq'))$('h_maq').onchange=()=>{ HDR.maquina_id=$('h_maq').value; };
   if($('h_imp'))$('h_imp').onchange=()=>{ HDR.implemento_id=$('h_imp').value; };
   if($('btn_ini'))$('btn_ini').onclick=iniciarAtividade;
   if($('concluir'))$('concluir').onclick=concluirLote;
-  if($('voltar'))$('voltar').onclick=async()=>{ STEP='home'; await carregarDia(); render(); };
+  if($('voltar'))$('voltar').onclick=()=>{ EXVIEW='menu'; render(); window.scrollTo(0,0); };
   document.querySelectorAll('[data-fin]').forEach(b=>b.onclick=()=>finalizarAtividade(b.dataset.fin));
   document.querySelectorAll('.cardf').forEach(inp=>inp.onchange=()=>salvarCampoCard(inp.dataset.d, inp.dataset.f, inp.value));
 }

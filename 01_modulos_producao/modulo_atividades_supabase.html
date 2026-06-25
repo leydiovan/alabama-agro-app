@@ -299,7 +299,7 @@ function rateio(c){
 /* ====================== NAVEGAÇÃO ====================== */
 let VIEW='comandas';
 const ADMIN_EMAILS=['leydiovan@gmail.com'];
-let USER_EMAIL='', IS_ADMIN=false, APC=null;
+let USER_EMAIL='', IS_ADMIN=false, APC=null, _VIEWCOD=null, _VIEWVIA=null;
 $('#nav').addEventListener('click',e=>{
   const b=e.target.closest('button'); if(!b)return;
   if(b.dataset.v==='nova') _editCodigo=null;
@@ -2809,6 +2809,7 @@ async function marcarPlanoComanda(id, codigo){
   if(!SB) return; try{ await SB.from('planejamento').update({status:'comanda', comanda_codigo:codigo}).eq('id',id); }catch(e){ console.warn(e); } }
 
 function render(){
+  if(_VIEWCOD) return;   // modo "visualizar comanda" (iframe do tablet): UI normal suprimida
   renderPills();
   const m=$('#main');
   if(VIEW==='comandas'){m.innerHTML=renderComandas();bindComandas();}
@@ -3203,8 +3204,27 @@ function _botaoSair(){
   document.body.appendChild(b);
 }
 async function iniciarApp(){
+  if(_VIEWCOD){ await carregarDoSupabase(); _renderComandaView(); return; }   // modo visualização (tablet)
   _botaoSair();
   await carregarDoSupabase();
+}
+function _comandaHtml(c,via){
+  const ehAdub=/Aduba|S[oó]lidos/i.test(c.tipoAtiv), ehGrad=/Gradagem/i.test(c.tipoAtiv), ehPlant=/Plantio/i.test(c.tipoAtiv), ehSubs=/Subsolagem/i.test(c.tipoAtiv), ehColh=/Colheita de Gr/i.test(c.tipoAtiv), ehFibr=/Colheita de Fibras|Fibras/i.test(c.tipoAtiv);
+  return (c.perfil==='PULV'||ehAdub||ehGrad||ehPlant||ehSubs||ehColh||ehFibr)?printPulv(c,via):printSolido(c,via);
+}
+function _renderComandaView(){
+  const hdr=document.querySelector('header'); if(hdr) hdr.style.display='none';
+  const mn=$('#main'); if(mn) mn.style.display='none';
+  const sb=document.getElementById('sbStatus'); if(sb) sb.style.display='none';
+  const area=$('#printArea'); if(!area) return;
+  const c=S.comandas.find(x=>x.codigo===_VIEWCOD);
+  document.body.style.background='#fff';
+  area.style.display='block'; area.style.position='static'; area.style.width='100%'; area.style.padding='6px';
+  if(!c){ area.innerHTML='<div style="padding:24px;font:16px system-ui;color:#000">Comanda '+(_VIEWCOD||'')+' não encontrada na safra '+esc(SAFRA)+'.</div>'; return; }
+  const _aer=/A[eé]rea/i.test(c.tipoAtiv);
+  const _soVia1=/Gradagem|Plantio|Subsolagem|Colheita de Gr|Colheita de Fibras|Fibras/i.test(c.tipoAtiv);
+  const via=(_VIEWVIA&&_VIEWVIA!=='auto')?_VIEWVIA:(_soVia1?'geral':(_aer?'piloto':'operador'));
+  area.innerHTML=_comandaHtml(c,via);
 }
 async function bootSupabase(){
   if(!window.supabase){ _statusSB('⚠️ Lib Supabase não carregou (sem internet?)','#c0392b'); return; }
@@ -3213,6 +3233,7 @@ async function bootSupabase(){
   try{
     const h=new URLSearchParams(location.hash.slice(1));
     const at=h.get('at'), rt=h.get('rt'); const sf=h.get('safra'); if(sf) SAFRA=sf;
+    if(h.get('view')==='comanda'){ _VIEWCOD=h.get('cod')||null; _VIEWVIA=h.get('via')||'auto'; }
     if(at&&rt){ await SB.auth.setSession({ access_token:at, refresh_token:rt }); history.replaceState(null,'',location.pathname+location.search); }
   }catch(e){ console.warn('handoff sessão',e); }
   // já tem sessão salva? entra direto
