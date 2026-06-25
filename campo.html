@@ -72,8 +72,7 @@ let STEP='login', USER_EMAIL='';
 let FUNCS=[], MAQS=[], IMPS=[], LOTES=[], SAFRA='', COMANDAS=[];
 let OPER=null;              // {id,nome,tipo} operador escolhido (salvo no aparelho)
 let DIA='';                 // 'AAAA-MM-DD'
-let DIAREC=null;            // linha de campo_dia de hoje (início/fim do dia = ponto automático)
-let EXECS={};               // comanda_codigo -> execucao_campo de hoje
+let EXECS={};               // comanda_codigo -> execucao_campo de hoje (status das comandas)
 let CUR=null;               // comanda aberta
 let VERTODAS=false;         // fallback: mostrar todas as comandas (sem designação)
 
@@ -124,33 +123,9 @@ async function carregarSafra(){
 }
 async function carregarDia(){
   if(!OPER) return;
-  DIAREC=null;
-  try{ const {data}=await SB.from('campo_dia').select('*').eq('funcionario_id',OPER.id).eq('data',DIA); if(data&&data[0]) DIAREC=data[0]; }catch(e){}
-  // execuções de hoje deste operador
+  // execuções de hoje deste operador (só p/ marcar o status das comandas na lista)
   EXECS={};
   try{ const {data}=await SB.from('execucao_campo').select('*').eq('funcionario_id',OPER.id).eq('data',DIA); (data||[]).forEach(x=>{ if(x.comanda_codigo) EXECS[x.comanda_codigo]=x; }); }catch(e){}
-}
-
-/* ---------- dia (início/fim = ponto automático; consolidado depois em Atividades) ---------- */
-function diaIniciado(){ return !!(DIAREC&&DIAREC.hora_inicio); }
-function diaFinalizado(){ return !!(DIAREC&&DIAREC.hora_inicio&&DIAREC.hora_fim); }
-function diaAprovado(){ return !!(DIAREC&&DIAREC.status==='aprovado'); }
-async function gravarDia(reg){
-  reg.funcionario_id=OPER.id; reg.data=DIA; reg.enviado_por=USER_EMAIL||null; reg.atualizado_em=new Date().toISOString();
-  const {error}=await SB.from('campo_dia').upsert(reg,{onConflict:'funcionario_id,data'}); if(error) throw error;
-  DIAREC=Object.assign(DIAREC||{},reg);
-}
-async function iniciarDia(){
-  if(diaAprovado()){ _st('Dia já aprovado.','#e67e22'); return; }
-  try{ await gravarDia({hora_inicio:nowHM(), hora_fim:(DIAREC&&DIAREC.hora_fim)||null, status:'aberto'}); _st('✅ Dia iniciado às '+DIAREC.hora_inicio,'#27ae60'); render(); }
-  catch(e){ _st('❌ '+e.message,'#c0392b'); }
-}
-async function finalizarDia(){
-  if(!diaIniciado()){ _st('Inicie o dia primeiro.','#e67e22'); return; }
-  if(diaAprovado()){ _st('Dia já aprovado — não dá pra alterar.','#e67e22'); return; }
-  if(!confirm('Finalizar o dia agora ('+nowHM()+')? Isso fecha seu ponto do dia.')) return;
-  try{ await gravarDia({hora_inicio:DIAREC.hora_inicio, hora_fim:nowHM(), status:'enviado'}); _st('✅ Dia finalizado — '+DIAREC.hora_inicio+'–'+DIAREC.hora_fim,'#27ae60'); render(); }
-  catch(e){ _st('❌ '+e.message,'#c0392b'); }
 }
 
 /* ---------- comandas do operador ---------- */
@@ -184,19 +159,12 @@ function renderQuemSou(){
   $('app').innerHTML=`<div class="top"><h1><span class="l">👤</span> Quem é você?</h1><div class="d">Escolha o operador deste tablet (fica salvo no aparelho)</div></div>
     <div class="card"><label>Operador</label><select id="op"><option value="">— escolha —</option>${opts}</select>
       <button class="btn g" id="ok">Confirmar</button>
-      <div class="hint">Isso identifica de quem são as comandas e o ponto deste tablet. Você pode trocar depois em "trocar operador".</div></div>
+      <div class="hint">Isso identifica de quem são as comandas deste tablet. Você pode trocar depois em "trocar operador".</div></div>
     <div style="margin-top:8px">${_botoesSair()}</div>`;
   $('ok').onclick=async()=>{ const id=+$('op').value; if(!id){ _st('Escolha o operador.','#e67e22'); return; } OPER=FUNCS.find(f=>f.id===id); try{localStorage.setItem('campo_oper',String(id));}catch(e){} await carregarDia(); STEP='home'; render(); };
   _bindSair();
 }
 function renderHome(){
-  const ini=diaIniciado(), fim=diaFinalizado(); const aprovado=diaAprovado();
-  let dstatus;
-  if(aprovado) dstatus='<span class="pill on">dia aprovado '+esc((DIAREC.hora_inicio||'')+'–'+(DIAREC.hora_fim||''))+'</span>';
-  else if(fim) dstatus='<span class="pill on">dia '+esc(DIAREC.hora_inicio+'–'+DIAREC.hora_fim)+'</span>';
-  else if(ini) dstatus='<span class="pill go">iniciado '+esc(DIAREC.hora_inicio)+'</span>';
-  else dstatus='<span class="pill">dia não iniciado</span>';
-
   const lista=comandasDoOperador();
   const desigCount=COMANDAS.filter(c=>(c.operadores||[]).map(Number).includes(OPER.id)).length;
   const cards=lista.map(c=>{
@@ -210,19 +178,10 @@ function renderHome(){
       <div class="meta">Lote ${esc(c.lote_nome||'—')}${area?(' · '+area+' ha'):''}${c.prod_texto?(' · '+esc(c.prod_texto)):''}</div></button>`;
   }).join('');
   $('app').innerHTML=`<div class="top"><h1><span class="l">🚜</span> ${esc(OPER.nome)}</h1>
-      <div class="d">${_dlabel(DIA)} · safra ${esc(SAFRA||'—')} · ${dstatus}</div></div>
-    <div class="card">
-      ${!ini?`<button class="btn k" id="ini">▶ Iniciar o dia (${nowHM()})</button>`:''}
-      ${ini&&!fim&&!aprovado?`<button class="btn s" id="fim">■ Finalizar o dia (ir embora)</button>`:''}
-      ${fim&&!aprovado?'<div class="hint">Dia finalizado. Seu <b>ponto</b> entra junto quando o admin aprovar a execução em Atividades.</div>':''}
-      ${aprovado?'<div class="hint">Dia já aprovado pelo administrador.</div>':''}
-      <div class="hint">Iniciar/Finalizar o dia define seu <b>ponto</b> (entrada/saída) automaticamente.</div>
-    </div>
+      <div class="d">${_dlabel(DIA)} · safra ${esc(SAFRA||'—')}</div></div>
     <div class="sec">Comandas ${desigCount?('designadas a você ('+desigCount+')'):''}</div>
     ${cards||`<div class="card muted">Nenhuma comanda ${desigCount?'':'designada a você '}nesta safra.${desigCount?'':' <a class="lk" id="vt" style="display:inline">ver todas para teste</a>'}</div>`}
     <div class="bar">${_botoesSairBar()}</div>`;
-  if($('ini'))$('ini').onclick=iniciarDia;
-  if($('fim'))$('fim').onclick=finalizarDia;
   if($('vt'))$('vt').onclick=()=>{ VERTODAS=true; render(); };
   document.querySelectorAll('[data-cod]').forEach(b=>b.onclick=()=>abrirComanda(b.dataset.cod));
   _bindSairBar();
