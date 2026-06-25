@@ -709,11 +709,12 @@ function implementosHTML(){
   const e=EDIT_IDX!=null?S.implementos[EDIT_IDX]:null;
   const q=SEARCH.toLowerCase();
   const lista=S.implementos.map((x,idx)=>({x,idx})).filter(o=>(!IFILT||o.x.categoria===IFILT)&&(!q||(o.x.nome+' '+(o.x.idFrota||'')+' '+(o.x.marca||'')+' '+(o.x.modelo||'')).toLowerCase().includes(q)));
-  const rows=lista.map(({x,idx})=>'<tr><td><span class="nome">'+esc(x.nome)+'</span><div class="sub">'+esc(x.idFrota||'')+(x.marca?' · '+esc(x.marca):'')+(x.modelo?' '+esc(x.modelo):'')+'</div></td>'
+  const rows=lista.map(({x,idx})=>'<tr><td><span class="nome">'+esc(x.nome)+'</span><div class="sub">'+esc(x.idFrota||'')+(x.marca?' · '+esc(x.marca):'')+(x.modelo?' '+esc(x.modelo):'')+(x.larguraTrab?' · '+x.larguraTrab+' m':'')+'</div></td>'
     +'<td><span class="tag">'+esc(x.categoria||'—')+'</span></td><td class="sub">'+esc(x.ano||'—')+'</td><td class="sub">'+esc(x.estado||'—')+'</td>'
     +'<td><span class="x" data-eidx="'+idx+'">✎</span><span class="x xr" data-didx="'+idx+'">✕</span></td></tr>').join('');
   return '<div class="cadwrap" style="margin-bottom:18px"><div class="cadhead"><h2>'+(e?'Editar implemento':'Novo implemento')+'</h2></div><div class="fcol">'
     +fichaForm('p',e,IMP_CATS,'IMP-001')
+    +'<label>Largura de trabalho (m) <input type="number" id="pLarg" step="any" value="'+(e&&e.larguraTrab?e.larguraTrab:'')+'" placeholder="faixa de trabalho do implemento, ex.: 6.5"></label>'
     +'<div class="formactions"><button class="btn success sm" id="pSalvar">'+(e?'Salvar':'Adicionar')+'</button>'+(e?'<button class="btn ghost sm" id="pCancel">Cancelar</button>':'')+'<span class="fmsg" id="pMsg"></span></div>'
     +'</div></div>'
     +'<div class="toolbar"><span class="lbl">Categoria</span>'+filtroCats(S.implementos,IFILT,'if')+'</div>'
@@ -724,6 +725,7 @@ function bindImplementos(){
   $('pSalvar').onclick=()=>{const m=$('pMsg');m.className='fmsg err';const f=readFicha('p');if(!f.nome){m.textContent='Informe a descrição.';return;}
     delete f.chassi; // implemento usa chassi se houver; mantemos
     f.chassi=$('pChassi').value.trim();
+    f.larguraTrab=parseFloat($('pLarg').value)||null;
     if(EDIT_IDX!=null){Object.assign(S.implementos[EDIT_IDX],f);EDIT_IDX=null;}else S.implementos.push(f);salvarAbaSB('implementos',true);route();};
   if($('pCancel'))$('pCancel').onclick=()=>{EDIT_IDX=null;route();};
   document.querySelectorAll('[data-eidx]').forEach(b=>b.onclick=()=>{EDIT_IDX=+b.dataset.eidx;window.scrollTo(0,0);route();});
@@ -995,7 +997,7 @@ function _regParaBanco(ent, r){
     case 'lotes': return {cod:r.cod??null, nome:r.nome, area:num(r.area)||0, base:!!r.base, partes:r.partes||[], geom:r.geom||null, disposicao:r.disposicao||'colados'};
     case 'produtos': return {codigo:r.codigo??null, nome:r.nome, comp:r.compRaw||r.comp||null, formulacao:r.formCod||r.formulacao||null, tipo:r.tipo||null, classe:r.classe||null, unidade:r.unidade||null, preco:num(r.precoRef)||num(r.preco)||0, estoque:num(r.estoque)||0, estoque_min:num(r.estoqueMin), comp_texto:r.compTexto||null, ativos:r.ativos||[], garantias:r.garantias||[], comanda:r.comanda||null, semente_tipo:r.sementeTipo||null, fabricante:r.fabricante||null, validade:r.validade||null};
     case 'maquinas': return {id_frota:r.idFrota||r.id_frota||null, nome:r.nome||null, categoria:r.categoria||null, marca:r.marca||null, modelo:r.modelo||null, ano:r.ano||null, consumo_ref:num(r.consumoRef)};
-    case 'implementos': return {id_frota:r.idFrota||r.id_frota||null, nome:r.nome||null, categoria:r.categoria||null, marca:r.marca||null, modelo:r.modelo||null};
+    case 'implementos': return {id_frota:r.idFrota||r.id_frota||null, nome:r.nome||null, categoria:r.categoria||null, marca:r.marca||null, modelo:r.modelo||null, largura_trabalho:num(r.larguraTrab!=null?r.larguraTrab:r.largura_trabalho)};
     case 'tiposAtiv': return {nome:r.nome, perfil:r.perfil||null, diario:r.diario||null, contador:r.contador||0, img:r.img||null};
     case 'colaboradores': return {nome:r.nome, funcao:r.funcao||null, vinculo:r.vinculo||null, periodo:r.periodo||null};
     case 'fornecedores': return {nome:r.nome, razao_social:r.razao_social||null, cnpj:r.cnpj||null, contato:r.contato||null, fone:r.fone||null};
@@ -1223,7 +1225,7 @@ const _MAPA_CAD=[
   {col:'lotes', tab:'lotes', toApp:r=>({cod:r.cod,nome:r.nome,area:r.area,base:!!r.base,partes:r.partes||[],geom:r.geom||null,disposicao:r.disposicao||'colados'})},
   {col:'produtos', tab:'produtos', toApp:r=>({id:r.id,codigo:r.codigo,nome:r.nome,tipo:r.tipo,classe:r.classe,unidade:r.unidade,perfil:perfilDe(r.tipo),precoRef:r.preco,estoque:r.estoque,estoqueMin:r.estoque_min,formCod:r.formulacao||'',compRaw:r.comp||'',compTexto:r.comp_texto||'',ativos:r.ativos||[],garantias:r.garantias||[],comanda:r.comanda||'',sementeTipo:r.semente_tipo||'',fabricante:r.fabricante||'',validade:r.validade||null})},
   {col:'maquinas', tab:'maquinas', toApp:r=>r},
-  {col:'implementos', tab:'implementos', toApp:r=>r},
+  {col:'implementos', tab:'implementos', toApp:r=>Object.assign({},r,{idFrota:r.id_frota,larguraTrab:r.largura_trabalho})},
   {col:'colaboradores', tab:'colaboradores', toApp:r=>r},
   {col:'fornecedores', tab:'fornecedores', toApp:r=>r},
   {col:'unidades', tab:'unidades', toApp:r=>r},
