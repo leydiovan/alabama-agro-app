@@ -1,0 +1,308 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Gestão Alabama Agro</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+:root{
+  --bg:#080d18; --bg2:#0d1526; --bg3:#111e35; --bg4:#162540; --bg5:#1c2e4a;
+  --border:#1f3354; --border2:#2c4a78;
+  --text:#e8edf5; --muted:#5a7aa0; --muted2:#3d5a80;
+  --ok:#00c896; --ok-d:#00573f; --ok-l:#b2ffe8;
+  --warn:#ffb300; --err:#ff4444; --gold:#ffc107; --gold-d:#e65100;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%}
+body{background:var(--bg);color:var(--text);font-family:system-ui,Segoe UI,Arial,sans-serif;display:flex;flex-direction:column;overflow:hidden}
+
+/* ===== Barra de topo ===== */
+#topbar{display:flex;align-items:center;gap:14px;padding:0 14px;height:54px;background:linear-gradient(180deg,var(--bg3),var(--bg2));border-bottom:2px solid var(--border);flex:0 0 auto}
+#brand{display:flex;align-items:center;gap:8px;font-weight:800;font-size:16px;white-space:nowrap}
+#brand .leaf{color:var(--gold);font-size:20px}
+#brand small{font-weight:600;color:var(--muted);font-size:11px}
+#mods{display:flex;gap:6px;flex-wrap:wrap;flex:1}
+.modbtn{background:var(--bg4);color:var(--text);border:1px solid var(--border);border-radius:9px;padding:8px 13px;font-size:13px;font-weight:600;cursor:pointer;white-space:nowrap;transition:.12s}
+.modbtn:hover{border-color:var(--border2);background:var(--bg5)}
+.modbtn.on{background:var(--gold);color:#1a1100;border-color:var(--gold);font-weight:800}
+#sair{background:transparent;color:var(--muted);border:1px solid var(--border);border-radius:9px;padding:8px 14px;font-size:13px;font-weight:600;cursor:pointer}
+#sair:hover{color:var(--err);border-color:var(--err)}
+
+/* ===== Área dos módulos ===== */
+#stage{position:relative;flex:1;background:var(--bg)}
+#stage iframe{position:absolute;inset:0;width:100%;height:100%;border:0;display:none;background:var(--bg)}
+#stage iframe.on{display:block}
+#splash{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:var(--muted);font-size:14px}
+
+/* ===== Login ===== */
+#login{position:fixed;inset:0;z-index:1000;background:radial-gradient(1200px 600px at 50% -10%,var(--bg3),var(--bg));display:flex;align-items:center;justify-content:center}
+.card{background:var(--bg2);border:1px solid var(--border);border-radius:16px;padding:34px 30px;width:340px;max-width:92vw;box-shadow:0 20px 60px rgba(0,0,0,.5)}
+.card h1{font-size:20px;margin-bottom:4px;display:flex;align-items:center;gap:8px}
+.card h1 .leaf{color:var(--gold)}
+.card p.sub{color:var(--muted);font-size:12px;margin-bottom:20px}
+.card label{display:block;font-size:12px;font-weight:600;color:var(--muted);margin:12px 0 5px}
+.card input{width:100%;background:var(--bg);border:1px solid var(--border);border-radius:9px;padding:11px 12px;color:var(--text);font-size:14px}
+.card input:focus{outline:none;border-color:var(--gold)}
+.card button{width:100%;margin-top:20px;background:var(--gold);color:#1a1100;border:0;border-radius:9px;padding:12px;font-size:14px;font-weight:800;cursor:pointer}
+.card button:disabled{opacity:.6;cursor:default}
+#lg_msg{margin-top:12px;font-size:12px;min-height:16px;text-align:center}
+
+/* ===== Seletor de safra ===== */
+#safra{position:fixed;inset:0;z-index:1000;background:radial-gradient(1200px 600px at 50% -10%,var(--bg3),var(--bg));display:flex;align-items:center;justify-content:center}
+#safraList{display:flex;flex-direction:column;gap:8px;margin:6px 0 4px}
+.safopt{width:100%;background:var(--bg4);color:var(--text);border:1px solid var(--border);border-radius:10px;padding:13px 14px;font-size:15px;font-weight:700;cursor:pointer;text-align:left;transition:.12s}
+.safopt:hover{border-color:var(--gold);background:var(--bg5)}
+.safopt.on{border-color:var(--gold);box-shadow:0 0 0 1px var(--gold) inset}
+#novaSafra{width:100%;margin-top:10px;background:transparent;color:var(--gold);border:1px dashed var(--gold);border-radius:10px;padding:11px;font-size:13px;font-weight:700;cursor:pointer}
+#safraMsg{margin-top:10px;font-size:12px;min-height:16px;text-align:center}
+#safraChip{background:var(--bg4);color:var(--gold);border:1px solid var(--border2);border-radius:9px;padding:8px 13px;font-size:13px;font-weight:800;cursor:pointer;white-space:nowrap}
+#safraChip:hover{border-color:var(--gold)}
+#bkp{background:var(--bg4);color:var(--ok-l);border:1px solid var(--border2);border-radius:9px;padding:8px 13px;font-size:13px;font-weight:700;cursor:pointer;white-space:nowrap}
+#bkp:hover{border-color:var(--ok)}
+#bkp:disabled{opacity:.6;cursor:default}
+#imp{background:var(--bg4);color:var(--warn);border:1px solid var(--border2);border-radius:9px;padding:8px 13px;font-size:13px;font-weight:700;cursor:pointer;white-space:nowrap}
+#imp:hover{border-color:var(--warn)}
+#imp:disabled{opacity:.6;cursor:default}
+</style>
+</head>
+<body>
+
+<div id="topbar" style="display:none">
+  <div id="brand"><span class="leaf">🌱</span> Gestão Alabama Agro <small>soja &amp; algodão</small></div>
+  <div id="mods"></div>
+  <button id="safraChip" title="Trocar de safra">🌾 —</button>
+  <button id="bkp" title="Baixar um backup (JSON) de todo o banco">💾 Backup</button>
+  <button id="imp" title="Restaurar a partir de um backup JSON (admin)" style="display:none">📥 Importar</button>
+  <input type="file" id="impFile" accept="application/json,.json" style="display:none">
+  <button id="sair">Sair</button>
+</div>
+
+<div id="stage">
+  <div id="splash">Selecione um módulo acima.</div>
+</div>
+
+<div id="safra" style="display:none">
+  <div class="card">
+    <h1><span class="leaf">🌾</span> Escolha a safra</h1>
+    <p class="sub">Comandas, silos e carregamento são por safra. Cadastros e estoque (almoxarifado) são compartilhados.</p>
+    <div id="safraList"></div>
+    <button id="novaSafra">➕ Nova safra</button>
+    <div id="safraMsg"></div>
+  </div>
+</div>
+
+<div id="login">
+  <div class="card">
+    <h1><span class="leaf">🌱</span> Alabama Agro</h1>
+    <p class="sub">Entre com sua conta para acessar o sistema.</p>
+    <label>E-mail</label>
+    <input id="lg_email" type="email" autocomplete="username" placeholder="voce@alabamaagro.com">
+    <label>Senha</label>
+    <input id="lg_senha" type="password" autocomplete="current-password" placeholder="••••••••">
+    <button id="lg_btn">Entrar</button>
+    <div id="lg_msg"></div>
+  </div>
+</div>
+
+<script>
+const SB_URL = 'https://ngdidjtfgmtkdkvqwfjf.supabase.co';
+const SB_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5nZGlkanRmZ210a2RrdnF3ZmpmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NTU5MDYsImV4cCI6MjA5NjUzMTkwNn0.OW9hGEFTvSYx_THv3DR9pt8xIVC0B9Pw2bTDGD6TBLk';
+
+const MODULOS = [
+  {key:'atividades',   label:'📋 Atividades',  src:'01_modulos_producao/modulo_atividades_supabase.html', sb:true},
+  {key:'cadastros',    label:'📁 Cadastros',   src:'01_modulos_producao/modulo_cadastros_supabase.html',  sb:true},
+  {key:'almoxarifado', label:'📦 Almoxarifado',src:'05_modulos_outros/modulo_almoxarifado_v7.html',        sb:true},
+  {key:'recebimento',  label:'🌾 Recebimento', src:'05_modulos_outros/modulo_recebimento_armazenagem_v22.html', sb:true},
+  {key:'silos',        label:'🚛 Carregamento',src:'05_modulos_outros/controle_silos_v57.html',            sb:true},
+  {key:'funcionarios', label:'👷 Funcionários',src:'05_modulos_outros/modulo_funcionarios.html',           sb:true},
+];
+
+const $ = s=>document.querySelector(s);
+let SB=null;
+const _frames={};   // key -> iframe (lazy, mantidos vivos)
+let _ativo=null;
+let SAFRA=null;     // safra ativa da sessão
+
+function _session(){ return SB ? SB.auth.getSession().then(r=>r.data&&r.data.session) : Promise.resolve(null); }
+
+/* monta os botões de módulo no topo */
+function montarNav(){
+  const box=$('#mods'); box.innerHTML='';
+  MODULOS.forEach(m=>{
+    const b=document.createElement('button');
+    b.className='modbtn'; b.textContent=m.label; b.dataset.k=m.key;
+    b.onclick=()=>abrirModulo(m.key);
+    box.appendChild(b);
+  });
+}
+
+/* abre (e cria sob demanda) o iframe do módulo, preservando o estado dos já carregados */
+async function abrirModulo(key){
+  const m=MODULOS.find(x=>x.key===key); if(!m) return;
+  $('#splash').style.display='none';
+  if(!_frames[key]){
+    const f=document.createElement('iframe');
+    f.dataset.k=key;
+    let src=m.src;
+    if(m.sb){
+      // passa a sessão atual + a safra ativa pro módulo Supabase (login único)
+      const { data } = await SB.auth.getSession();
+      const s=data&&data.session;
+      let hash='';
+      if(s) hash='at='+encodeURIComponent(s.access_token)+'&rt='+encodeURIComponent(s.refresh_token);
+      if(SAFRA) hash+=(hash?'&':'')+'safra='+encodeURIComponent(SAFRA);
+      if(hash) src+='#'+hash;
+    }
+    f.src=src;
+    $('#stage').appendChild(f);
+    _frames[key]=f;
+  }
+  Object.values(_frames).forEach(f=>f.classList.remove('on'));
+  _frames[key].classList.add('on');
+  document.querySelectorAll('.modbtn').forEach(b=>b.classList.toggle('on', b.dataset.k===key));
+  _ativo=key;
+}
+
+/* logou: vai pro seletor de safra (não abre módulo ainda) */
+async function mostrarSeletorSafra(){
+  $('#login').style.display='none';
+  $('#topbar').style.display='none';
+  $('#safra').style.display='flex';
+  const list=$('#safraList'); list.innerHTML='<div style="color:var(--muted);font-size:13px">Carregando…</div>';
+  let safras=[];
+  try{ const {data}=await SB.from('safras').select('*'); if(data) safras=data; }catch(e){}
+  safras.sort((a,b)=>String(b.nome).localeCompare(String(a.nome)));  // mais recente primeiro
+  const ultima=localStorage.getItem('alabama_safra');
+  if(!safras.length){ list.innerHTML='<div style="color:var(--muted);font-size:13px">Nenhuma safra cadastrada. Crie a primeira abaixo.</div>'; }
+  else{
+    list.innerHTML='';
+    safras.forEach(s=>{ const b=document.createElement('button'); b.className='safopt'+(s.nome===ultima?' on':'');
+      b.textContent='🌾 '+s.nome; b.onclick=()=>escolherSafra(s.nome); list.appendChild(b); });
+  }
+}
+function escolherSafra(nome){
+  SAFRA=nome; localStorage.setItem('alabama_safra',nome);
+  $('#safra').style.display='none';
+  $('#topbar').style.display='flex';
+  $('#safraChip').textContent='🌾 '+nome;
+  _carregaPapel();
+  if(!$('#mods').children.length) montarNav();
+  abrirModulo(_ativo||'atividades');
+}
+async function criarSafra(){
+  const nome=(prompt('Nome da nova safra (ex.: 2026/2027):')||'').trim();
+  if(!nome) return;
+  const msg=$('#safraMsg'); msg.style.color='var(--muted)'; msg.textContent='Criando…';
+  try{
+    const {error}=await SB.from('safras').insert({nome});
+    if(error){ msg.style.color='var(--err)'; msg.textContent='Erro: '+error.message; return; }
+    localStorage.setItem('alabama_safra',nome); msg.textContent=''; await mostrarSeletorSafra();
+  }catch(e){ msg.style.color='var(--err)'; msg.textContent='Falha: '+e.message; }
+}
+/* troca de safra: descarta os iframes (recarregam na safra nova) e volta ao seletor */
+function trocarSafra(){
+  Object.values(_frames).forEach(f=>f.remove());
+  for(const k in _frames) delete _frames[k];
+  $('#splash').style.display='';
+  mostrarSeletorSafra();
+}
+
+async function tentarLogin(){
+  const email=$('#lg_email').value.trim(), senha=$('#lg_senha').value;
+  const msg=$('#lg_msg'), btn=$('#lg_btn');
+  if(!email||!senha){ msg.style.color='var(--warn)'; msg.textContent='Preencha e-mail e senha.'; return; }
+  btn.disabled=true; msg.style.color='var(--muted)'; msg.textContent='Entrando…';
+  try{
+    const { error } = await SB.auth.signInWithPassword({ email, password:senha });
+    if(error){ msg.style.color='var(--err)'; msg.textContent='Erro: '+error.message; btn.disabled=false; return; }
+    mostrarSeletorSafra();
+  }catch(e){ msg.style.color='var(--err)'; msg.textContent='Falha: '+e.message; btn.disabled=false; }
+}
+
+/* ===== Backup do banco (usa a sessão logada; baixa JSON) ===== */
+const BACKUP_TABS=['lotes','produtos','tipos_atividade','maquinas','implementos','colaboradores','fornecedores','unidades','formulacoes','principios','culturas','fabricantes','safras','referencias','comandas','contadores','planejamento','cotacoes','config','almox_entradas','almox_saidas','almox_config','silos','cotton','armazem','expedicao'];
+async function _fetchAll(tab){
+  const out=[]; const PAGE=1000;
+  for(let i=0;;i+=PAGE){
+    const {data,error}=await SB.from(tab).select('*').range(i,i+PAGE-1);
+    if(error) throw new Error(tab+': '+error.message);
+    out.push(...(data||[]));
+    if(!data || data.length<PAGE) break;
+  }
+  return out;
+}
+async function backupBanco(){
+  const btn=$('#bkp'); if(!btn) return;
+  const old=btn.textContent; btn.disabled=true;
+  try{
+    // lista dinâmica do banco (pega tabelas novas sozinho); cai p/ a lista fixa se a função não existir
+    let tabs=BACKUP_TABS;
+    try{ const {data,error}=await SB.rpc('list_tables'); if(!error && Array.isArray(data) && data.length) tabs=data; }catch(e){}
+    const dump={ _meta:{ gerado_em:new Date().toISOString(), projeto:'alabama-agro', tabelas:tabs.length }, tabelas:{} };
+    let total=0;
+    for(const t of tabs){
+      btn.textContent='💾 '+t+'…';
+      const rows=await _fetchAll(t);
+      dump.tabelas[t]=rows; total+=rows.length;
+    }
+    dump._meta.total_linhas=total;
+    const d=new Date(), p=n=>String(n).padStart(2,'0');
+    const nome='alabama_backup_'+d.getFullYear()+'-'+p(d.getMonth()+1)+'-'+p(d.getDate())+'_'+p(d.getHours())+p(d.getMinutes())+'.json';
+    const blob=new Blob([JSON.stringify(dump,null,2)],{type:'application/json'});
+    const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download=nome; document.body.appendChild(a); a.click();
+    setTimeout(()=>{ URL.revokeObjectURL(a.href); a.remove(); },1500);
+    btn.textContent='✅ '+total+' linhas';
+    setTimeout(()=>{ btn.textContent=old; btn.disabled=false; },2500);
+  }catch(e){
+    alert('Falha no backup: '+e.message);
+    btn.textContent=old; btn.disabled=false;
+  }
+}
+
+/* ===== Importar/Restaurar backup (só admin; via RPC restore_backup) ===== */
+const ADMIN_EMAILS=['leydiovan@gmail.com'];
+let IS_ADMIN=false;
+async function _carregaPapel(){
+  try{ const {data}=await SB.auth.getUser(); const e=((data&&data.user&&data.user.email)||'').toLowerCase(); IS_ADMIN=ADMIN_EMAILS.includes(e); }
+  catch(_){ IS_ADMIN=false; }
+  const imp=$('#imp'); if(imp) imp.style.display=IS_ADMIN?'':'none';
+}
+function importarBanco(){ const inp=$('#impFile'); if(inp){ inp.value=''; inp.click(); } }
+async function _fazerRestore(file){
+  let obj;
+  try{ obj=JSON.parse(await file.text()); }catch(e){ alert('Arquivo inválido (não é JSON).'); return; }
+  if(!obj || !obj.tabelas || typeof obj.tabelas!=='object'){ alert('Backup inválido: não contém "tabelas".'); return; }
+  const ntab=Object.keys(obj.tabelas).length;
+  const meta=obj._meta?(' — gerado em '+obj._meta.gerado_em+' ('+(obj._meta.total_linhas!=null?obj._meta.total_linhas:'?')+' linhas)'):'';
+  if(!confirm('⚠️ RESTAURAR vai SUBSTITUIR os dados de '+ntab+' tabela(s) pelo conteúdo do backup'+meta+'.\n\nIsto NÃO pode ser desfeito. Gere um backup atual antes.\n\nContinuar?')) return;
+  const t=prompt('Para confirmar, digite RESTAURAR (maiúsculas):');
+  if((t||'').trim().toUpperCase()!=='RESTAURAR'){ alert('Cancelado.'); return; }
+  const btn=$('#imp'); const old=btn.textContent; btn.disabled=true; btn.textContent='📥 Restaurando…';
+  try{
+    const {data,error}=await SB.rpc('restore_backup',{payload:obj});
+    if(error) throw new Error(error.message);
+    alert('✅ '+(data||'Restaurado.')+'\n\nA página vai recarregar.');
+    location.reload();
+  }catch(e){ alert('Falha no restore: '+e.message); btn.textContent=old; btn.disabled=false; }
+}
+
+async function boot(){
+  if(!window.supabase){ $('#lg_msg').style.color='var(--err)'; $('#lg_msg').textContent='Sem internet — biblioteca não carregou.'; return; }
+  SB=window.supabase.createClient(SB_URL, SB_KEY);
+  $('#lg_btn').onclick=tentarLogin;
+  $('#lg_senha').addEventListener('keydown',e=>{ if(e.key==='Enter') tentarLogin(); });
+  $('#sair').onclick=async()=>{ try{ await SB.auth.signOut(); }catch(e){} location.reload(); };
+  $('#novaSafra').onclick=criarSafra;
+  $('#safraChip').onclick=trocarSafra;
+  $('#bkp').onclick=backupBanco;
+  $('#imp').onclick=importarBanco;
+  $('#impFile').onchange=e=>{ const f=e.target.files&&e.target.files[0]; if(f) _fazerRestore(f); };
+  // já logado? vai direto pro seletor de safra
+  const { data } = await SB.auth.getSession();
+  if(data && data.session){ mostrarSeletorSafra(); }
+}
+window.addEventListener('load', boot);
+</script>
+</body>
+</html>

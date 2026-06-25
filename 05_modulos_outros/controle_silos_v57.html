@@ -1,0 +1,2930 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<title>Carregamento · Expedição — Soja 2025/2026</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+/* ─── RESET & TOKENS ─── */
+:root{
+  --bg:#080d18; --bg2:#0d1526; --bg3:#111e35; --bg4:#162540; --bg5:#1c2e4a;
+  --border:#1f3356; --border2:#2a4570;
+  --text:#e8edf5; --muted:#5a7aa0; --muted2:#3d5a80;
+  --wet:#15803d; --wet-d:#0d4f26; --wet-l:#86efac;
+  --dry:#dc2626; --dry-d:#991b1b; --dry-l:#fca5a5;
+  --faixa:#eab308; --faixa-d:#a16207; --faixa-l:#fde047;
+  --ok:#00c896; --ok-d:#00573f; --ok-l:#b2ffe8;
+  --warn:#ffb300; --err:#ff4444;
+  --gold:#ffc107; --gold-d:#e65100;
+  --r1:#7b1fa2; --r2:#4a148c;
+}
+*{box-sizing:border-box;margin:0;padding:0;}
+body{font-family:'Segoe UI',system-ui,sans-serif;background:var(--bg);color:var(--text);height:100vh;display:flex;flex-direction:column;overflow:hidden;font-size:13px;}
+
+/* ─── SCROLLBAR ─── */
+::-webkit-scrollbar{width:5px;height:5px}
+::-webkit-scrollbar-track{background:var(--bg2)}
+::-webkit-scrollbar-thumb{background:var(--border2);border-radius:3px}
+
+/* ─── HEADER ─── */
+#hdr{background:linear-gradient(135deg,#0d1f3c,#0a1525);padding:7px 16px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:10px;flex-wrap:wrap;box-shadow:0 2px 12px rgba(0,0,0,.5);}
+#hdr h1{font-size:15px;color:var(--gold);letter-spacing:.3px;white-space:nowrap;}
+#hdr h1 span{opacity:.6;font-weight:400;font-size:12px;}
+.pill{background:rgba(255,255,255,.06);border:1px solid var(--border);border-radius:20px;padding:3px 11px;font-size:11px;white-space:nowrap;}
+.pill b{color:var(--gold);}
+#hdr-right{margin-left:auto;display:flex;align-items:center;gap:8px;}
+
+/* ─── TABS ─── */
+#tabs{background:var(--bg2);border-bottom:1px solid var(--border);display:flex;gap:0;padding:0 12px;}
+.tab{padding:8px 18px;cursor:pointer;border-bottom:2px solid transparent;font-size:12px;color:var(--muted);transition:all .2s;display:flex;align-items:center;gap:6px;}
+.tab:hover{color:var(--text);}
+.tab.active{color:var(--gold);border-bottom-color:var(--gold);}
+.tab-badge{background:var(--err);color:#fff;border-radius:10px;padding:1px 6px;font-size:10px;font-weight:700;}
+
+/* ─── BUTTONS ─── */
+.btn{background:var(--bg4);border:1px solid var(--border);color:var(--text);padding:5px 14px;border-radius:7px;cursor:pointer;font-size:12px;transition:all .15s;display:inline-flex;align-items:center;gap:5px;}
+.btn:hover{background:var(--bg5);border-color:var(--border2);}
+.btn.primary{background:linear-gradient(135deg,#1565c0,#0d47a1);border-color:#1976d2;}
+.btn.primary:hover{background:linear-gradient(135deg,#1976d2,#1565c0);}
+.btn.success{background:linear-gradient(135deg,#00695c,#004d40);border-color:var(--ok);}
+.btn.success:hover{background:linear-gradient(135deg,#00796b,#00695c);}
+.btn.warn{background:linear-gradient(135deg,#e65100,#bf360c);border-color:var(--warn);}
+.btn.sm{padding:3px 9px;font-size:11px;}
+
+/* ─── PAGES ─── */
+#body{flex:1;overflow:hidden;display:flex;}
+.page{display:none;flex:1;overflow:hidden;}
+.page.active{display:flex;}
+
+/* ═══════════════════════════════════════
+   PAGE: OPERAÇÃO
+═══════════════════════════════════════ */
+#op-page{flex-direction:row;}
+
+/* ── LEFT PANEL ── */
+#op-left{width:107px;background:var(--bg2);border-right:1px solid var(--border);display:flex;flex-direction:column;overflow:hidden;flex-shrink:0;}
+.panel-sec{font-size:9px;color:var(--muted);text-transform:uppercase;letter-spacing:1.5px;padding:7px 10px 5px;border-bottom:1px solid var(--border);position:sticky;top:0;background:var(--bg2);z-index:2;}
+.silo-scroll{overflow-y:auto;flex:1;}
+.sl-btn{width:100%;text-align:left;padding:6px 7px 5px;background:none;border:none;border-bottom:1px solid rgba(255,255,255,.04);color:var(--text);cursor:pointer;transition:background .12s;}
+.sl-btn:hover{background:var(--bg4);}
+.sl-btn.sel-wet{background:rgba(21,128,61,.15);border-left:3px solid var(--wet);}
+.sl-btn.sel-dry{background:rgba(220,38,38,.12);border-left:3px solid var(--dry);}
+.sl-id{font-weight:700;font-size:12px;line-height:1.2;}
+.sl-sub{font-size:9px;color:var(--muted);line-height:1.35;}
+.sl-ubar-wrap{height:3px;background:rgba(255,255,255,.06);border-radius:2px;margin-top:4px;overflow:hidden;}
+.sl-ubar{height:100%;border-radius:2px;transition:width .3s;}
+
+/* ── CENTER ── */
+#op-center{flex:1;display:flex;flex-direction:column;overflow:hidden;min-width:0;}
+
+/* Pair banner */
+#pair-banner{background:linear-gradient(135deg,var(--bg3),var(--bg2));padding:8px 14px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:8px;min-height:58px;flex-wrap:wrap;}
+.pb-silo{background:rgba(255,255,255,.04);border:1px solid var(--border);border-radius:9px;padding:6px 14px;min-width:125px;}
+.pb-id{font-size:20px;font-weight:800;line-height:1.1;}
+.pb-meta{font-size:10px;color:var(--muted);margin-top:1px;}
+.pb-sep{font-size:22px;color:var(--muted2);}
+.pb-stat{background:rgba(255,255,255,.04);border:1px solid var(--border);border-radius:9px;padding:5px 12px;text-align:center;}
+.pb-val{font-size:17px;font-weight:700;line-height:1.1;}
+.pb-lbl{font-size:9px;color:var(--muted);margin-top:1px;}
+
+/* Silo Bolsa */
+#silo-vis{padding:9px 14px 7px;background:var(--bg);border-bottom:1px solid var(--border);display:none;}
+.sbv-wrap{margin-bottom:8px;}
+.sbv-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;}
+.sbv-title{font-size:11px;color:var(--muted);}
+.sbv-dir{font-size:9px;color:var(--muted2);}
+.sbv-canvas{height:44px;width:100%;position:relative;}
+.sbv-canvas canvas{width:100%;height:100%;}
+
+/* Truck */
+#truck-vis{padding:7px 14px;background:var(--bg2);border-bottom:1px solid var(--border);display:none;align-items:center;gap:14px;}
+.tv-canvas-wrap{flex:1;height:140px;min-width:0;}
+.tv-canvas-wrap canvas{width:100%;height:100%;}
+.tv-canvas-wrap #truck-skin{width:100%;height:140px;display:flex;align-items:center;}
+.tv-canvas-wrap #truck-skin svg{width:100%;height:100%;}
+.tv-info{display:flex;flex-direction:column;gap:5px;min-width:160px;}
+.tv-info-line{font-size:11px;color:var(--muted);}
+.tv-info-line b{color:var(--text);}
+.tv-btns{display:flex;gap:6px;flex-wrap:wrap;}
+
+/* Load table */
+#load-wrap{flex:1;overflow-y:auto;}
+#load-wrap table{width:100%;border-collapse:collapse;}
+#load-wrap th{font-size:10px;color:var(--muted);text-transform:uppercase;padding:5px 8px;border-bottom:1px solid var(--border);position:sticky;top:0;background:var(--bg);z-index:1;white-space:nowrap;letter-spacing:.5px;}
+#load-wrap td{padding:5px 8px;border-bottom:1px solid rgba(255,255,255,.04);font-size:12px;vertical-align:middle;}
+tr.r-ok{background:rgba(0,200,150,.04);}
+tr.r-err{background:rgba(230,57,70,.05);}
+tr.r-warn{background:rgba(255,179,0,.04);}
+tr.r-info td{color:var(--muted);font-style:italic;font-size:11px;}
+.ub{padding:2px 7px;border-radius:5px;font-weight:700;font-size:12px;}
+.ub-ok{background:rgba(0,200,150,.18);color:#6ee7b7;}
+.ub-err{background:rgba(230,57,70,.2);color:#fca5a5;}
+.ub-warn{background:rgba(255,179,0,.18);color:#fde68a;}
+.prop-bar{height:10px;border-radius:4px;overflow:hidden;display:flex;min-width:64px;}
+.pb-w{background:var(--wet);}
+.pb-d{background:var(--dry);}
+.btn-xs{padding:2px 7px;font-size:10px;border-radius:4px;background:var(--bg4);border:1px solid var(--border);color:var(--text);cursor:pointer;}
+.btn-xs:hover{background:var(--bg5);}
+
+/* ── RIGHT: partners ── */
+#op-right{width:107px;background:var(--bg2);border-left:1px solid var(--border);overflow-y:auto;flex-shrink:0;}
+.partner-card{padding:9px 10px;border-bottom:1px solid rgba(255,255,255,.04);cursor:pointer;transition:background .12s;}
+.partner-card:hover{background:var(--bg4);}
+.partner-card.sel{background:rgba(0,200,150,.08);border-left:3px solid var(--ok);}
+.pc-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:3px;}
+.pc-id{font-weight:700;font-size:13px;}
+.pc-rank{font-size:12px;}
+.pc-meta{font-size:10px;color:var(--muted);line-height:1.5;}
+.pc-propbar{display:flex;height:7px;border-radius:3px;overflow:hidden;margin:4px 0 3px;}
+.pc-stats{display:flex;gap:4px;flex-wrap:wrap;}
+.pc-st{background:rgba(255,255,255,.05);border:1px solid var(--border);border-radius:4px;padding:2px 6px;font-size:10px;}
+
+/* ═══════════════════════════════════════
+   PAGE: FILA DE CAMINHÕES
+═══════════════════════════════════════ */
+#trucks-page{flex-direction:column;padding:14px;overflow-y:auto;gap:14px;}
+.truck-queue-header{display:flex;align-items:center;justify-content:space-between;}
+.truck-queue-header h2{color:var(--gold);font-size:14px;}
+#truck-queue-grid{display:flex;flex-direction:column;gap:6px;}
+.tq-card{background:var(--bg3);border:1px solid var(--border);border-radius:10px;padding:12px;position:relative;}
+.tq-card.returned{opacity:.5;}
+.tq-card.active{border-color:var(--ok);box-shadow:0 0 10px rgba(0,200,150,.15);}
+.tq-status{position:absolute;top:10px;right:10px;font-size:10px;padding:2px 8px;border-radius:10px;font-weight:700;}
+.tq-st-wait{background:rgba(33,150,243,.2);color:var(--dry-l);}
+.tq-st-load{background:rgba(0,200,150,.2);color:var(--ok-l);}
+.tq-st-ret{background:rgba(255,255,255,.08);color:var(--muted);}
+.tq-plate{font-size:16px;font-weight:800;letter-spacing:1px;margin-bottom:4px;}
+.tq-type{font-size:11px;color:var(--muted);margin-bottom:6px;}
+.tq-specs{display:grid;grid-template-columns:1fr 1fr;gap:4px;font-size:11px;}
+.tq-spec{background:rgba(255,255,255,.04);border-radius:5px;padding:4px 8px;}
+.tq-spec .sv{font-size:13px;font-weight:700;color:var(--gold);}
+.tq-spec .sl{font-size:9px;color:var(--muted);margin-top:1px;}
+.tq-btns{display:flex;gap:6px;margin-top:8px;}
+
+/* Add truck form */
+#add-truck-form{background:var(--bg3);border:1px solid var(--border);border-radius:10px;padding:14px;}
+#add-truck-form h3{color:var(--text);margin-bottom:10px;font-size:13px;}
+.form-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:8px;align-items:end;}
+.form-field label{display:block;font-size:10px;color:var(--muted);margin-bottom:3px;text-transform:uppercase;letter-spacing:.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.form-field input,.form-field select{width:100%;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:6px 9px;border-radius:6px;font-size:13px;}
+.form-field input:focus,.form-field select:focus{outline:none;border-color:var(--gold);}
+
+/* ═══════════════════════════════════════
+   PAGE: HISTÓRICO
+═══════════════════════════════════════ */
+#hist-page{flex-direction:column;padding:14px;overflow-y:auto;gap:12px;}
+#hist-page h2{color:var(--gold);font-size:14px;}
+.hist-stats{display:flex;gap:8px;flex-wrap:wrap;}
+.hs-box{background:var(--bg3);border:1px solid var(--border);border-radius:9px;padding:9px 14px;min-width:100px;}
+.hs-v{font-size:18px;font-weight:700;}
+.hs-l{font-size:9px;color:var(--muted);margin-top:1px;text-transform:uppercase;letter-spacing:.5px;}
+#hist-table{width:100%;border-collapse:collapse;font-size:12px;}
+#hist-table th{background:var(--bg3);padding:5px 9px;text-align:left;font-size:10px;color:var(--muted);text-transform:uppercase;border-bottom:1px solid var(--border);white-space:nowrap;}
+#hist-table td{padding:5px 9px;border-bottom:1px solid rgba(255,255,255,.04);}
+
+/* ═══════════════════════════════════════
+   PAGE: ESTOQUE
+═══════════════════════════════════════ */
+#stock-page{flex-direction:column;padding:14px;overflow-y:auto;gap:12px;}
+#stock-page h2{color:var(--gold);font-size:14px;}
+.stock-grid{display:flex;flex-direction:column;gap:6px;}
+.sb-card{background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:3px 14px 0;}
+.sb-card.done{opacity:.5;}
+.sb-head{display:flex;align-items:center;gap:10px;margin-bottom:0;margin-top:2px;}
+.sb-id{font-size:15px;font-weight:700;color:var(--text);}
+.sb-tag{font-size:10px;text-transform:uppercase;letter-spacing:.5px;border:1px solid;border-radius:5px;padding:1px 6px;font-weight:700;}
+.sb-lote{font-size:11px;color:var(--muted);}
+.sb-stats{margin-left:auto;display:flex;gap:16px;font-size:12px;color:var(--muted);flex-wrap:wrap;}
+.sb-stats b{color:var(--text);font-size:13px;}
+.sb-skin{width:100%;}
+.sb-skinwrap{position:relative;width:100%;}
+.sb-skinwrap svg{width:100%;display:block;}
+.sb-mark{position:absolute;transform:translateX(-50%);font-size:13px;font-weight:700;color:#fff;text-shadow:0 0 3px rgba(0,0,0,.6),0 0 3px rgba(0,0,0,.6);pointer-events:none;font-family:system-ui,sans-serif;}
+.sc-card{background:var(--bg3);border:1px solid var(--border);border-radius:9px;padding:10px;border-left:3px solid var(--border);}
+.sc-card.is-wet{border-left-color:var(--wet);}
+.sc-card.is-dry{border-left-color:var(--dry);}
+.sc-card.is-done{border-left-color:var(--muted2);opacity:.55;}
+.sc-card.is-ok{border-left-color:var(--ok);}
+.sc-id{font-weight:700;font-size:14px;margin-bottom:3px;}
+.sc-meta{font-size:10px;color:var(--muted);line-height:1.5;}
+.sc-barwrap{background:rgba(255,255,255,.06);border-radius:3px;height:5px;margin:5px 0 2px;overflow:hidden;}
+.sc-bar{height:100%;border-radius:3px;transition:width .5s;}
+.sc-foot{display:flex;justify-content:space-between;font-size:10px;color:var(--muted);}
+
+/* ═══════════════════════════════════════
+   MODALS
+═══════════════════════════════════════ */
+.modal-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:200;align-items:center;justify-content:center;backdrop-filter:blur(3px);}
+.modal-overlay.show{display:flex;}
+.modal{background:linear-gradient(135deg,var(--bg3),var(--bg2));border:1px solid var(--border2);border-radius:14px;padding:22px 26px;max-width:500px;width:92%;box-shadow:0 20px 60px rgba(0,0,0,.7);}
+.modal h2{font-size:15px;margin-bottom:6px;}
+.modal .mdesc{font-size:12px;color:var(--muted);margin-bottom:14px;}
+.modal-btns{display:flex;gap:8px;margin-top:16px;justify-content:flex-end;}
+
+/* orphan options */
+.orp-opt{background:rgba(255,255,255,.04);border:1px solid var(--border);border-radius:9px;padding:10px 14px;cursor:pointer;transition:all .15s;margin-bottom:7px;}
+.orp-opt:hover{border-color:var(--border2);background:rgba(255,255,255,.07);}
+.orp-opt.sel{border-color:var(--ok);background:rgba(0,200,150,.08);}
+.orp-opt h4{font-size:13px;margin-bottom:3px;}
+.orp-opt p{font-size:11px;color:var(--muted);}
+
+/* weight modal */
+.wm-row{display:flex;align-items:center;gap:10px;margin-bottom:10px;}
+.wm-row label{font-size:12px;color:var(--muted);min-width:110px;}
+.wm-inp{background:var(--bg);border:1px solid var(--border);color:var(--text);padding:7px 10px;border-radius:7px;font-size:14px;width:130px;text-align:right;}
+.wm-inp:focus{outline:none;border-color:var(--gold);}
+.wm-breakdown{background:rgba(255,255,255,.04);border-radius:8px;padding:10px 12px;margin:8px 0;font-size:12px;}
+.wm-brow{display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid rgba(255,255,255,.06);}
+.wm-brow:last-child{border:none;font-weight:700;color:var(--gold);}
+/* Projecao de cargas (tabela) */
+#proj-panel{padding:10px 12px;}
+.proj-head{display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:8px;}
+.proj-title{font-size:13px;font-weight:700;color:var(--gold);}
+.proj-title span{font-weight:400;color:var(--muted);font-size:11px;margin-left:6px;}
+.proj-stats{display:flex;gap:14px;font-size:11px;color:var(--muted);flex-wrap:wrap;}
+.proj-table{width:100%;border-collapse:collapse;font-size:12px;}
+.proj-table th{background:var(--bg3);padding:5px 8px;text-align:left;font-size:10px;color:var(--muted);text-transform:uppercase;border-bottom:1px solid var(--border);}
+.proj-table td{padding:5px 8px;border-bottom:1px solid rgba(255,255,255,.04);vertical-align:middle;}
+.proj-table tr.parcial{background:rgba(251,191,36,.05);}
+.pj-b{font-size:9px;font-weight:700;padding:1px 5px;border-radius:7px;letter-spacing:.5px;}
+.pj-b.q{background:#1e3a5f;color:#7cb3ff;}
+.pj-b.p{background:#3d2f0a;color:var(--gold);}
+.pj-plate{font-family:monospace;font-size:11px;}
+.pj-type{font-size:10px;color:var(--muted);}
+.pj-baus{display:flex;gap:3px;flex-wrap:wrap;}
+.pj-bau{font-size:10px;font-family:monospace;padding:1px 4px;border-radius:4px;}
+.pj-bau.ok{background:rgba(0,200,150,.12);color:#00c896;}
+.pj-bau.warn{background:rgba(230,57,70,.12);color:#e63946;}
+.pj-bau.empty{color:var(--muted);}
+.pj-ures{font-weight:700;padding:2px 7px;border-radius:6px;font-size:12px;}
+.pj-ures.ok{background:rgba(0,200,150,.15);color:#00c896;}
+.pj-ures.warn{background:rgba(230,57,70,.15);color:#e63946;}
+.pj-flag{font-size:9px;color:var(--gold);background:rgba(251,191,36,.12);padding:1px 4px;border-radius:4px;}
+.proj-aviso{margin-top:8px;padding:7px 10px;background:rgba(251,191,36,.08);border:1px solid rgba(251,191,36,.25);border-radius:7px;}
+.pj-av-main{font-size:12px;color:var(--gold);font-weight:600;}
+.pj-av-sob{font-size:11px;color:var(--muted);margin-top:2px;}
+/* === NOVA ABORDAGEM: filas de carregamento + caminhoes === */
+#op-right{width:107px;background:var(--bg2);border-left:1px solid var(--border);display:flex;flex-direction:column;overflow:hidden;flex-shrink:0;}
+#op-filas{width:320px;background:var(--bg2);border-left:1px solid var(--border);display:flex;flex-direction:column;overflow-y:auto;flex-shrink:0;}
+#queues-wrap{display:flex;flex-direction:column;gap:8px;padding:8px;}
+.q-col{flex:none;min-width:0;width:100%;}
+.q-head{font-size:11px;font-weight:700;padding:5px 8px;border-radius:6px 6px 0 0;display:flex;justify-content:space-between;align-items:center;gap:4px;white-space:nowrap;}
+.q-head.wet{background:rgba(21,128,61,.18);color:#4ade80;}
+.q-head.dry{background:rgba(220,38,38,.15);color:#f87171;}
+.q-head.faixa{background:rgba(234,179,8,.15);color:#fde047;}
+.q-head span{font-size:10px;font-weight:400;color:var(--muted);}
+.q-list{min-height:34px;background:var(--bg3);border-radius:0 0 6px 6px;padding:5px;display:flex;flex-direction:column;gap:4px;}
+.q-empty{font-size:10px;color:var(--muted);text-align:center;padding:14px 4px;}
+.q-card{background:var(--bg2);border:1px solid var(--border);border-radius:5px;padding:4px 8px;cursor:pointer;display:block;transition:background .12s;}
+.q-card:hover{background:rgba(230,57,70,.08);}
+.q-card .qc-head{display:flex;justify-content:space-between;align-items:center;gap:6px;}
+.q-card .qc-id{font-weight:700;font-size:12px;}
+.q-card .qc-meta{font-size:10px;color:var(--muted);flex:1;text-align:right;margin-right:4px;}
+.q-card .qc-x{color:var(--err);font-size:11px;opacity:.5;}
+.q-card:hover .qc-x{opacity:1;}
+.q-card.empty-silo{opacity:.45;}
+.sb-wrap{margin-top:3px;}
+.sb-track{display:flex;gap:1px;height:13px;border-radius:3px;overflow:hidden;border:1px solid rgba(255,255,255,.08);}
+.sb-cell{flex:1;display:flex;align-items:center;justify-content:center;min-width:0;transition:opacity .2s;}
+.sb-cell .sb-u{font-size:8px;font-weight:700;color:rgba(255,255,255,.92);text-shadow:0 1px 1px rgba(0,0,0,.5);}
+.sb-ends{display:flex;justify-content:space-between;font-size:7.5px;color:var(--muted);margin-top:1px;letter-spacing:.5px;}
+#alert-bar{margin:8px 10px 0;padding:8px 12px;background:rgba(251,191,36,.1);border:1px solid rgba(251,191,36,.35);border-radius:8px;font-size:12px;color:var(--gold);display:flex;justify-content:space-between;align-items:center;gap:10px;}
+#trucks-load-wrap{flex:1;overflow-y:auto;padding:10px;}
+#trucks-load-head{display:flex;justify-content:space-between;align-items:center;font-size:12px;font-weight:700;color:var(--text);margin-bottom:8px;padding-bottom:6px;border-bottom:1px solid var(--border);}
+#trucks-load-head span:last-child{font-weight:400;font-size:11px;color:var(--muted);}
+.tl-empty{padding:24px;text-align:center;color:var(--muted);font-size:12px;}
+.tl-card{background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:3px 8px;margin-bottom:4px;position:relative;}
+.tl-confirm{display:flex;justify-content:flex-end;align-items:center;padding:2px 0 4px;}
+.esp-foot{display:flex;flex-direction:column;gap:6px;padding:6px 2px 4px;border-top:1px solid var(--border);margin-top:4px;}
+#truck-queue-grid{display:flex;flex-direction:column;gap:5px;}
+.esp-card{position:relative;background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:6px 40px 6px 14px;}
+.card-x{position:absolute;top:4px;right:6px;width:16px;height:16px;line-height:14px;text-align:center;font-size:11px;background:none;border:none;color:var(--err);cursor:pointer;opacity:.55;padding:0;border-radius:3px;}
+.card-x:hover{opacity:1;background:rgba(220,38,38,.12);}
+.esp-cd{flex:0 0 140px;font-size:12px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.esp-row{display:flex;align-items:center;gap:18px;}
+.esp-num{flex:0 0 28px;font-size:18px;font-weight:700;color:var(--muted);text-align:center;}
+.esp-skin{flex:0 0 150px;width:150px;}
+.esp-skin svg{width:100%;display:block;}
+.esp-plate{flex:0 0 150px;font-size:22px;font-weight:800;letter-spacing:1px;color:var(--text);text-align:center;}
+.esp-tara-box{flex:0 0 90px;display:flex;flex-direction:column;align-items:center;gap:0;}
+.esp-tara-box label{font-size:9px;color:var(--muted);font-weight:500;letter-spacing:.5px;text-transform:uppercase;}
+.esp-tara-box b{font-size:18px;font-weight:700;color:var(--text);font-variant-numeric:tabular-nums;}
+.esp-nome{flex:1;min-width:0;font-size:16px;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;padding-left:8px;}
+.esp-row-acts{flex:0 0 auto;display:flex;gap:6px;align-items:center;}
+.esp-edit{display:grid;grid-template-columns:repeat(auto-fill,minmax(135px,1fr));gap:4px 12px;margin-top:6px;padding-top:6px;border-top:1px solid var(--border);}
+.esp-f{display:flex;flex-direction:column;gap:0;min-width:0;}
+.esp-f-l{font-size:9px;color:var(--muted);text-transform:uppercase;letter-spacing:.3px;}
+.esp-f input{background:var(--bg3);border:1px solid var(--border);border-radius:4px;color:var(--text);padding:2px 5px;font-size:11px;width:100%;text-transform:uppercase;}
+.cad-group{font-size:10px;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);margin:8px 0 4px;font-weight:700;}
+.esp-obs{width:100%;background:var(--bg3);border:1px solid var(--border);border-radius:5px;color:var(--text);padding:5px 8px;font-size:12px;}
+.esp-acts{display:flex;align-items:flex-end;gap:8px;flex-wrap:wrap;}
+.esp-tara{display:flex;flex-direction:column;gap:2px;}
+.esp-tara label{font-size:9px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;}
+.esp-tara input{width:90px;background:var(--bg3);border:1px solid var(--border);border-radius:5px;color:var(--text);padding:5px 7px;font-size:12px;}
+#sim-modebar{display:flex;align-items:center;gap:6px;padding:6px 8px;margin-bottom:6px;background:var(--bg3);border:1px solid var(--border);border-radius:8px;flex-wrap:wrap;}
+.sim-mlabel{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-right:2px;}
+.sim-mbtn{background:var(--bg2);border:1px solid var(--border);color:var(--muted);border-radius:6px;padding:4px 10px;font-size:12px;cursor:pointer;}
+.sim-mbtn.active{background:rgba(0,200,150,.15);border-color:var(--ok);color:var(--ok);font-weight:600;}
+.sim-sel{background:var(--bg2);border:1px solid var(--border);color:var(--text);border-radius:5px;padding:4px 6px;font-size:12px;}
+.sim-num{width:56px;background:var(--bg2);border:1px solid var(--border);color:var(--text);border-radius:5px;padding:4px 6px;font-size:12px;}
+.sim-dd{position:relative;display:inline-block;}
+.sim-dd-btn{background:var(--bg2);border:1px solid var(--border);color:var(--text);border-radius:5px;padding:4px 10px;font-size:12px;cursor:pointer;}
+.sim-dd-count{color:var(--ok);font-weight:600;}
+.sim-dd-panel{display:none;position:absolute;top:calc(100% + 4px);left:0;z-index:50;background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:8px 10px;box-shadow:0 6px 18px rgba(0,0,0,.4);min-width:200px;flex-direction:column;gap:5px;}
+.sim-dd-panel.open{display:flex;}
+.sim-chk{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--text);cursor:pointer;white-space:nowrap;}
+.sim-chk input{accent-color:var(--ok);cursor:pointer;}
+.sim-chk-all{padding-bottom:5px;margin-bottom:3px;border-bottom:1px solid var(--border);}
+.tl-status.loading{background:rgba(234,179,8,.18);color:var(--faixa);}
+#carreg-page{flex-direction:column;padding:14px;overflow-y:auto;gap:8px;}
+#carreg-list{display:flex;flex-direction:column;gap:5px;}
+.esp-liq-box{flex:0 0 96px;display:flex;flex-direction:column;align-items:center;gap:0;}
+.esp-liq-box label{font-size:9px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;}
+.esp-liq-box b{font-size:26px;font-weight:800;color:var(--ok);font-variant-numeric:tabular-nums;line-height:1;}
+.pat-card{position:relative;background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:8px 14px 6px;}
+.pat-x{position:absolute;top:3px;right:5px;width:16px;height:16px;line-height:14px;text-align:center;font-size:11px;background:none;border:none;color:var(--err);cursor:pointer;opacity:.6;padding:0;border-radius:3px;}
+.pat-x:hover{opacity:1;background:rgba(220,38,38,.12);}
+.pat-row{display:flex;align-items:center;gap:12px;}
+.pat-num{flex:0 0 24px;font-size:18px;font-weight:700;color:var(--muted);text-align:center;}
+.pat-skin{flex:0 0 140px;width:140px;}
+.pat-skin svg{width:100%;display:block;}
+.pat-cell{flex:0 0 110px;display:flex;flex-direction:column;gap:1px;}
+.pat-cell.pat-grow{flex:1;min-width:90px;}
+.pat-cell label{font-size:9px;color:var(--muted);text-transform:uppercase;letter-spacing:.4px;}
+.pat-in{background:var(--bg3);border:1px solid var(--border);border-radius:4px;color:var(--text);padding:3px 6px;font-size:12px;width:100%;}
+.pat-in-plate{font-weight:700;font-size:14px;letter-spacing:.5px;}
+.pat-in-bruto{border-color:var(--warn);font-weight:700;font-size:14px;}
+.pat-cell label:first-child:has(+ .pat-in-bruto){color:var(--warn);}
+.pat-liq-cell{flex:0 0 96px;display:flex;flex-direction:column;align-items:flex-start;gap:0;}
+.pat-liq-cell label{font-size:9px;color:var(--muted);text-transform:uppercase;letter-spacing:.4px;}
+.pat-liq-v{font-size:22px;font-weight:800;color:var(--ok);line-height:1.05;}
+.pat-liq-v.dim{color:var(--muted);font-weight:400;}
+.pat-liq-sc{font-size:10px;color:var(--muted);}
+.pat-fin{flex:0 0 auto;}
+.cc-foot{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:8px 2px 6px;border-top:1px solid var(--border);margin-top:4px;flex-wrap:wrap;}
+.cc-fields{display:flex;gap:8px;flex-wrap:wrap;}
+.cc-f{display:flex;flex-direction:column;gap:2px;}
+.cc-f label{font-size:9px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;}
+.cc-f input{width:90px;background:var(--bg3);border:1px solid var(--border);border-radius:5px;color:var(--text);padding:4px 7px;font-size:12px;}
+.cc-bruto-box{display:flex;flex-direction:column;gap:3px;background:rgba(255,179,0,.08);border:1.5px solid var(--warn);border-radius:8px;padding:7px 12px;min-width:160px;}
+.cc-bruto-box label{font-size:10px;color:var(--warn);font-weight:700;letter-spacing:.5px;}
+.cc-bruto-input{background:var(--bg);border:1px solid var(--warn);border-radius:6px;color:var(--text);padding:7px 10px;font-size:18px;font-weight:700;width:140px;}
+.cc-liq-line{font-size:12px;color:var(--ok);}
+.cc-actions{display:flex;gap:6px;align-items:center;}
+#final-list{display:flex;flex-direction:column;gap:8px;}
+.fin-card{background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:10px 12px;}
+.fin-card.done{opacity:.75;border-color:var(--ok);}
+.fin-head{display:flex;align-items:center;gap:10px;flex-wrap:wrap;}
+.fin-plate{font-size:15px;font-weight:700;}
+.fin-type{font-size:11px;color:var(--muted);}
+.fin-badge{font-size:10px;text-transform:uppercase;letter-spacing:.5px;border-radius:5px;padding:1px 7px;font-weight:700;}
+.fin-badge.ok{background:rgba(0,200,150,.15);color:var(--ok);}
+.fin-badge.pend{background:rgba(255,179,0,.15);color:var(--warn);}
+.fin-stats{margin-left:auto;font-size:12px;color:var(--muted);}
+.fin-stats b{color:var(--text);}
+.fin-obs{font-size:11px;color:var(--muted);margin-top:4px;font-style:italic;}
+.fin-proc{margin-top:8px;padding-top:8px;border-top:1px solid var(--border);display:flex;flex-direction:column;gap:6px;}
+.fin-proc-title{font-size:11px;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);}
+.fin-src{display:flex;align-items:center;gap:6px;}
+.fin-src select,.fin-src input{background:var(--bg3);border:1px solid var(--border);border-radius:5px;color:var(--text);padding:4px 7px;font-size:12px;}
+.fin-src-tipo{width:90px;}
+.fin-src-ref{flex:1;min-width:120px;}
+.fin-src-ref-fix{flex:1;font-size:12px;color:var(--muted);}
+.fin-src-sc{width:80px;}
+.fin-src-del{background:none;border:none;color:var(--err);cursor:pointer;font-size:13px;}
+.fin-concil{display:flex;align-items:center;gap:12px;font-size:12px;color:var(--muted);margin-top:2px;}
+.fin-concil b{color:var(--text);}
+.fin-ok{color:var(--ok);font-weight:600;}
+.fin-warn{color:var(--warn);font-weight:600;}
+.fin-acts{display:flex;gap:6px;justify-content:flex-end;margin-top:4px;}
+.fin-proc-done{display:flex;gap:6px;flex-wrap:wrap;margin-top:6px;}
+.fin-tag{font-size:11px;background:var(--bg3);border:1px solid var(--border);border-radius:5px;padding:2px 8px;color:var(--text);}
+.tl-card.vazio{opacity:.5;}
+.tl-card.parcial{border-color:rgba(251,191,36,.4);}
+.tl-card.semmix{border-color:rgba(230,57,70,.45);}
+.tl-top{position:absolute;top:5px;left:10px;z-index:2;display:flex;flex-direction:column;gap:1px;}
+.tl-topline{display:flex;align-items:center;gap:8px;}
+.tl-statuswrap{position:absolute;top:5px;right:10px;z-index:2;display:flex;align-items:center;gap:6px;}
+.tl-num{font-weight:700;color:var(--muted);font-size:11px;}
+.tl-plate{font-family:monospace;font-weight:700;}
+.tl-type{font-size:10px;color:var(--muted);}
+.tl-status{font-size:9px;font-weight:700;padding:2px 7px;border-radius:8px;letter-spacing:.5px;text-transform:uppercase;}
+.tl-status.cheio{background:rgba(0,200,150,.15);color:#00c896;}
+.tl-status.parcial{background:rgba(251,191,36,.15);color:var(--gold);}
+.tl-status.vazio{background:rgba(255,255,255,.06);color:var(--muted);}
+.tl-warn{font-size:10px;font-weight:700;color:var(--warn);background:rgba(255,179,0,.12);padding:2px 7px;border-radius:8px;}
+.tl-body{display:flex;gap:20px;align-items:center;}
+.tl-skin{flex:1;min-width:0;height:104px;display:flex;align-items:center;justify-content:center;overflow:hidden;}
+.tl-skin svg{height:100%;width:auto;max-width:100%;}
+.tl-data{width:118px;font-size:10px;flex-shrink:0;margin-top:15px;}
+.tl-data .tl-line{display:flex;justify-content:space-between;padding:0;line-height:1.45;}
+.tl-data .tl-line span{color:var(--muted);}
+.tl-data .tl-line b{font-weight:700;}
+.tl-ures{font-size:13px;font-weight:700;text-align:center;padding:2px;border-radius:5px;margin-top:2px;}
+.tl-ures.ok{background:rgba(0,200,150,.15);color:#00c896;}
+.tl-ures.warn{background:rgba(230,57,70,.15);color:#e63946;}
+.tl-silos{width:150px;flex-shrink:0;display:flex;flex-direction:column;gap:1px;border-left:1px dashed var(--border);padding-left:8px;margin-top:15px;}
+.tl-silo-row{display:flex;align-items:center;gap:3px;font-size:9px;line-height:1.35;}
+.tl-silo-ord{font-weight:700;color:var(--muted);min-width:13px;font-size:8.5px;}
+.tl-silo-dot{width:6px;height:6px;border-radius:50%;flex-shrink:0;}
+.tl-silo-id{font-weight:700;min-width:20px;}
+.tl-silo-sc{color:var(--muted);flex:1;font-size:8.5px;}
+.tl-silo-u{font-weight:700;color:var(--muted);}
+.tl-silo-u.alto{color:var(--text);}
+</style>
+</head>
+<body>
+
+<!-- HEADER -->
+<div id="hdr">
+  <h1>🚛 Carregamento <span>— Soja 2025/2026</span></h1>
+  <div class="pill">Alvo: <b>13,4–14,0%</b></div>
+  <div class="pill" id="pill-date"></div>
+  <div id="hdr-right">
+    <button class="btn" onclick="showPage('trucks')">🚛 Fila</button>
+    <button class="btn warn sm" onclick="newDay()">↺ Novo Dia</button>
+  </div>
+</div>
+
+<!-- TABS -->
+<div id="tabs">
+  <div class="tab active" data-page="op" onclick="showPage('op')">🧪 Mistura de Silos</div>
+  <div class="tab" data-page="trucks" onclick="showPage('trucks')">⌛ Espera <span class="tab-badge" id="queue-badge">0</span></div>
+  <div class="tab" data-page="carreg" onclick="showPage('carreg')">🚛 Pátio <span class="tab-badge" id="carreg-badge">0</span></div>
+  <div class="tab" data-page="hist" onclick="showPage('hist')">✅ Finalizados</div>
+  <div class="tab" data-page="stock" onclick="showPage('stock')">📦 Estoque</div>
+</div>
+
+<!-- BODY -->
+<div id="body">
+
+<!-- ═══ OPERAÇÃO ═══ -->
+<div id="op-page" class="page active">
+  <!-- COLUNA 1: lista de UMIDOS disponiveis -->
+  <div id="op-left">
+    <div class="panel-sec">🟢 Úmidos disponíveis</div>
+    <div class="silo-scroll" id="wet-list"></div>
+  </div>
+
+  <!-- COLUNA 2 (CENTRO): cargas projetadas -->
+  <div id="op-center">
+    <div id="alert-bar" style="display:none"></div>
+    <div id="sim-modebar">
+      <span class="sim-mlabel">Caminhões:</span>
+      <button class="sim-mbtn active" data-mode="patio" onclick="setSimMode('patio')">🚛 Pátio</button>
+      <button class="sim-mbtn" data-mode="aleatorio" onclick="setSimMode('aleatorio')">🎲 Aleatório</button>
+      <button class="sim-mbtn" data-mode="manual" onclick="setSimMode('manual')">✋ Manual</button>
+      <span id="sim-mode-ctrls"></span>
+    </div>
+    <div id="trucks-load-wrap">
+      <div id="trucks-load-head">
+        <span>🧪 Cargas simuladas</span>
+        <span id="trucks-load-sum"></span>
+      </div>
+      <div id="trucks-load-list">
+        <div class="tl-empty">Adicione silos nas filas e escolha a fonte dos caminhões.</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- COLUNA 3: filas de carregamento (empilhadas) -->
+  <div id="op-filas">
+    <div id="queues-wrap">
+      <div class="q-col">
+        <div class="q-head wet">🟢 Fila de carregamento — Úmido <span id="qwet-sum"></span></div>
+        <div class="q-list" id="wet-queue"><div class="q-empty">← Clique nos silos úmidos</div></div>
+      </div>
+      <div class="q-col">
+        <div class="q-head dry">🔴 Fila de carregamento — Seco <span id="qdry-sum"></span></div>
+        <div class="q-list" id="dry-queue"><div class="q-empty">Clique nos secos →</div></div>
+      </div>
+      <div class="q-col">
+        <div class="q-head faixa">🟡 Carga direta — Faixa <span id="qfaixa-sum"></span></div>
+        <div class="q-list" id="faixa-queue"><div class="q-empty">Silos já na faixa</div></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- COLUNA 4: listas de SECOS e FAIXA disponiveis -->
+  <div id="op-right">
+    <div class="panel-sec">🔴 Secos disponíveis</div>
+    <div class="silo-scroll" id="dry-list"></div>
+    <div class="panel-sec" style="border-top:1px solid var(--border)">🟡 Na faixa (carga direta)</div>
+    <div class="silo-scroll" id="faixa-list"></div>
+  </div>
+</div>
+
+
+<!-- ═══ FILA DE CAMINHÕES ═══ -->
+<div id="trucks-page" class="page">
+  <div class="truck-queue-header">
+    <h2>⌛ Espera</h2>
+    <span style="font-size:11px;color:var(--muted)">Caminhões aguardando. Pode adiantar dados de procedência (informativo).</span>
+  </div>
+  <div id="add-truck-form">
+    <h3>+ Cadastrar Caminhão</h3>
+    <div class="cad-group">Motorista</div>
+    <div class="form-grid">
+      <div class="form-field"><label>Nome</label><input id="tf-nome" placeholder="Nome do motorista"></div>
+      <div class="form-field"><label>CPF</label><input id="tf-cpf" placeholder="000.000.000-00"></div>
+      <div class="form-field"><label>RG</label><input id="tf-rg" placeholder="RG"></div>
+      <div class="form-field"><label>CNH</label><input id="tf-cnh" placeholder="CNH"></div>
+    </div>
+    <div class="cad-group">Veículo</div>
+    <div class="form-grid">
+      <div class="form-field"><label>Tipo</label>
+        <select id="tf-type" onchange="ajustaCarretas()">
+          <option>Carreta (6 eixos)</option>
+          <option>Carreta toco (5 eixos)</option>
+          <option>Truck (3 eixos)</option>
+          <option>Truck toco (2 eixos)</option>
+          <option>Bitruck (4 eixos)</option>
+          <option>Bitruck 2+2 (4 eixos)</option>
+          <option>Vanderleia (6 eixos)</option>
+          <option>Vanderleia toco (5 eixos)</option>
+          <option>LS (7 eixos)</option>
+          <option>LS toco (6 eixos)</option>
+          <option>Bitrem 7 (7 eixos)</option>
+          <option>Bitrem 9 (9 eixos)</option>
+          <option>Rodotrem (9 eixos)</option>
+          <option>Tritrem (9 eixos)</option>
+        </select>
+      </div>
+      <div class="form-field"><label>Placa cavalo</label><input id="tf-plate" placeholder="ABC-1D23" maxlength="8"></div>
+      <div class="form-field" id="ff-carreta1"><label>Placa carreta 1</label><input id="tf-carreta1" placeholder="ABC-1D23" maxlength="8"></div>
+      <div class="form-field" id="ff-carreta2"><label>Placa carreta 2</label><input id="tf-carreta2" placeholder="ABC-1D23" maxlength="8"></div>
+      <div class="form-field" id="ff-carreta3"><label>Placa carreta 3</label><input id="tf-carreta3" placeholder="ABC-1D23" maxlength="8"></div>
+      <div class="form-field"><label>Tara (kg)</label><input id="tf-tara" type="number" placeholder="opcional (pesa depois)" oninput="atualizaBtnIrPatio()"></div>
+      <div class="form-field"><label>Cap. máx PBT (kg)</label><input id="tf-pbt" type="number" placeholder="48000"></div>
+      <div class="form-field"><label>Capacidade (sc)</label><input id="tf-sc" type="number" placeholder="880"></div>
+    </div>
+    <div class="cad-group">Carga / contrato</div>
+    <div class="form-grid">
+      <div class="form-field"><label>Transportadora</label><input id="tf-transp" list="dl-transp" placeholder="buscar ou digitar" onchange="checaCadastro('transp',this.value)"><datalist id="dl-transp"></datalist></div>
+      <div class="form-field"><label>Produto</label><input id="tf-produto" list="dl-produto" placeholder="buscar ou digitar" onchange="checaCadastro('produto',this.value)"><datalist id="dl-produto"></datalist></div>
+      <div class="form-field"><label>Contrato / destino</label><input id="tf-contrato" placeholder="contrato ou destino"></div>
+    </div>
+    <div style="margin-top:10px;display:flex;gap:8px;align-items:center">
+      <button class="btn primary" onclick="addTruck(false)">+ Adicionar à Espera</button>
+      <button class="btn success" id="btn-cad-patio" style="display:none" onclick="addTruck(true)">→ Cadastrar e Ir Pátio</button>
+      <span style="font-size:11px;color:var(--muted)">Data/hora automáticas. Informe a tara para ir direto ao Pátio.</span>
+    </div>
+  </div>
+  <div id="truck-queue-grid"></div>
+</div>
+
+<!-- ═══ EM CARREGAMENTO ═══ -->
+<div id="carreg-page" class="page">
+  <div class="truck-queue-header">
+    <h2>🚛 Pátio</h2>
+    <span style="font-size:11px;color:var(--muted)">Caminhões carregando em paralelo. Informe o peso e finalize para validar a carga.</span>
+  </div>
+  <div id="carreg-list"></div>
+</div>
+
+<!-- ═══ HISTÓRICO ═══ -->
+<div id="hist-page" class="page">
+  <h2>✅ Finalizados</h2>
+  <div class="hist-stats" id="hist-stats"></div>
+  <div id="final-list"></div>
+</div>
+
+<!-- ═══ ESTOQUE ═══ -->
+<div id="stock-page" class="page">
+  <h2>📦 Estoque em Tempo Real</h2>
+  <div class="stock-grid" id="stock-grid"></div>
+  <h3 id="stock-done-head" style="display:none;margin:18px 0 8px;font-size:13px;color:var(--muted)">✓ Silos já carregados (zerados)</h3>
+  <div class="stock-grid" id="stock-grid-done"></div>
+</div>
+
+</div><!-- #body -->
+
+<!-- ORPHAN MODAL -->
+<div class="modal-overlay" id="orphan-overlay">
+  <div class="modal">
+    <h2 style="color:var(--warn)">⚠️ Silo Seco Esgotado</h2>
+    <p class="mdesc" id="orp-desc"></p>
+    <div id="orp-options"></div>
+    <div class="modal-btns">
+      <button class="btn" onclick="closeModal('orphan-overlay')">Cancelar</button>
+      <button class="btn success" onclick="applyOrphan()">✓ Confirmar</button>
+    </div>
+  </div>
+</div>
+
+<!-- WEIGHT MODAL -->
+<div class="modal-overlay" id="weight-overlay">
+  <div class="modal">
+    <h2 style="color:var(--gold)">⚖️ Lançar Peso Real — Carga <span id="wm-n"></span></h2>
+    <p class="mdesc">Informe o peso bruto da balança. O sistema rateia entre os silos pela proporção da carga.</p>
+    <div class="wm-row">
+      <label>Peso bruto (kg):</label>
+      <input class="wm-inp" type="number" id="wm-bruto" placeholder="53500" oninput="calcWmBreakdown()">
+    </div>
+    <div class="wm-row">
+      <label>% deste par:</label>
+      <input class="wm-inp" type="number" id="wm-pct" value="100" min="1" max="100" oninput="calcWmBreakdown()">
+      <span style="font-size:11px;color:var(--muted)">% do caminhão</span>
+    </div>
+    <div id="wm-breakdown" class="wm-breakdown">
+      <div style="color:var(--muted);font-size:11px">Informe o peso para calcular</div>
+    </div>
+    <div class="modal-btns">
+      <button class="btn" onclick="closeModal('weight-overlay')">Cancelar</button>
+      <button class="btn success" onclick="saveWeight()">✓ Salvar</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ═══════════════════════════════════════════════════════════════
+// BIBLIOTECA DE SKINS — todas as pecas validadas (line-art)
+// Escala unica SCALE=26px/m. Frente=DIREITA, traseira=ESQUERDA.
+// Cada skin retorna {svg, ...refs} onde svg e o CONTEUDO interno
+// (sem wrapper <svg>) para ser posicionado em composicoes.
+// ═══════════════════════════════════════════════════════════════
+(function(global){
+  const SCALE=26, stroke='#cfd8e3';
+  const LEN_SR3=9.5, LEN_CM=5.5, LEN_DOLLY=3.0, LEN_LS4=10.5, LEN_RIG2=9.0, LEN_RIG3=10.5;
+  const BOXW_SR3=LEN_SR3*SCALE-18, BOXW_SR2=BOXW_SR3*0.70;
+
+  // ---------- helpers ----------
+  // cor de umidade (amarelo 8% seco -> verde 25% úmido), alvo destacado
+  function _uStops(u){
+    if(u==null||isNaN(u)) return ['#5a6470','#3a424d'];   // sem dado: cinza
+    const A_SEC=10, A_MID=13.75, A_VCL=16, A_VESC=19.5;
+    let h,s,l;
+    if(u<=A_SEC){ h=0; s=75; l=50; }
+    else if(u<A_MID){ const k=(u-A_SEC)/(A_MID-A_SEC); h=55*k; s=75+3*k; l=50+2*k; }
+    else if(u<A_VCL){ const k=(u-A_MID)/(A_VCL-A_MID); h=55+(115-55)*k; s=78+2*k; l=52+(46-52)*k; }
+    else if(u<A_VESC){ const k=(u-A_VCL)/(A_VESC-A_VCL); h=115+(156-115)*k; s=80+2*k; l=46+(15-46)*k; }
+    else { h=156; s=82; l=15; }
+    return ['hsl('+h.toFixed(0)+','+s.toFixed(0)+'%,'+(l+6).toFixed(0)+'%)',
+            'hsl('+h.toFixed(0)+','+s.toFixed(0)+'%,'+Math.max(8,l-6).toFixed(0)+'%)'];
+  }
+  function defs(uid){
+    // índice da caçamba atual (NÃO incrementa aqui; quem incrementa é a cargo)
+    const idx=(global._skinFillIdx||0);
+    let dU=(global._skinUD!=null)?global._skinUD:null;
+    let wU=(global._skinUW!=null)?global._skinUW:null;
+    // se há arrays por baú, usa a umidade específica desta caçamba
+    if(global._skinUwArr && idx<global._skinUwArr.length && global._skinUwArr[idx]!=null) wU=global._skinUwArr[idx];
+    if(global._skinUdArr && idx<global._skinUdArr.length && global._skinUdArr[idx]!=null) dU=global._skinUdArr[idx];
+    const ds=_uStops(dU), ws=_uStops(wU);
+    return '<defs>'
+    +'<linearGradient id="dry_'+uid+'" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="'+ds[0]+'"/><stop offset="1" stop-color="'+ds[1]+'"/></linearGradient>'
+    +'<linearGradient id="wet_'+uid+'" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="'+ws[0]+'"/><stop offset="1" stop-color="'+ws[1]+'"/></linearGradient></defs>';}
+  function cargo(uid,boxX,boxTop,boxW,boxH,fw){
+    if(fw===null||fw===undefined){ return ''; }  // baú VAZIO: sem coloracao
+    // índice desta caçamba (mesmo que o defs usou)
+    const idx=(global._skinFillIdx||0);
+    // nível de preenchimento desta caçamba (0..1)
+    let fill=1;
+    if(global._skinFills && idx<global._skinFills.length){ fill=global._skinFills[idx]; }
+    // fração úmida específica desta caçamba (se houver array por baú)
+    if(global._skinFwArr && idx<global._skinFwArr.length && global._skinFwArr[idx]!=null){ fw=global._skinFwArr[idx]; }
+    global._skinFillIdx = idx+1;   // avança para a próxima caçamba
+    fill=Math.max(0, Math.min(1, fill));
+    if(fill<=0){ return ''; }       // caçamba vazia: não desenha carga
+    // a soja ocupa só a parte de baixo da caçamba (proporcional ao carregado)
+    const usedH = boxH*fill;
+    const emptyH = boxH - usedH;
+    const topY = boxTop + emptyH;          // topo da soja (desce conforme enche menos)
+    // dentro da parte cheia, divide seco (cima) e úmido (baixo) pela fração fw
+    const fwPct=fw*100, fdPct=100-fwPct, dryH=usedH*fdPct/100, wetH=usedH*fwPct/100;
+    let s='<g>';
+    // contorno da caçamba vazia (mostra o espaço não preenchido)
+    if(emptyH>2){
+      s+='<rect x="'+boxX+'" y="'+boxTop+'" width="'+boxW+'" height="'+emptyH+'" fill="rgba(255,255,255,.03)"/>';
+    }
+    s+='<rect x="'+boxX+'" y="'+topY+'" width="'+boxW+'" height="'+dryH+'" fill="url(#dry_'+uid+')"/>'
+      +'<rect x="'+boxX+'" y="'+(topY+dryH)+'" width="'+boxW+'" height="'+wetH+'" fill="url(#wet_'+uid+')"/>'
+      +((dryH>14&&wetH>14)?'<line x1="'+boxX+'" y1="'+(topY+dryH)+'" x2="'+(boxX+boxW)+'" y2="'+(topY+dryH)+'" stroke="rgba(0,0,0,.4)" stroke-width="2"/>':'')+'</g>';
+    s+=((dryH>20)?'<text x="'+(boxX+boxW/2)+'" y="'+(topY+dryH/2+4)+'" text-anchor="middle" font-size="12" font-weight="bold" fill="#fff" font-family="sans-serif" style="paint-order:stroke" stroke="rgba(0,0,0,.35)" stroke-width="0.6">SECO '+fdPct.toFixed(0)+'%</text>':'');
+    s+=((wetH>20)?'<text x="'+(boxX+boxW/2)+'" y="'+(topY+dryH+wetH/2+4)+'" text-anchor="middle" font-size="12" font-weight="bold" fill="#fff" font-family="sans-serif" style="paint-order:stroke" stroke="rgba(0,0,0,.35)" stroke-width="0.6">UMIDO '+fwPct.toFixed(0)+'%</text>':'');
+    return s;
+  }
+  function ribs(x,y,w,h){let s='';const n=Math.max(3,Math.floor(w/26));for(let i=1;i<n;i++){const rx=x+w*i/n;s+='<line x1="'+rx+'" y1="'+(y+3)+'" x2="'+rx+'" y2="'+(y+h-3)+'" stroke="'+stroke+'" stroke-width="1" opacity="0.4"/>';}return s;}
+  function wheel(cx,cy,r){return '<g><circle cx="'+cx+'" cy="'+cy+'" r="'+r+'" fill="#16191f" stroke="'+stroke+'" stroke-width="2.2"/><circle cx="'+cx+'" cy="'+cy+'" r="'+(r*0.45)+'" fill="none" stroke="#5a6470" stroke-width="2"/><circle cx="'+cx+'" cy="'+cy+'" r="2.5" fill="#6b7480"/></g>';}
+  function fifthWheel(cx,deckY,sw){const plateY=deckY+(deckY>90?4:10);
+    return '<line x1="'+(cx-20)+'" y1="'+plateY+'" x2="'+(cx+20)+'" y2="'+plateY+'" stroke="'+stroke+'" stroke-width="'+sw+'"/>'
+      +'<path d="M'+(cx-14)+' '+plateY+' L'+(cx-14)+' '+(plateY-7)+' Q'+cx+' '+(plateY-13)+' '+(cx+14)+' '+(plateY-7)+' L'+(cx+14)+' '+plateY+'" fill="none" stroke="'+stroke+'" stroke-width="'+sw+'" stroke-linejoin="round"/>'
+      +'<circle cx="'+cx+'" cy="'+(plateY-8)+'" r="3" fill="none" stroke="'+stroke+'" stroke-width="1.8"/>';}
+
+  // ---------- SR3 (A/B) ----------
+  function SR3(fw,variante,uid){
+    const sw=2.2,W=LEN_SR3*SCALE,H=130,groundY=H-14,wheelR=13,axleGap=30,axleY=groundY-wheelR;
+    let boxX,boxW,axlesX,fifthX,vigaX1,vigaX2,rodaMeio;
+    if(variante==='A'){
+      const padLeft=74;boxX=padLeft;boxW=LEN_SR3*SCALE-12;
+      const overhang=0.20*(2*wheelR);
+      const e3=boxX-overhang+wheelR,e2=e3-axleGap,e1=e3-2*axleGap;
+      axlesX=[e1,e2,e3];fifthX=(e1+e2)/2;vigaX1=e1-wheelR-4;vigaX2=e3+wheelR+4;rodaMeio=e2;
+    }else{
+      boxX=6;boxW=W-18;const tc=W*0.34;axlesX=[tc-axleGap,tc,tc+axleGap];fifthX=null;
+      vigaX1=tc-axleGap-12;vigaX2=tc+axleGap+12;rodaMeio=tc;
+    }
+    const boxTop=16,boxH=64,boxBottom=boxTop+boxH;
+    let s=defs(uid)+cargo(uid,boxX,boxTop,boxW,boxH,fw);
+    s+='<rect x="'+boxX+'" y="'+boxTop+'" width="'+boxW+'" height="'+boxH+'" rx="3" fill="none" stroke="'+stroke+'" stroke-width="'+sw+'"/>'+ribs(boxX,boxTop,boxW,boxH);
+    s+='<path d="M'+(boxX+10)+' '+boxBottom+' L'+(boxX+10)+' '+(boxBottom+12)+' L'+(boxX+boxW-10)+' '+(boxBottom+12)+' L'+(boxX+boxW-10)+' '+boxBottom+'" fill="none" stroke="'+stroke+'" stroke-width="'+sw+'" stroke-linejoin="round"/>';
+    s+='<line x1="'+vigaX1+'" y1="'+(boxBottom+12)+'" x2="'+vigaX2+'" y2="'+(boxBottom+12)+'" stroke="'+stroke+'" stroke-width="'+sw+'"/>';
+    if(variante==='A')s+=fifthWheel(fifthX,boxBottom,sw);
+    s+=axlesX.map(function(x){return wheel(x,axleY,wheelR);}).join('');
+    s+='<path d="M'+(axlesX[0]-wheelR-4)+' '+axleY+' Q'+axlesX[1]+' '+(boxBottom+4)+' '+(axlesX[axlesX.length-1]+wheelR+4)+' '+axleY+'" fill="none" stroke="'+stroke+'" stroke-width="1.6"/>';
+    return {svg:s,W:W,frenteBau:boxX+boxW,fifthX:fifthX,rodaMeio:rodaMeio,rodaEsq:axlesX[0]};
+  }
+  // ---------- SR2 (A/B) bau 70% ----------
+  function SR2(fw,variante,uid){
+    const sw=2.2,boxW=BOXW_SR2,boxTop=16,boxH=64,boxBottom=boxTop+boxH,wheelR=13,H=130,groundY=H-14,axleY=groundY-wheelR;
+    let boxX,axlesX,fifthX,vigaX1,vigaX2;
+    if(variante==='A'){
+      const padLeft=74;boxX=padLeft;const overhang=0.20*(2*wheelR),conj=12,gap=32;
+      const e3=boxX-overhang+wheelR+conj,e2=e3-gap,e1=e3-2*gap;
+      axlesX=[e1,e2];fifthX=(e1+e2)/2;vigaX1=e1-wheelR-4;vigaX2=e2+wheelR+4;
+    }else{
+      const tc=LEN_SR3*SCALE*0.34-13,gap=30;boxX=6;const r1=tc-gap,r2=tc;
+      axlesX=[r1,r2];fifthX=null;vigaX1=r1-wheelR-4;vigaX2=r2+wheelR+4;
+    }
+    const W=boxX+boxW+12;
+    let s=defs(uid)+cargo(uid,boxX,boxTop,boxW,boxH,fw);
+    s+='<rect x="'+boxX+'" y="'+boxTop+'" width="'+boxW+'" height="'+boxH+'" rx="3" fill="none" stroke="'+stroke+'" stroke-width="'+sw+'"/>'+ribs(boxX,boxTop,boxW,boxH);
+    var saiaLeft=(variante==='A')?axlesX[0]:(boxX+10),saiaRight=boxX+boxW-10;
+    s+='<rect x="'+saiaLeft+'" y="'+boxBottom+'" width="'+(saiaRight-saiaLeft)+'" height="12" fill="none" stroke="'+stroke+'" stroke-width="'+sw+'"/>';
+    s+='<line x1="'+vigaX1+'" y1="'+(boxBottom+12)+'" x2="'+vigaX2+'" y2="'+(boxBottom+12)+'" stroke="'+stroke+'" stroke-width="'+sw+'"/>';
+    if(variante==='A')s+=fifthWheel(fifthX,boxBottom,sw);
+    s+=axlesX.map(function(x){return wheel(x,axleY,wheelR);}).join('');
+    s+='<path d="M'+(axlesX[0]-wheelR-4)+' '+axleY+' Q'+((axlesX[0]+axlesX[1])/2)+' '+(boxBottom+4)+' '+(axlesX[1]+wheelR+4)+' '+axleY+'" fill="none" stroke="'+stroke+'" stroke-width="1.6"/>';
+    return {svg:s,W:W,frenteBau:boxX+boxW,fifthX:fifthX,rodaMeio:axlesX[axlesX.length-1],rodaEsq:axlesX[0]};
+  }
+  // ---------- SR2L_B bau longo + 2 eixos ----------
+  function SR2L_B(fw,uid){
+    const sw=2.2,W=LEN_SR3*SCALE,H=130,groundY=H-14,boxX=6,boxW=W-18,boxTop=16,boxH=64,boxBottom=boxTop+boxH;
+    const wheelR=13,axleGap=30,axleY=groundY-wheelR,tc=W*0.34,r1=tc-axleGap,r2=tc,axlesX=[r1,r2];
+    let s=defs(uid)+cargo(uid,boxX,boxTop,boxW,boxH,fw);
+    s+='<rect x="'+boxX+'" y="'+boxTop+'" width="'+boxW+'" height="'+boxH+'" rx="3" fill="none" stroke="'+stroke+'" stroke-width="'+sw+'"/>'+ribs(boxX,boxTop,boxW,boxH);
+    s+='<path d="M'+(boxX+10)+' '+boxBottom+' L'+(boxX+10)+' '+(boxBottom+12)+' L'+(boxX+boxW-10)+' '+(boxBottom+12)+' L'+(boxX+boxW-10)+' '+boxBottom+'" fill="none" stroke="'+stroke+'" stroke-width="'+sw+'" stroke-linejoin="round"/>';
+    s+='<line x1="'+(r1-wheelR-4)+'" y1="'+(boxBottom+12)+'" x2="'+(r2+wheelR+4)+'" y2="'+(boxBottom+12)+'" stroke="'+stroke+'" stroke-width="'+sw+'"/>';
+    s+=axlesX.map(function(x){return wheel(x,axleY,wheelR);}).join('');
+    s+='<path d="M'+(r1-wheelR-4)+' '+axleY+' Q'+((r1+r2)/2)+' '+(boxBottom+4)+' '+(r2+wheelR+4)+' '+axleY+'" fill="none" stroke="'+stroke+'" stroke-width="1.6"/>';
+    return {svg:s,W:W,frenteBau:boxX+boxW,traseiraBau:boxX,rodaMeio:r2,rodaEsq:r1};
+  }
+  // ---------- SR_LS4 4 eixos juntos ----------
+  function SR_LS4(fw,uid){
+    const sw=2.2,W=LEN_LS4*SCALE,H=130,groundY=H-14,boxX=6,boxW=W-18,boxTop=16,boxH=64,boxBottom=boxTop+boxH;
+    const wheelR=13,axleGap=30,axleY=groundY-wheelR,saiaLeft=boxX+10,quadCenter=W*0.32;
+    const e3fixo=quadCenter+1.5*axleGap,e0=saiaLeft+wheelR,e=[e0,e0+axleGap,e0+2*axleGap,e3fixo];
+    let s=defs(uid)+cargo(uid,boxX,boxTop,boxW,boxH,fw);
+    s+='<rect x="'+boxX+'" y="'+boxTop+'" width="'+boxW+'" height="'+boxH+'" rx="3" fill="none" stroke="'+stroke+'" stroke-width="'+sw+'"/>'+ribs(boxX,boxTop,boxW,boxH);
+    s+='<path d="M'+(boxX+10)+' '+boxBottom+' L'+(boxX+10)+' '+(boxBottom+12)+' L'+(boxX+boxW-10)+' '+(boxBottom+12)+' L'+(boxX+boxW-10)+' '+boxBottom+'" fill="none" stroke="'+stroke+'" stroke-width="'+sw+'" stroke-linejoin="round"/>';
+    s+='<line x1="'+(e[0]-wheelR-6)+'" y1="'+(boxBottom+12)+'" x2="'+(e[3]+wheelR+6)+'" y2="'+(boxBottom+12)+'" stroke="'+stroke+'" stroke-width="'+sw+'"/>';
+    s+=e.map(function(x){return wheel(x,axleY,wheelR);}).join('');
+    s+='<path d="M'+(e[0]-wheelR-4)+' '+axleY+' Q'+((e[0]+e[2])/2)+' '+(boxBottom+2)+' '+(e[2]+wheelR+4)+' '+axleY+'" fill="none" stroke="'+stroke+'" stroke-width="1.6"/>';
+    s+='<path d="M'+(e[3]-wheelR-4)+' '+axleY+' Q'+e[3]+' '+(boxBottom+2)+' '+(e[3]+wheelR+4)+' '+axleY+'" fill="none" stroke="'+stroke+'" stroke-width="1.6"/>';
+    return {svg:s,W:W,frenteBau:boxX+boxW,rodaEsq:e[0]};
+  }
+  // ---------- SR3_ESP vanderleia 3 espacados ----------
+  function SR3_ESP(fw,uid){
+    const sw=2.2,W=LEN_LS4*SCALE,H=130,groundY=H-14,boxX=6,boxW=W-18,boxTop=16,boxH=64,boxBottom=boxTop+boxH;
+    const wheelR=13,axleGap=30,axleY=groundY-wheelR,saiaLeft=boxX+10,quadCenter=W*0.32;
+    const e0=saiaLeft+wheelR,e3=quadCenter+1.5*axleGap,eMeio=(e0+e3)/2,e=[e0,eMeio,e3];
+    let s=defs(uid)+cargo(uid,boxX,boxTop,boxW,boxH,fw);
+    s+='<rect x="'+boxX+'" y="'+boxTop+'" width="'+boxW+'" height="'+boxH+'" rx="3" fill="none" stroke="'+stroke+'" stroke-width="'+sw+'"/>'+ribs(boxX,boxTop,boxW,boxH);
+    s+='<path d="M'+(boxX+10)+' '+boxBottom+' L'+(boxX+10)+' '+(boxBottom+12)+' L'+(boxX+boxW-10)+' '+(boxBottom+12)+' L'+(boxX+boxW-10)+' '+boxBottom+'" fill="none" stroke="'+stroke+'" stroke-width="'+sw+'" stroke-linejoin="round"/>';
+    s+='<line x1="'+(e[0]-wheelR-6)+'" y1="'+(boxBottom+12)+'" x2="'+(e[2]+wheelR+6)+'" y2="'+(boxBottom+12)+'" stroke="'+stroke+'" stroke-width="'+sw+'"/>';
+    s+=e.map(function(x){return wheel(x,axleY,wheelR);}).join('');
+    e.forEach(function(x){s+='<path d="M'+(x-wheelR-3)+' '+axleY+' Q'+x+' '+(boxBottom+2)+' '+(x+wheelR+3)+' '+axleY+'" fill="none" stroke="'+stroke+'" stroke-width="1.6"/>';});
+    return {svg:s,W:W,frenteBau:boxX+boxW,rodaEsq:e[0]};
+  }
+  // ---------- DOLLY ----------
+  function DOLLY(uid){
+    const sw=2.2,W=LEN_DOLLY*SCALE,H=130,groundY=H-14,wheelR=13,axleY=groundY-wheelR;
+    const axleGap=30,center=W*0.40,eixo1=center-axleGap/2,eixo2=center+axleGap/2,axlesX=[eixo1,eixo2];
+    const deckY=axleY-wheelR-4,deckLeft=eixo1-wheelR-2,deckRight=eixo2+wheelR+6,fifthX=center,lancaTipX=W-3,lancaY=deckY+6;
+    let s='<rect x="'+deckLeft+'" y="'+deckY+'" width="'+(deckRight-deckLeft)+'" height="6" rx="1.5" fill="none" stroke="'+stroke+'" stroke-width="'+sw+'"/>';
+    s+='<line x1="'+deckRight+'" y1="'+(deckY+1)+'" x2="'+lancaTipX+'" y2="'+lancaY+'" stroke="'+stroke+'" stroke-width="'+sw+'"/>';
+    s+='<line x1="'+deckRight+'" y1="'+(deckY+5)+'" x2="'+lancaTipX+'" y2="'+lancaY+'" stroke="'+stroke+'" stroke-width="'+sw+'"/>';
+    s+='<circle cx="'+lancaTipX+'" cy="'+lancaY+'" r="4" fill="none" stroke="'+stroke+'" stroke-width="'+sw+'"/>';
+    s+='<line x1="'+(fifthX-18)+'" y1="'+deckY+'" x2="'+(fifthX+18)+'" y2="'+deckY+'" stroke="'+stroke+'" stroke-width="'+sw+'"/>';
+    s+='<path d="M'+(fifthX-13)+' '+deckY+' L'+(fifthX-13)+' '+(deckY-7)+' Q'+fifthX+' '+(deckY-13)+' '+(fifthX+13)+' '+(deckY-7)+' L'+(fifthX+13)+' '+deckY+'" fill="none" stroke="'+stroke+'" stroke-width="'+sw+'" stroke-linejoin="round"/>';
+    s+='<circle cx="'+fifthX+'" cy="'+(deckY-8)+'" r="3" fill="none" stroke="'+stroke+'" stroke-width="1.8"/>';
+    s+=axlesX.map(function(x){return wheel(x,axleY,wheelR);}).join('');
+    s+='<path d="M'+(eixo1-wheelR-3)+' '+axleY+' Q'+center+' '+(deckY+8)+' '+(eixo2+wheelR+3)+' '+axleY+'" fill="none" stroke="'+stroke+'" stroke-width="1.6"/>';
+    return {svg:s,W:W,fifthX:fifthX,lancaTip:lancaTipX,traseira:deckLeft};
+  }
+  // ---------- CAVALO (TR/TC) ----------
+  function CAVALO(tipo,uid){
+    const sw=2.2,thin=1.3,padLeft=22,bodyW=LEN_CM*SCALE,W=bodyW+padLeft,H=130,groundY=H-10;
+    const wheelR=14,axleY=groundY-wheelR,chassiY=groundY-26,Wd=bodyW;
+    const eixoDian=Wd*0.80,tandemGap=30,tB=Wd*0.30,tA=tB-tandemGap;
+    const axlesX=(tipo==='TC')?[tA,eixoDian]:[tA,tB,eixoDian],fifthX=tA;
+    const cabBack=Wd*0.50,cabFront=Wd-3,roofY=12,cabBottom=chassiY,beltline=roofY+30;
+    let s='<g transform="translate('+padLeft+',0)">';
+    s+='<line x1="'+(tA-wheelR-6)+'" y1="'+chassiY+'" x2="'+cabBack+'" y2="'+chassiY+'" stroke="'+stroke+'" stroke-width="'+sw+'"/>';
+    s+='<path d="M'+cabBack+' '+cabBottom+' L'+cabBack+' '+(roofY+6)+' Q'+cabBack+' '+roofY+' '+(cabBack+7)+' '+roofY+' L'+(Wd*0.80)+' '+(roofY-1)+' Q'+(Wd*0.875)+' '+(roofY-1)+' '+(Wd*0.90)+' '+(roofY+5)+' L'+(Wd*0.965)+' '+(beltline-2)+' Q'+(Wd*0.975)+' '+(beltline+2)+' '+(Wd*0.975)+' '+(beltline+8)+' L'+cabFront+' '+(beltline+12)+' L'+cabFront+' '+cabBottom+' Z" fill="none" stroke="'+stroke+'" stroke-width="'+sw+'" stroke-linejoin="round"/>';
+    s+='<path d="M'+(Wd*0.815)+' '+(roofY+3)+' L'+(Wd*0.885)+' '+(roofY+6)+' L'+(Wd*0.945)+' '+(beltline-2)+' L'+(Wd*0.815)+' '+(beltline-2)+' Z" fill="none" stroke="'+stroke+'" stroke-width="'+thin+'"/>';
+    s+='<rect x="'+(cabBack+18)+'" y="'+(roofY+4)+'" width="'+(Wd*0.22)+'" height="20" rx="2" fill="none" stroke="'+stroke+'" stroke-width="'+thin+'"/>';
+    s+='<rect x="'+(cabBack+5)+'" y="'+(roofY+4)+'" width="'+(Wd*0.085)+'" height="20" rx="2" fill="none" stroke="'+stroke+'" stroke-width="'+thin+'"/>';
+    s+='<path d="M'+cabBack+' '+cabBottom+' L'+(eixoDian-wheelR-8)+' '+cabBottom+' Q'+(eixoDian-wheelR-2)+' '+cabBottom+' '+(eixoDian-wheelR-2)+' '+(cabBottom-6)+' L'+(eixoDian-wheelR-2)+' '+(axleY-wheelR-2)+' Q'+eixoDian+' '+(axleY-wheelR-6)+' '+(eixoDian+wheelR+2)+' '+(axleY-wheelR-2)+' L'+(eixoDian+wheelR+4)+' '+cabBottom+'" fill="none" stroke="'+stroke+'" stroke-width="'+thin+'" stroke-linejoin="round" opacity="0.85"/>';
+    var grX=Wd*0.965,grTop=beltline+13,grBot=cabBottom-7;
+    s+='<line x1="'+grX+'" y1="'+grTop+'" x2="'+(cabFront-1)+'" y2="'+grTop+'" stroke="'+stroke+'" stroke-width="'+thin+'"/>';
+    var stX=(grX+cabFront)/2,stY=(grTop+grBot)/2;
+    s+='<circle cx="'+stX+'" cy="'+stY+'" r="4" fill="none" stroke="'+stroke+'" stroke-width="'+thin+'"/>';
+    s+='<rect x="'+(Wd*0.955)+'" y="'+(cabBottom-5)+'" width="'+(cabFront-Wd*0.955)+'" height="6" rx="1" fill="none" stroke="'+stroke+'" stroke-width="1.8"/>';
+    s+='<line x1="'+(Wd*0.82)+'" y1="'+(roofY+3)+'" x2="'+(Wd*0.80)+'" y2="'+(roofY-4)+'" stroke="'+stroke+'" stroke-width="1.6"/>';
+    s+='<rect x="'+(Wd*0.785)+'" y="'+(roofY-6)+'" width="3.5" height="13" rx="1.5" fill="none" stroke="'+stroke+'" stroke-width="'+thin+'"/>';
+    s+='<path d="M'+(cabBack+4)+' '+roofY+' L'+(Wd*0.60)+' '+roofY+' L'+(Wd*0.57)+' '+(roofY-5)+' L'+(cabBack+7)+' '+(roofY-5)+' Z" fill="none" stroke="'+stroke+'" stroke-width="1.4" stroke-linejoin="round"/>';
+    s+='<line x1="'+(cabBack-4)+'" y1="'+(roofY+2)+'" x2="'+(cabBack-4)+'" y2="'+cabBottom+'" stroke="'+stroke+'" stroke-width="2.4"/>';
+    var tkX=fifthX+22,tkW=Wd*0.18,tkY=chassiY+6,tkH=13;
+    s+='<rect x="'+tkX+'" y="'+tkY+'" width="'+tkW+'" height="'+tkH+'" rx="6" fill="none" stroke="'+stroke+'" stroke-width="1.5"/>';
+    s+=fifthWheel(fifthX,chassiY,sw);
+    s+=axlesX.map(function(x){return wheel(x,axleY,wheelR);}).join('');
+    s+='<path d="M'+(eixoDian-wheelR-3)+' '+axleY+' Q'+eixoDian+' '+(axleY-wheelR-4)+' '+(eixoDian+wheelR+3)+' '+axleY+'" fill="none" stroke="'+stroke+'" stroke-width="1.6"/>';
+    if(tipo==='TR'){s+='<path d="M'+(tA-wheelR-3)+' '+axleY+' Q'+((tA+tB)/2)+' '+(chassiY+1)+' '+(tB+wheelR+3)+' '+axleY+'" fill="none" stroke="'+stroke+'" stroke-width="1.6"/>';}
+    else{s+='<path d="M'+(tA-wheelR-3)+' '+axleY+' Q'+tA+' '+(axleY-wheelR-4)+' '+(tA+wheelR+3)+' '+axleY+'" fill="none" stroke="'+stroke+'" stroke-width="1.6"/>';}
+    s+='</g>';
+    return {svg:s,W:W,fifthX:padLeft+fifthX};
+  }
+  // ---------- RIGIDO (RIG2 TR/TC, RIG3 A/B) ----------
+  function RIGIDO(fw,modelo,uid){
+    const sw=2.2,thin=1.3;
+    const LEN=(modelo==='RIG3A'||modelo==='RIG3B')?LEN_RIG3:LEN_RIG2;
+    const W=LEN*SCALE,H=130,groundY=H-10,wheelR=14,axleY=groundY-wheelR,chassiY=groundY-26;
+    const cabLen=2.8*SCALE,cabFront=W-3,cabBack=W-cabLen,roofY=12,cabBottom=chassiY,beltline=roofY+30;
+    const boxX=6,boxRight=cabBack-4,boxW=boxRight-boxX,boxTop=16,boxH=64,boxBottom=boxTop+boxH;
+    const eixoDian=cabBack+cabLen*0.62,axleGap=30;
+    let traseiros,dianteiros;
+    if(modelo==='RIG2TR'){const tc=W*0.22;traseiros=[tc-axleGap/2,tc+axleGap/2];dianteiros=[eixoDian];}
+    else if(modelo==='RIG2TC'){const tc=W*0.22;traseiros=[tc];dianteiros=[eixoDian];}
+    else if(modelo==='RIG3A'){const tc=W*0.20;traseiros=[tc-axleGap,tc,tc+axleGap];dianteiros=[eixoDian];}
+    else{const tc=W*0.18;traseiros=[tc-axleGap/2,tc+axleGap/2];dianteiros=[eixoDian-1.6*axleGap,eixoDian];}
+    const axlesX=traseiros.concat(dianteiros);
+    let s=defs(uid);
+    var allSorted=axlesX.slice().sort(function(a,b){return a-b;});
+    s+='<line x1="'+(allSorted[0]-wheelR-6)+'" y1="'+chassiY+'" x2="'+(eixoDian+wheelR)+'" y2="'+chassiY+'" stroke="'+stroke+'" stroke-width="'+sw+'"/>';
+    s+=cargo(uid,boxX,boxTop,boxW,boxH,fw);
+    s+='<rect x="'+boxX+'" y="'+boxTop+'" width="'+boxW+'" height="'+boxH+'" rx="3" fill="none" stroke="'+stroke+'" stroke-width="'+sw+'"/>'+ribs(boxX,boxTop,boxW,boxH);
+    s+='<path d="M'+(boxX+10)+' '+boxBottom+' L'+(boxX+10)+' '+(boxBottom+12)+' L'+(boxX+boxW-10)+' '+(boxBottom+12)+' L'+(boxX+boxW-10)+' '+boxBottom+'" fill="none" stroke="'+stroke+'" stroke-width="'+sw+'" stroke-linejoin="round"/>';
+    s+='<path d="M'+cabBack+' '+cabBottom+' L'+cabBack+' '+(roofY+6)+' Q'+cabBack+' '+roofY+' '+(cabBack+7)+' '+roofY+' L'+(cabBack+cabLen*0.62)+' '+(roofY-1)+' Q'+(cabBack+cabLen*0.78)+' '+(roofY-1)+' '+(cabBack+cabLen*0.83)+' '+(roofY+5)+' L'+(cabBack+cabLen*0.95)+' '+(beltline-2)+' Q'+(cabFront-2)+' '+(beltline+2)+' '+(cabFront-2)+' '+(beltline+8)+' L'+cabFront+' '+(beltline+12)+' L'+cabFront+' '+cabBottom+' Z" fill="none" stroke="'+stroke+'" stroke-width="'+sw+'" stroke-linejoin="round"/>';
+    s+='<path d="M'+(cabBack+cabLen*0.66)+' '+(roofY+3)+' L'+(cabBack+cabLen*0.80)+' '+(roofY+6)+' L'+(cabBack+cabLen*0.92)+' '+(beltline-2)+' L'+(cabBack+cabLen*0.66)+' '+(beltline-2)+' Z" fill="none" stroke="'+stroke+'" stroke-width="'+thin+'"/>';
+    s+='<rect x="'+(cabBack+8)+'" y="'+(roofY+4)+'" width="'+(cabLen*0.45)+'" height="20" rx="2" fill="none" stroke="'+stroke+'" stroke-width="'+thin+'"/>';
+    s+='<path d="M'+cabBack+' '+cabBottom+' L'+(eixoDian-wheelR-8)+' '+cabBottom+' Q'+(eixoDian-wheelR-2)+' '+cabBottom+' '+(eixoDian-wheelR-2)+' '+(cabBottom-6)+' L'+(eixoDian-wheelR-2)+' '+(axleY-wheelR-2)+' Q'+eixoDian+' '+(axleY-wheelR-6)+' '+(eixoDian+wheelR+2)+' '+(axleY-wheelR-2)+' L'+(eixoDian+wheelR+4)+' '+cabBottom+'" fill="none" stroke="'+stroke+'" stroke-width="'+thin+'" stroke-linejoin="round" opacity="0.85"/>';
+    var grX=cabBack+cabLen*0.95,grTop=beltline+13,grBot=cabBottom-7;
+    s+='<line x1="'+grX+'" y1="'+grTop+'" x2="'+(cabFront-1)+'" y2="'+grTop+'" stroke="'+stroke+'" stroke-width="'+thin+'"/>';
+    var stX=(grX+cabFront)/2,stY=(grTop+grBot)/2;
+    s+='<circle cx="'+stX+'" cy="'+stY+'" r="4" fill="none" stroke="'+stroke+'" stroke-width="'+thin+'"/>';
+    s+='<rect x="'+(cabFront-cabLen*0.10)+'" y="'+(cabBottom-5)+'" width="'+(cabLen*0.10)+'" height="6" rx="1" fill="none" stroke="'+stroke+'" stroke-width="1.8"/>';
+    s+='<line x1="'+(cabBack-3)+'" y1="'+(roofY+2)+'" x2="'+(cabBack-3)+'" y2="'+cabBottom+'" stroke="'+stroke+'" stroke-width="2.4"/>';
+    s+=axlesX.map(function(x){return wheel(x,axleY,wheelR);}).join('');
+    dianteiros.forEach(function(x){s+='<path d="M'+(x-wheelR-3)+' '+axleY+' Q'+x+' '+(axleY-wheelR-4)+' '+(x+wheelR+3)+' '+axleY+'" fill="none" stroke="'+stroke+'" stroke-width="1.6"/>';});
+    var trS=traseiros.slice().sort(function(a,b){return a-b;});
+    s+='<path d="M'+(trS[0]-wheelR-3)+' '+axleY+' Q'+((trS[0]+trS[trS.length-1])/2)+' '+(chassiY+1)+' '+(trS[trS.length-1]+wheelR+3)+' '+axleY+'" fill="none" stroke="'+stroke+'" stroke-width="1.6"/>';
+    return {svg:s,W:W};
+  }
+
+  global.SkinsLib={SCALE:SCALE,SR3:SR3,SR2:SR2,SR2L_B:SR2L_B,SR_LS4:SR_LS4,SR3_ESP:SR3_ESP,DOLLY:DOLLY,CAVALO:CAVALO,RIGIDO:RIGIDO};
+})(typeof window!=='undefined'?window:global);
+
+if(typeof module!=='undefined') module.exports=(typeof window!=='undefined'?window.SkinsLib:global.SkinsLib);
+
+</script>
+<script>
+// ══════════════════════════════════════════════════
+// CONSTANTS & DATA
+// ══════════════════════════════════════════════════
+const TARGET=13.75, TLO=13.4, THI=14.0, KG_SC=60, DEFAULT_SC=880;
+
+const SILOS_RAW={
+  "11":{lote:"9",cap:3000,u:[16.5,16.3,15.0,15.4,14.7,14.5,14.6,14.3],x:527124,y:8602557},
+  "12":{lote:"9",cap:3000,u:[15.0,14.9,14.8,14.3,14.4,14.3],x:526968,y:8602160},
+  "13":{lote:"9",cap:3000,u:[13.6,13.5,13.7,16.2,13.9,14.0,14.0,15.7,15.8],x:526230,y:8603633},
+  "14":{lote:"SEDE",cap:3000,u:[13.6,13.7,14.2,14.6,13.7,14.4,13.8],x:533167,y:8604746},
+  "15":{lote:"9",cap:3000,u:[19.5,18.4,19.0,17.9,18.0,18.0,16.8,16.8,16.9,16.8],x:526826,y:8601732},
+  "16":{lote:"9",cap:3000,u:[15.6,15.7,14.8,14.7,15.1,14.7,14.7],x:526629,y:8601234},
+  "20":{lote:"1",cap:3000,u:[12.1,11.9,12.0,12.0,14.0,15.4,13.2],x:528224,y:8607201},
+  "22":{lote:"13",cap:3000,u:[10.9,10.9,11.4,10.9,10.9,10.8,10.7,10.7,10.7,10.6,10.6,10.3],x:526340,y:8600128},
+  "23":{lote:"13",cap:3000,u:[13.0,12.9,12.5,12.3,12.4,13.4,11.9,11.8,11.9,11.9],x:525336,y:8599567},
+  "24":{lote:"13",cap:3000,u:[12.3,12.3,12.2,12.5,13.0,11.6,11.6,11.6,11.6,11.3,11.3,11.3],x:526930,y:8601730},
+  "26":{lote:"-",cap:3000,u:[14.1,13.6,12.5,12.5,12.7,12.5],x:527179,y:8602371},
+  "29":{lote:"4",cap:3000,u:[13.4,13.6,13.6,13.2,13.3,13.3,12.9],x:526058,y:8603235},
+  "31":{lote:"2",cap:3750,u:[15.3,14.5,13.8,12.8,12.6,12.8,12.1,12.2,12.2,12.2],x:528767,y:8607470},
+  "32":{lote:"8",cap:3750,u:[14.6,13.8,14.1,14.0],x:528841,y:8604647},
+  "34":{lote:"14",cap:3750,u:[13.7,12.3,12.9,12.4,12.2,12.2,11.8],x:527665,y:8600700},
+  "35":{lote:"2",cap:3750,u:[9.4,10.2,9.5,10.4,14.1,14.2,13.4,13.3,12.6,12.6],x:529466,y:8607811},
+  "36A":{lote:"14",cap:2000,u:[11.5,10.7,11.1,10.1,11.3],x:528130,y:8600219},
+  "36B":{lote:"10",cap:1000,u:[11.3,10.1,11.0],x:528380,y:8602318},
+  "37":{lote:"L.02",cap:3750,u:[12.1,13.1,12.1,12.7,12.1,11.9,12.5,12.5,13.1],x:530197,y:8609207},
+  "39":{lote:"8",cap:3750,u:[12.7,12.1,12.1,12.0,12.6,11.3,11.3,12.1,11.4,11.5,11.3],x:528537,y:8606086},
+  "41":{lote:"SEDE",cap:3750,u:[14.7,16.1,14.5,14.5,13.9,13.4],x:532493,y:8605311},
+  "42":{lote:"-",cap:3750,u:[12.0,11.4,10.8,10.9,11.4],x:528497,y:8607340},
+  "43":{lote:"2",cap:3750,u:[13.3,13.3,13.8,14.1,12.9,13.0],x:527945,y:8607061},
+  "44":{lote:"SEDE",cap:3750,u:[14.7,14.5,14.0],x:532147,y:8602619},
+  "45":{lote:"2",cap:3750,u:[13.9,14.5,14.4,14.9,14.9,12.3,12.4,12.2],x:530906,y:8604565},
+  "46":{lote:"2",cap:3750,u:[12.4,12.4,12.4,12.1,12.2],x:527812,y:8604112},
+  "48":{lote:"6",cap:3000,u:[11.3,12.1,12.1],x:529086,y:8606138},
+  "49":{lote:"6",cap:3000,u:[11.5,11.6,11.6,11.2,10.7,10.7],x:529984,y:8606299},
+  "50":{lote:"2",cap:3000,u:[10.2,11.3,11.3,12.1,10.7,9.8,9.9,10.4,10.1],x:529195,y:8607675},
+  "51":{lote:"12",cap:3000,u:[9.8,9.9,9.9,9.9,10.6,10.6],x:531431,y:8602138},
+  "52":{lote:"8",cap:3000,u:[10.9,10.1,10.1,10.1,10.4,10.3,10.2],x:528862,y:8603434},
+  "62":{lote:"8",cap:3000,u:[12.5,12.1,12.1,12.1,12.1,12.1,12.1,12.1],x:529579,y:8603586},
+  "63":{lote:"14",cap:1500,u:[13.1,12.9,12.4],x:528642,y:8599383},
+  "65":{lote:"8",cap:3000,u:[13.2,14.0,13.2,13.2,13.1,13.0,12.6],x:530266,y:8603644},
+  "67A":{lote:"4",cap:1800,u:[12.9,14.3,13.5,12.7,14.1,12.4,12.3],x:528536,y:8604591},
+  "69":{lote:"MARCELO",cap:3750,u:[15.7,13.0,14.3,11.0],x:532023,y:8601007},
+  "70":{lote:"2",cap:3750,u:[14.1,13.9,13.4,13.2],x:528978,y:8607574},
+  "70B":{lote:"SEDE",cap:3750,u:[11.7,11.7,11.7,11.7],x:530940,y:8604368},
+  "75":{lote:"-",cap:3200,u:[12.8,11.7],x:531566,y:8601403},
+  "77":{lote:"MARCELO",cap:3200,u:[13.6,12.0,12.0],x:533346,y:8601207},
+  "78":{lote:"12",cap:3200,u:[12.2,12.2,12.0,11.3,13.1],x:532364,y:8601183},
+  "101":{lote:"12",cap:3200,u:[13.8,13.0,12.5,13.9,13.2,12.7,11.6],x:532834,y:8601259},
+  "102":{lote:"2",cap:3200,u:[14.3,14.8,14.0,14.0,14.0],x:529741,y:8607954},
+};
+
+// Initialize SILOS with computed fields
+const SILOS={};
+for(const id in SILOS_RAW){
+  const r=SILOS_RAW[id];
+  SILOS[id]={...r, id,
+    umean:r.u.reduce((a,b)=>a+b,0)/r.u.length,
+    qtd_est:r.cap, qtd_real_debit:0
+  };
+}
+
+// Classificação por SEGMENTO (não por média):
+//  ÚMIDO  = tem segmento acima de SEG_ALTO (=THI, 14%) que NÃO se enquadre na exceção
+//  SECO   = sem segmento alto E média < TLO (13,4%)
+//  FAIXA  = sem segmento alto E média entre TLO e THI (13,4-14%)
+// EXCEÇÃO: silo com pico levemente acima de 14% fica na FAIXA (não vai p/ úmido) se:
+//   - o pico mais alto não passa de SEG_EXC_MAX (14,3%), E
+//   - a soma de TODOS os segmentos acima de 14% é ≤ SEG_EXC_SC (700 sc)
+const SEG_ALTO=THI;          // 14 — teto da faixa ideal
+const SEG_EXC_MAX=14.3;      // pico tolerado pela exceção
+const SEG_EXC_SC=700;        // soma máx (sc) dos segmentos acima de 14%
+function temSegAlto(s){
+  const altos=s.u.filter(x=>x>SEG_ALTO);
+  if(altos.length===0) return false;               // nenhum segmento alto
+  const picoMax=Math.max(...altos);
+  // sacas por segmento = capacidade / nº de segmentos
+  const scPorSeg=(s.qtd_est||s.cap||0)/s.u.length;
+  const scAltos=altos.length*scPorSeg;             // soma sc dos segmentos > 14%
+  // exceção: pico pequeno e pouca quantidade -> NÃO conta como úmido (fica na faixa)
+  if(picoMax<=SEG_EXC_MAX && scAltos<=SEG_EXC_SC) return false;
+  return true;                                     // úmido de verdade
+}
+const UMIDOS=Object.values(SILOS).filter(s=>temSegAlto(s)).sort((a,b)=>b.umean-a.umean);
+const SECOS =Object.values(SILOS).filter(s=>!temSegAlto(s)&&s.umean<TLO).sort((a,b)=>a.umean-b.umean);
+const FAIXA =Object.values(SILOS).filter(s=>!temSegAlto(s)&&s.umean>=TLO&&s.umean<=THI);
+
+// ── STATE ──
+const S={
+  date: new Date().toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit',year:'numeric'}),
+  wetId:null, dryId:null,
+  wsegs:null, dsegs:null,
+  loads:[],          // confirmed loads
+  trucks:[],         // truck queue (PÁTIO)
+  emCarregamento:[], // caminhões no PÁTIO (carregando)
+  finalizados:[],    // caminhões FINALIZADOS (procedência a confirmar)
+  simMode:'patio',   // modo da Mistura de Silos: patio | aleatorio | manual
+  simTrucks:[],      // fila de caminhões da simulação (modos aleatório/manual)
+  armazem:{ sc:50000, umean:13.0, cap:120000 },  // pulmão rotativo (entra e sai)
+  transportadoras:[], produtos:[],  // cadastros (autocomplete)
+  wmLoadId:null,     // which load is being weighted
+  orphanChoice:null,
+};
+
+// ══════════════════════════════════════════════════
+// SEGMENTS ENGINE
+// ══════════════════════════════════════════════════
+function buildSegs(sid){
+  const s=SILOS[sid]; const n=s.u.length; const sc=s.qtd_est/n;
+  return [...s.u].reverse().map((u,i)=>({u,rem:sc,total:sc,label:`A${n-i}`}));
+}
+function peekU(segs){const f=segs.find(s=>s.rem>0.1);return f?f.u:null;}
+function avail(segs){return segs.reduce((a,s)=>a+s.rem,0);}
+function extract(segs,need){
+  let got=0,wu=0,det=[];
+  for(const s of segs){
+    if(s.rem<=0.1) continue;
+    const take=Math.min(s.rem,need-got);
+    s.rem-=take; got+=take; wu+=take*s.u;
+    const ex=det.find(d=>d.label===s.label);
+    if(ex) ex.sc+=Math.round(take); else det.push({label:s.label,u:s.u,sc:Math.round(take)});
+    if(got>=need-0.1) break;
+  }
+  return{got,u:got>0?wu/got:0,det};
+}
+function nextCap(){
+  const waiting=S.trucks.filter(t=>t.status==='waiting');
+  return waiting.length>0?waiting[0].sc:DEFAULT_SC;
+}
+function nextTruck(){
+  return S.trucks.find(t=>t.status==='waiting')||null;
+}
+function calcNext(){
+  if(!S.wsegs||!S.dsegs) return null;
+  const uw=peekU(S.wsegs), ud=peekU(S.dsegs);
+  const wa=avail(S.wsegs), da=avail(S.dsegs);
+  if(uw===null) return{type:'WET_DONE'};
+  if(ud===null) return{type:'DRY_DONE',wa:Math.round(wa)};
+  const cap=nextCap();
+  if(uw<=THI){
+    let nw=Math.min(cap,wa);
+    return{type:'PURE',nw:Math.round(nw),nd:0,tot:Math.round(nw),uw,ud:null,ures:uw,ok:uw>=TLO&&uw<=THI,cap};
+  }
+  if(ud>=THI) return{type:'CANT',uw,ud};
+  let fw=(TARGET-ud)/(uw-ud); fw=Math.max(0.05,Math.min(0.95,fw));
+  let nw=cap*fw, nd=cap*(1-fw);
+  if(nw>wa){nw=wa; nd=fw<1?nw*(1-fw)/fw:0;}
+  if(nd>da){nd=da; nw=(1-fw)>0?nd*fw/(1-fw):0;}
+  const tot=nw+nd; if(tot<5) return{type:'DONE'};
+  const ures=(nw*uw+nd*ud)/tot;
+  return{type:'MIX',fw,nw:Math.round(nw),nd:Math.round(nd),tot:Math.round(tot),uw,ud,ures:+ures.toFixed(2),ok:ures>=TLO&&ures<=THI,cap};
+}
+
+// ══════════════════════════════════════════════════
+// COLOR HELPERS
+// ══════════════════════════════════════════════════
+// ── PALETA DE UMIDADE ──
+// Escala real da safra: 8% (mais SECO) a 25% (mais ÚMIDO).
+// Cor: AMARELO (seco) -> VERDE (úmido). Faixa-alvo (13,4-14%) destacada em verde vivo.
+const U_MIN=8, U_MAX=25;
+// Escala com âncoras reais e verdes espalhados na faixa úmida (16-19,5%):
+//   VERMELHO 8-10% | AMARELO no alvo ~13,75% | VERDE-CLARO 16% -> VERDE ESCURO B4 19,5%
+function uHSLparts(u){
+  const A_SEC=10, A_MID=13.75, A_VCL=16, A_VESC=19.5;
+  let h,s,l;
+  if(u<=A_SEC){ h=0; s=75; l=50; }                       // vermelho
+  else if(u<A_MID){                                       // vermelho -> amarelo
+    const k=(u-A_SEC)/(A_MID-A_SEC);
+    h=0+(55-0)*k; s=75+(78-75)*k; l=50+(52-50)*k;
+  } else if(u<A_VCL){                                      // amarelo -> verde-claro
+    const k=(u-A_MID)/(A_VCL-A_MID);
+    h=55+(115-55)*k; s=78+(80-78)*k; l=52+(46-52)*k;      // verde-claro: hue115, lum46
+  } else if(u<A_VESC){                                     // verde-claro -> verde escuro B4
+    const k=(u-A_VCL)/(A_VESC-A_VCL);
+    h=115+(156-115)*k; s=80+(82-80)*k; l=46+(15-46)*k;    // 46% -> 15% (gradual)
+  } else { h=156; s=82; l=15; }                            // B4 (>=19,5%)
+  return {h,s,l};
+}
+function uHue(u){ return uHSLparts(u).h; }
+function uHSL(u){
+  const c=uHSLparts(u);
+  return `hsl(${c.h.toFixed(0)},${c.s.toFixed(0)}%,${c.l.toFixed(0)}%)`;
+}
+function uColor(u){
+  return uHSL(u);   // alvo (~13,75) já cai no amarelo pela escala
+}
+function segGrad(ctx,x,y,w,h,u){
+  const g=ctx.createLinearGradient(x,y,x,y+h);
+  const c=uHSLparts(u);
+  g.addColorStop(0, `hsl(${c.h.toFixed(0)},${c.s.toFixed(0)}%,${(c.l+6).toFixed(0)}%)`);
+  g.addColorStop(1, `hsl(${c.h.toFixed(0)},${c.s.toFixed(0)}%,${Math.max(8,c.l-6).toFixed(0)}%)`);
+  return g;
+}
+
+// ══════════════════════════════════════════════════
+// SILO BOLSA CANVAS RENDERER
+// ══════════════════════════════════════════════════
+function drawSiloBolsa(canvasId, segs, sid){
+  const el=document.getElementById(canvasId);
+  if(!el) return;
+  const wrap=el.parentElement;
+  const W=wrap.clientWidth||600, H=44;
+  el.width=W; el.height=H;
+  const ctx=el.getContext('2d');
+  ctx.clearRect(0,0,W,H);
+
+  const n=segs.length;
+  const rx=H/2; // end cap radius
+  const bodyX=rx, bodyW=W-rx*2;
+  const segW=bodyW/n;
+
+  // Draw background pill shape
+  ctx.fillStyle='#0a1220';
+  _drawPill(ctx,0,0,W,H,rx);
+  ctx.fill();
+
+  // Draw segment fills
+  segs.forEach((seg,i)=>{
+    const x=bodyX+i*segW;
+    const consumed=1-(seg.rem/seg.total);
+    const alpha=0.15+seg.rem/seg.total*0.85;
+
+    // Full color block
+    ctx.save();
+    ctx.globalAlpha=alpha;
+    // clip to pill
+    ctx.beginPath(); _drawPill(ctx,0,0,W,H,rx); ctx.clip();
+    const fill=segGrad(ctx,x,0,segW,H,seg.u);
+    ctx.fillStyle=fill;
+    ctx.fillRect(x,0,segW+1,H);
+    ctx.restore();
+
+    // Consumed dark overlay (left side of segment)
+    if(consumed>0.02){
+      ctx.save();
+      ctx.globalAlpha=Math.min(0.7,consumed*0.9);
+      ctx.beginPath(); _drawPill(ctx,0,0,W,H,rx); ctx.clip();
+      ctx.fillStyle='#000';
+      ctx.fillRect(x,0,segW*consumed,H);
+      ctx.restore();
+    }
+
+    // Divider line
+    if(i>0){
+      ctx.save();
+      ctx.beginPath(); _drawPill(ctx,0,0,W,H,rx); ctx.clip();
+      ctx.strokeStyle='rgba(0,0,0,0.35)';
+      ctx.lineWidth=1;
+      ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,H); ctx.stroke();
+      ctx.restore();
+    }
+
+    // Label
+    if(segW>28){
+      ctx.save();
+      ctx.globalAlpha=0.9;
+      ctx.font=`bold ${Math.min(11,segW/3)}px monospace`;
+      ctx.fillStyle='rgba(255,255,255,0.88)';
+      ctx.textAlign='center'; ctx.textBaseline='middle';
+      ctx.fillText(seg.u.toFixed(1), x+segW/2, H/2);
+      ctx.restore();
+    } else if(segW>14){
+      ctx.save(); ctx.globalAlpha=0.7;
+      ctx.font='9px monospace'; ctx.fillStyle='#fff';
+      ctx.textAlign='center'; ctx.textBaseline='middle';
+      ctx.fillText(seg.u.toFixed(0), x+segW/2, H/2);
+      ctx.restore();
+    }
+  });
+
+  // Remaining % bar at bottom
+  const totalRem=avail(segs), totalCap=segs.reduce((a,s)=>a+s.total,0);
+  const remPct=totalRem/totalCap;
+  ctx.save();
+  ctx.globalAlpha=0.5;
+  ctx.beginPath(); _drawPill(ctx,0,0,W,H,rx); ctx.clip();
+  ctx.fillStyle='rgba(255,255,255,0.04)';
+  ctx.fillRect(0,H-4,W,4);
+  const gc=ctx.createLinearGradient(0,0,W*remPct,0);
+  gc.addColorStop(0,uColor(segs[0]?.u||13));
+  gc.addColorStop(1,'rgba(255,255,255,0.3)');
+  ctx.fillStyle=gc;
+  ctx.fillRect(0,H-4,W*remPct,4);
+  ctx.restore();
+
+  // Outline
+  ctx.strokeStyle='#2a4570'; ctx.lineWidth=1.5;
+  ctx.beginPath(); _drawPill(ctx,0,0,W,H,rx); ctx.stroke();
+
+  // Direction arrows
+  ctx.font='11px sans-serif'; ctx.fillStyle='#3d5a80';
+  ctx.textAlign='left'; ctx.textBaseline='middle';
+  ctx.fillText('◄',4,H/2);
+  ctx.textAlign='right';
+  ctx.fillText('►',W-4,H/2);
+}
+
+function _drawPill(ctx,x,y,w,h,r){
+  ctx.beginPath();
+  ctx.arc(x+r,y+r,r,Math.PI,1.5*Math.PI);
+  ctx.arc(x+w-r,y+r,r,-0.5*Math.PI,0);
+  ctx.arc(x+w-r,y+h-r,r,0,0.5*Math.PI);
+  ctx.arc(x+r,y+h-r,r,0.5*Math.PI,Math.PI);
+  ctx.closePath();
+}
+
+// ══════════════════════════════════════════════════
+// TRUCK CANVAS RENDERER
+// ══════════════════════════════════════════════════
+// ══════════════════════════════════════════════════════════════
+// VEHICLE LAYOUTS — based on real Brazilian CONTRAN/DNIT specs
+// All measurements in METERS (real-world), scaled to px uniformly.
+// Frente do veículo = DIREITA. Carga entra pela esquerda.
+// Coordinate origin (x=0) at REAR of vehicle, increasing toward front (cab).
+// ══════════════════════════════════════════════════════════════
+// ══════════════════════════════════════════════════════════════
+// RENDERIZACAO DE VEICULO via SkinsLib (SVG line-art validado)
+// Frente = DIREITA. Carga (umido/seco) preenche os baus conforme fw.
+// ══════════════════════════════════════════════════════════════
+let _skinUid=0; function _su(){return 'tv'+(_skinUid++);}
+
+// Mapeia o "type" do caminhao (texto do select) para uma composicao da lib
+function buildVehicleSVG(typeStr, fw, uw, ud, fills, fwArr, uwArr, udArr){
+  const L=window.SkinsLib, SCALE=L.SCALE, J_AC=39, GROUND_Y=116;
+  window._skinUW = (uw!=null)?uw:null;   // umidade média do bloco ÚMIDO (fallback)
+  window._skinUD = (ud!=null)?ud:null;   // umidade média do bloco SECO (fallback)
+  window._skinFills = Array.isArray(fills)?fills:null;  // nível de cada caçamba (0..1)
+  window._skinFwArr = Array.isArray(fwArr)?fwArr:null;  // fração úmida de cada caçamba
+  window._skinUwArr = Array.isArray(uwArr)?uwArr:null;  // umidade úmida de cada caçamba
+  window._skinUdArr = Array.isArray(udArr)?udArr:null;  // umidade seca de cada caçamba
+  window._skinFillIdx = 0;               // contador de caçamba (consumido pela cargo)
+  const t=(typeStr||'').toLowerCase();
+  // NÃO resetar _skinUid: ids de gradiente precisam ser únicos entre TODAS as skins
+  // da página, senão o navegador reusa o 1º gradiente e todas as cargas ficam iguais.
+
+  function compose(parts){
+    let minX=Infinity,maxX=-Infinity;
+    parts.forEach(function(p){minX=Math.min(minX,p.x);maxX=Math.max(maxX,p.x+p.W);});
+    const left=minX-6,right=maxX+6,W=right-left,H=130;
+    let svg='<svg viewBox="'+left+' 0 '+W+' '+H+'" width="100%" height="100%" preserveAspectRatio="xMidYMid meet" xmlns="http://www.w3.org/2000/svg">';
+    svg+='<line x1="'+left+'" y1="'+GROUND_Y+'" x2="'+right+'" y2="'+GROUND_Y+'" stroke="#cfd8e3" stroke-width="2.2" stroke-linecap="round" opacity="0.4"/>';
+    parts.forEach(function(p){svg+='<g transform="translate('+p.x+',0)">'+p.svg+'</g>';});
+    svg+='</svg>'; return svg;
+  }
+  function carreta(tipoCav){ const SR=L.SR3(fw,'B',_su()),C=L.CAVALO(tipoCav,_su());
+    const offC=0,offSR=(offC+C.fifthX)-SR.frenteBau+J_AC;
+    return compose([{svg:SR.svg,x:offSR,W:SR.W},{svg:C.svg,x:offC,W:C.W}]); }
+  function vanderleia(tipoCav){ const SR=L.SR3_ESP(fw,_su()),C=L.CAVALO(tipoCav,_su());
+    const offC=0,offSR=(offC+C.fifthX)-SR.frenteBau+J_AC;
+    return compose([{svg:SR.svg,x:offSR,W:SR.W},{svg:C.svg,x:offC,W:C.W}]); }
+  function ls4(tipoCav){ const SR=L.SR_LS4(fw,_su()),C=L.CAVALO(tipoCav,_su());
+    const offC=0,offSR=(offC+C.fifthX)-SR.frenteBau+J_AC;
+    return compose([{svg:SR.svg,x:offSR,W:SR.W},{svg:C.svg,x:offC,W:C.W}]); }
+  function bitrem9(){ const B=L.SR3(fw,'B',_su()),A=L.SR3(fw,'A',_su()),C=L.CAVALO('TR',_su());
+    const offC=0,offA=(offC+C.fifthX)-A.frenteBau+J_AC,offB=(offA+A.rodaMeio)-B.frenteBau;
+    return compose([{svg:B.svg,x:offB,W:B.W},{svg:A.svg,x:offA,W:A.W},{svg:C.svg,x:offC,W:C.W}]); }
+  function bitrem7(){ const B=L.SR2(fw,'B',_su()),A=L.SR2(fw,'A',_su()),C=L.CAVALO('TR',_su());
+    const offC=0,offA=(offC+C.fifthX)-A.frenteBau+J_AC,offB=(offA+A.rodaMeio)-B.frenteBau;
+    return compose([{svg:B.svg,x:offB,W:B.W},{svg:A.svg,x:offA,W:A.W},{svg:C.svg,x:offC,W:C.W}]); }
+  function tritrem(){ const C=L.CAVALO('TR',_su()),A1=L.SR2(fw,'A',_su()),A2=L.SR2(fw,'A',_su()),B3=L.SR2(fw,'B',_su());
+    const offC=0,offA1=(offC+C.fifthX)-A1.frenteBau+J_AC,offA2=(offA1+A1.rodaMeio)-A2.frenteBau,offB3=(offA2+A2.rodaMeio)-B3.frenteBau;
+    return compose([{svg:B3.svg,x:offB3,W:B3.W},{svg:A2.svg,x:offA2,W:A2.W},{svg:A1.svg,x:offA1,W:A1.W},{svg:C.svg,x:offC,W:C.W}]); }
+  function rodotrem(){ const C=L.CAVALO('TR',_su()),C1=L.SR2L_B(fw,_su()),D=L.DOLLY(_su()),C2=L.SR2L_B(fw,_su());
+    const offC=0,offC1=(offC+C.fifthX)-C1.frenteBau+J_AC,offD=(offC1+C1.traseiraBau)-D.lancaTip+13,offC2=(offD+D.fifthX)-C2.frenteBau+15;
+    return compose([{svg:C2.svg,x:offC2,W:C2.W},{svg:D.svg,x:offD,W:D.W},{svg:C1.svg,x:offC1,W:C1.W},{svg:C.svg,x:offC,W:C.W}]); }
+  function rigido(modelo){ const R=L.RIGIDO(fw,modelo,_su()); return compose([{svg:R.svg,x:0,W:R.W}]); }
+
+  // roteamento por nome
+  if(t.includes('rodotrem')) return {svg:rodotrem(), nBaus:2, label:'Rodotrem'};
+  if(t.includes('tritrem')) return {svg:tritrem(), nBaus:3, label:'Tritrem'};
+  if(t.includes('bitrem')){ if(t.includes('9')) return {svg:bitrem9(),nBaus:2,label:'Bitrem 9'}; return {svg:bitrem7(),nBaus:2,label:'Bitrem 7'}; }
+  if(t.includes('vanderleia')||t.includes('vanderléia')) return {svg:vanderleia(t.includes('toco')?'TC':'TR'),nBaus:1,label:'Vanderleia'};
+  if(t.includes('ls')) return {svg:ls4(t.includes('toco')?'TC':'TR'),nBaus:1,label:'LS4'};
+  if(t.includes('bitruck')){ if(t.includes('2+2')) return {svg:rigido('RIG3B'),nBaus:1,label:'Bitruck'}; return {svg:rigido('RIG3A'),nBaus:1,label:'Bitruck'}; }
+  if(t.includes('treminh')) return {svg:bitrem7(),nBaus:2,label:'Treminhao'};   // fallback
+  if(t.includes('truck')){ if(t.includes('toco')) return {svg:rigido('RIG2TC'),nBaus:1,label:'Truck toco'}; return {svg:rigido('RIG2TR'),nBaus:1,label:'Truck'}; }
+  if(t.includes('carreta')){ return {svg:carreta(t.includes('toco')?'TC':'TR'),nBaus:1,label:'Carreta'}; }
+  // default
+  return {svg:bitrem9(), nBaus:2, label:'Bitrem'};
+}
+
+
+// ══════════════════════════════════════════════════════════════
+// PROJECAO DE CARGAS — ao selecionar o par, projeta TODAS as cargas
+// ate um dos silos acabar. Prioridade: fila (ordem cadastrada) -> rodotrem padrao.
+// Ajuste fino por CACAMBA. Meta: zerar o umido.
+// ══════════════════════════════════════════════════════════════
+
+// numero de caçambas e capacidade por tipo
+
+// ══════════════════════════════════════════════════════════════
+// PROJECAO DE CARGAS v2 — media global + compensacao
+// Distribui o umido de forma equilibrada respeitando o fluxo sequencial
+// dos silos, garantindo que NENHUMA carga estoure (>THI). Sintonia
+// fina AUTOMATICA. Limitante: ate um dos dois silos acabar.
+// ══════════════════════════════════════════════════════════════
+
+// ══════════════════════════════════════════════════════════════
+// ENGINE DE FILAS DE CARREGAMENTO (nova abordagem)
+// Filas: wetQueue / dryQueue (silos selecionados, em ordem).
+// Consome em paralelo, passa automatico entre silos da mesma fila.
+// Caminhoes: cheios -> parcial -> vazios conforme a soja das filas.
+// Fallback sem mistura quando falta um componente.
+// ══════════════════════════════════════════════════════════════
+
+// estado adicionado em S: S.wetQueue=[], S.dryQueue=[] (arrays de {id, segs})
+// cada silo na fila tem seus proprios segmentos (consumidos sequencialmente)
+
+// soma disponivel em uma fila inteira (varios silos)
+function queueAvail(queue){ return queue.reduce((a,si)=>a+avail(si.segs),0); }
+// primeiro silo com saldo
+function queuePeekU(queue){
+  for(const si of queue){ const u=peekU(si.segs); if(u!==null) return u; }
+  return null;
+}
+// extrai 'need' sc da fila inteira, atravessando silos em ordem
+function queueExtract(queue, need){
+  let got=0, wu=0, det=[];
+  for(const si of queue){
+    if(got>=need-0.1) break;
+    const r=extract(si.segs, need-got);
+    if(r.got>0){
+      got+=r.got; wu+=r.got*r.u;
+      r.det.forEach(d=>det.push({silo:si.id, label:d.label, u:d.u, sc:d.sc}));
+    }
+  }
+  return {got, u:got>0?wu/got:0, det};
+}
+
+// devolve 'qtd' sc ao primeiro silo da fila que tem segmento parcialmente consumido
+function returnToQueue(queue, qtd){
+  for(const si of queue){
+    // devolve no primeiro segmento que foi consumido (rem < total)
+    for(const seg of si.segs){
+      if(qtd<=0.1) return;
+      const espaco=seg.total-seg.rem;
+      if(espaco>0.1){
+        const dev=Math.min(espaco, qtd);
+        seg.rem+=dev; qtd-=dev;
+      }
+    }
+  }
+}
+
+function vehicleBaus(type){
+  const t=(type||'').toLowerCase();
+  if(t.includes('rodotrem')) return 2;
+  if(t.includes('tritrem')) return 3;
+  if(t.includes('bitrem')) return 2;
+  if(t.includes('treminh')) return 2;
+  return 1;
+}
+
+// Projeta as cargas nos caminhoes da fila, conforme as filas de silos.
+// allowNoMixDry: se true, quando acabar UMIDO segue so com seco (opcao do usuario)
+function projectQueue(opts){
+  opts=opts||{};
+  const wetQ=(S.wetQueue||[]).map(si=>({id:si.id, segs:si.segs.map(s=>({...s}))}));
+  const dryQ=(S.dryQueue||[]).map(si=>({id:si.id, segs:si.segs.map(s=>({...s}))}));
+  const faixaQ=(S.faixaQueue||[]).map(si=>({id:si.id, segs:si.segs.map(s=>({...s}))}));
+  const fila=filaSimulacao();
+
+  // diluentes em ordem de prioridade: SECO primeiro, FAIXA depois
+  const diluentes=[{nome:'seco', q:dryQ}, {nome:'faixa', q:faixaQ}];
+  function dilAtivo(){ for(const d of diluentes){ if(queueAvail(d.q)>0.5) return d; } return null; }
+  function dilTotal(){ return diluentes.reduce((a,d)=>a+queueAvail(d.q),0); }
+
+  const loads=[];
+  let alerta=null;      // {tipo, msg}
+
+  for(let ti=0; ti<fila.length; ti++){
+    const truck=fila[ti];
+    const nBaus=vehicleBaus(truck.type);
+    const capBau=truck.sc/nBaus;
+    const baus=[];
+    let estadoCaminhao='cheio';  // cheio | parcial | vazio
+    let semMistura=false;
+
+    for(let b=0;b<nBaus;b++){
+      const waveW=queueAvail(wetQ);
+      const dil=dilAtivo();
+      const waveD=dilTotal();
+      const uw=queuePeekU(wetQ);
+      const ud=dil?queuePeekU(dil.q):null;
+
+      // nada disponivel
+      if(waveW<0.5 && waveD<0.5){ baus.push({type:'VAZIO'}); estadoCaminhao=(b===0?'vazio':'parcial'); continue; }
+
+      // ── só diluente (úmido zerou): carrega DIRETO/PURO o seco/faixa ──
+      if(waveW<0.5){
+        // SEGURANÇA p/ faixa: simula carregar o baú e checa a MÉDIA resultante.
+        // Cobre tanto a pontinha alta no início quanto no meio do baú.
+        // A pontinha pequena dilui no resto; só trava se a média do baú passar
+        // de THI E o usuário ainda não optou por seguir só com seco.
+        if(dil.nome==='faixa'){
+          const ndTest=Math.min(capBau, queueAvail(dil.q));
+          const peek=queueExtract(dil.q.map(si=>({id:si.id,segs:si.segs.map(s=>({...s}))})), ndTest);
+          if(peek.u>THI && !opts.allowNoMixDry){
+            if(!alerta) alerta={tipo:'falta_umido', msg:'Resíduo na faixa acima de 14% — alimentar ÚMIDO p/ diluir ou seguir só com seco'};
+            baus.push({type:'VAZIO', semDiluente:true}); estadoCaminhao=(b===0?'vazio':'parcial');
+            continue;
+          }
+        }
+        let nd=Math.min(capBau, queueAvail(dil.q));
+        const exD=queueExtract(dil.q, nd);
+        const cheio=Math.abs(exD.got-capBau)<capBau*0.05;
+        const tipoCarga = dil.nome==='faixa' ? 'DIRETO' : 'PURO_D';
+        baus.push({type:tipoCarga, nw:0, nd:Math.round(exD.got), tot:Math.round(exD.got),
+          uw:null, ud:exD.u, ures:+exD.u.toFixed(2), ok:exD.u>=TLO&&exD.u<=THI, detW:[], detD:exD.det, fonte:dil.nome});
+        if(!cheio) estadoCaminhao='parcial';
+        continue;
+      }
+
+      // ── só úmido (todo diluente acabou): PARA, não estoura ──
+      if(waveD<0.5){
+        if(!alerta) alerta={tipo:'falta_seco', msg:'Sem diluente — alimentar fila de SECO ou FAIXA'};
+        baus.push({type:'VAZIO', semDiluente:true}); estadoCaminhao=(b===0?'vazio':'parcial');
+        continue;
+      }
+
+      // ── tem úmido + diluente: MISTURA em FATIAS, recalculando a cada fatia ──
+      // Encher o baú em pequenas fatias. A cada fatia, olha o peek atual de cada
+      // fila (úmido e diluente) e calcula a proporção mirando o ALVO. Assim, se o
+      // diluente troca de silo no meio (ex: seco 62 -> 24), a próxima fatia já usa
+      // a umidade nova, mantendo a carga dentro de 13,4–14% dos dois lados.
+      let accW=0, accD=0, accWU=0, accDU=0;       // acumuladores de sc e sc*u
+      const detWmap={}, detDmap={};                // detalhamento por silo/segmento
+      const ordemW=[], ordemD=[];                  // ordem cronológica de aparição dos silos
+      const FATIA=Math.max(8, capBau/40);          // ~40 fatias por baú
+      let travou=0;
+      function addDet(map, ex, ordem){
+        ex.det.forEach(d=>{ const k=(d.silo||'?')+'|'+d.label;
+          if(!map[k]) map[k]={silo:d.silo,label:d.label,u:d.u,sc:0};
+          map[k].sc+=d.sc;
+          if(d.silo!=null && ordem.indexOf(d.silo)<0) ordem.push(d.silo); });  // 1ª aparição
+      }
+      while(accW+accD < capBau-0.5){
+        const restBau = capBau-(accW+accD);
+        const passo = Math.min(FATIA, restBau);
+        // re-seleciona diluente ativo (pode ter trocado de silo/fila)
+        const dnow=dilAtivo();
+        const wAv=queueAvail(wetQ), dAv=dnow?queueAvail(dnow.q):0;
+        if(wAv<0.5 && dAv<0.5) break;        // nada mais: para
+        // úmido acabou mas ainda há seco: COMPLETA o baú com seco
+        // (usa o próximo úmido enquanto houver; se a fila de úmidos esgotou,
+        //  termina de encher com diluente p/ não deixar o baú pela metade)
+        if(wAv<0.5){
+          const eD=queueExtract(dnow.q, passo);
+          if(eD.got<0.01) break;
+          accD+=eD.got; accDU+=eD.got*eD.u; addDet(detDmap,eD,ordemD);
+          continue;
+        }
+        // só seco zerou mas ainda há úmido: para (não pode estourar com úmido puro)
+        if(dAv<0.5){ break; }
+        const uwc=queuePeekU(wetQ), udc=queuePeekU(dnow.q);
+        const den=(uwc-udc);
+        let fwL = den>0 ? (TARGET-udc)/den : 0;          // mira o ALVO (centro da faixa)
+        let fwH = den>0 ? (THI-udc)/den : 0;             // teto
+        let fw=Math.min(fwL, fwH); fw=Math.max(0, Math.min(0.97, fw));
+        let pw=passo*fw, pd=passo*(1-fw);
+        if(pw>wAv)pw=wAv; if(pd>dAv)pd=dAv;
+        if(pw<0.01 && pd<0.01) break;
+        const eW=pw>0.01?queueExtract(wetQ,pw):{got:0,u:uwc,det:[]};
+        const eD=pd>0.01?queueExtract(dnow.q,pd):{got:0,u:udc,det:[]};
+        if(eW.got<0.01 && eD.got<0.01){ if(++travou>3)break; else continue; }
+        accW+=eW.got; accWU+=eW.got*eW.u; addDet(detWmap,eW,ordemW);
+        accD+=eD.got; accDU+=eD.got*eD.u; addDet(detDmap,eD,ordemD);
+        travou=0;
+      }
+      const exW={got:accW, u:accW>0?accWU/accW:0, det:Object.values(detWmap), ordem:ordemW};
+      const exD={got:accD, u:accD>0?accDU/accD:0, det:Object.values(detDmap), ordem:ordemD};
+      let gt=exW.got+exD.got;
+      let ures=gt>0?(accWU+accDU)/gt:0;
+      // GUARDA dupla pós-extração: se passou de THI, devolve úmido; (o recálculo por
+      // fatia já evita ficar abaixo de TLO, mas mantemos a proteção de cima)
+      if(ures>THI && exW.got>0 && exD.got>0){
+        const uwAvg=exW.u, udAvg=exD.u;
+        let nwKeep = (uwAvg-THI)>0 ? exD.got*(THI-udAvg)/(uwAvg-THI) : exW.got;
+        if(nwKeep<0) nwKeep=0;
+        if(nwKeep<exW.got){
+          returnToQueue(wetQ, exW.got-nwKeep);
+          exW.got=nwKeep; gt=exW.got+exD.got;
+          ures=gt>0?(exW.got*uwAvg+exD.got*udAvg)/gt:udAvg;
+        }
+      }
+      if(gt<5){ baus.push({type:'VAZIO'}); estadoCaminhao=(b===0?'vazio':'parcial'); continue; }
+      const cheio=Math.abs(gt-capBau)<capBau*0.05;
+      baus.push({type:'MIX', nw:Math.round(exW.got), nd:Math.round(exD.got), tot:Math.round(gt),
+        uw:exW.u, ud:exD.u, ures:+ures.toFixed(2), ok:ures>=TLO&&ures<=THI, detW:exW.det, detD:exD.det, ordemW:exW.ordem, ordemD:exD.ordem, fonte:dil.nome});
+      if(!cheio) estadoCaminhao='parcial';
+    }
+
+    // média do caminhão
+    let tw=0,tt=0; baus.forEach(c=>{ if(c.tot){ tw+=c.ures*c.tot; tt+=c.tot; } });
+    const uresVeic=tt>0?+(tw/tt).toFixed(2):0;
+    const totVeic=Math.round(tt);
+    if(totVeic<5) estadoCaminhao='vazio';
+    const nwVeic=baus.reduce((a,c)=>a+(c.nw||0),0);
+    const ndVeic=baus.reduce((a,c)=>a+((c.fonte==='seco'||c.type==='PURO_D')?(c.nd||0):0),0);
+    const nfVeic=baus.reduce((a,c)=>a+((c.fonte==='faixa'||c.type==='DIRETO')?(c.nd||0):0),0);
+    // detalhamento por SILO em ORDEM CRONOLÓGICA de carregamento:
+    // o caminhão passa 1º na extratora de ÚMIDO, depois na de SECO/FAIXA.
+    // dentro de cada lado, segue a ordem em que cada silo foi tocado na extração.
+    const acc={}; const seq=[];   // acc: soma por silo | seq: ordem de 1ª aparição
+    function push(silo,sc,u,tipo){
+      if(silo==null) return;
+      if(!acc[silo]){ acc[silo]={silo,sc:0,wu:0,tipo}; seq.push(silo); }
+      acc[silo].sc+=sc; acc[silo].wu+=sc*u;
+    }
+    // 1ª passada: ÚMIDO de todos os baús (na ordem dos baús e da extração)
+    baus.forEach(c=>{
+      const ordemW = c.ordemW || (c.detW||[]).map(d=>d.silo);
+      ordemW.forEach(sid=>{ (c.detW||[]).filter(d=>d.silo===sid).forEach(d=>push(d.silo,d.sc,d.u,'umido')); });
+    });
+    // 2ª passada: SECO/FAIXA de todos os baús
+    baus.forEach(c=>{
+      const tipoD = (c.fonte==='faixa'||c.type==='DIRETO')?'faixa':'seco';
+      const ordemD = c.ordemD || (c.detD||[]).map(d=>d.silo);
+      ordemD.forEach(sid=>{ (c.detD||[]).filter(d=>d.silo===sid).forEach(d=>push(d.silo,d.sc,d.u,tipoD)); });
+    });
+    const siloDet = seq.map((sid,i)=>{ const o=acc[sid]; return {
+      ordem:i+1, silo:o.silo, sc:Math.round(o.sc), tipo:o.tipo,
+      u:o.sc>0?+(o.wu/o.sc).toFixed(1):0,
+      pct: totVeic>0 ? Math.round(o.sc/totVeic*100) : 0
+    };});
+    // marca semMistura se algum baú foi PURO/DIRETO ou parou por falta de diluente
+    semMistura = baus.some(c=>c.type==='PURO_D'||c.type==='PURO_W'||c.semDiluente);
+    loads.push({truck, plate:truck.plate, type:truck.type, nBaus, capBau:Math.round(capBau),
+      baus, uresVeic, totVeic, nwVeic, ndVeic, nfVeic, siloDet, estado:estadoCaminhao, semMistura});
+  }
+
+  const wLeft=Math.round(queueAvail(wetQ)), dLeft=Math.round(queueAvail(dryQ)), fLeft=Math.round(queueAvail(faixaQ));
+  return {loads, alerta, wLeft, dLeft, fLeft, simWet:wetQ, simDry:dryQ, simFaixa:faixaQ};
+}
+
+
+
+// ── stubs de compatibilidade (modelo antigo de par) ──
+function updateBanner(){ /* obsoleto no modelo de filas */ }
+function refreshProjection(){ refreshTrucksLoad(); }
+function refreshNext(){ /* obsoleto: caminhoes agora via refreshTrucksLoad */ }
+function renderLoadTable(){ /* tabela antiga desativada */ }
+
+function drawTruck(load, truck){
+  const host=document.getElementById('truck-skin');
+  if(!host) return;
+  if(!load||load.type==='DRY_DONE'||load.type==='CANT'||load.type==='DONE'){ host.innerHTML=''; return; }
+  const fw=load.nw/load.tot;
+  const veh=buildVehicleSVG(truck?.type||'Bitrem', fw);
+  host.innerHTML=veh.svg;
+}
+
+
+function drawWheelReal(ctx, cx, cy, r, dual){
+  // For dual wheels, draw a slightly wider tire suggestion
+  ctx.fillStyle='#16191f'; ctx.beginPath(); ctx.arc(cx,cy,r,0,Math.PI*2); ctx.fill();
+  ctx.strokeStyle='#0c0e12'; ctx.lineWidth=2.5; ctx.beginPath(); ctx.arc(cx,cy,r-1.5,0,Math.PI*2); ctx.stroke();
+  ctx.strokeStyle='#2a2e35'; ctx.lineWidth=1; ctx.beginPath(); ctx.arc(cx,cy,r-3.5,0,Math.PI*2); ctx.stroke();
+  const rg=ctx.createRadialGradient(cx-r*0.2,cy-r*0.2,1,cx,cy,r*0.55);
+  rg.addColorStop(0,'#cfd6de'); rg.addColorStop(.6,'#8a939e'); rg.addColorStop(1,'#5a6470');
+  ctx.fillStyle=rg; ctx.beginPath(); ctx.arc(cx,cy,r*0.5,0,Math.PI*2); ctx.fill();
+  ctx.fillStyle='#3a3f47';
+  for(let a=0;a<6;a++){const ang=a/6*Math.PI*2; ctx.beginPath(); ctx.arc(cx+Math.cos(ang)*r*0.3,cy+Math.sin(ang)*r*0.3,1.3,0,Math.PI*2); ctx.fill();}
+  ctx.fillStyle='#6b7480'; ctx.beginPath(); ctx.arc(cx,cy,r*0.13,0,Math.PI*2); ctx.fill();
+  ctx.strokeStyle='rgba(255,255,255,0.25)'; ctx.lineWidth=1.5; ctx.beginPath(); ctx.arc(cx,cy,r*0.4,Math.PI*1.1,Math.PI*1.7); ctx.stroke();
+  // dual indicator: small inner tire edge
+  if(dual){ ctx.strokeStyle='rgba(0,0,0,0.4)'; ctx.lineWidth=1; ctx.beginPath(); ctx.arc(cx+r*0.25,cy,r*0.92,Math.PI*0.3,Math.PI*1.7); ctx.stroke(); }
+}
+
+function _rr(ctx,x,y,w,h,r){
+  const [tl,tr,br,bl]=Array.isArray(r)?r:[r,r,r,r];
+  ctx.beginPath();
+  ctx.moveTo(x+tl,y);
+  ctx.lineTo(x+w-tr,y); ctx.quadraticCurveTo(x+w,y,x+w,y+tr);
+  ctx.lineTo(x+w,y+h-br); ctx.quadraticCurveTo(x+w,y+h,x+w-br,y+h);
+  ctx.lineTo(x+bl,y+h); ctx.quadraticCurveTo(x,y+h,x,y+h-bl);
+  ctx.lineTo(x,y+tl); ctx.quadraticCurveTo(x,y,x+tl,y);
+  ctx.closePath();
+}
+
+
+
+// ══════════════════════════════════════════════════
+// UI BUILDERS
+// ══════════════════════════════════════════════════
+// ══════════════════════════════════════════════════
+// UI — LISTAS DE SILOS + FILAS DE CARREGAMENTO (nova abordagem)
+// ══════════════════════════════════════════════════
+// estado: S.wetQueue=[{id,segs}], S.dryQueue=[{id,segs}]
+// silos usados nas filas saem das listas laterais.
+
+function siloInQueue(id){
+  return (S.wetQueue||[]).some(s=>s.id===id) || (S.dryQueue||[]).some(s=>s.id===id) || (S.faixaQueue||[]).some(s=>s.id===id);
+}
+
+function buildSiloLists(){
+  const wl=document.getElementById('wet-list');
+  const dl=document.getElementById('dry-list');
+  const fl=document.getElementById('faixa-list');
+  if(!wl||!dl) return;
+  wl.innerHTML=''; dl.innerHTML=''; if(fl) fl.innerHTML='';
+  UMIDOS.forEach(s=>{
+    if(siloInQueue(s.id)) return;                 // ja na fila -> nao aparece na lista
+    if(SILOS[s.id].qtd_est<=0) return;
+    const pct=Math.round((s.umean-9)/(21-9)*100);
+    const b=document.createElement('button'); b.className='sl-btn'; b.id='slw-'+s.id;
+    b.innerHTML=`<div class="sl-id">Silo ${s.id}</div><div class="sl-sub">${s.umean.toFixed(1)}% · ${s.qtd_est.toLocaleString()}sc<br>${s.lote}</div><div class="sl-ubar-wrap"><div class="sl-ubar" style="background:${uColor(s.umean)};width:${pct}%"></div></div>`;
+    b.onclick=()=>addToQueue('wet', s.id); wl.appendChild(b);
+  });
+  SECOS.slice().sort((a,b)=>a.umean-b.umean).forEach(s=>{
+    if(siloInQueue(s.id)) return;
+    if(SILOS[s.id].qtd_est<=0) return;
+    const pct=Math.round((s.umean-9)/(16-9)*100);
+    const b=document.createElement('button'); b.className='sl-btn'; b.id='sld-'+s.id;
+    b.innerHTML=`<div class="sl-id">Silo ${s.id}</div><div class="sl-sub">${s.umean.toFixed(1)}% · ${s.qtd_est.toLocaleString()}sc<br>${s.lote}</div><div class="sl-ubar-wrap"><div class="sl-ubar" style="background:${uColor(s.umean)};width:${pct}%"></div></div>`;
+    b.onclick=()=>addToQueue('dry', s.id);
+    dl.appendChild(b);
+  });
+  if(fl) FAIXA.slice().sort((a,b)=>b.umean-a.umean).forEach(s=>{
+    if(siloInQueue(s.id)) return;
+    if(SILOS[s.id].qtd_est<=0) return;
+    const pct=Math.round((s.umean-9)/(16-9)*100);
+    const b=document.createElement('button'); b.className='sl-btn'; b.id='slf-'+s.id;
+    b.innerHTML=`<div class="sl-id">Silo ${s.id}</div><div class="sl-sub">${s.umean.toFixed(1)}% · ${s.qtd_est.toLocaleString()}sc<br>${s.lote}</div><div class="sl-ubar-wrap"><div class="sl-ubar" style="background:${uColor(s.umean)};width:${pct}%"></div></div>`;
+    b.onclick=()=>addToQueue('faixa', s.id);
+    fl.appendChild(b);
+  });
+}
+
+// adiciona silo a uma fila (clica na lista lateral)
+function addToQueue(tipo, id){
+  if(!S.wetQueue) S.wetQueue=[];
+  if(!S.dryQueue) S.dryQueue=[];
+  if(!S.faixaQueue) S.faixaQueue=[];
+  if(siloInQueue(id)) return;
+  const segs=buildSegs(id);
+  if(tipo==='wet') S.wetQueue.push({id, segs});
+  else if(tipo==='faixa') S.faixaQueue.push({id, segs});
+  else S.dryQueue.push({id, segs});
+  buildSiloLists();
+  renderQueues();
+  refreshTrucksLoad();
+}
+
+// verifica se um silo tem soja já consumida por caminhão EM CARREGAMENTO
+function siloTravado(id){
+  return (S.emCarregamento||[]).some(c=>(c.consumo||[]).some(x=>String(x.silo)===String(id)));
+}
+// remove silo da fila (clica no cartao) -> volta pra lista
+function removeFromQueue(tipo, id){
+  if(siloTravado(id)){
+    alert('Este silo já foi usado por um caminhão em carregamento e não pode ser trocado.\nCancele os carregamentos que usaram este silo para liberá-lo.');
+    return;
+  }
+  if(tipo==='wet') S.wetQueue=S.wetQueue.filter(s=>s.id!==id);
+  else if(tipo==='faixa') S.faixaQueue=S.faixaQueue.filter(s=>s.id!==id);
+  else S.dryQueue=S.dryQueue.filter(s=>s.id!==id);
+  buildSiloLists();
+  renderQueues();
+  refreshTrucksLoad();
+}
+
+function renderQueues(sim){
+  const wq=document.getElementById('wet-queue'), dq=document.getElementById('dry-queue'), fq=document.getElementById('faixa-queue');
+  if(!wq||!dq) return;
+  // mapa id->segs simulados (consumo projetado) para escurecer a parte que será carregada
+  const simMap={};
+  if(sim){
+    (sim.simWet||[]).forEach(si=>simMap[si.id]=si.segs);
+    (sim.simDry||[]).forEach(si=>simMap[si.id]=si.segs);
+    (sim.simFaixa||[]).forEach(si=>simMap[si.id]=si.segs);
+  }
+  // desenha a barra de segmentos (silo-bolsa deitado): direita=início, esquerda=fim.
+  function siloBar(si){
+    // usa segs simulados (já consumidos pela projeção) se houver; senão os reais
+    const segs = simMap[si.id] || si.segs;
+    let cells='';
+    segs.forEach(seg=>{
+      const consumido = seg.rem <= 0.1;
+      const parcial = seg.rem>0.1 && seg.rem < seg.total-0.1;
+      const cor=uColor(seg.u);
+      const op = consumido ? 0.18 : (parcial?0.55:1);
+      cells+=`<div class="sb-cell" style="background:${cor};opacity:${op}" title="${seg.label}: ${seg.u.toFixed(1)}% · ${Math.round(seg.rem)}/${Math.round(seg.total)}sc">`
+           + `<span class="sb-u">${seg.u.toFixed(1)}</span></div>`;
+    });
+    return `<div class="sb-wrap"><div class="sb-track">${cells}</div>`
+         + `<div class="sb-ends"><span>fim</span><span>início ▶</span></div></div>`;
+  }
+  function fill(el, queue, tipo){
+    if(!el) return;
+    if(!queue||!queue.length){ el.innerHTML='<div class="q-empty">'+(tipo==='wet'?'← Clique nos silos úmidos':tipo==='faixa'?'Silos já na faixa':'Clique nos silos secos →')+'</div>'; return; }
+    el.innerHTML='';
+    queue.forEach(si=>{
+      const s=SILOS[si.id];
+      // remanescente projetado (após a simulação) se houver; senão real
+      const segsRef = simMap[si.id] || si.segs;
+      const rem=Math.round(avail(segsRef)); const cap=Math.round(s.qtd_est);
+      const pct=cap>0?Math.round(rem/cap*100):0;
+      const card=document.createElement('div');
+      card.className='q-card'+(rem<=0?' empty-silo':'');
+      card.innerHTML=`<div class="qc-head"><div class="qc-id">Silo ${si.id}</div>`
+        +`<div class="qc-meta">${s.umean.toFixed(1)}% méd · resta ${rem.toLocaleString()}sc (${pct}%)</div>`
+        +`<div class="qc-x">✕</div></div>`
+        +siloBar(si);
+      card.onclick=()=>removeFromQueue(tipo, si.id);
+      el.appendChild(card);
+    });
+  }
+  fill(wq, S.wetQueue, 'wet');
+  fill(dq, S.dryQueue, 'dry');
+  fill(fq, S.faixaQueue, 'faixa');
+  // sumarios (mostram o que resta após projeção)
+  const wsum=document.getElementById('qwet-sum'), dsum=document.getElementById('qdry-sum'), fsum=document.getElementById('qfaixa-sum');
+  function totRest(queue){ return queue.reduce((a,si)=>a+avail(simMap[si.id]||si.segs),0); }
+  if(wsum) wsum.textContent=(S.wetQueue&&S.wetQueue.length)?Math.round(totRest(S.wetQueue)).toLocaleString()+'sc':'';
+  if(dsum) dsum.textContent=(S.dryQueue&&S.dryQueue.length)?Math.round(totRest(S.dryQueue)).toLocaleString()+'sc':'';
+  if(fsum) fsum.textContent=(S.faixaQueue&&S.faixaQueue.length)?Math.round(totRest(S.faixaQueue)).toLocaleString()+'sc':'';
+}
+
+// ── renderiza a lista de caminhoes com cargas projetadas ──
+let _noMixDry=false;   // opcao: seguir sem mistura quando acabar umido
+
+// ══════════════════════════════════════════════════
+// PÁTIO → EM CARREGAMENTO  (consome silos de verdade)
+// ══════════════════════════════════════════════════
+// Consolida quanto um load consumiu de cada silo+segmento (somando todos os baús).
+// Retorna [{fila:'wet'|'dry'|'faixa', silo, label, sc}]
+function consumoPorSegmento(load){
+  const mapa={};  // chave: fila|silo|label -> sc
+  (load.baus||[]).forEach(function(c){
+    if(c.type==='VAZIO') return;
+    (c.detW||[]).forEach(function(d){
+      const k='wet|'+d.silo+'|'+d.label;
+      if(!mapa[k]) mapa[k]={fila:'wet', silo:d.silo, label:d.label, sc:0};
+      mapa[k].sc += d.sc;
+    });
+    const filaD = (c.fonte==='faixa'||c.type==='DIRETO') ? 'faixa' : 'dry';
+    (c.detD||[]).forEach(function(d){
+      const k=filaD+'|'+d.silo+'|'+d.label;
+      if(!mapa[k]) mapa[k]={fila:filaD, silo:d.silo, label:d.label, sc:0};
+      mapa[k].sc += d.sc;
+    });
+  });
+  return Object.values(mapa);
+}
+function filaPorNome(nome){
+  if(nome==='wet') return S.wetQueue;
+  if(nome==='dry') return S.dryQueue;
+  if(nome==='faixa') return S.faixaQueue;
+  return null;
+}
+// Desconta (consome) ou devolve (sinal=-1) as sacas nos segmentos reais das filas.
+function aplicarConsumo(consumo, sinal){
+  // sinal>0 = reserva (desconta dos segs p/ a engine não recontar)
+  // sinal<0 = libera a reserva (devolve aos segs)
+  // NÃO mexe no estoque (qtd_est) — isso só acontece ao FINALIZAR a carga.
+  consumo.forEach(function(c){
+    const fila=filaPorNome(c.fila); if(!fila) return;
+    const si=fila.find(s=>String(s.id)===String(c.silo)); if(!si) return;
+    const seg=si.segs.find(g=>g.label===c.label); if(!seg) return;
+    if(sinal>0){ seg.rem = Math.max(0, seg.rem - c.sc); }      // reserva
+    else { seg.rem = Math.min(seg.total, seg.rem + c.sc); }    // libera
+  });
+}
+// Desconta de verdade do estoque (qtd_est) — chamado ao FINALIZAR.
+function descontarEstoque(consumo){
+  consumo.forEach(function(c){
+    const S0=SILOS[c.silo];
+    if(S0){ S0.qtd_est=Math.max(0,(S0.qtd_est||0)-c.sc); }
+  });
+}
+// Confirma o carregamento do load de índice idx na projeção atual.
+function confirmarCarregamento(idx){
+  const proj=projectQueue({allowNoMixDry:_noMixDry});
+  const load=proj.loads[idx];
+  if(!load || load.estado==='vazio'){ return; }
+  const truck=load.truck;
+  // consumo real por segmento (o que ESTE caminhão tirou de cada silo)
+  const consumo=consumoPorSegmento(load);
+  aplicarConsumo(consumo, +1);   // desconta de verdade dos silos
+  // remove o caminhão do PÁTIO e adiciona em EM CARREGAMENTO guardando tudo
+  // remove o caminhão do PÁTIO (volta ao mesmo lugar via 'seq' se cancelar)
+  S.trucks = S.trucks.filter(t=>t.id!==truck.id);
+  S.emCarregamento.push({
+    id: truck.id,
+    truck: truck,
+    plate: truck.plate, type: truck.type,
+    sc: truck.sc, tara: truck.tara, pbt: truck.pbt,
+    consumo: consumo,                 // p/ devolver no cancelamento
+    siloDet: load.siloDet,            // detalhamento p/ exibir
+    baus: load.baus,                  // p/ skin
+    capBau: load.capBau, nBaus: load.nBaus,
+    uresVeic: load.uresVeic, totVeic: load.totVeic,
+    nwVeic: load.nwVeic, ndVeic: load.ndVeic, nfVeic: load.nfVeic,
+    semMistura: load.semMistura,
+    bruto: null,                      // peso bruto (preenchido na volta)
+    ts: Date.now()
+  });
+  refreshTrucksLoad();
+  renderEmCarregamento();
+  renderQueues();
+  if(typeof buildSiloLists==='function') buildSiloLists();
+  if(document.getElementById('stock-page') && document.getElementById('stock-page').classList.contains('active') && typeof buildStockPage==='function') buildStockPage();
+  updateBadges();
+}
+function cancelarCarregamento(cid){
+  const i=S.emCarregamento.findIndex(c=>c.id===cid);
+  if(i<0) return;
+  const c=S.emCarregamento[i];
+  aplicarConsumo(c.consumo, -1);     // devolve a soja aos silos
+  // caminhão volta para o PÁTIO na ordem original (por 'seq' de chegada)
+  S.emCarregamento.splice(i,1);
+  if(c.truck){
+    c.truck.status='waiting';
+    const seq=(c.truck.seq!=null)?c.truck.seq:Infinity;
+    // acha a 1ª posição entre os 'waiting' cujo seq é maior que o nosso
+    let alvo=S.trucks.length;
+    for(let k=0;k<S.trucks.length;k++){
+      const t=S.trucks[k];
+      if(t.status==='waiting' && (t.seq!=null) && t.seq>seq){ alvo=k; break; }
+    }
+    S.trucks.splice(alvo,0,c.truck);
+  }
+  refreshTrucksLoad();
+  renderEmCarregamento();
+  renderQueues();
+  if(typeof buildSiloLists==='function') buildSiloLists();
+  if(document.getElementById('stock-page') && document.getElementById('stock-page').classList.contains('active') && typeof buildStockPage==='function') buildStockPage();
+  updateBadges();
+}
+
+// Renderiza os caminhões na aba EM CARREGAMENTO (mesmo estilo de card das cargas).
+function renderEmCarregamento(){
+  agendarPersist();
+  const wrap=document.getElementById('carreg-list');
+  if(!wrap) return;
+  const lista=S.emCarregamento||[];
+  if(!lista.length){ wrap.innerHTML='<div class="tl-empty">Nenhum caminhão no pátio. Envie da Espera ou cadastre direto.</div>'; return; }
+  let html='';
+  lista.forEach(function(v,i){
+    const t=v.truck||{};
+    const editando = S._editPatio===v.id;
+    const skin=skinVazio(v.type);
+    const nCarr=carretasDoTipo(v.type);
+    const taraTxt = v.tara? String(Math.round(v.tara)).padStart(5,'0') : '—';
+    const liquido = v.bruto!=null ? (v.bruto - (v.tara||0)) : null;
+    const scCarga = liquido!=null ? Math.round(liquido/KG_SC) : null;
+    const brutoTxt = v.bruto!=null ? String(Math.round(v.bruto)).padStart(5,'0') : '—';
+    const liqTxt = liquido!=null ? String(Math.round(liquido)).padStart(5,'0') : '—';
+    html+='<div class="esp-card">';
+    if(!editando) html+='<button class="card-x" title="voltar à espera" onclick="voltarParaEspera('+v.id+')">✕</button>';
+    // LINHA ENXUTA: nº | skin | placa | tara | bruto | líquido | nome | contrato | ações
+    html+='<div class="esp-row">';
+    html+='<span class="esp-num">'+(i+1)+'</span>';
+    html+='<div class="esp-skin">'+skin+'</div>';
+    html+='<span class="esp-plate">'+(v.plate||'—')+'</span>';
+    html+='<span class="esp-tara-box"><label>TARA</label><b>'+taraTxt+'</b></span>';
+    html+='<span class="esp-tara-box"><label>BRUTO</label><b>'+brutoTxt+'</b></span>';
+    html+='<span class="esp-liq-box"><label>LÍQUIDO</label><b>'+liqTxt+'</b></span>';
+    html+='<span class="esp-nome">'+(t.nome||v.nome||'—')+'</span>';
+    html+='<span class="esp-cd">'+(t.contrato||'—')+'</span>';
+    html+='<span class="esp-row-acts">';
+    if(!editando){
+      html+='<button class="btn sm" onclick="editarPatio('+v.id+')">✎</button>';
+      html+='<button class="btn sm success" onclick="finalizarCarregamento('+v.id+')">→ Finalizar</button>';
+    } else {
+      html+='<button class="btn sm success" onclick="salvarPatio('+v.id+')">✓ Salvar</button>';
+      html+='<button class="btn sm" onclick="cancelarEdicaoPatio()">cancelar</button>';
+    }
+    html+='</span>';
+    html+='</div>';
+    // painel expandido (ao editar)
+    if(editando){
+      html+='<div class="esp-edit">';
+      html+=campoEdit(v.id,'nome','Motorista',t.nome)+campoEdit(v.id,'cpf','CPF',t.cpf)+campoEdit(v.id,'rg','RG',t.rg)+campoEdit(v.id,'cnh','CNH',t.cnh);
+      html+=campoEdit(v.id,'plate','Placa cavalo',v.plate);
+      if(nCarr>=1) html+=campoEdit(v.id,'carreta1','Carreta 1',t.carreta1);
+      if(nCarr>=2) html+=campoEdit(v.id,'carreta2','Carreta 2',t.carreta2);
+      if(nCarr>=3) html+=campoEdit(v.id,'carreta3','Carreta 3',t.carreta3);
+      html+=campoEdit(v.id,'tara','Tara (kg)',v.tara,'number');
+      html+=campoEdit(v.id,'bruto','Peso bruto (kg)',v.bruto,'number');
+      html+=campoEdit(v.id,'transp','Transportadora',t.transp)+campoEdit(v.id,'produto','Produto',t.produto)+campoEdit(v.id,'contrato','Contrato/Destino',t.contrato);
+      html+='</div>';
+    }
+    html+='</div>';
+  });
+  wrap.innerHTML=html;
+}
+function editarPatio(id){ S._editPatio=id; renderEmCarregamento(); }
+function cancelarEdicaoPatio(){ S._editPatio=null; renderEmCarregamento(); }
+function salvarPatio(id){
+  const v=(S.emCarregamento||[]).find(x=>x.id===id); if(!v) return;
+  const t=v.truck||(v.truck={});
+  const g=campo=>{const e=document.getElementById('ee-'+campo+'-'+id); return e?e.value.trim():undefined;};
+  ['nome','cpf','rg','cnh','transp','produto','contrato'].forEach(c=>{const val=g(c); if(val!==undefined)t[c]=val.toUpperCase();});
+  const pl=g('plate'); if(pl!==undefined)v.plate=pl.toUpperCase();
+  const c1=g('carreta1'); if(c1!==undefined)t.carreta1=c1.toUpperCase();
+  const c2=g('carreta2'); if(c2!==undefined)t.carreta2=c2.toUpperCase();
+  const c3=g('carreta3'); if(c3!==undefined)t.carreta3=c3.toUpperCase();
+  const tara=g('tara'); if(tara!==undefined){const n=parseFloat(tara); v.tara=isNaN(n)?0:n;}
+  const bruto=g('bruto'); if(bruto!==undefined){const n=parseFloat(bruto); v.bruto=(isNaN(n)||n<=0)?null:n;}
+  S._editPatio=null; renderEmCarregamento();
+}
+// volta um caminhão do Pátio para a Espera (sem efetivar nada)
+function voltarParaEspera(cid){
+  const i=(S.emCarregamento||[]).findIndex(x=>x.id===cid); if(i<0) return;
+  const c=S.emCarregamento[i];
+  S.emCarregamento.splice(i,1);
+  if(c.truck){ c.truck.status='waiting'; S.trucks.push(c.truck); }
+  renderEmCarregamento(); renderTruckQueue(); updateBadges();
+}
+function setCampoCarreg(cid,campo,val){
+  const c=(S.emCarregamento||[]).find(x=>x.id===cid);
+  if(!c) return;
+  if(campo==='tara'||campo==='sc'){ const n=parseFloat(val); c[campo]=isNaN(n)?0:n; if(c.truck)c.truck[campo]=c[campo]; }
+  else { c[campo]=val; if(c.truck)c.truck[campo]=val; }
+  // se mudou a tara, atualiza só o líquido na tela (sem re-render, mantém foco)
+  if(campo==='tara') atualizaLiquidoPatio(cid);
+}
+function atualizaLiquidoPatio(cid){
+  const c=(S.emCarregamento||[]).find(x=>x.id===cid); if(!c) return;
+  const cell=document.querySelector('#liq-'+cid);
+  if(!cell) return;
+  if(c.bruto!=null){
+    const liq=c.bruto-(c.tara||0); const sc=Math.round(liq/KG_SC);
+    cell.innerHTML='<b class="pat-liq-v">'+(liq/1000).toFixed(2)+'t</b><span class="pat-liq-sc">'+sc.toLocaleString()+' sc</span>';
+  } else {
+    cell.innerHTML='<b class="pat-liq-v dim">—</b>';
+  }
+}
+function setBruto(cid,val){
+  const c=(S.emCarregamento||[]).find(x=>x.id===cid);
+  if(!c) return;
+  const n=parseFloat(val);
+  c.bruto = (isNaN(n)||n<=0) ? null : n;
+  atualizaLiquidoPatio(cid);
+}
+function finalizarCarregamento(cid){
+  const i=(S.emCarregamento||[]).findIndex(x=>x.id===cid);
+  if(i<0) return;
+  const c=S.emCarregamento[i];
+  if(c.bruto==null || c.bruto<=0){ alert('Informe o peso bruto antes de finalizar.'); return; }
+  const liquido = c.bruto-(c.tara||0);
+  const scCarga = Math.round(liquido/KG_SC);
+  // move para FINALIZADOS pendente de procedência (NÃO mexe no estoque ainda)
+  S.finalizados = S.finalizados||[];
+  S.finalizados.unshift({
+    id:c.id, ts:Date.now(), plate:c.plate, type:c.type,
+    tara:c.tara, bruto:c.bruto, liquido:liquido, sc:scCarga, obs:c.obs||'',
+    fontes:[],            // procedência (preenchida aqui)
+    confirmado:false      // só efetiva estoque ao confirmar
+  });
+  S.emCarregamento.splice(i,1);
+  renderEmCarregamento();
+  updateBadges();
+  if(typeof renderHistory==='function') renderHistory();
+}
+
+
+// ══════════════════════════════════════════════════
+// MISTURA DE SILOS — fonte de caminhões (simulação)
+// ══════════════════════════════════════════════════
+const SIM_TIPOS=['Rodotrem (9 eixos)','Tritrem (9 eixos)','Bitrem 9 (9 eixos)','Bitrem 7 (7 eixos)','Carreta (6 eixos)','Vanderleia (6 eixos)','Truck (3 eixos)'];
+// capacidade aproximada (sc) por tipo
+function capPorTipo(type){
+  const t=(type||'').toLowerCase();
+  let pbt=74000, tara=15000;
+  if(t.includes('truck toco')){pbt=16000;tara=7000;}
+  else if(t.includes('truck')){pbt=23000;tara=9000;}
+  else if(t.includes('bitruck')){pbt=29000;tara=11000;}
+  else if(t.includes('carreta toco')){pbt=41500;tara=12500;}
+  else if(t.includes('carreta')){pbt=48500;tara=14000;}
+  else if(t.includes('vanderleia')){pbt=53000;tara=15000;}
+  else if(t.includes('ls')){pbt=57000;tara=16000;}
+  else if(t.includes('tritrem')){pbt=74000;tara=16500;}
+  else if(t.includes('bitrem')){pbt=74000;tara=16000;}
+  else if(t.includes('rodotrem')){pbt=74000;tara=15000;}
+  return {pbt, tara, sc:Math.floor((pbt-tara)/KG_SC)};
+}
+let _simId=1;
+function novoSimTruck(type){
+  const c=capPorTipo(type);
+  return {id:'sim'+(_simId++), seq:_simId, plate:'SIM-'+_simId, type, tara:c.tara, pbt:c.pbt, sc:c.sc, status:'waiting'};
+}
+function setSimMode(mode){
+  S.simMode=mode;
+  document.querySelectorAll('.sim-mbtn').forEach(b=>b.classList.toggle('active', b.dataset.mode===mode));
+  const ctrls=document.getElementById('sim-mode-ctrls');
+  if(ctrls){
+    if(mode==='aleatorio'){
+      let itens='<label class="sim-chk sim-chk-all"><input type="checkbox" id="sim-chk-all" checked onchange="toggleTodosTipos(this.checked)"> <b>Todos</b></label>';
+      SIM_TIPOS.forEach(t=>{
+        itens+='<label class="sim-chk"><input type="checkbox" class="sim-tipo-chk" value="'+t+'" checked onchange="syncTodos()"> '+t+'</label>';
+      });
+      ctrls.innerHTML=' <div class="sim-dd">'
+        +'<button class="sim-dd-btn" id="sim-dd-btn" onclick="toggleTiposDD(event)">Tipos <span id="sim-dd-count"></span> ▾</button>'
+        +'<div class="sim-dd-panel" id="sim-dd-panel">'+itens+'</div>'
+        +'</div>'
+        +' <input type="number" id="sim-rnd-qtd" class="sim-num" value="5" min="1" max="50" title="quantidade total">'
+        +' <button class="btn sm" onclick="gerarAleatorio()">🎲 Gerar</button>'
+        +' <button class="btn sm" onclick="limparSim()">Limpar</button>';
+      setTimeout(atualizaContadorTipos,0);
+    } else if(mode==='manual'){
+      let opts=SIM_TIPOS.map(t=>'<option>'+t+'</option>').join('');
+      ctrls.innerHTML=' <select id="sim-man-tipo" class="sim-sel">'+opts+'</select>'
+        +' <button class="btn sm" onclick="adicionarManual()">+ Adicionar</button>'
+        +' <button class="btn sm" onclick="limparSim()">Limpar</button>';
+    } else {
+      ctrls.innerHTML='';
+    }
+  }
+  refreshTrucksLoad();
+}
+function toggleTodosTipos(marcado){
+  document.querySelectorAll('.sim-tipo-chk').forEach(c=>c.checked=marcado);
+  atualizaContadorTipos();
+}
+function syncTodos(){
+  const todas=[...document.querySelectorAll('.sim-tipo-chk')];
+  const all=document.getElementById('sim-chk-all');
+  if(all) all.checked = todas.every(c=>c.checked);
+  atualizaContadorTipos();
+}
+function atualizaContadorTipos(){
+  const todas=[...document.querySelectorAll('.sim-tipo-chk')];
+  const marc=todas.filter(c=>c.checked).length;
+  const el=document.getElementById('sim-dd-count');
+  if(el) el.textContent = (marc===todas.length)?'(todos)':'('+marc+')';
+}
+function toggleTiposDD(ev){
+  if(ev) ev.stopPropagation();
+  const p=document.getElementById('sim-dd-panel');
+  if(p) p.classList.toggle('open');
+}
+// fecha o dropdown ao clicar fora
+document.addEventListener('click',function(e){
+  const p=document.getElementById('sim-dd-panel');
+  const b=document.getElementById('sim-dd-btn');
+  if(p && p.classList.contains('open') && !p.contains(e.target) && e.target!==b){ p.classList.remove('open'); }
+});
+function gerarAleatorio(){
+  const sel=[...document.querySelectorAll('.sim-tipo-chk')].filter(c=>c.checked).map(c=>c.value);
+  if(!sel.length){ alert('Selecione ao menos um tipo de veículo.'); return; }
+  const qtd=Math.max(1,Math.min(50, parseInt(document.getElementById('sim-rnd-qtd').value)||5));
+  S.simTrucks=[];
+  for(let i=0;i<qtd;i++){
+    const tipo=sel[Math.floor(Math.random()*sel.length)];   // sorteia entre os marcados
+    S.simTrucks.push(novoSimTruck(tipo));
+  }
+  refreshTrucksLoad();
+}
+function adicionarManual(){
+  const tipo=document.getElementById('sim-man-tipo').value;
+  S.simTrucks.push(novoSimTruck(tipo));
+  refreshTrucksLoad();
+}
+function limparSim(){ S.simTrucks=[]; refreshTrucksLoad(); }
+// fila ativa conforme o modo
+function filaSimulacao(){
+  if(S.simMode==='patio') return S.trucks.filter(t=>t.status==='waiting');
+  return S.simTrucks;
+}
+
+function refreshTrucksLoad(){
+  const wrap=document.getElementById('trucks-load-list');
+  const sumEl=document.getElementById('trucks-load-sum');
+  if(!wrap){ renderQueues(); return; }
+  const fila=filaSimulacao();
+  if(!fila.length){ renderQueues(); wrap.innerHTML='<div class="tl-empty">Nenhum caminhão. Escolha a fonte acima (Pátio / Aleatório / Manual).</div>'; if(sumEl)sumEl.textContent=''; hideAlert(); return; }
+  if((!S.wetQueue||!S.wetQueue.length)&&(!S.dryQueue||!S.dryQueue.length)&&(!S.faixaQueue||!S.faixaQueue.length)){
+    renderQueues(); wrap.innerHTML='<div class="tl-empty">Adicione silos nas filas de carregamento (clique nos silos das laterais).</div>'; if(sumEl)sumEl.textContent=''; hideAlert(); return;
+  }
+  const proj=projectQueue({allowNoMixDry:_noMixDry});
+  renderQueues(proj);  // mostra consumo projetado nas barras dos silos
+  // alerta
+  if(proj.alerta) showAlert(proj.alerta); else hideAlert();
+  // render caminhoes
+  let html='';
+  proj.loads.forEach(function(v,i){
+    const estado=v.estado;
+    const cls='tl-card '+(estado==='vazio'?'vazio':estado==='parcial'?'parcial':'')+(v.semMistura?' semmix':'');
+    const fwForSkin = v.totVeic>0 ? (v.nwVeic/v.totVeic) : 0;
+    // umidade média real de cada bloco (úmido e seco/faixa) a partir do detalhamento
+    let uwSc=0,uwU=0, udSc=0,udU=0;
+    (v.siloDet||[]).forEach(function(d){
+      if(d.tipo==='umido'){ uwSc+=d.sc; uwU+=d.sc*d.u; }
+      else { udSc+=d.sc; udU+=d.sc*d.u; }
+    });
+    const uwAvg = uwSc>0 ? uwU/uwSc : null;
+    const udAvg = udSc>0 ? udU/udSc : null;
+    // ── dados POR BAÚ para a skin (cada caçamba tem sua própria mistura) ──
+    const capB = v.capBau || (v.totVeic/(v.nBaus||1));
+    const perBau = (v.baus||[]).map(function(c){
+      if(!c || c.type==='VAZIO' || !(c.tot>0)){
+        return { fill:0, fw:0, uw:null, ud:null };
+      }
+      const tot=c.tot||0;
+      const nw=c.nw||0;                       // sacas úmidas do baú
+      const fw = tot>0 ? nw/tot : 0;           // fração úmida deste baú
+      return {
+        fill: capB>0 ? Math.max(0,Math.min(1, tot/capB)) : 0,
+        fw: Math.max(0,Math.min(1,fw)),
+        uw: (c.uw!=null)?c.uw : uwAvg,         // umidade do bloco úmido deste baú
+        ud: (c.ud!=null)?c.ud : udAvg          // umidade do bloco seco/faixa deste baú
+      };
+    });
+    const fills  = perBau.map(function(p){return p.fill;});
+    const fwArr  = perBau.map(function(p){return p.fw;});
+    const uwArr  = perBau.map(function(p){return p.uw;});
+    const udArr  = perBau.map(function(p){return p.ud;});
+    const skin = estado==='vazio' ? skinVazio(v.type) : buildVehicleSVG(v.type, fwForSkin, uwAvg, udAvg, fills, fwArr, uwArr, udArr).svg;
+    const okU = v.uresVeic>=TLO && v.uresVeic<=THI;
+    html+='<div class="'+cls+'">';
+    html+='<div class="tl-top">';
+    html+='<div class="tl-topline"><span class="tl-num">#'+(i+1)+'</span>';
+    html+='<span class="tl-plate">'+v.plate+'</span></div>';
+    html+='<span class="tl-type">'+v.type+'</span>';
+    html+='</div>';
+    html+='<div class="tl-statuswrap"><span class="tl-status '+estado+'">'+estado+'</span>';
+    if(v.semMistura) html+='<span class="tl-warn">⚠ Sem mistura</span>';
+    html+='</div>';
+    html+='<div class="tl-body">';
+    html+='<div class="tl-skin">'+skin+'</div>';
+    html+='<div class="tl-data">';
+    if(estado==='vazio'){
+      html+='<div class="tl-line" style="color:var(--muted)">Aguardando soja</div>';
+      html+='</div>';
+    } else {
+      html+='<div class="tl-line"><span style="color:var(--wet)">Úmido</span><b>'+v.nwVeic.toLocaleString()+'</b></div>';
+      html+='<div class="tl-line"><span style="color:var(--dry)">Seco</span><b>'+v.ndVeic.toLocaleString()+'</b></div>';
+      if(v.nfVeic>0) html+='<div class="tl-line"><span style="color:var(--faixa)">Faixa</span><b>'+v.nfVeic.toLocaleString()+'</b></div>';
+      html+='<div class="tl-line"><span>Total</span><b>'+v.totVeic.toLocaleString()+'</b></div>';
+      html+='<div class="tl-ures '+(okU?'ok':'warn')+'">'+v.uresVeic.toFixed(2)+'%</div>';
+      html+='</div>'; // fecha tl-data
+      // detalhamento por silo — 3ª coluna (ao lado, não embaixo)
+      if(v.siloDet && v.siloDet.length){
+        html+='<div class="tl-silos">';
+        v.siloDet.forEach(d=>{
+          const cor = uColor(d.u);   // cor pela umidade real do pedaço (escala vermelho->amarelo->verde)
+          const ualto = d.u>THI;
+          html+='<div class="tl-silo-row"><span class="tl-silo-ord">'+d.ordem+'º</span>'
+              +'<span class="tl-silo-dot" style="background:'+cor+'"></span>'
+              +'<span class="tl-silo-id">'+d.silo+'</span>'
+              +'<span class="tl-silo-sc">'+d.sc.toLocaleString()+'·'+d.pct+'%</span>'
+              +'<span class="tl-silo-u'+(ualto?' alto':'')+'">'+d.u.toFixed(1)+'</span></div>';
+        });
+        html+='</div>';
+      }
+    }
+    html+='</div></div>';  // fecha tl-body e tl-card
+  });
+  wrap.innerHTML=html;
+  // sumario
+  let totSc=0,nCheio=0,nParcial=0,nVazio=0;
+  proj.loads.forEach(v=>{ totSc+=v.totVeic; if(v.estado==='cheio')nCheio++; else if(v.estado==='parcial')nParcial++; else nVazio++; });
+  if(sumEl) sumEl.textContent=nCheio+' cheios · '+nParcial+' parcial · '+nVazio+' vazios · '+totSc.toLocaleString()+'sc';
+}
+
+// skin de caminhao VAZIO (baú sem carga, fw=0 mas marcado vazio -> desenha sem grao)
+function skinVazio(type){
+  // desenha o veiculo com baús VAZIOS (fw=null -> sem coloracao)
+  const v=buildVehicleSVG(type, null);
+  return v.svg;
+}
+
+// ── alerta (barra + confirmacao) ──
+function showAlert(al){
+  const bar=document.getElementById('alert-bar');
+  if(!bar) return;
+  bar.style.display='flex';
+  let btn='';
+  if(al.tipo==='falta_seco') btn='<button class="btn sm" onclick="confirmAlimentar(\'dry\')">Alimentar SECOS</button>'+
+    ' <button class="btn sm" onclick="confirmAlimentar(\'faixa\')">Alimentar FAIXA</button>';
+  else if(al.tipo==='falta_umido') btn='<button class="btn sm" onclick="confirmAlimentar(\'wet\')">Alimentar fila de ÚMIDOS</button>'+
+    ' <button class="btn sm" onclick="seguirSemMistura()">Seguir só com seco</button>';
+  else if(al.tipo==='fim_umido') btn='<span style="color:var(--muted);font-size:11px">Seguindo sem mistura</span>';
+  bar.innerHTML='<span>⚠ '+al.msg+'</span><span>'+btn+'</span>';
+}
+function hideAlert(){ const bar=document.getElementById('alert-bar'); if(bar) bar.style.display='none'; }
+function confirmAlimentar(tipo){
+  // foca a lista correspondente (apenas feedback visual)
+  const listId = tipo==='dry' ? 'dry-list' : tipo==='faixa' ? 'faixa-list' : 'wet-list';
+  const el=document.getElementById(listId);
+  if(el){ el.style.transition='background .3s'; el.style.background='rgba(251,191,36,.15)'; setTimeout(()=>el.style.background='',600); }
+}
+function seguirSemMistura(){ _noMixDry=true; refreshTrucksLoad(); }
+
+
+// ══════════════════════════════════════════════════
+// NEXT LOAD REFRESH
+// ══════════════════════════════════════════════════
+function refreshNext(){
+  const nl=calcNext();
+  const truck=nextTruck();
+  setTimeout(()=>drawTruck(nl,truck),50);
+  // Info lines
+  const l1=document.getElementById('tv-line1'), l2=document.getElementById('tv-line2');
+  if(!nl){l1.innerHTML='—';l2.innerHTML='';return;}
+  if(nl.type==='DRY_DONE'){
+    l1.innerHTML=`<span style="color:var(--warn)">⚠ Silo seco esgotado</span>`;
+    l2.innerHTML=`<span style="color:var(--muted)">${nl.wa.toLocaleString()} sc úmido sem parceiro</span>`;
+    setTimeout(()=>openOrphanModal(nl.wa),600);
+    return;
+  }
+  if(nl.type==='PURE'){
+    const c=nl.ures>=TLO&&nl.ures<=THI?'var(--ok-l)':'var(--warn)';
+    l1.innerHTML=`Carga pura · <b>${nl.nw}</b>sc · U=<b style="color:${c}">${nl.ures.toFixed(2)}%</b>`;
+    l2.innerHTML=truck?`🚛 ${truck.plate} (${truck.type.split('(')[0].trim()})`:truck?'':'Caminhão padrão';
+    return;
+  }
+  if(nl.type==='MIX'){
+    const c=nl.ok?'var(--ok-l)':nl.ures>THI?'var(--err)':'var(--dry-l)';
+    l1.innerHTML=`<span style="color:var(--wet-l)">${nl.nw}sc úmido</span> + <span style="color:var(--dry-l)">${nl.nd}sc seco</span> = <b style="color:${c}">${nl.ures.toFixed(2)}%</b>`;
+    l2.innerHTML=`${(nl.fw*100).toFixed(0)}% / ${((1-nl.fw)*100).toFixed(0)}% · Est. ${(nl.tot*KG_SC/1000).toFixed(1)}t${truck?' · 🚛 '+truck.plate:''}`;
+  }
+}
+
+// ══════════════════════════════════════════════════
+// CONFIRM LOAD
+// ══════════════════════════════════════════════════
+function confirmLoad(){
+  const nl=calcNext();
+  if(!nl||!S.wetId) return;
+  if(nl.type==='DRY_DONE'){openOrphanModal(nl.wa);return;}
+  if(['WET_DONE','DONE','CANT'].includes(nl.type)) return;
+
+  const truck=nextTruck();
+  const we=extract(S.wsegs, nl.nw);
+  const de=nl.nd>0?extract(S.dsegs, nl.nd):{got:0,u:0,det:[]};
+  const tot=we.got+de.got;
+  const ures=tot>0?(we.got*we.u+de.got*de.u)/tot:we.u;
+
+  const load={
+    id:S.loads.length+1,
+    time:new Date().toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'}),
+    wid:S.wetId, did:S.dryId,
+    plate:truck?.plate||'—',
+    truckType:truck?.type||'Padrão',
+    sc_w:Math.round(we.got), sc_d:Math.round(de.got),
+    total:Math.round(tot),
+    uw:+we.u.toFixed(2), ud:de.got>0?+de.u.toFixed(2):null,
+    u_res:+ures.toFixed(2),
+    fw_pct:+(we.got/tot*100).toFixed(1),
+    ok:ures>=TLO&&ures<=THI,
+    wdet:we.det, ddet:de.det,
+    est_kg:Math.round(tot*KG_SC),
+    real_kg:null, wet_debit:null, dry_debit:null,
+    tara:truck?.tara||null,
+  };
+  S.loads.push(load);
+
+  // (função legada do antigo sistema de "par" — não usada. Escrita de estoque
+  //  removida para garantir que nada altere o estoque fora do fluxo oficial
+  //  Pátio→Em Carregamento→Finalizar.)
+  // SILOS[S.wetId].qtd_est=Math.max(0,SILOS[S.wetId].qtd_est-load.sc_w);
+  // if(S.dryId) SILOS[S.dryId].qtd_est=Math.max(0,SILOS[S.dryId].qtd_est-load.sc_d);
+
+  // Mark truck as loading
+  if(truck){
+    truck.status='loading'; truck.loadId=load.id;
+    renderTruckQueue();
+    updateQueueBadge();
+  }
+
+  // Update silos visual
+  setTimeout(()=>{
+    drawSiloBolsa('wet-canvas', S.wsegs, S.wetId);
+    if(S.dryId) drawSiloBolsa('dry-canvas', S.dsegs, S.dryId);
+  },50);
+
+  updateBanner();
+  renderLoadTable();
+  refreshNext();
+}
+
+// ══════════════════════════════════════════════════
+// LOAD TABLE
+// ══════════════════════════════════════════════════
+function renderLoadTable(){
+  const tbody=document.getElementById('load-tbody'); tbody.innerHTML='';
+  S.loads.forEach(l=>{
+    const tr=document.createElement('tr');
+    tr.className=l.ok?'r-ok':l.u_res>THI?'r-err':'r-warn';
+    const uc=l.ok?'ub-ok':l.u_res>THI?'ub-err':'ub-warn';
+    const fw=l.fw_pct||100, fd=100-fw;
+    const ws=l.wdet?.map(d=>d.label).join(',')||'—';
+    const ds=l.ddet?.map(d=>d.label).join(',')||'—';
+    const wt=l.real_kg&&l.wet_debit?`<span style="color:var(--wet-l)">${(l.wet_debit/1000).toFixed(2)}t</span>`:'—';
+    const wr=l.real_kg?`<span style="color:var(--ok)">${(l.real_kg/1000).toFixed(2)}t</span>`:`<button class="btn-xs" onclick="openWeightModal(${l.id})">⚖</button>`;
+    tr.innerHTML=`
+      <td><b>${l.id}</b></td>
+      <td style="color:var(--muted)">${l.time}</td>
+      <td style="font-size:10px;color:var(--gold)">${l.plate}</td>
+      <td style="font-size:10px">${ws}</td>
+      <td style="color:var(--wet-l)">${l.uw}%</td>
+      <td>${l.sc_w}</td>
+      <td style="font-size:10px">${ds}</td>
+      <td style="color:var(--dry-l)">${l.ud!=null?l.ud+'%':'—'}</td>
+      <td>${l.sc_d}</td>
+      <td><b>${l.total}</b></td>
+      <td><div class="prop-bar"><div class="pb-w" style="width:${fw}%"></div><div class="pb-d" style="width:${fd}%"></div></div></td>
+      <td><span class="ub ${uc}">${l.u_res.toFixed(2)}%</span></td>
+      <td>${(l.est_kg/1000).toFixed(2)}t</td>
+      <td>${wr}</td>
+      <td>${l.ok?'✓':'✗'}</td>`;
+    tbody.appendChild(tr);
+  });
+}
+
+// ══════════════════════════════════════════════════
+// TRUCK QUEUE
+// ══════════════════════════════════════════════════
+// nº de carretas (placas extras) por tipo de veículo
+function carretasDoTipo(type){
+  const t=(type||'').toLowerCase();
+  if(t.includes('tritrem')) return 3;
+  if(t.includes('rodotrem')||t.includes('bitrem')) return 2;
+  if(t.includes('ls')||t.includes('carreta')||t.includes('vanderleia')) return 1;
+  return 0; // truck, bitruck (sem carreta separada)
+}
+function ajustaCarretas(){
+  const tipo=document.getElementById('tf-type').value;
+  const n=carretasDoTipo(tipo);
+  const f1=document.getElementById('ff-carreta1'), f2=document.getElementById('ff-carreta2'), f3=document.getElementById('ff-carreta3');
+  if(f1) f1.style.display = n>=1?'':'none';
+  if(f2) f2.style.display = n>=2?'':'none';
+  if(f3) f3.style.display = n>=3?'':'none';
+}
+// listas de cadastro (transportadoras/produtos) — começam vazias, alimentadas pelo uso
+function checaCadastro(tipo,valor){
+  if(!valor) return;
+  const lista = tipo==='transp' ? (S.transportadoras=S.transportadoras||[]) : (S.produtos=S.produtos||[]);
+  if(!lista.some(x=>x.toLowerCase()===valor.toLowerCase())){
+    if(confirm('"'+valor+'" não está cadastrado. Deseja cadastrar?')){
+      lista.push(valor);
+      atualizaDatalists();
+    }
+  }
+}
+function atualizaDatalists(){
+  const dt=document.getElementById('dl-transp'); if(dt) dt.innerHTML=(S.transportadoras||[]).map(x=>'<option value="'+x+'">').join('');
+  const dp=document.getElementById('dl-produto'); if(dp) dp.innerHTML=(S.produtos||[]).map(x=>'<option value="'+x+'">').join('');
+}
+function addTruck(irDireto){
+  const g=id=>{const e=document.getElementById(id); return e?e.value.trim():'';};
+  const plate=g('tf-plate').toUpperCase();
+  const type=document.getElementById('tf-type').value;
+  const tara=parseFloat(g('tf-tara'))||0;
+  const pbt=parseFloat(g('tf-pbt'))||48000;
+  const scManual=parseFloat(g('tf-sc'));
+  if(!plate){alert('Informe a placa do cavalo');return;}
+  if(irDireto && (!tara||tara<=0)){ alert('Informe a tara para ir direto ao Pátio.'); return; }
+  const scCalc=pbt&&tara?Math.floor((pbt-tara)/KG_SC):0;
+  const sc=scManual||scCalc||DEFAULT_SC;
+  const t={
+    id:Date.now(), seq:(S._seq=(S._seq||0)+1),
+    plate, type, tara, pbt, sc, status:'waiting',
+    nome:g('tf-nome'), cpf:g('tf-cpf'), rg:g('tf-rg'), cnh:g('tf-cnh'),
+    carreta1:g('tf-carreta1').toUpperCase(), carreta2:g('tf-carreta2').toUpperCase(), carreta3:g('tf-carreta3').toUpperCase(),
+    transp:g('tf-transp'), produto:g('tf-produto'), contrato:g('tf-contrato'),
+    dataHora:new Date().toLocaleString('pt-BR'),
+    obs:'', loadId:null, real_kg:null, bruto:null
+  };
+  S.trucks.push(t);
+  ['tf-plate','tf-tara','tf-pbt','tf-sc','tf-nome','tf-cpf','tf-rg','tf-cnh','tf-carreta1','tf-carreta2','tf-carreta3','tf-transp','tf-produto','tf-contrato'].forEach(id=>{const e=document.getElementById(id); if(e)e.value='';});
+  if(irDireto){ enviarAoPatio(t); } else { renderTruckQueue(); updateBadges(); }
+}
+// habilita/atualiza o botão "Ir Pátio" do cadastro conforme a tara
+function atualizaBtnIrPatio(){
+  const btn=document.getElementById('btn-cad-patio');
+  const tara=parseFloat((document.getElementById('tf-tara')||{}).value);
+  if(btn) btn.style.display=(tara>0)?'':'none';
+}
+
+function renderTruckQueue(){
+  agendarPersist();
+  const grid=document.getElementById('truck-queue-grid');
+  if(!grid) return;
+  atualizaDatalists(); ajustaCarretas();
+  const fila=S.trucks.filter(t=>t.status==='waiting');
+  if(!fila.length){ grid.innerHTML='<div class="tl-empty">Nenhum caminhão em espera. Cadastre acima.</div>'; return; }
+  let html='';
+  fila.forEach((t,i)=>{
+    const editando = S._editEspera===t.id;
+    const skin=skinVazio(t.type);
+    const nCarr=carretasDoTipo(t.type);
+    const taraTxt = t.tara? String(Math.round(t.tara)).padStart(5,'0') : '—';
+    html+='<div class="esp-card">';
+    if(!editando) html+='<button class="card-x" title="remover" onclick="removeTruck('+t.id+')">✕</button>';
+    // LINHA ENXUTA: nº fila | skin | placa | tara | nome | contrato | ações
+    html+='<div class="esp-row">';
+    html+='<span class="esp-num">'+(i+1)+'</span>';
+    html+='<div class="esp-skin">'+skin+'</div>';
+    html+='<span class="esp-plate">'+(t.plate||'—')+'</span>';
+    html+='<span class="esp-tara-box"><label>TARA</label><b>'+taraTxt+'</b></span>';
+    html+='<span class="esp-nome">'+(t.nome||'—')+'</span>';
+    html+='<span class="esp-cd">'+(t.contrato||'—')+'</span>';
+    html+='<span class="esp-row-acts">';
+    if(!editando){
+      html+='<button class="btn sm" onclick="editarEspera('+t.id+')">✎</button>';
+      html+='<button class="btn sm success" onclick="irPatio('+t.id+')">→ Pátio</button>';
+    } else {
+      html+='<button class="btn sm success" onclick="salvarEspera('+t.id+')">✓ Salvar</button>';
+      html+='<button class="btn sm" onclick="cancelarEdicaoEspera()">cancelar</button>';
+    }
+    html+='</span>';
+    html+='</div>';
+    // painel expandido (só ao editar): demais campos
+    if(editando){
+      html+='<div class="esp-edit">';
+      html+=campoEdit(t.id,'nome','Motorista',t.nome)+campoEdit(t.id,'cpf','CPF',t.cpf)+campoEdit(t.id,'rg','RG',t.rg)+campoEdit(t.id,'cnh','CNH',t.cnh);
+      html+=campoEdit(t.id,'plate','Placa cavalo',t.plate);
+      if(nCarr>=1) html+=campoEdit(t.id,'carreta1','Carreta 1',t.carreta1);
+      if(nCarr>=2) html+=campoEdit(t.id,'carreta2','Carreta 2',t.carreta2);
+      if(nCarr>=3) html+=campoEdit(t.id,'carreta3','Carreta 3',t.carreta3);
+      html+=campoEdit(t.id,'tara','Tara (kg)',t.tara,'number');
+      html+=campoEdit(t.id,'transp','Transportadora',t.transp)+campoEdit(t.id,'produto','Produto',t.produto)+campoEdit(t.id,'contrato','Contrato/Destino',t.contrato);
+      html+='</div>';
+    }
+    html+='</div>';
+  });
+  grid.innerHTML=html;
+}
+function campoLeitura(label,val){
+  return '<div class="esp-f"><span class="esp-f-l">'+label+'</span><span class="esp-f-v">'+(val||'—')+'</span></div>';
+}
+function campoEdit(id,campo,label,val,tipo){
+  return '<div class="esp-f"><span class="esp-f-l">'+label+'</span><input type="'+(tipo||'text')+'" id="ee-'+campo+'-'+id+'" value="'+(val!=null?String(val).replace(/"/g,'&quot;'):'')+'"></div>';
+}
+function editarEspera(id){ S._editEspera=id; renderTruckQueue(); }
+function cancelarEdicaoEspera(){ S._editEspera=null; renderTruckQueue(); }
+function salvarEspera(id){
+  const t=S.trucks.find(x=>x.id===id); if(!t) return;
+  const g=campo=>{const e=document.getElementById('ee-'+campo+'-'+id); return e?e.value.trim():undefined;};
+  ['nome','cpf','rg','cnh','transp','produto','contrato'].forEach(c=>{const v=g(c); if(v!==undefined)t[c]=v.toUpperCase();});
+  const pl=g('plate'); if(pl!==undefined)t.plate=pl.toUpperCase();
+  const c1=g('carreta1'); if(c1!==undefined)t.carreta1=c1.toUpperCase();
+  const c2=g('carreta2'); if(c2!==undefined)t.carreta2=c2.toUpperCase();
+  const c3=g('carreta3'); if(c3!==undefined)t.carreta3=c3.toUpperCase();
+  const tara=g('tara'); if(tara!==undefined){const n=parseFloat(tara); t.tara=isNaN(n)?0:n;}
+  S._editEspera=null; renderTruckQueue();
+}
+// Ir Pátio: exige tara (pesagem); se não tiver, pede
+function irPatio(id){
+  const t=S.trucks.find(x=>x.id===id); if(!t) return;
+  if(!t.tara || t.tara<=0){
+    const v=prompt('Informe a tara (peso vazio, kg) para enviar ao Pátio:');
+    const n=parseFloat(v); if(isNaN(n)||n<=0){ return; }
+    t.tara=n;
+  }
+  S._editEspera=null;
+  enviarAoPatio(t);
+}
+// move um caminhão (objeto) da Espera para o PÁTIO (sem mexer em estoque)
+function enviarAoPatio(t){
+  S.trucks = S.trucks.filter(x=>x.id!==t.id);
+  S.emCarregamento.push({
+    id:t.id, truck:t, plate:t.plate, type:t.type,
+    sc:t.sc, tara:t.tara, pbt:t.pbt, obs:t.obs||'',
+    bruto:null, ts:Date.now()
+  });
+  renderTruckQueue();
+  renderEmCarregamento();
+  updateBadges();
+}
+
+function truckReturn(tid){
+  const t=S.trucks.find(t=>t.id===tid);
+  if(t){t.status='returned'; renderTruckQueue(); updateQueueBadge();}
+}
+function removeTruck(tid){
+  S.trucks=S.trucks.filter(t=>t.id!==tid);
+  renderTruckQueue(); updateQueueBadge(); refreshTrucksLoad();
+}
+function updateBadges(){
+  const qb=document.getElementById('queue-badge');
+  if(qb) qb.textContent=S.trucks.filter(t=>t.status==='waiting').length;
+  const cb=document.getElementById('carreg-badge');
+  if(cb) cb.textContent=(S.emCarregamento||[]).length;
+}
+function updateQueueBadge(){ updateBadges(); }  // compat
+
+function openWeightModalTruck(tid){
+  // find the load linked to this truck
+  const t=S.trucks.find(t=>t.id===tid);
+  if(!t||!t.loadId) return;
+  S.wmLoadId=t.loadId;
+  S._wmTruckId=tid;
+  document.getElementById('wm-n').textContent=t.loadId;
+  document.getElementById('wm-bruto').value='';
+  document.getElementById('wm-pct').value=100;
+  document.getElementById('wm-breakdown').innerHTML='<div style="color:var(--muted);font-size:11px">Informe o peso bruto</div>';
+  document.getElementById('weight-overlay').classList.add('show');
+}
+
+// ══════════════════════════════════════════════════
+// WEIGHT MODAL
+// ══════════════════════════════════════════════════
+function openWeightModal(loadId){
+  S.wmLoadId=loadId||S.loads[S.loads.length-1]?.id||1;
+  S._wmTruckId=null;
+  const load=S.loads.find(l=>l.id===S.wmLoadId);
+  if(!load) return;
+  document.getElementById('wm-n').textContent=load.id;
+  document.getElementById('wm-bruto').value='';
+  document.getElementById('wm-pct').value=100;
+  document.getElementById('wm-breakdown').innerHTML='<div style="color:var(--muted);font-size:11px">Informe o peso bruto</div>';
+  document.getElementById('weight-overlay').classList.add('show');
+}
+function calcWmBreakdown(){
+  const bruto=parseFloat(document.getElementById('wm-bruto').value);
+  const pct=parseFloat(document.getElementById('wm-pct').value)||100;
+  const load=S.loads.find(l=>l.id===S.wmLoadId);
+  if(!load||isNaN(bruto)) return;
+  const truck=load.plate!=='—'?S.trucks.find(t=>t.plate===load.plate):null;
+  const tara=truck?.tara||0;
+  const liquido=bruto-tara;
+  const pairKg=liquido*(pct/100);
+  const wetKg=pairKg*(load.sc_w/load.total);
+  const dryKg=pairKg*(load.sc_d/load.total);
+  const outro=liquido-pairKg;
+  document.getElementById('wm-breakdown').innerHTML=`
+    <div class="wm-brow"><span>Peso bruto</span><span>${(bruto/1000).toFixed(3)}t</span></div>
+    ${tara?`<div class="wm-brow"><span>Tara (${load.plate})</span><span>− ${(tara/1000).toFixed(3)}t</span></div>`:''}
+    <div class="wm-brow"><span>Peso líquido</span><span>${(liquido/1000).toFixed(3)}t</span></div>
+    <div class="wm-brow"><span>Par ${load.wid}+${load.did} (${pct}%)</span><span>${(pairKg/1000).toFixed(3)}t</span></div>
+    <div class="wm-brow"><span style="color:var(--wet-l)">→ Silo ${load.wid} (${load.sc_w}sc · ${load.fw_pct?.toFixed(0)||100}%)</span><span>${(wetKg/1000).toFixed(3)}t</span></div>
+    <div class="wm-brow"><span style="color:var(--dry-l)">→ Silo ${load.did||'—'} (${load.sc_d}sc · ${(100-(load.fw_pct||100)).toFixed(0)}%)</span><span>${(dryKg/1000).toFixed(3)}t</span></div>
+    ${outro>10?`<div class="wm-brow"><span style="color:var(--muted)">Outros pares</span><span>${(outro/1000).toFixed(3)}t</span></div>`:''}
+    <div class="wm-brow"><span>Total par</span><span>${(pairKg/1000).toFixed(3)}t</span></div>`;
+}
+function saveWeight(){
+  const bruto=parseFloat(document.getElementById('wm-bruto').value);
+  const pct=parseFloat(document.getElementById('wm-pct').value)||100;
+  const load=S.loads.find(l=>l.id===S.wmLoadId);
+  if(!load||isNaN(bruto)) return;
+  const truck=load.plate!=='—'?S.trucks.find(t=>t.plate===load.plate):null;
+  const tara=truck?.tara||0;
+  const liquido=bruto-tara;
+  const pairKg=liquido*(pct/100);
+  load.real_kg=liquido;
+  load.wet_debit=pairKg*(load.sc_w/load.total);
+  load.dry_debit=pairKg*(load.sc_d/load.total);
+  SILOS[load.wid].qtd_real_debit=(SILOS[load.wid].qtd_real_debit||0)+load.wet_debit;
+  if(load.did) SILOS[load.did].qtd_real_debit=(SILOS[load.did].qtd_real_debit||0)+load.dry_debit;
+  if(S._wmTruckId){
+    const t=S.trucks.find(t=>t.id===S._wmTruckId);
+    if(t){t.real_kg=liquido; t.bruto=bruto;}
+    renderTruckQueue();
+  }
+  closeModal('weight-overlay');
+  renderLoadTable();
+}
+
+// ══════════════════════════════════════════════════
+// ORPHAN MODAL
+// ══════════════════════════════════════════════════
+let _orphanChoice=null;
+function openOrphanModal(wa){
+  _orphanChoice=null;
+  document.getElementById('orp-desc').textContent=`Silo ${S.dryId} esgotado. Silo ${S.wetId} ainda tem ${wa.toLocaleString()} sc sem parceiro.`;
+  const opts=document.getElementById('orp-options'); opts.innerHTML='';
+  const partners=getPartners(S.wetId).filter(p=>p.dry.id!==S.dryId);
+  const ranks=['🥇','🥈','🥉'];
+  partners.slice(0,3).forEach((p,i)=>{
+    addOrpOpt(opts,`p${i}`,
+      `${ranks[i]} Continuar com Silo ${p.dry.id}`,
+      `${p.dry.umean.toFixed(1)}% · ${p.dist}m · ${Math.round(p.fw*100)}%úm + ${Math.round((1-p.fw)*100)}%sec · max ${p.maxSc.toLocaleString()}sc`,
+      {type:'NEW_DRY',id:p.dry.id});
+  });
+  if(partners.length>=2){
+    const half=Math.round(wa/2);
+    addOrpOpt(opts,'split',
+      `⚡ Dividir órfão: ${half.toLocaleString()}sc → Silo ${partners[0].dry.id} + ${half.toLocaleString()}sc → Silo ${partners[1].dry.id}`,
+      'Usa dois secos em sequência para o estoque restante',
+      {type:'SPLIT',ids:[partners[0].dry.id,partners[1].dry.id]});
+  }
+  addOrpOpt(opts,'defer','⏸ Pausar — decidir depois',
+    `${wa.toLocaleString()} sc ficam sem par por agora`,
+    {type:'DEFER'});
+  document.getElementById('orphan-overlay').classList.add('show');
+}
+function addOrpOpt(container,id,title,desc,data){
+  const div=document.createElement('div'); div.className='orp-opt';
+  div.innerHTML=`<h4>${title}</h4><p>${desc}</p>`;
+  div.onclick=()=>{
+    document.querySelectorAll('.orp-opt').forEach(o=>o.classList.remove('sel'));
+    div.classList.add('sel'); _orphanChoice=data;
+  };
+  container.appendChild(div);
+}
+function applyOrphan(){
+  if(!_orphanChoice){alert('Selecione uma opção');return;}
+  closeModal('orphan-overlay');
+  if(_orphanChoice.type==='NEW_DRY') selectDry(_orphanChoice.id);
+  else if(_orphanChoice.type==='SPLIT'){selectDry(_orphanChoice.ids[0]); S._splitNext=_orphanChoice.ids[1];}
+}
+function closeModal(id){document.getElementById(id).classList.remove('show');}
+
+// ══════════════════════════════════════════════════
+// HISTORY & STOCK PAGES
+// ══════════════════════════════════════════════════
+function buildHistPage(){ renderHistory(); }
+function _acharFinal(id){ return (S.finalizados||[]).find(f=>f.id===id); }
+function addFonte(id){ const f=_acharFinal(id); if(!f)return; f.fontes=f.fontes||[];
+  // sugere o que falta como sc inicial
+  const falta=Math.max(0, f.sc-(f.fontes.reduce((a,x)=>a+(x.sc||0),0)));
+  f.fontes.push({tipo:'silo', ref:'', sc:falta||0}); renderHistory(); }
+function removeFonte(id,idx){ const f=_acharFinal(id); if(!f)return; f.fontes.splice(idx,1); renderHistory(); }
+function setFonteTipo(id,idx,v){ const f=_acharFinal(id); if(!f)return; f.fontes[idx].tipo=v; f.fontes[idx].ref=''; renderHistory(); }
+function setFonteRef(id,idx,v){ const f=_acharFinal(id); if(!f)return; f.fontes[idx].ref=v; }
+function setFonteSc(id,idx,v){ const f=_acharFinal(id); if(!f)return; const n=parseFloat(v); f.fontes[idx].sc=isNaN(n)?0:n; renderHistory(); }
+function voltarFinalParaPatio(id){
+  const i=(S.finalizados||[]).findIndex(f=>f.id===id); if(i<0)return;
+  const f=S.finalizados[i];
+  S.finalizados.splice(i,1);
+  S.emCarregamento.push({ id:f.id, truck:null, plate:f.plate, type:f.type, sc:f.sc, tara:f.tara, pbt:null, obs:f.obs, bruto:f.bruto, ts:Date.now() });
+  renderHistory(); renderEmCarregamento(); updateBadges();
+}
+// confirma a procedência: AQUI efetiva o estoque (silos descontam, armazém ±)
+function confirmarProcedencia(id){
+  const f=_acharFinal(id); if(!f) return;
+  if(!(f.fontes||[]).length){ alert('Adicione ao menos uma fonte.'); return; }
+  // valida silos com ref e sc
+  for(const src of f.fontes){
+    if(src.tipo==='silo' && !src.ref){ alert('Selecione o silo de cada fonte de silo.'); return; }
+    if(!(src.sc>0)){ alert('Informe as sacas de cada fonte.'); return; }
+  }
+  const soma=f.fontes.reduce((a,x)=>a+x.sc,0);
+  const diff=f.sc-soma;  // +falta / -sobra
+  // efetiva no estoque
+  f.fontes.forEach(src=>{
+    if(src.tipo==='silo'){ const s=SILOS[src.ref]; if(s) s.qtd_est=Math.max(0,(s.qtd_est||0)-src.sc); }
+    else if(src.tipo==='armazem'){ S.armazem.sc=Math.max(0,S.armazem.sc-src.sc); }
+    // colheita: fluxo direto, não tem estoque a descontar
+  });
+  // ajuste de conciliação pelo armazém: faltou (completa do armazém) / sobrou (volta ao armazém)
+  if(Math.abs(diff)>=1){
+    if(diff>0){ S.armazem.sc=Math.max(0,S.armazem.sc-diff); f.ajuste={tipo:'completa', sc:diff}; }
+    else { S.armazem.sc=S.armazem.sc+(-diff); f.ajuste={tipo:'excedente', sc:-diff}; }
+  }
+  f.confirmado=true;
+  renderHistory(); updateBadges();
+  if(typeof buildSiloLists==='function') buildSiloLists();
+  if(document.getElementById('stock-page') && document.getElementById('stock-page').classList.contains('active') && typeof buildStockPage==='function') buildStockPage();
+  // persiste saldo dos silos debitados + estado (expedicao)
+  persistSilosSaldo(f.fontes.filter(s=>s.tipo==='silo'&&s.ref).map(s=>String(s.ref)));
+  agendarPersist();
+}
+function renderHistory(){
+  agendarPersist();
+  const lista=S.finalizados||[];
+  const stats=document.getElementById('hist-stats');
+  const confirmados=lista.filter(f=>f.confirmado);
+  const totalSc=confirmados.reduce((a,f)=>a+(f.sc||0),0);
+  if(stats) stats.innerHTML=
+    '<div class="hs-box"><div class="hs-v">'+lista.length+'</div><div class="hs-l">Cargas</div></div>'
+    +'<div class="hs-box"><div class="hs-v" style="color:var(--ok)">'+confirmados.length+'</div><div class="hs-l">Confirmadas</div></div>'
+    +'<div class="hs-box"><div class="hs-v" style="color:var(--warn)">'+(lista.length-confirmados.length)+'</div><div class="hs-l">Pendentes</div></div>'
+    +'<div class="hs-box"><div class="hs-v">'+totalSc.toLocaleString()+'</div><div class="hs-l">sc confirmados</div></div>';
+  const wrap=document.getElementById('final-list');
+  if(!wrap) return;
+  if(!lista.length){ wrap.innerHTML='<div class="tl-empty">Nenhuma carga finalizada ainda.</div>'; return; }
+  let html='';
+  lista.forEach(function(f){
+    const somaFontes=(f.fontes||[]).reduce((a,x)=>a+(x.sc||0),0);
+    const diff = f.sc - somaFontes;   // + falta, - sobra
+    const okTotal = Math.abs(diff)<1;
+    html+='<div class="fin-card'+(f.confirmado?' done':'')+'">';
+    // cabeçalho
+    html+='<div class="fin-head">';
+    html+='<span class="fin-plate">'+f.plate+'</span>';
+    html+='<span class="fin-type">'+f.type+'</span>';
+    html+='<span class="fin-badge '+(f.confirmado?'ok':'pend')+'">'+(f.confirmado?'✓ confirmado':'pendente')+'</span>';
+    html+='<span class="fin-stats">Líquido <b>'+(f.liquido/1000).toFixed(2)+'t</b> · <b>'+f.sc.toLocaleString()+'</b> sc</span>';
+    html+='</div>';
+    if(f.obs) html+='<div class="fin-obs">'+f.obs+'</div>';
+    if(!f.confirmado){
+      // bloco de procedência editável
+      html+='<div class="fin-proc">';
+      html+='<div class="fin-proc-title">Procedência da carga</div>';
+      (f.fontes||[]).forEach((src,idx)=>{
+        html+='<div class="fin-src">';
+        html+='<select class="fin-src-tipo" onchange="setFonteTipo('+f.id+','+idx+',this.value)">'
+          +'<option value="silo"'+(src.tipo==='silo'?' selected':'')+'>Silo</option>'
+          +'<option value="armazem"'+(src.tipo==='armazem'?' selected':'')+'>Armazém</option>'
+          +'<option value="colheita"'+(src.tipo==='colheita'?' selected':'')+'>Colheita</option>'
+          +'</select>';
+        if(src.tipo==='silo'){
+          let opts='<option value="">silo…</option>';
+          Object.values(SILOS).filter(s=>s.qtd_est>0.5).forEach(s=>{ opts+='<option value="'+s.id+'"'+(String(src.ref)===String(s.id)?' selected':'')+'>Silo '+s.id+' ('+Math.round(s.qtd_est).toLocaleString()+'sc)</option>'; });
+          html+='<select class="fin-src-ref" onchange="setFonteRef('+f.id+','+idx+',this.value)">'+opts+'</select>';
+        } else {
+          html+='<span class="fin-src-ref-fix">'+(src.tipo==='armazem'?'Armazém ('+Math.round(S.armazem.sc).toLocaleString()+'sc)':'Colheita (direto)')+'</span>';
+        }
+        html+='<input type="number" class="fin-src-sc" placeholder="sc" value="'+(src.sc||'')+'" oninput="setFonteSc('+f.id+','+idx+',this.value)">';
+        html+='<button class="fin-src-del" onclick="removeFonte('+f.id+','+idx+')">✕</button>';
+        html+='</div>';
+      });
+      html+='<button class="btn sm" onclick="addFonte('+f.id+')">+ adicionar fonte</button>';
+      // conciliação
+      html+='<div class="fin-concil">';
+      html+='<span>Fontes: <b>'+somaFontes.toLocaleString()+'</b> sc · Carga: <b>'+f.sc.toLocaleString()+'</b> sc</span>';
+      if(okTotal) html+='<span class="fin-ok">✓ bate</span>';
+      else if(diff>0) html+='<span class="fin-warn">faltam '+diff.toLocaleString()+' sc (completar)</span>';
+      else html+='<span class="fin-warn">sobram '+(-diff).toLocaleString()+' sc (excedente volta)</span>';
+      html+='</div>';
+      html+='<div class="fin-acts">';
+      html+='<button class="btn sm" style="color:var(--err);border-color:var(--err)" onclick="voltarFinalParaPatio('+f.id+')">↩ Pátio</button>';
+      html+='<button class="btn sm success" onclick="confirmarProcedencia('+f.id+')"'+((f.fontes||[]).length?'':' disabled')+'>✓ Confirmar procedência</button>';
+      html+='</div>';
+      html+='</div>';
+    } else {
+      // resumo da procedência confirmada
+      html+='<div class="fin-proc-done">';
+      (f.fontes||[]).forEach(src=>{
+        const lbl=src.tipo==='silo'?('Silo '+src.ref):(src.tipo==='armazem'?'Armazém':'Colheita');
+        const pct=f.sc>0?Math.round(src.sc/f.sc*100):0;
+        html+='<span class="fin-tag">'+lbl+': '+src.sc.toLocaleString()+'sc ('+pct+'%)</span>';
+      });
+      html+='</div>';
+    }
+    html+='</div>';
+  });
+  wrap.innerHTML=html;
+}
+
+// ── SKIN do silo-bolsa (vista lateral validada) ──
+// s:{id,u,cap}  consumidoSc: sacas já extraídas (a partir do início/direita)
+function siloLateralSVG(s, consumidoSc){
+  const W=880, H=51;
+  const cx0=14, cx1=W-14;
+  const midY=31, halfTop=29, halfBot=2;
+  const bodyW=cx1-cx0;
+  const u=s.u||[]; const n=u.length||1;
+  const scSeg=s.cap/n;
+  const segW=bodyW/n;
+  const uid='sl'+s.id;
+  let restPorSeg=[], consRest=consumidoSc||0;
+  for(let i=0;i<n;i++){ const t=Math.min(scSeg,Math.max(0,consRest)); restPorSeg[i]=scSeg-t; consRest-=t; }
+  const topY=midY-halfTop, botY=midY+halfBot;
+  function bodyPath(xa, xb){
+    const altura=botY-topY;
+    const rL=Math.min(altura*0.85, altura*1.8);
+    const rBL=9;
+    const afina=Math.min(80,(xb-xa)*0.14);
+    const xAfi=xb-afina;
+    return 'M'+(xa+rBL)+' '+botY
+      +' L'+xb+' '+botY
+      +' Q'+xb+' '+(topY+altura*0.45)+' '+xAfi+' '+topY
+      +' L'+(xa+rL)+' '+topY
+      +' Q'+xa+' '+topY+' '+xa+' '+(topY+rL)
+      +' L'+xa+' '+(botY-rBL)
+      +' Q'+xa+' '+botY+' '+(xa+rBL)+' '+botY
+      +' Z';
+  }
+  let svg='<svg viewBox="0 0 '+W+' '+H+'" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="none" style="width:100%;height:'+H+'px;display:block">';
+  svg+='<ellipse cx="'+(W/2)+'" cy="'+(botY+10)+'" rx="'+(bodyW/2+30)+'" ry="8" fill="rgba(0,0,0,.30)"/>';
+  svg+='<defs><clipPath id="clip_'+uid+'"><path d="'+bodyPath(cx0,cx1)+'"/></clipPath></defs>';
+  svg+='<path d="'+bodyPath(cx0,cx1)+'" fill="#d3dae3" stroke="#8a94a2" stroke-width="2"/>';
+  svg+='<g clip-path="url(#clip_'+uid+')">';
+  for(let i=0;i<n;i++){
+    const fx=cx1-(i+1)*segW;
+    const frac=restPorSeg[i]/scSeg;
+    if(frac>0.001){
+      svg+='<rect x="'+fx+'" y="'+(topY-10)+'" width="'+(segW+0.5)+'" height="'+(botY-topY+20)+'" fill="'+uColor(u[i])+'"/>';
+      if(frac<0.999){ svg+='<rect x="'+(fx+segW*frac)+'" y="'+(topY-10)+'" width="'+(segW*(1-frac)+0.5)+'" height="'+(botY-topY+20)+'" fill="#d3dae3"/>'; }
+    }
+  }
+  for(let i=1;i<n;i++){ const lx=cx1-i*segW; if(restPorSeg[i-1]>0.001&&restPorSeg[i]>0.001) svg+='<line x1="'+lx+'" y1="'+topY+'" x2="'+lx+'" y2="'+botY+'" stroke="rgba(0,0,0,.15)" stroke-width="1"/>'; }
+  svg+='</g>';
+  svg+='<line x1="'+(cx0+40)+'" y1="'+(topY+5)+'" x2="'+(cx1-40)+'" y2="'+(topY+5)+'" stroke="rgba(255,255,255,.45)" stroke-width="5" stroke-linecap="round" clip-path="url(#clip_'+uid+')"/>';
+  svg+='<path d="'+bodyPath(cx0,cx1)+'" fill="none" stroke="#8a94a2" stroke-width="2"/>';
+  svg+='</svg>';
+  const marks=[];
+  for(let i=0;i<n;i++){ if(restPorSeg[i]>0.001){ const cxv=cx1-(i+1)*segW+segW/2; marks.push({left:(cxv/W*100), val:u[i].toFixed(1)}); } }
+  const bottomPct=(H-(botY-7))/H*100;
+  return { svg, marks, bottomPct };
+}
+
+function buildStockPage(){
+  const wrap=document.getElementById('stock-grid'); if(!wrap) return; wrap.innerHTML='';
+  const wrapDone=document.getElementById('stock-grid-done'); if(wrapDone) wrapDone.innerHTML='';
+  const doneHead=document.getElementById('stock-done-head');
+  const todos=Object.values(SILOS).sort((a,b)=>b.umean-a.umean);
+  const ativos=todos.filter(s=>s.qtd_est>0.5);
+  const zerados=todos.filter(s=>s.qtd_est<=0.5);
+  function itemHTML(s, zerado){
+    const consumido = s.cap - s.qtd_est;
+    const pct=Math.max(0,Math.min(100,s.qtd_est/s.cap*100));
+    const tipo=s.umean>THI?'úmido':s.umean<TLO?'seco':'faixa';
+    const tcor=s.umean>THI?'var(--wet)':s.umean<TLO?'var(--dry)':'var(--faixa)';
+    const r=siloLateralSVG(s, zerado?s.cap:consumido);
+    let marksHTML='';
+    r.marks.forEach(m=>{ marksHTML+='<span class="sb-mark" style="left:'+m.left.toFixed(2)+'%;bottom:'+r.bottomPct.toFixed(1)+'%">'+m.val+'</span>'; });
+    return '<div class="sb-card'+(zerado?' done':'')+'">'
+      +'<div class="sb-head"><span class="sb-id">Silo '+s.id+'</span>'
+        +'<span class="sb-tag" style="color:'+tcor+';border-color:'+tcor+'">'+tipo+'</span>'
+        +'<span class="sb-lote">lote '+s.lote+'</span>'
+        +'<span class="sb-stats"><span>Média <b>'+s.umean.toFixed(1)+'%</b></span>'
+        +'<span>Estoque <b>'+Math.round(s.qtd_est).toLocaleString()+'</b>/'+s.cap.toLocaleString()+' sc</span>'
+        +'<span><b>'+pct.toFixed(0)+'%</b></span></span></div>'
+      +'<div class="sb-skin"><div class="sb-skinwrap">'+r.svg+marksHTML+'</div></div>'
+    +'</div>';
+  }
+  let html=''; ativos.forEach(s=>html+=itemHTML(s,false)); wrap.innerHTML=html;
+  if(doneHead) doneHead.style.display = zerados.length ? 'block' : 'none';
+  if(wrapDone){ let h=''; zerados.forEach(s=>h+=itemHTML(s,true)); wrapDone.innerHTML=h; }
+}
+
+
+// ══════════════════════════════════════════════════
+// TABS & MISC
+// ══════════════════════════════════════════════════
+function showPage(p){
+  document.querySelectorAll('.page').forEach(e=>e.classList.remove('active'));
+  document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
+  document.getElementById(p+'-page').classList.add('active');
+  document.querySelectorAll('.tab').forEach(t=>{if(t.dataset.page===p)t.classList.add('active');});
+  if(p==='hist') buildHistPage();
+  if(p==='stock') buildStockPage();
+  if(p==='trucks') renderTruckQueue();
+  if(p==='carreg') renderEmCarregamento();
+}
+
+function newDay(){
+  if(!confirm('Iniciar novo dia? Histórico atual será perdido.')) return;
+  S.loads=[]; S.wetQueue=[]; S.dryQueue=[]; S.faixaQueue=[]; _noMixDry=false;
+  S.emCarregamento=[]; S.finalizados=[];
+  S.trucks=S.trucks.filter(t=>t.status==='waiting'); // keep queue
+  for(const id in SILOS){SILOS[id].qtd_est=SILOS[id].cap; SILOS[id].qtd_real_debit=0;}
+  S.date=new Date().toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit',year:'numeric'});
+  buildSiloLists(); renderQueues(); refreshTrucksLoad(); updateBadges();
+  showPage('op');
+  persistSilosSaldo(); agendarPersist();
+}
+
+// ── SEED: cadastra 30 rodotrens (9 eixos) p/ facilitar testes ──
+function seedTrucks(n){
+  n=n||30;
+  const L='ABCDEFGHJKLMNPQRSTUVWXYZ';
+  function placa(i){
+    const a=L[(i*3)%L.length]+L[(i*7+2)%L.length]+L[(i*5+1)%L.length];
+    const d=String((i*137)%10)+L[(i*11)%L.length]+String((i*23)%10)+String((i*31)%10);
+    return a+d; // padrão Mercosul tipo ABC1D23
+  }
+  for(let i=0;i<n;i++){
+    const tara=14000+((i*200)%2000);   // ~14-16t
+    const pbt=74000;                     // PBT rodotrem
+    const sc=Math.floor((pbt-tara)/KG_SC);
+    S.trucks.push({id:Date.now()+i, seq:(S._seq=(S._seq||0)+1), plate:placa(i), type:'Rodotrem (9 eixos)',
+      tara, pbt, sc, status:'waiting', loadId:null, real_kg:null, bruto:null});
+  }
+}
+
+// ── INIT (roda após carregar do banco) ──
+function initApp(){
+  document.getElementById('pill-date').textContent='📅 '+S.date;
+  if(!S.wetQueue)S.wetQueue=[]; if(!S.dryQueue)S.dryQueue=[]; if(!S.faixaQueue)S.faixaQueue=[];
+  if(!S.trucks)S.trucks=[]; if(!S.emCarregamento)S.emCarregamento=[]; if(!S.finalizados)S.finalizados=[];
+  // sem seedTrucks: caminhões vêm do banco (expedicao)
+  buildSiloLists();
+  renderQueues();
+  renderTruckQueue();
+  setSimMode(S.simMode||'patio');
+  refreshTrucksLoad();
+  buildStockPage();
+  _persistOn=true;
+}
+
+/* ===================== SUPABASE — conexão, login, carga e escrita ===================== */
+const SB_URL='https://ngdidjtfgmtkdkvqwfjf.supabase.co';
+const SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5nZGlkanRmZ210a2RrdnF3ZmpmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NTU5MDYsImV4cCI6MjA5NjUzMTkwNn0.OW9hGEFTvSYx_THv3DR9pt8xIVC0B9Pw2bTDGD6TBLk';
+let SB=null, _persistOn=false, _persistTimer=null, SAFRA='2025/2026';
+function _statusSB(txt,cor){ let el=document.getElementById('sbStatus'); if(!el){ el=document.createElement('div'); el.id='sbStatus'; el.style.cssText='position:fixed;bottom:10px;right:10px;z-index:9999;padding:7px 12px;border-radius:8px;font:600 12px system-ui;box-shadow:0 2px 8px rgba(0,0,0,.3)'; document.body.appendChild(el);} el.textContent=txt; el.style.background=cor||'#333'; el.style.color='#fff'; }
+function _botaoSair(){ if(window.self!==window.top) return; let b=document.getElementById('btnSair'); if(b)return; b=document.createElement('button'); b.id='btnSair'; b.textContent='Sair'; b.style.cssText='position:fixed;top:10px;right:10px;z-index:9998;padding:6px 12px;border:1px solid #30363d;border-radius:8px;background:#21262d;color:#e6edf3;font:600 12px system-ui;cursor:pointer'; b.onclick=async()=>{ if(SB) await SB.auth.signOut(); location.reload(); }; document.body.appendChild(b); }
+function _telaLogin(){
+  let ov=document.getElementById('loginOverlay'); if(ov) return;
+  ov=document.createElement('div'); ov.id='loginOverlay';
+  ov.style.cssText='position:fixed;inset:0;z-index:99999;background:#0d1117;display:flex;align-items:center;justify-content:center;font-family:system-ui';
+  ov.innerHTML='<div style="background:#161b22;border:1px solid #30363d;border-radius:14px;padding:32px 28px;width:340px;box-shadow:0 8px 40px rgba(0,0,0,.5)"><div style="font-size:20px;font-weight:800;color:#e6edf3;text-align:center;margin-bottom:4px">Gestão Alabama Agro</div><div style="font-size:13px;color:#8b949e;text-align:center;margin-bottom:22px">Carregamento · Expedição</div><label style="font-size:12px;color:#8b949e;display:block;margin-bottom:4px">E-mail</label><input id="lg_email" type="email" style="width:100%;padding:10px;border-radius:8px;border:1px solid #30363d;background:#0d1117;color:#e6edf3;margin-bottom:14px;box-sizing:border-box"><label style="font-size:12px;color:#8b949e;display:block;margin-bottom:4px">Senha</label><input id="lg_senha" type="password" style="width:100%;padding:10px;border-radius:8px;border:1px solid #30363d;background:#0d1117;color:#e6edf3;margin-bottom:18px;box-sizing:border-box"><button id="lg_btn" style="width:100%;padding:11px;border:0;border-radius:8px;background:#238636;color:#fff;font-weight:700;font-size:14px;cursor:pointer">Entrar</button><div id="lg_msg" style="font-size:12px;color:#f85149;text-align:center;margin-top:12px;min-height:16px"></div></div>';
+  document.body.appendChild(ov);
+  const tentar=async()=>{
+    const email=ov.querySelector('#lg_email').value.trim(), senha=ov.querySelector('#lg_senha').value, msg=ov.querySelector('#lg_msg');
+    if(!email||!senha){ msg.textContent='Preencha e-mail e senha.'; return; }
+    msg.style.color='#8b949e'; msg.textContent='Entrando…';
+    try{ const {error}=await SB.auth.signInWithPassword({email,password:senha}); if(error){ msg.style.color='#f85149'; msg.textContent='Erro: '+error.message; return; } ov.remove(); _botaoSair(); carregarSilosExpSB(); }
+    catch(e){ msg.style.color='#f85149'; msg.textContent='Falha: '+e.message; }
+  };
+  ov.querySelector('#lg_btn').onclick=tentar;
+  ov.querySelector('#lg_senha').addEventListener('keydown',e=>{ if(e.key==='Enter') tentar(); });
+}
+async function carregarSilosExpSB(){
+  try{
+    _statusSB('⏳ Carregando do banco…','#2c3e50');
+    const {data:sil}=await SB.from('silos').select('id,qtd_est,qtd_real_debit');   // físico: todas as safras
+    if(sil){ sil.forEach(r=>{ const s=SILOS[String(r.id)]; if(s){ if(r.qtd_est!=null)s.qtd_est=+r.qtd_est; if(r.qtd_real_debit!=null)s.qtd_real_debit=+r.qtd_real_debit; } }); }
+    const {data:exp}=await SB.from('expedicao').select('*');
+    if(exp){ const m={}; exp.forEach(r=>m[r.chave]=r.data); const P=SAFRA+'|';
+      if(Array.isArray(m[P+'trucks'])) S.trucks=m[P+'trucks'];
+      if(Array.isArray(m[P+'patio'])) S.emCarregamento=m[P+'patio'];
+      if(Array.isArray(m[P+'finalizados'])) S.finalizados=m[P+'finalizados'];
+      if(m[P+'armazem']&&typeof m[P+'armazem']==='object'&&!Array.isArray(m[P+'armazem'])) S.armazem=m[P+'armazem'];
+    }
+    _statusSB('✅ Expedição do banco','#27ae60');
+  }catch(e){ _statusSB('❌ Falha: '+e.message,'#c0392b'); console.error(e); }
+  initApp();
+}
+function agendarPersist(){ if(!_persistOn||!SB) return; clearTimeout(_persistTimer); _persistTimer=setTimeout(persistExpedicao,600); }
+async function persistExpedicao(){
+  if(!SB) return;
+  try{ const P=SAFRA+'|'; const rows=[{chave:P+'trucks',data:S.trucks||[]},{chave:P+'patio',data:S.emCarregamento||[]},{chave:P+'finalizados',data:S.finalizados||[]},{chave:P+'armazem',data:S.armazem||{}}];
+    const {error}=await SB.from('expedicao').upsert(rows,{onConflict:'chave'});
+    if(error){ _statusSB('❌ Erro ao salvar: '+error.message,'#c0392b'); return; } _statusSB('✅ Expedição salva no banco','#27ae60');
+  }catch(e){ _statusSB('❌ Falha: '+e.message,'#c0392b'); }
+}
+async function persistSilosSaldo(ids){
+  if(!SB) return;
+  try{ const list=(ids&&ids.length)?ids:Object.keys(SILOS);
+    await Promise.all(list.map(id=>{ const s=SILOS[String(id)]; if(!s) return Promise.resolve(); return SB.from('silos').update({qtd_est:s.qtd_est,qtd_real_debit:s.qtd_real_debit||0}).eq('id',String(id)); }));
+    _statusSB('✅ Saldo dos silos salvo','#27ae60');
+  }catch(e){ _statusSB('❌ Falha: '+e.message,'#c0392b'); }
+}
+async function bootSupabase(){
+  if(!window.supabase){ _statusSB('⚠️ Lib Supabase não carregou (sem internet?)','#c0392b'); initApp(); return; }
+  SB=window.supabase.createClient(SB_URL,SB_KEY);
+  try{ const h=new URLSearchParams(location.hash.slice(1)); const at=h.get('at'),rt=h.get('rt'); const sf=h.get('safra'); if(sf) SAFRA=sf; if(at&&rt){ await SB.auth.setSession({access_token:at,refresh_token:rt}); history.replaceState(null,'',location.pathname+location.search); } }catch(e){ console.warn('handoff sessão',e); }
+  const {data}=await SB.auth.getSession();
+  if(data&&data.session){ _botaoSair(); carregarSilosExpSB(); }
+  else { _telaLogin(); initApp(); }
+}
+window.addEventListener('load',()=>{ setTimeout(bootSupabase,300); });
+
+// Resize handler
+window.addEventListener('resize',()=>{
+  refreshTrucksLoad();
+});
+</script>
+</body>
+</html>

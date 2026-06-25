@@ -1,0 +1,489 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Funcionários — Alabama Agro</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+:root{--bg:#0d1117;--bg2:#161b22;--bg3:#1c2333;--line:#30363d;--line2:#3d4d6b;--text:#e6edf3;--muted:#8b949e;--gold:#ffc107;--ok:#27ae60;--err:#f85149;--warn:#e3a008}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--bg);color:var(--text);font:14px system-ui,Segoe UI,Arial,sans-serif;padding:14px 16px 60px}
+h2{font-size:17px;margin-bottom:2px}.sub{color:var(--muted);font-size:12px}
+#nav{display:flex;gap:6px;margin:10px 0 14px;flex-wrap:wrap}
+#nav button{background:var(--bg3);color:var(--text);border:1px solid var(--line);border-radius:9px;padding:8px 14px;font-weight:700;cursor:pointer}
+#nav button.on{background:var(--gold);color:#1a1100;border-color:var(--gold)}
+.wrap{max-width:1280px}
+table.fit{width:100%;font-size:12px;table-layout:auto}
+table.fit th,table.fit td{padding:4px 6px}
+table.fit td.txt{white-space:normal;word-break:break-word;max-width:140px;font-size:11px}
+.box{background:var(--bg2);border:1px solid var(--line);border-radius:12px;padding:14px 16px;margin-bottom:14px}
+.row{display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end}
+.fcol{display:flex;flex-direction:column;gap:4px}
+label{font-size:12px;color:var(--muted)}
+input,select{background:var(--bg);border:1px solid var(--line);border-radius:8px;color:var(--text);padding:8px 10px;font-size:13px}
+input:focus,select:focus{outline:none;border-color:var(--gold)}
+.btn{background:var(--bg3);border:1px solid var(--line);border-radius:8px;color:var(--text);padding:8px 13px;font-weight:700;cursor:pointer;font-size:13px}
+.btn.sm{padding:4px 9px;font-size:12px}
+.btn.success{background:var(--ok);border-color:var(--ok);color:#fff}
+.btn.gold{background:var(--gold);border-color:var(--gold);color:#1a1100}
+.btn.danger{background:transparent;border-color:var(--err);color:var(--err)}
+.btn.ghost{background:transparent}
+table{width:100%;border-collapse:collapse;font-size:13px}
+th,td{padding:6px 8px;border-bottom:1px solid var(--line);text-align:left;vertical-align:middle}
+th{color:var(--muted);font-weight:700;font-size:11px;text-transform:uppercase}
+td.num,th.num{text-align:right}
+.tag{display:inline-block;padding:2px 8px;border-radius:20px;font-size:11px;font-weight:700;border:1px solid}
+.t-reg{color:#79c0ff;border-color:#1f6feb55}.t-dia{color:#7ee787;border-color:#2ea04355}.t-tmp{color:#ffa657;border-color:#bb800955}
+.he{color:var(--gold);font-weight:700}.falta{color:var(--err);font-weight:700}
+.mark{width:62px}.tot td{font-weight:800;border-top:2px solid var(--line2)}
+.hint{color:var(--muted);font-size:12px;margin:6px 0}
+.pill{display:inline-flex;gap:6px;align-items:center;background:var(--bg3);border:1px solid var(--line);border-radius:20px;padding:5px 12px;font-size:12px;margin-right:6px}
+.pill b{color:var(--gold)}
+.dimday{color:var(--muted)}
+tr.dom td,tr.fer td{background:#1a1212}
+@media print{
+  #nav,#sbst,#btnSair,.no-print{display:none!important}
+  body{background:#fff;color:#000;padding:6px}
+  .wrap{max-width:none}
+  .box{background:#fff;border:0;padding:0;margin:0 0 10px}
+  h2,b{color:#000!important}
+  table,table.fit{font-size:11px}
+  th{color:#000;border-bottom:1px solid #000}
+  td{color:#000;border-bottom:1px solid #bbb}
+  .sub,.dimday{color:#333}
+  .he{color:#000!important}
+  .pill{border:1px solid #888;color:#000;background:#fff}
+  .pill b{color:#000!important}
+  table.fit td.txt{max-width:none}
+  thead{display:table-header-group}
+  tr{page-break-inside:avoid}
+  table .btn, table button{display:none!important}
+  input,select{border:0;background:#fff;color:#000;padding:0}
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h2>👷 Funcionários <span class="sub" id="cab"></span></h2>
+  <div id="nav">
+    <button data-v="func" class="on">Funcionários</button>
+    <button data-v="ponto">Ponto</button>
+    <button data-v="rel">Relatório / Folha</button>
+    <button data-v="aberto">Em aberto</button>
+  </div>
+  <div id="main"></div>
+</div>
+<script>
+const SB_URL='https://ngdidjtfgmtkdkvqwfjf.supabase.co';
+const SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5nZGlkanRmZ210a2RrdnF3ZmpmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NTU5MDYsImV4cCI6MjA5NjUzMTkwNn0.OW9hGEFTvSYx_THv3DR9pt8xIVC0B9Pw2bTDGD6TBLk';
+let SB=null;
+const $=id=>document.getElementById(id);
+const esc=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const S={ funcs:[], cfg:{}, ponto:{}, feriados:{} };
+let VIEW='func', EDIT=null;
+let PF=null;                 // funcionário selecionado no Ponto
+let MES=null;                // 'AAAA-MM'
+
+/* ---------- helpers de tempo ---------- */
+const TIPO_NOME={registrado:'Registrado',diarista:'Diarista',temporario:'Temporário'};
+function t2m(s){ if(!s) return null; const m=String(s).match(/^(\d{1,2}):(\d{2})$/); if(!m) return null; return (+m[1])*60+(+m[2]); }
+function m2hm(min){ if(min==null) return '—'; const neg=min<0; min=Math.abs(Math.round(min)); const h=Math.floor(min/60), mm=min%60; return (neg?'-':'')+h+'h'+(mm?(' '+String(mm).padStart(2,'0')):''); }
+function m2dec(min){ return (min/60); }
+function brl(v){ return 'R$ '+(Number(v)||0).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2}); }
+function nf(v){ return (Number(v)||0).toLocaleString('pt-BR',{maximumFractionDigits:2}); }
+function ovl(a1,a2,b1,b2){ return Math.max(0, Math.min(a2,b2)-Math.max(a1,b1)); }
+const _ult=(y,m)=>new Date(y,m,0).getDate();   // último dia do mês (m 1-12)
+
+/* ---------- núcleo do cálculo de ponto (regra da fazenda) ---------- */
+function janelaDoDia(dateStr, feriado){
+  if(feriado) return [];                                  // feriado: tudo extra
+  const d=new Date(dateStr+'T12:00:00'); const dow=d.getDay();
+  const j=(S.cfg.jornada||{})[String(dow)]||[];
+  return j.map(par=>[t2m(par[0]),t2m(par[1])]);
+}
+function calcDia(p){
+  // p: {data, marcacoes:[{ent,sai}], feriado, folga, falta, sem_he, ha}
+  const r={ worked:0, normal:0, extra:0, falta:!!p.falta, janela:0, faltaJornada:0 };
+  const jan=janelaDoDia(p.data, p.feriado||p.folga);       // feriado/folga: janela vazia -> tudo vira HE se trabalhar
+  jan.forEach(w=>{ r.janela += (w[1]-w[0]); });
+  if(p.falta||p.folga){ return r; }                        // falta/folga: sem hora a menos
+  const tem=(p.marcacoes||[]).some(x=>x&&(x.ent||x.sai));
+  (p.marcacoes||[]).forEach(mc=>{
+    const a=t2m(mc.ent), b=t2m(mc.sai); if(a==null||b==null||b<=a) return;
+    r.worked += (b-a);
+    let nrm=0; jan.forEach(w=>{ nrm += ovl(a,b,w[0],w[1]); });
+    r.normal += nrm;
+  });
+  r.extra = Math.max(0, r.worked - r.normal);
+  const tol=+S.cfg.tolerancia_min||5;
+  if(r.extra<=tol) r.extra=0;                              // tolerância
+  if(p.sem_he) r.extra=0;                                  // dia de aplicação: comissão, sem HE
+  // "hora a menos" só nos dias que a pessoa VEIO (tem marcação) — quem faltou não conta a menos (diarista não recebe e pronto)
+  r.faltaJornada = tem ? Math.max(0, r.janela - r.normal) : 0;
+  if(r.faltaJornada<=tol) r.faltaJornada=0;
+  return r;
+}
+function valorHE(f){ if(f.valor_he!=null&&f.valor_he!=='') return +f.valor_he; if(f.tipo==='diarista') return +S.cfg.valor_he_diarista||0; return +S.cfg.valor_he_registrado||0; }
+function valorDiaria(f){ return (f.valor_diaria!=null&&f.valor_diaria!=='')?+f.valor_diaria:(+S.cfg.valor_diaria||0); }
+
+/* ===================== SUPABASE ===================== */
+function _st(t,c){ let e=$('sbst'); if(!e){ e=document.createElement('div'); e.id='sbst'; e.style.cssText='position:fixed;bottom:10px;right:10px;z-index:9999;padding:7px 12px;border-radius:8px;font:600 12px system-ui;box-shadow:0 2px 8px rgba(0,0,0,.3)'; document.body.appendChild(e);} e.textContent=t; e.style.background=c||'#333'; e.style.color='#fff'; }
+function _botaoSair(){ if(window.self!==window.top) return; if($('btnSair'))return; const b=document.createElement('button'); b.id='btnSair'; b.textContent='Sair'; b.style.cssText='position:fixed;top:10px;right:10px;z-index:9998;padding:6px 12px;border:1px solid #30363d;border-radius:8px;background:#21262d;color:#e6edf3;font:600 12px system-ui;cursor:pointer'; b.onclick=async()=>{ if(SB) await SB.auth.signOut(); location.reload(); }; document.body.appendChild(b); }
+function _telaLogin(){
+  let ov=$('loginOverlay'); if(ov) return;
+  ov=document.createElement('div'); ov.id='loginOverlay';
+  ov.style.cssText='position:fixed;inset:0;z-index:99999;background:#0d1117;display:flex;align-items:center;justify-content:center;font-family:system-ui';
+  ov.innerHTML='<div style="background:#161b22;border:1px solid #30363d;border-radius:14px;padding:32px 28px;width:340px"><div style="font-size:20px;font-weight:800;text-align:center;margin-bottom:4px">Gestão Alabama Agro</div><div style="font-size:13px;color:#8b949e;text-align:center;margin-bottom:22px">Funcionários</div><label style="font-size:12px;color:#8b949e">E-mail</label><input id="lg_e" type="email" style="width:100%;padding:10px;border-radius:8px;border:1px solid #30363d;background:#0d1117;color:#e6edf3;margin:4px 0 14px"><label style="font-size:12px;color:#8b949e">Senha</label><input id="lg_s" type="password" style="width:100%;padding:10px;border-radius:8px;border:1px solid #30363d;background:#0d1117;color:#e6edf3;margin:4px 0 18px"><button id="lg_b" style="width:100%;padding:11px;border:0;border-radius:8px;background:#238636;color:#fff;font-weight:700;cursor:pointer">Entrar</button><div id="lg_m" style="font-size:12px;color:#f85149;text-align:center;margin-top:12px;min-height:16px"></div></div>';
+  document.body.appendChild(ov);
+  const go=async()=>{ const email=ov.querySelector('#lg_e').value.trim(), s=ov.querySelector('#lg_s').value, m=ov.querySelector('#lg_m'); if(!email||!s){m.textContent='Preencha e-mail e senha.';return;} m.style.color='#8b949e'; m.textContent='Entrando…'; try{ const {error}=await SB.auth.signInWithPassword({email,password:s}); if(error){m.style.color='#f85149';m.textContent='Erro: '+error.message;return;} ov.remove(); _botaoSair(); carregar(); }catch(e){m.style.color='#f85149';m.textContent='Falha: '+e.message;} };
+  ov.querySelector('#lg_b').onclick=go; ov.querySelector('#lg_s').addEventListener('keydown',e=>{if(e.key==='Enter')go();});
+}
+async function carregar(){
+  try{
+    _st('⏳ Carregando…','#2c3e50');
+    try{ const {data}=await SB.from('rh_config').select('*').eq('id','main').limit(1); if(data&&data[0]) S.cfg=data[0]; }catch(e){}
+    if(!S.cfg.jornada) S.cfg.jornada={"1":[["07:00","12:00"],["13:30","18:00"]],"2":[["07:00","12:00"],["13:30","18:00"]],"3":[["07:00","12:00"],["13:30","18:00"]],"4":[["07:00","12:00"],["13:30","18:00"]],"5":[["07:00","12:00"],["13:30","18:00"]],"6":[["07:00","12:00"]],"0":[]};
+    const {data:fs}=await SB.from('funcionarios').select('*').order('nome'); S.funcs=fs||[];
+    try{ const {data:fe}=await SB.from('feriados').select('*'); S.feriados={}; (fe||[]).forEach(x=>S.feriados[x.data]=x.nome); }catch(e){}
+    _st('✅ Carregado ('+S.funcs.length+' funcionários)','#27ae60');
+    route();
+  }catch(e){ _st('❌ '+e.message,'#c0392b'); console.error(e); route(); }
+}
+async function bootSupabase(){
+  if(!window.supabase){ _st('⚠️ Sem internet (lib não carregou)','#c0392b'); route(); return; }
+  SB=window.supabase.createClient(SB_URL,SB_KEY);
+  try{ const h=new URLSearchParams(location.hash.slice(1)); const at=h.get('at'),rt=h.get('rt'); if(at&&rt){ await SB.auth.setSession({access_token:at,refresh_token:rt}); history.replaceState(null,'',location.pathname+location.search); } }catch(e){}
+  const {data}=await SB.auth.getSession();
+  if(data&&data.session){ _botaoSair(); carregar(); } else { _telaLogin(); route(); }
+}
+
+/* ===================== ROUTER ===================== */
+document.getElementById('nav').addEventListener('click',e=>{ const b=e.target.closest('button'); if(!b)return; VIEW=b.dataset.v; EDIT=null; if(VIEW==='aberto') ABERTO=null; if(VIEW==='rel') REL_MES=null; document.querySelectorAll('#nav button').forEach(x=>x.classList.toggle('on',x===b)); route(); });
+function route(){
+  const m=$('main');
+  if(VIEW==='func'){ m.innerHTML=funcHTML(); bindFunc(); }
+  else if(VIEW==='ponto'){ m.innerHTML=pontoHTML(); bindPonto(); }
+  else if(VIEW==='aberto'){ m.innerHTML=abertoHTML(); bindAberto(); }
+  else { m.innerHTML=relHTML(); bindRel(); }
+}
+
+/* ===================== ABA FUNCIONÁRIOS ===================== */
+function funcHTML(){
+  const e=EDIT?S.funcs.find(f=>f.id===EDIT):null;
+  const tp=e?e.tipo:'registrado';
+  const rows=S.funcs.map(f=>{
+    const cls=f.tipo==='diarista'?'t-dia':(f.tipo==='temporario'?'t-tmp':'t-reg');
+    const val=f.tipo==='diarista'?('diária '+brl(valorDiaria(f))):(f.tipo==='temporario'?(f.temp_modo||'—'):(f.salario?brl(f.salario)+'/mês':'—'));
+    return `<tr><td><b>${esc(f.nome)}</b>${f.funcao?'<div class="sub">'+esc(f.funcao)+'</div>':''}</td>
+      <td><span class="tag ${cls}">${TIPO_NOME[f.tipo]||f.tipo}</span></td>
+      <td class="sub">${esc(val)}</td><td class="num he">${brl(valorHE(f))}/h</td>
+      <td>${f.ativo===false?'<span class="sub">inativo</span>':'ativo'}</td>
+      <td><span class="btn sm" onclick="editarFunc(${f.id})">✎</span> <span class="btn sm danger" onclick="excluirFunc(${f.id})">✕</span></td></tr>`;
+  }).join('')||'<tr><td colspan="6" class="hint">Nenhum funcionário. Cadastre abaixo.</td></tr>';
+  return `<div class="box"><h2 style="font-size:15px">${e?'Editar funcionário':'Novo funcionário'}</h2>
+    <div class="row" style="margin-top:8px">
+      <div class="fcol" style="flex:1;min-width:180px"><label>Nome</label><input id="f_nome" value="${e?esc(e.nome):''}" placeholder="nome"></div>
+      <div class="fcol"><label>Tipo</label><select id="f_tipo" onchange="EDIT_TP=this.value;_funcCampos()">${['registrado','diarista','temporario'].map(t=>`<option value="${t}" ${tp===t?'selected':''}>${TIPO_NOME[t]}</option>`).join('')}</select></div>
+      <div class="fcol"><label>Função</label><input id="f_funcao" value="${e?esc(e.funcao||''):''}" placeholder="ex.: tratorista"></div>
+      <div class="fcol"><label>CPF</label><input id="f_cpf" value="${e?esc(e.cpf||''):''}" placeholder="—"></div>
+    </div>
+    <div class="row" style="margin-top:10px" id="f_campos"></div>
+    <div class="row" style="margin-top:10px">
+      <div class="fcol"><label>Admissão</label><input type="date" id="f_adm" value="${e&&e.admissao?e.admissao:''}"></div>
+      <div class="fcol"><label>Fim contrato (temp.)</label><input type="date" id="f_fim" value="${e&&e.fim_contrato?e.fim_contrato:''}"></div>
+      <div class="fcol"><label>Ativo</label><select id="f_ativo"><option value="1" ${(!e||e.ativo!==false)?'selected':''}>Sim</option><option value="0" ${(e&&e.ativo===false)?'selected':''}>Não</option></select></div>
+    </div>
+    <div class="row" style="margin-top:10px">
+      <div class="fcol"><label>Meio de pagamento</label><select id="f_meio">${['','PIX','Em espécie','Transferência','Cheque','Outro'].map(x=>`<option value="${x}" ${(e&&(e.meio_pgto||'')===x)?'selected':''}>${x||'—'}</option>`).join('')}</select></div>
+      <div class="fcol" style="flex:1;min-width:180px"><label>Chave Pix / Conta</label><input id="f_chave" value="${e?esc(e.chave_pix||''):''}" placeholder="chave Pix, banco/ag/conta…"></div>
+      <div class="fcol" style="flex:1;min-width:160px"><label>Titular (se for de terceiro)</label><input id="f_titular" value="${e?esc(e.titular||''):''}" placeholder="nome do titular da conta"></div>
+    </div>
+    <div class="row" style="margin-top:12px"><button class="btn success" id="f_salvar">${e?'Salvar alterações':'Cadastrar'}</button>${e?'<button class="btn ghost" id="f_cancel">Cancelar</button>':''}<span class="hint" id="f_msg"></span></div>
+  </div>
+  <div class="box"><table><thead><tr><th>Funcionário (${S.funcs.length})</th><th>Tipo</th><th>Remuneração</th><th class="num">HE</th><th>Status</th><th></th></tr></thead><tbody>${rows}</tbody></table></div>`;
+}
+let EDIT_TP='registrado';
+function _funcCampos(){
+  const e=EDIT?S.funcs.find(f=>f.id===EDIT):null; const tp=EDIT_TP||'registrado'; const box=$('f_campos'); if(!box) return;
+  let h='';
+  if(tp==='registrado') h=`<div class="fcol"><label>Salário mensal (R$)</label><input type="number" step="any" id="f_sal" value="${e&&e.salario!=null?e.salario:''}" placeholder="0,00"></div>
+    <div class="fcol"><label>Hora extra (R$/h)</label><input type="number" step="any" id="f_he" value="${e&&e.valor_he!=null?e.valor_he:''}" placeholder="${S.cfg.valor_he_registrado||10}"></div>`;
+  else if(tp==='diarista') h=`<div class="fcol"><label>Valor da diária (R$)</label><input type="number" step="any" id="f_dia" value="${e&&e.valor_diaria!=null?e.valor_diaria:''}" placeholder="${S.cfg.valor_diaria||100}"></div>
+    <div class="fcol"><label>Hora extra (R$/h)</label><input type="number" step="any" id="f_he" value="${e&&e.valor_he!=null?e.valor_he:''}" placeholder="${S.cfg.valor_he_diarista||7}"></div>`;
+  else h=`<div class="fcol"><label>Modo</label><select id="f_tmodo">${['mensal','hora','hectare'].map(x=>`<option ${e&&e.temp_modo===x?'selected':''}>${x}</option>`).join('')}</select></div>
+    <div class="fcol"><label>Valor base (R$ por mês/ha/hora)</label><input type="number" step="any" id="f_tval" value="${e&&e.temp_valor!=null?e.temp_valor:''}" placeholder="0,00"></div>
+    <div class="fcol"><label>Hora extra (R$/h) <span class="sub">se houver</span></label><input type="number" step="any" id="f_he" value="${e&&e.valor_he!=null?e.valor_he:''}" placeholder="0"></div>`;
+  box.innerHTML=h;
+}
+function editarFunc(id){ EDIT=id; const f=S.funcs.find(x=>x.id===id); EDIT_TP=f?f.tipo:'registrado'; route(); window.scrollTo(0,0); }
+function novoFunc(){ EDIT=null; EDIT_TP='registrado'; route(); }
+async function excluirFunc(id){ const f=S.funcs.find(x=>x.id===id); if(!confirm('Excluir "'+(f?f.nome:'')+'"? (mantém o ponto já lançado)')) return; try{ await SB.from('funcionarios').delete().eq('id',id); }catch(e){} S.funcs=S.funcs.filter(x=>x.id!==id); route(); }
+function bindFunc(){
+  EDIT_TP=($('f_tipo')&&$('f_tipo').value)|| (EDIT?(S.funcs.find(f=>f.id===EDIT)||{}).tipo:'registrado')||'registrado';
+  _funcCampos();
+  const sv=$('f_salvar'); if(sv) sv.onclick=salvarFunc;
+  if($('f_cancel')) $('f_cancel').onclick=()=>{ EDIT=null; route(); };
+}
+async function salvarFunc(){
+  const msg=$('f_msg'); const nome=$('f_nome').value.trim(); if(!nome){ msg.textContent='Informe o nome.'; return; }
+  const tp=$('f_tipo').value;
+  const num=id=>{ const v=$(id); return v&&v.value!==''?parseFloat(v.value):null; };
+  const reg={ nome, tipo:tp, funcao:$('f_funcao').value.trim()||null, cpf:$('f_cpf').value.trim()||null,
+    admissao:$('f_adm').value||null, fim_contrato:$('f_fim').value||null, ativo:$('f_ativo').value==='1',
+    meio_pgto:($('f_meio')&&$('f_meio').value)||null, chave_pix:($('f_chave')&&$('f_chave').value.trim())||null, titular:($('f_titular')&&$('f_titular').value.trim())||null,
+    salario:tp==='registrado'?num('f_sal'):(tp==='temporario'&&$('f_tmodo')&&$('f_tmodo').value==='mensal'?num('f_tval'):null),
+    valor_diaria:tp==='diarista'?num('f_dia'):null,
+    valor_he:num('f_he'),
+    temp_modo:tp==='temporario'?($('f_tmodo')?$('f_tmodo').value:null):null,
+    temp_valor:tp==='temporario'?num('f_tval'):null };
+  try{
+    if(EDIT){ await SB.from('funcionarios').update(reg).eq('id',EDIT); Object.assign(S.funcs.find(f=>f.id===EDIT),reg); }
+    else { const {data,error}=await SB.from('funcionarios').insert(reg).select().single(); if(error) throw error; S.funcs.push(data); S.funcs.sort((a,b)=>String(a.nome).localeCompare(String(b.nome),'pt')); }
+    EDIT=null; _st('✅ Funcionário salvo','#27ae60'); route();
+  }catch(e){ msg.textContent='Erro: '+e.message; }
+}
+
+/* ===================== ABA PONTO ===================== */
+function _mesAtual(){ const d=new Date(); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0'); }
+const MESNOMES=['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
+function _mesLabel(mes){ const [y,m]=mes.split('-').map(Number); return MESNOMES[m-1]+'/'+y; }
+function _mesShift(delta){ let [y,m]=MES.split('-').map(Number); m+=delta; while(m<1){m+=12;y--;} while(m>12){m-=12;y++;} MES=y+'-'+String(m).padStart(2,'0'); }
+async function pontoMes(delta){ _mesShift(delta); if(PF) await _loadPonto(PF,MES); route(); }
+function _turnosPadrao(ds){ const dow=new Date(ds+'T12:00:00').getDay(); const j=(S.cfg.jornada||{})[String(dow)]||[]; return j.map(par=>({ent:par[0],sai:par[1]})); }
+function preencherDia(ds){ const p=S.ponto[ds]||(S.ponto[ds]={data:ds,funcionario_id:PF}); p.marcacoes=_turnosPadrao(ds); p.falta=false; route(); }
+async function preencherMes(){
+  if(!PF) return; const [y,m]=MES.split('-').map(Number); const dias=_ult(y,m); const lote=[];
+  for(let d=1; d<=dias; d++){ const ds=MES+'-'+String(d).padStart(2,'0'); const p=S.ponto[ds]; const turnos=_turnosPadrao(ds);
+    if(!turnos.length) continue;                                   // domingo: pula
+    if(S.feriados[ds]) continue;                                   // feriado: deixa p/ ajuste manual
+    const temMarc=p&&(p.marcacoes||[]).some(x=>x&&(x.ent||x.sai));
+    if(temMarc||(p&&p.falta)) continue;                            // não sobrescreve dia já lançado/falta
+    const reg={funcionario_id:PF,data:ds,marcacoes:turnos,feriado:!!(p&&p.feriado),falta:false,sem_he:!!(p&&p.sem_he),ha:(p&&p.ha)??null,obs:(p&&p.obs)||null};
+    S.ponto[ds]=reg; lote.push(reg);
+  }
+  if(!lote.length){ _st('Nada a preencher (dias já lançados).','#e67e22'); return; }
+  try{ const {error}=await SB.from('ponto').upsert(lote,{onConflict:'funcionario_id,data'}); if(error) throw error;
+    _st('✅ '+lote.length+' dia(s) preenchidos com a jornada padrão','#27ae60'); await _loadPonto(PF,MES); route();
+  }catch(e){ _st('❌ '+e.message,'#c0392b'); }
+}
+async function _loadPonto(fid, mes){
+  const [y,m]=mes.split('-').map(Number); const ini=mes+'-01'; const fim=mes+'-'+String(_ult(y,m)).padStart(2,'0');
+  const {data}=await SB.from('ponto').select('*').eq('funcionario_id',fid).gte('data',ini).lte('data',fim);
+  S.ponto={}; (data||[]).forEach(p=>S.ponto[p.data]=p);
+}
+function pontoHTML(){
+  if(!MES) MES=_mesAtual();
+  const opt=S.funcs.map(f=>`<option value="${f.id}" ${PF===f.id?'selected':''}>${esc(f.nome)} (${TIPO_NOME[f.tipo]})</option>`).join('');
+  let body='';
+  const f=S.funcs.find(x=>x.id===PF);
+  if(!f){ body='<div class="hint">Escolha um funcionário e o mês para lançar o ponto.</div>'; }
+  else {
+    const [y,m]=MES.split('-').map(Number); const dias=_ult(y,m);
+    let rows='', tExtra=0, tFalta=0, tFaltaJ=0, tDias=0;
+    for(let d=1; d<=dias; d++){
+      const ds=MES+'-'+String(d).padStart(2,'0'); const p=S.ponto[ds]||{data:ds,marcacoes:[]};
+      const dow=new Date(ds+'T12:00:00').getDay(); const fer=!!p.feriado||!!S.feriados[ds];
+      const r=calcDia({data:ds,marcacoes:p.marcacoes||[],feriado:fer,folga:p.folga,falta:p.falta,sem_he:p.sem_he});
+      if(!p.falta && !p.folga && (p.marcacoes||[]).length) tDias++;
+      tExtra+=r.extra; if(p.falta) tFalta++; tFaltaJ+=r.faltaJornada;
+      const mk=(i,k)=>{ const v=(p.marcacoes&&p.marcacoes[i]&&p.marcacoes[i][k])||''; return `<input class="mark" data-d="${ds}" data-i="${i}" data-k="${k}" value="${esc(v)}" placeholder="${k==='ent'?'ent':'sai'}">`; };
+      const cls=fer?'fer':(p.folga?'dom':(dow===0?'dom':'')); const dnome=['dom','seg','ter','qua','qui','sex','sáb'][dow]+(p.folga?' ·folga':'');
+      rows+=`<tr class="${cls}">
+        <td>${String(d).padStart(2,'0')}/<span class="dimday">${dnome}${fer?' ·fer':''}</span></td>
+        <td>${mk(0,'ent')} ${mk(0,'sai')}</td>
+        <td>${mk(1,'ent')} ${mk(1,'sai')}</td>
+        <td>${mk(2,'ent')} ${mk(2,'sai')}</td>
+        <td class="num">${r.normal?m2hm(r.normal):'—'}</td>
+        <td class="num he">${r.extra?m2hm(r.extra):'—'}</td>
+        <td style="white-space:nowrap"><label class="sub"><input type="checkbox" data-d="${ds}" data-flag="falta" ${p.falta?'checked':''}> falta</label>
+          <label class="sub"><input type="checkbox" data-d="${ds}" data-flag="feriado" ${p.feriado?'checked':''}> fer</label>
+          <label class="sub" title="Folga concedida (não é falta nem feriado; sem hora a menos)"><input type="checkbox" data-d="${ds}" data-flag="folga" ${p.folga?'checked':''}> folga</label>
+          <label class="sub" title="Aplicação: comissão por ha, sem HE"><input type="checkbox" data-d="${ds}" data-flag="sem_he" ${p.sem_he?'checked':''}> aplic</label></td>
+        <td style="white-space:nowrap"><button class="btn sm ghost" data-fill="${ds}" title="Preencher com a jornada padrão do dia">padrão</button> <button class="btn sm" data-save="${ds}">salvar</button></td></tr>`;
+    }
+    const he$=tExtra? (m2dec(tExtra)*valorHE(f)) : 0;
+    const dia$=f.tipo==='diarista'? tDias*valorDiaria(f) : 0;
+    body=`<div class="box" style="padding:10px 14px">
+        <span class="pill">Trabalhados <b>${tDias}</b></span>
+        <span class="pill">Hora extra <b>${m2hm(tExtra)}</b> · ${brl(he$)}</span>
+        <span class="pill">Faltas <b>${tFalta}</b></span>
+        <span class="pill">A menos na jornada <b>${m2hm(tFaltaJ)}</b></span>
+        ${f.tipo==='diarista'?`<span class="pill">Diárias <b>${brl(dia$)}</b></span>`:''}
+      </div>
+      <div class="box" style="overflow-x:auto"><table><thead><tr><th>Dia</th><th>Turno 1 (ent/sai)</th><th>Turno 2</th><th>Extra (3º turno)</th><th class="num">Normal</th><th class="num">Extra</th><th>Flags</th><th></th></tr></thead><tbody>${rows}</tbody></table>
+      <div class="hint">Marque os horários (HH:MM) de cada turno. Fora da janela normal (Seg–Sex 07–12 e 13:30–18; Sáb 07–12) conta como hora extra. Tolerância ${S.cfg.tolerancia_min||5} min. "aplic" = dia de aplicação (comissão por ha, sem HE).</div></div>`;
+  }
+  return `<div class="box"><div class="row">
+      <div class="fcol"><label>Funcionário</label><select id="p_func"><option value="">— escolha —</option>${opt}</select></div>
+      <div class="fcol"><label>Mês</label><div style="display:flex;gap:6px;align-items:center">
+        <button class="btn" id="p_prev" title="Mês anterior">◀</button>
+        <input type="month" id="p_mes" value="${MES}" style="min-width:140px">
+        <button class="btn" id="p_next" title="Próximo mês">▶</button>
+        <b style="color:var(--gold);white-space:nowrap;margin-left:4px">${_mesLabel(MES)}</b>
+      </div></div>
+      <div class="fcol"><label>&nbsp;</label><button class="btn gold" id="p_fill" ${PF?'':'disabled'} title="Preenche os dias úteis vazios com a jornada padrão (não mexe nos já lançados, folgas e feriados)">⚡ Preencher mês (padrão)</button></div>
+    </div></div>${body}`;
+}
+function bindPonto(){
+  const fs=$('p_func'); if(fs) fs.onchange=async()=>{ PF=fs.value?+fs.value:null; if(PF){ await _loadPonto(PF,MES); } route(); };
+  const ms=$('p_mes'); if(ms) ms.onchange=async()=>{ MES=ms.value||_mesAtual(); if(PF){ await _loadPonto(PF,MES); } route(); };
+  if($('p_prev')) $('p_prev').onclick=()=>pontoMes(-1);
+  if($('p_next')) $('p_next').onclick=()=>pontoMes(1);
+  document.querySelectorAll('[data-save]').forEach(b=>b.onclick=()=>salvarDia(b.dataset.save));
+  document.querySelectorAll('[data-fill]').forEach(b=>b.onclick=()=>preencherDia(b.dataset.fill));
+  if($('p_fill')) $('p_fill').onclick=preencherMes;
+  // edição rápida: ao alterar input/checkbox, guarda em memória (salva no botão)
+  document.querySelectorAll('input.mark').forEach(inp=>inp.onchange=()=>{
+    const ds=inp.dataset.d, i=+inp.dataset.i, k=inp.dataset.k;
+    const p=S.ponto[ds]||(S.ponto[ds]={data:ds,marcacoes:[],funcionario_id:PF}); p.marcacoes=p.marcacoes||[];
+    while(p.marcacoes.length<=i) p.marcacoes.push({ent:'',sai:''});
+    p.marcacoes[i][k]=inp.value.trim();
+  });
+  document.querySelectorAll('input[data-flag]').forEach(c=>c.onchange=()=>{
+    const ds=c.dataset.d, fl=c.dataset.flag;
+    const p=S.ponto[ds]||(S.ponto[ds]={data:ds,marcacoes:[],funcionario_id:PF}); p[fl]=c.checked;
+  });
+}
+async function salvarDia(ds){
+  const p=S.ponto[ds]||{data:ds,marcacoes:[],funcionario_id:PF};
+  const marc=(p.marcacoes||[]).filter(x=>x&&(x.ent||x.sai)).map(x=>({ent:x.ent||'',sai:x.sai||''}));
+  const reg={ funcionario_id:PF, data:ds, marcacoes:marc, feriado:!!p.feriado, folga:!!p.folga, falta:!!p.falta, sem_he:!!p.sem_he, ha:p.ha??null, obs:p.obs||null };
+  try{ const {error}=await SB.from('ponto').upsert(reg,{onConflict:'funcionario_id,data'}); if(error) throw error;
+    S.ponto[ds]=Object.assign(p,reg); _st('✅ Dia '+ds.slice(8)+' salvo','#27ae60'); route();
+  }catch(e){ _st('❌ '+e.message,'#c0392b'); }
+}
+
+/* ===================== ABA RELATÓRIO / FOLHA ===================== */
+async function _resumoMes(mes){
+  const [y,m]=mes.split('-').map(Number); const ini=mes+'-01'; const fim=mes+'-'+String(_ult(y,m)).padStart(2,'0');
+  const {data}=await SB.from('ponto').select('*').gte('data',ini).lte('data',fim);
+  const byF={};
+  (data||[]).forEach(p=>{ const fer=!!p.feriado||!!S.feriados[p.data]; const r=calcDia({data:p.data,marcacoes:p.marcacoes||[],feriado:fer,folga:p.folga,falta:p.falta,sem_he:p.sem_he});
+    const o=byF[p.funcionario_id]||(byF[p.funcionario_id]={extra:0,falta:0,dias:0,faltaJ:0}); o.extra+=r.extra; if(p.falta)o.falta++; else if(!p.folga && (p.marcacoes||[]).length)o.dias++; o.faltaJ+=r.faltaJornada; });
+  return byF;
+}
+let REL={}, REL_PAG={}, REL_MES=null;
+function _totFunc(f,o){ const he=m2dec(o.extra)*valorHE(f); const dia=f.tipo==='diarista'?o.dias*valorDiaria(f):0; return he+dia; }
+async function _loadPagamentos(mes){ const {data}=await SB.from('rh_pagamentos').select('*').eq('mes',mes); const m={}; (data||[]).forEach(p=>m[p.funcionario_id]=p); return m; }
+async function _relRefresh(){ REL=await _resumoMes(MES); REL_PAG=await _loadPagamentos(MES); REL_MES=MES; route(); }
+async function relMes(delta){ _mesShift(delta); await _relRefresh(); }
+function relHTML(){
+  if(!MES) MES=_mesAtual();
+  let tGeral=0,tPago=0,tAberto=0;
+  const rows=S.funcs.map(f=>{
+    const o=REL[f.id]||{extra:0,falta:0,dias:0,faltaJ:0};
+    if(!o.extra&&!o.falta&&!o.dias) return '';
+    const he$=m2dec(o.extra)*valorHE(f), dia$=f.tipo==='diarista'?o.dias*valorDiaria(f):0, tot=he$+dia$;
+    tGeral+=tot; const pago=REL_PAG[f.id]; if(pago) tPago+=tot; else tAberto+=tot;
+    const pagoCel=pago?`<span style="color:var(--ok)">✓ pago${pago.pago_em?' · '+esc(String(pago.pago_em).split('-').reverse().join('/')):''}</span> <button class="btn sm ghost" data-unpay="${f.id}">desfazer</button>`:`<button class="btn sm gold" data-pay="${f.id}">marcar pago</button>`;
+    return `<tr><td><b>${esc(f.nome)}</b></td><td><span class="sub">${TIPO_NOME[f.tipo]}</span></td>
+      <td class="num">${o.dias}</td><td class="num he">${m2hm(o.extra)}</td><td class="num">${brl(he$)}</td>
+      <td class="num">${dia$?brl(dia$):'—'}</td><td class="num">${o.falta||'—'}</td><td class="num">${m2hm(o.faltaJ)}</td>
+      <td class="num"><b>${brl(tot)}</b></td><td style="white-space:nowrap">${pagoCel}</td></tr>`;
+  }).filter(Boolean).join('')||'<tr><td colspan="10" class="hint">Sem lançamentos no mês.</td></tr>';
+  return `<div class="box"><div style="font-weight:800;font-size:15px;margin-bottom:6px">Folha de hora extra — ${_mesLabel(MES)}</div>
+    <div class="row no-print" style="align-items:center;gap:6px">
+      <button class="btn" id="r_prev" title="Mês anterior">◀</button>
+      <input type="month" id="r_mes" value="${MES}" style="min-width:140px">
+      <button class="btn" id="r_next" title="Próximo mês">▶</button>
+      <button class="btn gold" id="r_load">Atualizar</button>
+      <button class="btn" id="r_print">🖨️ Imprimir</button>
+    </div>
+    <div style="margin-top:8px"><span class="pill">Total ${brl(tGeral)}</span> <span class="pill">Pago <b>${brl(tPago)}</b></span> <span class="pill">Em aberto <b style="color:var(--gold)">${brl(tAberto)}</b></span></div></div>
+    <div class="box" style="overflow-x:auto"><table class="fit"><thead><tr><th>Funcionário</th><th>Tipo</th><th class="num">Dias</th><th class="num">Hora extra</th><th class="num">R$ HE</th><th class="num">Diárias</th><th class="num">Faltas</th><th class="num">A menos</th><th class="num">Total</th><th>Pagamento</th></tr></thead><tbody>${rows}</tbody></table>
+    <div class="hint">Folha de <b>hora extra</b> + diárias. Registrados: o salário é à parte — aqui é só HE + faltas. "Marcar pago" quita o mês daquele funcionário (sai do "Em aberto").</div></div>`;
+}
+async function marcarPago(fid){ const f=S.funcs.find(x=>x.id===fid), o=REL[fid]; if(!f||!o) return;
+  try{ await SB.from('rh_pagamentos').upsert({funcionario_id:fid,mes:MES,valor:_totFunc(f,o),pago_em:new Date().toISOString().slice(0,10)},{onConflict:'funcionario_id,mes'}); REL_PAG=await _loadPagamentos(MES); _st('✅ Pagamento registrado','#27ae60'); route(); }catch(e){ _st('❌ '+e.message,'#c0392b'); } }
+async function desmarcarPago(fid){ try{ await SB.from('rh_pagamentos').delete().eq('funcionario_id',fid).eq('mes',MES); REL_PAG=await _loadPagamentos(MES); route(); }catch(e){ _st('❌ '+e.message,'#c0392b'); } }
+function bindRel(){
+  if(REL_MES!==MES){ _relRefresh(); return; }
+  const ms=$('r_mes'); if(ms) ms.onchange=async()=>{ MES=ms.value||_mesAtual(); await _relRefresh(); };
+  if($('r_prev')) $('r_prev').onclick=()=>relMes(-1);
+  if($('r_next')) $('r_next').onclick=()=>relMes(1);
+  const lb=$('r_load'); if(lb) lb.onclick=()=>_relRefresh();
+  const pb=$('r_print'); if(pb) pb.onclick=()=>window.print();
+  document.querySelectorAll('[data-pay]').forEach(b=>b.onclick=()=>marcarPago(+b.dataset.pay));
+  document.querySelectorAll('[data-unpay]').forEach(b=>b.onclick=()=>desmarcarPago(+b.dataset.unpay));
+}
+
+/* ===================== ABA EM ABERTO ===================== */
+let ABERTO=null;
+async function _calcAberto(){
+  const {data:pts}=await SB.from('ponto').select('*');
+  const {data:pgs}=await SB.from('rh_pagamentos').select('funcionario_id,mes');
+  const pagos=new Set((pgs||[]).map(p=>p.funcionario_id+'|'+p.mes));
+  const agg={};   // f|mes -> {extra,dias}
+  (pts||[]).forEach(p=>{ const mes=String(p.data).slice(0,7); const fer=!!p.feriado||!!S.feriados[p.data];
+    const r=calcDia({data:p.data,marcacoes:p.marcacoes||[],feriado:fer,folga:p.folga,falta:p.falta,sem_he:p.sem_he});
+    const k=p.funcionario_id+'|'+mes; const o=agg[k]||(agg[k]={extra:0,dias:0,falta:0,faltaJ:0}); o.extra+=r.extra; if(!p.falta&&!p.folga&&(p.marcacoes||[]).length)o.dias++; if(p.falta)o.falta++; o.faltaJ+=r.faltaJornada; });
+  const fmap={}, mesesSet=new Set();
+  Object.keys(agg).forEach(k=>{ const sp=k.split('|'), fid=+sp[0], mes=sp[1]; const f=S.funcs.find(x=>x.id===fid); if(!f) return;
+    const a=agg[k]; const tot=_totFunc(f,a); if(tot<=0||pagos.has(k)) return;
+    mesesSet.add(mes);
+    const o=fmap[fid]||(fmap[fid]={fid,nome:f.nome,tipo:f.tipo,meio:f.meio_pgto||'',chave:f.chave_pix||'',titular:f.titular||'',porMes:{},total:0,extra:0,dias:0,falta:0,faltaJ:0,he$:0,dia$:0});
+    o.porMes[mes]=tot; o.total+=tot;
+    o.extra+=a.extra; o.dias+=a.dias; o.falta+=(a.falta||0); o.faltaJ+=(a.faltaJ||0);
+    o.he$+=m2dec(a.extra)*valorHE(f); o.dia$+=(f.tipo==='diarista'?a.dias*valorDiaria(f):0); });
+  const meses=[...mesesSet].sort();
+  const funcs=Object.values(fmap).sort((a,b)=>a.nome.localeCompare(b.nome,'pt'));
+  const totMes={}; let total=0; meses.forEach(m=>{ let s=0; funcs.forEach(f=>s+=f.porMes[m]||0); totMes[m]=s; total+=s; });
+  return {funcs,meses,totMes,total};
+}
+let AB_COLS=null, AB_TIPO='', AB_BUSCA='';
+function _abCols(){ if(!AB_COLS){ let sv=null; try{ sv=JSON.parse(localStorage.getItem('rh_aberto_cols')||'null'); }catch(e){} AB_COLS=Object.assign({dias:true,extra:true,he:true,dia:true,falta:true,faltaJ:true,meio:true,chave:true,titular:true}, sv||{}); } return AB_COLS; }
+const AB_DEF=[
+  {k:'dias',l:'Dias',cls:'',td:f=>f.dias||'—',ft:s=>s('dias')||'—'},
+  {k:'extra',l:'Hora extra',cls:'he',td:f=>f.extra?m2hm(f.extra):'—',ft:s=>m2hm(s('extra'))},
+  {k:'he',l:'R$ HE',cls:'',td:f=>f.he$?brl(f.he$):'—',ft:s=>brl(s('he$'))},
+  {k:'dia',l:'Diárias',cls:'',td:f=>f.dia$?brl(f.dia$):'—',ft:s=>brl(s('dia$'))},
+  {k:'falta',l:'Faltas',cls:'',td:f=>f.falta||'—',ft:s=>s('falta')||'—'},
+  {k:'faltaJ',l:'A menos',cls:'',td:f=>f.faltaJ?m2hm(f.faltaJ):'—',ft:s=>m2hm(s('faltaJ'))},
+];
+const AB_END=[ {k:'meio',l:'Meio de pagamento',td:f=>esc(f.meio||'—')}, {k:'chave',l:'Chave Pix / Conta',td:f=>esc(f.chave||'—')}, {k:'titular',l:'Titular',td:f=>esc(f.titular||'—')} ];
+const AB_SUMKEY={dias:'dias',extra:'extra',he:'he$',dia:'dia$',falta:'falta',faltaJ:'faltaJ'};
+function abertoHTML(){
+  if(!ABERTO) return `<div class="box"><div class="hint">⏳ Calculando o que está em aberto…</div></div>`;
+  const C=_abCols();
+  // filtros
+  let funcs=ABERTO.funcs.slice();
+  if(AB_TIPO) funcs=funcs.filter(f=>f.tipo===AB_TIPO);
+  if(AB_BUSCA){ const q=AB_BUSCA.toLowerCase(); funcs=funcs.filter(f=>(f.nome||'').toLowerCase().includes(q)); }
+  const mesesSet=new Set(); funcs.forEach(f=>Object.keys(f.porMes).forEach(m=>mesesSet.add(m))); const meses=[...mesesSet].sort();
+  const totMes={}; let total=0; meses.forEach(m=>{ let s=0; funcs.forEach(f=>s+=f.porMes[m]||0); totMes[m]=s; total+=s; });
+  const toggles=[...AB_DEF,...AB_END].map(c=>`<label class="sub" style="margin-right:12px;white-space:nowrap"><input type="checkbox" class="ab-col" data-k="${c.k}" ${C[c.k]?'checked':''}> ${c.l}</label>`).join('');
+  const tipoOpts=['','registrado','diarista','temporario'].map(t=>`<option value="${t}" ${AB_TIPO===t?'selected':''}>${t?TIPO_NOME[t]:'Todos os tipos'}</option>`).join('');
+  const cabec=`<div class="box"><h2 style="font-size:15px">💰 Em aberto (não pago)</h2>
+    <div style="margin:6px 0"><span class="pill">Total ${AB_TIPO||AB_BUSCA?'(filtrado) ':''}<b style="color:var(--gold)">${brl(total)}</b></span> <button class="btn no-print" id="a_reload">↻ Recarregar</button> <button class="btn no-print" id="a_print">🖨️ Imprimir</button></div>
+    <div class="row no-print" style="margin-top:6px;gap:10px;align-items:flex-end">
+      <div class="fcol"><label>Tipo</label><select id="a_tipo">${tipoOpts}</select></div>
+      <div class="fcol"><label>Buscar</label><input id="a_busca" value="${esc(AB_BUSCA)}" placeholder="nome do funcionário"></div>
+    </div>
+    <div class="no-print" style="margin-top:6px"><span class="sub">Mostrar colunas:</span> ${toggles}</div></div>`;
+  if(!funcs.length) return cabec+`<div class="box"><div class="hint">${ABERTO.funcs.length?'Nenhum funcionário no filtro.':'🎉 Nada em aberto — tudo pago.'}</div></div>`;
+  const det=AB_DEF.filter(c=>C[c.k]); const end=AB_END.filter(c=>C[c.k]);
+  const head=`<tr><th>Funcionário</th><th>Tipo</th>${det.map(c=>`<th class="num">${c.l}</th>`).join('')}${meses.map(m=>`<th class="num">${_mesLabel(m)}</th>`).join('')}<th class="num">Total</th>${end.map(c=>`<th>${c.l}</th>`).join('')}</tr>`;
+  const rows=funcs.map(f=>`<tr><td><b>${esc(f.nome)}</b></td><td><span class="sub">${TIPO_NOME[f.tipo]}</span></td>`
+    +det.map(c=>`<td class="num ${c.cls}">${c.td(f)}</td>`).join('')
+    +meses.map(m=>`<td class="num">${f.porMes[m]?brl(f.porMes[m]):'—'}</td>`).join('')
+    +`<td class="num"><b style="color:var(--gold)">${brl(f.total)}</b></td>`
+    +end.map(c=>`<td class="sub txt">${c.td(f)}</td>`).join('')+`</tr>`).join('');
+  const sum=k=>funcs.reduce((s,f)=>s+(f[k]||0),0);
+  const foot=`<tr class="tot"><td colspan="2">Totais</td>${det.map(c=>`<td class="num">${c.ft(sum)}</td>`).join('')}${meses.map(m=>`<td class="num">${brl(totMes[m])}</td>`).join('')}<td class="num">${brl(total)}</td>${end.map(()=>'<td></td>').join('')}</tr>`;
+  return cabec+`<div class="box" style="overflow-x:auto"><table class="fit"><thead>${head}</thead><tbody>${rows}</tbody><tfoot>${foot}</tfoot></table>
+    <div class="hint no-print">Filtre por tipo/nome e marque quais colunas mostrar. "Total" é por funcionário. Para quitar um mês, use "marcar pago" no Relatório daquele mês.</div></div>`;
+}
+function bindAberto(){
+  if(ABERTO===null){ (async()=>{ ABERTO=await _calcAberto(); route(); })(); return; }
+  if($('a_reload')) $('a_reload').onclick=async()=>{ ABERTO=null; route(); ABERTO=await _calcAberto(); route(); };
+  if($('a_print')) $('a_print').onclick=()=>window.print();
+  if($('a_tipo')) $('a_tipo').onchange=()=>{ AB_TIPO=$('a_tipo').value; route(); };
+  const bs=$('a_busca'); if(bs) bs.oninput=()=>{ AB_BUSCA=bs.value; const p=bs.selectionStart; route(); const n=$('a_busca'); if(n){ n.focus(); try{n.setSelectionRange(p,p);}catch(e){} } };
+  document.querySelectorAll('.ab-col').forEach(c=>c.onchange=()=>{ _abCols()[c.dataset.k]=c.checked; try{localStorage.setItem('rh_aberto_cols',JSON.stringify(AB_COLS));}catch(e){} route(); });
+}
+
+window.addEventListener('load',()=>{ setTimeout(bootSupabase,250); });
+</script>
+</body>
+</html>

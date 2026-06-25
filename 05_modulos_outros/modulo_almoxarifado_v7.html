@@ -1,0 +1,903 @@
+<!doctype html>
+<html lang="pt-br">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Almoxarifado · Insumos e Materiais — Gestão Alabama Agro</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+:root{
+  --bg:#080d18; --bg2:#0d1526; --bg3:#111e35; --bg4:#162540; --bg5:#1c2e4a;
+  --border:#1f3354; --border2:#2c4a78;
+  --text:#e8edf5; --muted:#5a7aa0; --muted2:#3d5a80;
+  --ok:#00c896; --ok-d:#00573f; --ok-l:#b2ffe8;
+  --warn:#ffb300; --err:#ff4444; --gold:#ffc107; --gold-d:#e65100;
+}
+*{box-sizing:border-box;}
+body{margin:0;font-family:'Segoe UI',system-ui,sans-serif;background:
+  radial-gradient(1200px 600px at 70% -10%, #0e1830 0%, var(--bg) 60%);
+  color:var(--text);min-height:100vh;font-size:13px;}
+header{padding:14px 22px 12px;border-bottom:1px solid var(--border);background:var(--bg2);position:sticky;top:0;z-index:5;display:flex;align-items:center;gap:14px;flex-wrap:wrap;}
+header h1{margin:0;font-size:15px;color:var(--gold);letter-spacing:.4px;white-space:nowrap;}
+.crumb{font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:1.5px;}
+.spacer{flex:1;}
+.sumpills{display:flex;gap:8px;flex-wrap:wrap;}
+.pill{background:var(--bg4);border:1px solid var(--border);border-radius:9px;padding:5px 12px;display:flex;flex-direction:column;line-height:1.15;min-width:78px;}
+.pill .k{font-size:9px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;}
+.pill .v{font-size:14px;font-weight:800;}
+.pill .v small{font-size:10px;color:var(--muted);font-weight:700;}
+.pill.alert .v{color:var(--warn);}
+.pill.bad .v{color:var(--err);}
+.nav{display:flex;border:1px solid var(--border2);border-radius:9px;overflow:hidden;}
+.nav button{background:var(--bg3);border:none;color:var(--muted);padding:7px 16px;font-size:12.5px;cursor:pointer;transition:.15s;}
+.nav button.on{background:linear-gradient(135deg,var(--bg5),var(--bg4));color:var(--gold);}
+.subnav{display:inline-flex;border:1px solid var(--border);border-radius:8px;overflow:hidden;margin-bottom:14px;}
+.subnav button{background:var(--bg2);border:none;color:var(--muted);padding:6px 14px;font-size:11.5px;cursor:pointer;transition:.15s;}
+.subnav button.on{background:var(--bg4);color:var(--gold);}
+main{padding:12px 22px 30px;}
+.note{padding:6px 22px 0;color:var(--muted2);font-size:11px;max-width:920px;line-height:1.6;}
+.note b{color:var(--muted);}
+.toolbar{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:12px;}
+.toolbar .lbl{font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:1.5px;margin-right:2px;}
+.search{background:var(--bg);border:1px solid var(--border2);border-radius:8px;color:var(--text);padding:7px 11px;font-size:12.5px;min-width:220px;}
+.search:focus{outline:none;border-color:var(--gold-d);}
+.fbtn{background:var(--bg3);border:1px solid var(--border);color:var(--muted);padding:5px 11px;border-radius:20px;font-size:11px;cursor:pointer;transition:.15s;}
+.fbtn:hover{border-color:var(--border2);color:var(--text);}
+.fbtn.on{background:linear-gradient(135deg,var(--bg5),var(--bg4));color:var(--gold);border-color:var(--gold-d);}
+.fbtn .c{opacity:.6;margin-left:3px;}
+.tbl{width:100%;border-collapse:collapse;background:linear-gradient(180deg,var(--bg3),var(--bg2));border:1px solid var(--border);border-radius:12px;overflow:hidden;}
+.tbl th{text-align:left;font-size:9.5px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;padding:9px 12px;border-bottom:1px solid var(--border);font-weight:700;}
+.tbl td{padding:9px 12px;border-bottom:1px solid rgba(255,255,255,.04);font-size:12.5px;vertical-align:middle;}
+.tbl tr:last-child td{border-bottom:none;}
+.tbl tr:hover td{background:rgba(255,255,255,.02);}
+.tbl .num{text-align:right;font-variant-numeric:tabular-nums;}
+.tbl .nome{font-weight:700;}
+.tbl .sub{font-size:10px;color:var(--muted);}
+.tbl .comp{font-size:10px;color:var(--muted2);max-width:320px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.tbl .code{font-weight:800;color:var(--gold);font-family:ui-monospace,monospace;}
+.empty{color:var(--muted2);text-align:center;padding:26px 0;font-size:12px;}
+.dot{display:inline-block;width:7px;height:7px;border-radius:50%;margin-right:6px;vertical-align:middle;}
+.badge{font-size:10px;font-weight:700;padding:2px 9px;border-radius:14px;white-space:nowrap;}
+.st-ok{color:var(--ok-l);background:rgba(0,200,150,.10);}
+.st-low{color:#fde047;background:rgba(234,179,8,.12);}
+.st-warn{color:#fdba74;background:rgba(234,88,12,.14);}
+.st-err{color:#fca5a5;background:rgba(220,38,38,.15);}
+.pf{font-size:9px;font-weight:700;padding:1px 6px;border-radius:10px;color:var(--muted);background:var(--bg4);border:1px solid var(--border);margin-left:6px;}
+.x{color:var(--muted2);cursor:pointer;font-size:14px;padding:0 4px;}
+.x:hover{color:var(--gold);}
+.xr:hover{color:var(--err);}
+.cadwrap{background:linear-gradient(180deg,var(--bg3),var(--bg2));border:1px solid var(--border);border-radius:14px;padding:16px 18px;max-width:820px;}
+.cadhead{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;flex-wrap:wrap;gap:10px;}
+.cadhead h2{margin:0;font-size:13px;text-transform:uppercase;letter-spacing:2px;color:var(--text);}
+.cadhead .pf-big{font-size:10px;color:var(--gold);background:rgba(255,193,7,.08);border:1px dashed var(--gold-d);padding:3px 10px;border-radius:14px;}
+.fcol{display:flex;flex-direction:column;gap:11px;}
+.fcol label{display:flex;flex-direction:column;font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;gap:4px;}
+.fcol input,.fcol select,.fcol textarea{background:var(--bg);border:1px solid var(--border2);border-radius:7px;color:var(--text);padding:8px 10px;font-size:13px;font-family:inherit;}
+.fcol textarea{min-height:54px;resize:vertical;}
+.fcol input:focus,.fcol select:focus,.fcol textarea:focus{outline:none;border-color:var(--gold-d);}
+.two{display:grid;grid-template-columns:1fr 1fr;gap:11px;}
+.three{display:grid;grid-template-columns:1fr 1fr 1fr;gap:11px;}
+.four{display:grid;grid-template-columns:1fr 2fr 1fr 1fr;gap:11px;align-items:end;}
+.formactions{display:flex;align-items:center;gap:12px;margin-top:16px;flex-wrap:wrap;}
+.btn{background:var(--bg4);border:1px solid var(--border);color:var(--text);padding:8px 16px;border-radius:8px;cursor:pointer;font-size:12.5px;transition:.15s;}
+.btn:hover{background:var(--bg5);}
+.btn.success{background:linear-gradient(135deg,#00695c,#004d40);border-color:var(--ok);color:#fff;font-weight:700;}
+.btn.ghost{background:transparent;color:var(--muted);}
+.btn.sm{padding:8px 14px;}
+.fmsg{font-size:12px;font-weight:700;}
+.fmsg.ok{color:var(--ok-l);} .fmsg.err{color:var(--err);}
+.hint{font-size:11px;color:var(--muted2);line-height:1.5;}
+.totbox{background:var(--bg);border:1px solid var(--border);border-radius:10px;padding:10px 14px;display:flex;justify-content:space-between;align-items:center;}
+.totbox .k{font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;}
+.totbox .v{font-size:20px;font-weight:800;color:var(--gold);}
+.saldoinfo{font-size:11px;color:var(--muted);margin-top:-4px;}
+.saldoinfo b{color:var(--text);}
+.sectit{font-size:10px;color:var(--gold);text-transform:uppercase;letter-spacing:1.5px;margin:6px 0 2px;}
+.regform{background:var(--bg3);border:1px solid var(--border);border-radius:12px;padding:12px 14px;margin-bottom:14px;}
+.rowlink{cursor:pointer;}
+.modal-ov{position:fixed;inset:0;background:rgba(2,6,16,.72);display:flex;align-items:flex-start;justify-content:center;padding:34px 16px;z-index:50;overflow:auto;}
+.modal{background:linear-gradient(180deg,var(--bg3),var(--bg2));border:1px solid var(--border2);border-radius:16px;max-width:780px;width:100%;padding:18px 20px;box-shadow:0 20px 60px rgba(0,0,0,.55);}
+.modal-h{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;border-bottom:1px solid var(--border);padding-bottom:12px;margin-bottom:14px;}
+.modal-h b{font-size:15px;}
+.dgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;}
+.dfield{background:var(--bg);border:1px solid var(--border);border-radius:9px;padding:8px 11px;display:flex;flex-direction:column;gap:3px;}
+.dfield .dk{font-size:9px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;}
+.dfield .dv{font-size:13px;}
+.dbox{background:var(--bg);border:1px solid var(--border);border-radius:9px;padding:9px 12px;font-size:12.5px;line-height:1.6;}
+.ctext{width:100%;background:var(--bg);border:1px solid var(--border2);border-radius:7px;color:var(--text);padding:8px 10px;font-size:13px;font-family:inherit;min-height:54px;resize:vertical;}
+.ctext:focus{outline:none;border-color:var(--gold-d);}
+.ativorow{display:grid;grid-template-columns:2fr 1fr 1.1fr 22px;gap:8px;align-items:center;margin-bottom:6px;}
+.ativorow input,.ativorow select{background:var(--bg);border:1px solid var(--border2);border-radius:7px;color:var(--text);padding:7px 9px;font-size:12.5px;}
+.ativorow input:focus,.ativorow select:focus{outline:none;border-color:var(--gold-d);}
+@media(max-width:680px){.two,.three,.four{grid-template-columns:1fr;}.ativorow{grid-template-columns:1fr 1fr 1fr 22px;}}
+</style>
+</head>
+<body>
+<header>
+  <div><div class="crumb">Almoxarifado · Insumos e Materiais</div><h1 id="vtitle">📦 Estoque</h1></div>
+  <div class="nav" id="nav">
+    <button data-v="estoque" class="on">📦 Estoque</button>
+    <button data-v="entrada">➕ Entrada</button>
+    <button data-v="saida">➖ Saída</button>
+    <button data-v="itens">📋 Itens</button>
+  </div>
+  <div class="spacer"></div>
+  <div class="sumpills" id="sumpills"></div>
+</header>
+<main id="main"></main>
+<p class="note">
+  <b>Almoxarifado</b> separado do estoque de <b>produção</b> (soja/algodão). <b>Saldo</b> sempre calculado.
+  Em <b>📋 Itens</b> há tabelas de referência: <b>Unidades</b> (com fator), <b>Formulações</b> (código CropLife) e
+  <b>Princípios ativos</b>, para padronizar o catálogo. Itens controlados (defensivo/biológico/semente) usam lote + validade.
+</p>
+<script>
+const PRODUTOS_RAW = [{"codigo":1,"nome":"ZAPP QI 620","comp":"GLIFOSATO SAL DE POTÁSSIO 620 g/L (62% m/v) Equivalente ácido 500 g/L (50% m/v) Outros Ingredientes: 740 g/L (74% m/v)","formulacao":"CONCENTRADO SOLÚVEL (SL)","tipo":"Defensivo","classe":"Herbicida","unidade":"L","preco":29.09,"estoque":3000.0,"validade":"2029-09-01"},{"codigo":2,"nome":"MAXIM XL","comp":"METALAXIL-M 10 g/L (1% m/v) FLUDIOXONIL 25 g/L (2,5% m/v) Outros Ingredientes: 1010 g/L (101% m/v)","formulacao":"SUSPENSÃO CONCENTRADA PARA TRATAMENTO DE SEMENTES (FS)","tipo":"Defensivo","classe":"Fungicida","unidade":"L","preco":188.1,"estoque":105.0,"validade":"2029-08-01"},{"codigo":3,"nome":"SPECTRO","comp":"DIFENOCONAZOL 150 g/L (15,0% m/v) Outros Ingredientes 905 g/L (90,5% m/v)","formulacao":"SUSPENSÃO CONCENTRADA (SC)","tipo":"Defensivo","classe":"Fungicida","unidade":"L","preco":161.15,"estoque":20.0,"validade":"2027-03-01"},{"codigo":4,"nome":"DUAL GOLD","comp":"S-METOLACLORO 960 g/L (96% m/v) NAFTA DE PETRÓLEO 46,2 g/L (4,62% m/v) Outros Ingredientes 150 g/L (15% m/v)","formulacao":"CONCENTRADO EMULSIONÁVEL (EC)","tipo":"Defensivo","classe":"Herbicida","unidade":"L","preco":55.22,"estoque":6200.0,"validade":"2029-05-01"},{"codigo":5,"nome":"REGLONE","comp":"DIQUATE 200 g/L (20% m/v) Outros Ingredientes: 970 g/L (97% m/v)","formulacao":"CONCENTRADO SOLÚVEL (SL)","tipo":"Defensivo","classe":"Herbicida","unidade":"L","preco":27.39,"estoque":1740.0,"validade":"2028-02-01"},{"codigo":6,"nome":"SCORE FLEXI","comp":"PROPICONAZOL 250 g/L (25,0% m/v) DIFENOCONAZOL 250 g/L (25,0% m/v) Nafta de Petróleo 387,06 g/L (38,7% m/v) Outros Ingredientes: 598 g/L (59,8% m/v)","formulacao":"CONCENTRADO EMULSIONÁVEL (EC)","tipo":"Defensivo","classe":"Fungicida","unidade":"L","preco":234.3,"estoque":1350.0,"validade":"2030-04-01"},{"codigo":8,"nome":"TA 35","comp":"","formulacao":"","tipo":"Adjuvante","classe":"Adjuvante","unidade":"L","preco":62.0,"estoque":300.0,"validade":null},{"codigo":9,"nome":"Bio Oil","comp":"Oleo Vegetal","formulacao":"Oleo","tipo":"Adjuvante","classe":"Adjuvante","unidade":"L","preco":12.0,"estoque":3600.0,"validade":null},{"codigo":10,"nome":"Nitro Oil","comp":"Oleo mineral Nitrogenio 25%","formulacao":"Oleo","tipo":"Fertilizante","classe":"Adubo Foliar","unidade":"L","preco":14.0,"estoque":4000.0,"validade":null},{"codigo":11,"nome":"PRIORI XTRA","comp":"(AZOXISTROBINA 200 g/L (20% m/v) (CIPROCONAZOL 80 g/L (8% m/v) Outros Ingredientes 820 g/L (82% m/v)","formulacao":"SUSPENSÃO CONCENTRADA (SC)","tipo":"Defensivo","classe":"Fungicida","unidade":"L","preco":133.43,"estoque":2560.0,"validade":"2030-07-01"},{"codigo":12,"nome":"TEBUCO A NORTOX","comp":"(Azoxistrobina 125,0 (12,5% m/v) (Tebuconazol) 240,0 g/L (24,0% m/v) Outros ingredientes 721,0 g/L (72,1 % m/v)","formulacao":"Suspensão Concentrada - SC","tipo":"Defensivo","classe":"Fungicida","unidade":"L","preco":53.18,"estoque":2400.0,"validade":"2026-12-01"},{"codigo":13,"nome":"BRAVONIL 720","comp":"(CLOROTALONIL 720 g/L (72% m/v) Outros Ingredientes 640 g/L (64% m/v)","formulacao":"SUSPENSÃO CONCENTRADA (SC)","tipo":"Defensivo","classe":"Fungicida","unidade":"L","preco":33.93,"estoque":10200.0,"validade":"2026-12-01"},{"codigo":14,"nome":"ENGEO PLENO S","comp":"(TIAMETOXAM) 141 g/L (14,1% m/v) (LAMBDA-CIALOTRINA) 106 g/L (10,6% m/v) (ÁCIDO ISOCIÂNICO) 17,69 g/L (1,77% m/v) (BENZISOTIAZOLINONA) 3,12 g/L (0,31% m/v) (NAFTA DE PETRÓLEO (< 1% NAFTALENO)) 73,80 g/L (7,38% m/v) Outros Ingredientes: 870 g/L (87,0% m/v)","formulacao":"MISTURA DE CS E SC (ZC)","tipo":"Defensivo","classe":"Inseticida","unidade":"L","preco":120.23,"estoque":840.0,"validade":"2027-09-01"},{"codigo":15,"nome":"Spider 840 WG","comp":"(DICLOSULAM) 840 g/kg (84,00% m/m) Outros Ingredientes 160 g/kg (16,00% m/m)","formulacao":"Grânulos dispersíveis em água (WG)","tipo":"Defensivo","classe":"Herbicida","unidade":"Kg","preco":2697.61,"estoque":13.0,"validade":null},{"codigo":16,"nome":"PATROL SL","comp":"(GLUFOSINATO - SAL DE AMÔNIO) 200,0 g/L (20,0 % m/v) Outros Ingredientes 900,0 g/L (90,0 % m/v)","formulacao":"Concentrado Solúvel (SL)","tipo":"Defensivo","classe":"Herbicida","unidade":"L","preco":25.46,"estoque":1560.0,"validade":"2028-07-01"},{"codigo":17,"nome":"Concorde","comp":"K:1% | S:2% | Mn:0,1% | B:0,04% | Cu:0,1% | Zn:0,1% | N:7%| P:2% | Mo:0,1%| C.O:6%","formulacao":"Liquido","tipo":"Fertilizante","classe":"Adubo Foliar","unidade":"L","preco":28.21,"estoque":5000.0,"validade":null},{"codigo":18,"nome":"Profol Produtividade","comp":"K:10% | Mg:2% | S:12,9% | B:1,8% | Cu:0,3% | Zn:4,5% | Mn:14,0%","formulacao":"Po","tipo":"Fertilizante","classe":"Adubo Foliar","unidade":"Kg","preco":24.53,"estoque":4080.0,"validade":null},{"codigo":19,"nome":"Tonus","comp":"P2O5:6% | K2O:4% | Mg:1% | S:1,3% | Co:0,5% | Mo:10% | Ni:1,5%| Zn:6%","formulacao":"Po","tipo":"Fertilizante","classe":"Adubo Foliar","unidade":"Kg","preco":171.32,"estoque":880.0,"validade":null},{"codigo":20,"nome":"Kellus Blindex","comp":"P2O5:1% | Cu:0,5% | Mn:5% | Zn:8% |","formulacao":"Po","tipo":"Fertilizante","classe":"Adubo Foliar","unidade":"Kg","preco":68.75,"estoque":1800.0,"validade":null},{"codigo":21,"nome":"Improver","comp":"K2O:5,4%| Mo:4%","formulacao":"Liquido","tipo":"Fertilizante","classe":"Adubo Foliar","unidade":"L","preco":118.25,"estoque":1160.0,"validade":null},{"codigo":22,"nome":"Premerlin 600 EC","comp":"(TRIFLURALINA) 600 g/L (60% m/v) Nonilfenol etoxilato q.s.p. 1 L Outros Ingredientes 67,5 g/L (6,75% m/v)","formulacao":"Concentrado Emulsionável (EC)","tipo":"Defensivo","classe":"Herbicida","unidade":"L","preco":57.9,"estoque":4600.0,"validade":"2028-08-01"},{"codigo":23,"nome":"FRENO 240 EC","comp":"(CLETODIM) 240 g/L (24,0% m/v) (NAFTA AROMÁTICA) 495 g/L (49,5% m/v) Outros Ingredientes 215 g/L (21,5% m/v)","formulacao":"Concentrado Emulsionável (EC)","tipo":"Defensivo","classe":"Herbicida","unidade":"L","preco":51.9,"estoque":3520.0,"validade":"2026-09-01"},{"codigo":24,"nome":"SUNGAIN XTRA","comp":"(Flumioxazina) 800 g/kg (80% m/m) Outros Ingredientes 200 g/kg (20% m/m)","formulacao":"Grânulos Dispersíveis em Água (WG)","tipo":"Defensivo","classe":"Herbicida","unidade":"Kg","preco":282.0,"estoque":260.0,"validade":"2028-06-01"},{"codigo":25,"nome":"SHIFT","comp":"(FOMESAFEM) 250 g/L (25,00% m/v) Outros Ingredientes 886,10 g/L (88,61% m/v)","formulacao":"Concentrado Solúvel (SL)","tipo":"Defensivo","classe":"Herbicida","unidade":"L","preco":55.2,"estoque":495.0,"validade":"2026-09-01"},{"codigo":26,"nome":"REATOR 360 CS","comp":"(CLOMAZONA) 360,0 g/L (36,0% m/v) Polymethylenepolyphenylene isocyanate 37,4 g/L (3,74% m/v) Outros ingredientes 760,6 g/L (76,06% m/v)","formulacao":"Suspensão de Cápsulas (CS)","tipo":"Defensivo","classe":"Herbicida","unidade":"L","preco":61.2,"estoque":7600.0,"validade":"2028-10-01"},{"codigo":27,"nome":"GEMPOX","comp":"(GLUFOSINATO – SAL DE AMÔNIO) 850 g/Kg (85,0% m/m) Outros Ingredientes 150 g/Kg (15,0% m/m)","formulacao":"Granulado Solúvel (SG)","tipo":"Defensivo","classe":"Herbicida","unidade":"Kg","preco":72.0,"estoque":1800.0,"validade":"2028-06-01"},{"codigo":28,"nome":"+Recover","comp":"Aminoacidos","formulacao":"Liquida","tipo":"Fertilizante","classe":"Adubo Foliar","unidade":"L","preco":22.45,"estoque":600.0,"validade":null},{"codigo":29,"nome":"Stimulus","comp":"Aminoacidos","formulacao":"Liquida","tipo":"Fertilizante","classe":"Adubo Foliar","unidade":"L","preco":45.0,"estoque":940.0,"validade":null},{"codigo":30,"nome":"SALLVARE COMPLEX","comp":"Cu: 8%","formulacao":"Liquida","tipo":"Fertilizante","classe":"Adubo Foliar","unidade":"L","preco":78.0,"estoque":390.0,"validade":null},{"codigo":31,"nome":"METOMY","comp":"(Methomyl) 900 g/Kg (90% m/m) Outros Ingredientes: 100 g/Kg (10 % m/m)","formulacao":"Pó Solúvel em Água (SP)","tipo":"Defensivo","classe":"Inseticida","unidade":"Kg","preco":93.5,"estoque":120.0,"validade":"2028-07-01"},{"codigo":32,"nome":"Benzoato 300 WG","comp":"(BENZOATO DE EMAMECTINA) 300 g/kg (30,0 % m/m) Outros ingredientes: 700 g/kg (70,0 % m/m)","formulacao":"GRÂNULOS DISPERSÍVEIS EM ÁGUA (WG)","tipo":"Defensivo","classe":"Inseticida","unidade":"Kg","preco":750.0,"estoque":0,"validade":null},{"codigo":33,"nome":"Bt Kill","comp":"Bacillus thuringiensis var. kurstaki, isolado HD-1 2,5x10^9","formulacao":"SUSPENSÃO CONCENTRADA (SC)","tipo":"Defensivos Biológicos","classe":"Inseticida","unidade":"L","preco":40.0,"estoque":0,"validade":null},{"codigo":34,"nome":"MIB FROELICH","comp":"P2O5:1% | S:3% | B:6% | Cu:1,2% | Mn:4% | Zn:2%","formulacao":"Granulado","tipo":"Fertilizante","classe":"Adubo","unidade":"ton","preco":5410.0,"estoque":0,"validade":null},{"codigo":35,"nome":"KCL + B","comp":"K20:58% | B:0.5%","formulacao":"Granulado","tipo":"Fertilizante","classe":"Adubo","unidade":"ton","preco":3310.56,"estoque":0,"validade":null},{"codigo":36,"nome":"Sulfato de Amonio","comp":"N:21%: | S:24%","formulacao":"Granulado","tipo":"Fertilizante","classe":"Adubo","unidade":"ton","preco":2200.0,"estoque":0,"validade":null},{"codigo":37,"nome":"CLORFENAPIR NORTOX","comp":"(Clorfenapir) 240,0 g/L (24,00 % m/v) Outros Ingredientes 882,6 g/L (88,26 % m/v)","formulacao":"Suspensão Concentrada - SC","tipo":"Defensivo","classe":"Inseticida","unidade":"L","preco":55.0,"estoque":920.0,"validade":"2027-07-01"},{"codigo":38,"nome":"CLORIMUROM MAX NORTOX","comp":"(CLORIMUROM-ETÍLICO) 750,00 g/kg (75,00% m/m) Outros ingredientes 250,00 g/kg (25,00% m/m)","formulacao":"Grânulos Dispersíveis em Água - WG","tipo":"Defensivo","classe":"Herbicida","unidade":"Kg","preco":0,"estoque":0,"validade":null},{"codigo":39,"nome":"START STOP","comp":"Estruturador","formulacao":"Liquido","tipo":"Fertilizante","classe":"Adubo Foliar","unidade":"L","preco":99.0,"estoque":0,"validade":null},{"codigo":40,"nome":"+ GROWTH","comp":"Ascophyllum nodosum","formulacao":"liquido","tipo":"Fertilizante","classe":"Adubo Foliar","unidade":"L","preco":104.5,"estoque":100.0,"validade":null},{"codigo":41,"nome":"Super Fosfato Simples","comp":"P2O5: 18% | Ca: 19% | S: 11%","formulacao":"Granulado","tipo":"Fertilizante","classe":"Adubo","unidade":"ton","preco":2647.0,"estoque":0,"validade":null},{"codigo":42,"nome":"Cloreto de Potassio","comp":"K2O: 60%","formulacao":"Granulado","tipo":"Fertilizante","classe":"Adubo","unidade":"ton","preco":3310.0,"estoque":0,"validade":null},{"codigo":45,"nome":"FiberMax FM 911GLTP","comp":"5.000.000 de sementes","formulacao":"Grao","tipo":"Semente","classe":"Semente","unidade":"Bag","preco":0,"estoque":0,"validade":null},{"codigo":46,"nome":"BRASMAX OLÍMPO 80i82RSF IPRO","comp":"5.000.000 de sementes","formulacao":"Grao","tipo":"Semente","classe":"Semente","unidade":"Bag","preco":0,"estoque":0,"validade":null},{"codigo":47,"nome":"BRASMAX DOMÍNIO 84I86RSF IPRO","comp":"5.000.000 de sementes","formulacao":"Grao","tipo":"Semente","classe":"Semente","unidade":"Bag","preco":0,"estoque":0,"validade":null},{"codigo":48,"nome":"BRASMAX CRUZADA 85K84RSF CE","comp":"5.000.000 de sementes","formulacao":"Grao","tipo":"Semente","classe":"Semente","unidade":"Bag","preco":0,"estoque":0,"validade":null},{"codigo":49,"nome":"UREIA NBPT","comp":"N: 46%","formulacao":"Granulado","tipo":"Fertilizante","classe":"Adubo","unidade":"ton","preco":3300.0,"estoque":0,"validade":null},{"codigo":50,"nome":"UP! SEEDS","comp":"K2O: 2,3% | Co: 0,45% | Mo: 9% | Ni: 0,9%","formulacao":"Liquido","tipo":"Fertilizante","classe":"Adubo Foliar","unidade":"L","preco":280.28,"estoque":0,"validade":null},{"codigo":51,"nome":"SURVEY 250 FS","comp":"(RS)-5-amino-1-(2,6-dichloro-α,α,α-trifluoro-p-tolyl)-4-trifluoromethylsulfinylpyrazole-3-carbonitrile (FIPRONIL) 250 g/L (25 % m/v) Monoetilenoglicol 50 g/L (5% m/v) Monômero do acetato de vinila (VAM), álcool polivinílico, água 10 g/L (1 % m/v) Outros Ingredientes 793,85 g/L (79,385% m/v)","formulacao":"Suspensão concentrada para tratamento de sementes (FS)","tipo":"Defensivo","classe":"Inseticida","unidade":"L","preco":122.1,"estoque":100.0,"validade":"2027-08-01"},{"codigo":54,"nome":"GRAFSOLO","comp":"Grafite em pó","formulacao":"Pó","tipo":"Outros","classe":"Outros","unidade":"Kg","preco":20.0,"estoque":0,"validade":null},{"codigo":55,"nome":"Thichoplus MP Turbo","comp":"Trichoderma Pochonia Purpureocillium","formulacao":"pó","tipo":"Defensivos Biológicos","classe":"Nematicida","unidade":"Kg","preco":200.0,"estoque":0,"validade":null},{"codigo":58,"nome":"BIOND","comp":"Bradyrhizobium japonicum","formulacao":"liquido","tipo":"Defensivos Biológicos","classe":"Inoculante","unidade":"Dose","preco":2.72,"estoque":0,"validade":null},{"codigo":59,"nome":"SimbioseNod Soja Turfoso","comp":"Bradyrhizobium japonicum (SEMIA 5079 e 5080)","formulacao":"liquido","tipo":"Defensivos Biológicos","classe":"Inoculante","unidade":"Dose","preco":1.72,"estoque":0,"validade":null},{"codigo":60,"nome":"IMAZETAPIR NORTOX","comp":"(Imazetapir, Sal Amônio) 212,0 g/L (21,2% m/v) Equivalente ácido Imazetapir 200,0 g/L (20,0% m/v) Outros ingredientes 874,0 g/L (87,4% m/v)","formulacao":"liquido","tipo":"Defensivo","classe":"Herbicida","unidade":"L","preco":37.86,"estoque":840.0,"validade":"2025-07-01"},{"codigo":61,"nome":"MALATHION 1000 EC","comp":"(MALATIONA).......................1000,0 g/L (100,0% m/v) (Petroleum), Heavy Aromatic 95,56 g/L (9,56% m/v) Outros ingredientes 100,47 g/L (10,04% m/v)","formulacao":"lilquido","tipo":"Defensivo","classe":"Inseticida","unidade":"L","preco":55.0,"estoque":0,"validade":null},{"codigo":62,"nome":"ULEXITA","comp":"B: 10%","formulacao":"GRANULADO","tipo":"Fertilizante","classe":"Adubo","unidade":"ton","preco":4000.0,"estoque":0,"validade":null},{"codigo":63,"nome":"DISPERSE ULTRA","comp":"Adjuvante","formulacao":"liquida","tipo":"Adjuvante","classe":"Adjuvante","unidade":"L","preco":90.0,"estoque":20.0,"validade":null},{"codigo":64,"nome":"DEZ","comp":"(2,4-D) 806,0 g/L (80,6% m/v) Equivalente ácido 670,0 g/L (67,0% m/v) Outros ingredientes 421,6 g/L (42,1% m/v)","formulacao":"Concentrado Solúvel (SL)","tipo":"Defensivo","classe":"Herbicida","unidade":"L","preco":14.57,"estoque":3860.0,"validade":"2026-06-01"},{"codigo":65,"nome":"FOMESAFEN CCAB 250 SL","comp":"FOMESAFEN 250 g/L (25,0% m/v) Outros Ingredientes 870 g/L (87,0 % m/v)","formulacao":"SL – Concentrado Solúvel","tipo":"Defensivo","classe":"Herbicida","unidade":"L","preco":50.6,"estoque":360.0,"validade":"2026-08-01"},{"codigo":66,"nome":"KAIVANA","comp":"(CLOMAZONA) 360,00 g/L (36,00 % m/v) (Poliisocianato de polifenilmetileno) 66,27 g/L (6,62 % m/v) Outros Ingredientes: 672,74 g/L (67,27 % m/v)","formulacao":"Suspensão de cápsulas (CS)","tipo":"Defensivo","classe":"Herbicida","unidade":"L","preco":56.1,"estoque":235.0,"validade":"2025-03-01"},{"codigo":67,"nome":"VERTIMEC 84 SC","comp":"(ABAMECTINA) 84,0 g/L (8,4 % m/v) Propilenoglicol 52,5 g/L (5,25 % m/v) Outros Ingredientes 966,0 g/L (96,6 % m/v)","formulacao":"SUSPENSÃO CONCENTRADA (SC)","tipo":"Defensivo","classe":"Inseticida","unidade":"L","preco":120.0,"estoque":80.0,"validade":"2026-07-01"},{"codigo":68,"nome":"METRARO","comp":"(S-METOLACLORO) 960,0g/L (96,0%m/v) (Solvente Naphta) 48,3 g/L (4,83 % m/v) Outros ingredientes 99,7 g/L (9,97% m/v)","formulacao":"Concentrado Emulsionável (EC)","tipo":"Defensivo","classe":"Herbicida","unidade":"L","preco":63.0,"estoque":100.0,"validade":"2026-07-01"},{"codigo":69,"nome":"IMAZETAPIR CCAB 106 SL","comp":"(IMAZETAPIR sal de amônio) 106 g/L (10,6% m/v) Equivalente ácido 100 g/L (10% m/v) Outros ingredientes 940,1 g/L (94,01% m/v)","formulacao":"Concentrado Solúvel (SL)","tipo":"Defensivo","classe":"Herbicida","unidade":"L","preco":32.0,"estoque":70.0,"validade":"2025-06-01"},{"codigo":70,"nome":"CLORIMUROM NORTOX","comp":"(CLORIMUROMETÍLICO) 250 g/kg (25% m/m) Outros Ingredientes 750 g/kg (75% m/m)","formulacao":"Grânulos dispersíveis em água - WG","tipo":"Defensivo","classe":"Herbicida","unidade":"Kg","preco":72.0,"estoque":180.0,"validade":"2025-07-01"},{"codigo":71,"nome":"TRUNFO","comp":"(Glufosinato – Sal de Amônio) 280,00 g/L (28,000% m/v) Propilenoglicol metil eter 90,24 g/L (9,024% m/v) Outros ingredientes 779,76 g/L (77,976% m/v)","formulacao":"Concentrado Solúvel (SL)","tipo":"Defensivo","classe":"Herbicida","unidade":"L","preco":31.68,"estoque":460.0,"validade":"2027-11-01"},{"codigo":72,"nome":"FLUMIOXAZIN NORTOX","comp":"(Flumioxazina) 500,00 g/L (50,00 % m/v) Outros Ingredientes 641,74 g/L (64,17 % m/v)","formulacao":"Suspensão Concentrada - SC","tipo":"Defensivo","classe":"Herbicida","unidade":"L","preco":135.0,"estoque":85.0,"validade":"2026-08-01"},{"codigo":74,"nome":"LEGEND 250 SL","comp":"(CLORETO DE MEPIQUATE) 250,0 g/L (25,00% m/v) Outros Ingredientes 768,7 g/L (76,87% m/v)","formulacao":"Concentrado Solúvel (SL)","tipo":"Defensivo","classe":"Regulador de Crescimento","unidade":"L","preco":31.5,"estoque":220.0,"validade":"2027-12-01"},{"codigo":75,"nome":"Pix HC","comp":"(CLORETO DE MEPIQUATE) 250 g/L (25% m/v) Tetra etil Rhodamina 0,0015 g/L (0,00015% m/v) Outros ingredientes 768,9 g/L (76,9% m/v)","formulacao":"Concentrado Solúvel (SL)","tipo":"Defensivo","classe":"Regulador de Crescimento","unidade":"L","preco":60.0,"estoque":260.0,"validade":"2029-09-01"},{"codigo":76,"nome":"CYPRESS 400 EC","comp":"(DIFENOCONAZOL) 250 g/L (25% m/v) (CIPROCONAZOL) 150 g/L (15% m/v) Outros ingredientes: 740 g/L (74% m/v)","formulacao":"CONCENTRADO EMULSIONÁVEL (EC)","tipo":"Defensivo","classe":"Fungicida","unidade":"L","preco":248.64,"estoque":60.0,"validade":"2025-10-01"},{"codigo":77,"nome":"DIFCOR 250 EC","comp":"(DIFENOCONAZOL) 250 g/L (25,0% m/v) (Nafta de Petróleo) 640 g/L (64,0% m/v) Outros Ingredientes 170 g/L (17,0% m/v)","formulacao":"Concentrado Emulsionável – EC","tipo":"Defensivo","classe":"Fungicida","unidade":"L","preco":72.0,"estoque":120.0,"validade":"2027-06-01"},{"codigo":78,"nome":"DITOR 250 TM","comp":"(difenoconazol) 250 g/L (25% m/v) (Nafta de Petróleo) 650 g/L (65% m/v) Outros ingredientes 150 g/L (15% m/v)","formulacao":"Concentrado Emulsionável - EC","tipo":"Defensivo","classe":"Fungicida","unidade":"L","preco":72.0,"estoque":520.0,"validade":"2027-08-01"},{"codigo":79,"nome":"","comp":"(DIFENOCONAZOL) 250 g/litro (25,0% m/v) (solvesso) 597 g/litro (59,7% m/v) Outros Ingredientes 153 g/litro (15,3% m/v)","formulacao":"Concentrado Emulsionável (EC)","tipo":"Defensivo","classe":"Fungicida","unidade":"L","preco":72.0,"estoque":500.0,"validade":null},{"codigo":80,"nome":"RECONIL RFT","comp":"(OXICLORETO DE COBRE) 588 g/kg (58,8% m/m) Equivalente em cobre metálico 350 g/kg (35,0% m/m) Outros Ingredientes 412 g/kg (41,2% m/m)","formulacao":"Pó Molhável (WP)","tipo":"Defensivo","classe":"Fungicida","unidade":"Kg","preco":47.5,"estoque":2000.0,"validade":"2026-10-01"},{"codigo":81,"nome":"METSURAM 600 WG","comp":"(METSULFUROM-METÍLICO) 600,0 g/kg (60,0% m/m) Outros Ingredientes 400,0 g/kg (40,0% m/m)","formulacao":"Granulado dispersível em água (WG)","tipo":"Defensivo","classe":"Herbicida","unidade":"Kg","preco":495.0,"estoque":60.0,"validade":null},{"codigo":82,"nome":"KENNOX","comp":"(CLETODIM) 240,00 g/L (24,00% m/v) (HALOXIFOPE-P-METÍLICO) 123,60 g/L (12,36% m/v) Equivalente Ácido de Haloxifope-P-metílico 120,00 g/L (12,00% m/v) Solvente nafta de petróleo aromático pesado 601,72 g/L (60,17% m/v) Outros Ingredientes 33,79 g/L (3,40% m/v)","formulacao":"Concentrado Emulsionável (EC)","tipo":"Defensivo","classe":"Herbicida","unidade":"L","preco":76.0,"estoque":10.0,"validade":"2025-09-01"},{"codigo":83,"nome":"PUNTO","comp":"(DIUROM) 180 g/L (18,0% m/v) (TIDIAZUROM) 360 g/L (36,0% m/v) Outros ingredientes 631,3 g/L (63,13% m/v)","formulacao":"Suspensão Concentrada (SC)","tipo":"Defensivo","classe":"Herbicida","unidade":"L","preco":650.0,"estoque":40.0,"validade":"2027-07-01"},{"codigo":84,"nome":"SCORE","comp":"(DIFENOCONAZOL) 250 g/L (25,0% m/v) (Nafta de Petróleo) 484 g/L (48,4% m/v) Outros Ingredientes: 760 g/L (76,0% m/v)","formulacao":"CONCENTRADO EMULSIONÁVEL (EC)","tipo":"Defensivo","classe":"Fungicida","unidade":"L","preco":75.0,"estoque":70.0,"validade":"2029-10-01"},{"codigo":85,"nome":"TIAMETOXAM 750 SG","comp":"(TIAMETOXAM) 750 g/kg (75% m/m) Outros Ingredientes: 250 g/kg (25% m/m)","formulacao":"GRANULADO SOLÚVEL (SG)","tipo":"Defensivo","classe":"Inseticida","unidade":"Kg","preco":350.0,"estoque":120.0,"validade":null},{"codigo":86,"nome":"MIX MOSCA","comp":"INSETCIDA","formulacao":"Pó","tipo":"Defensivo","classe":"Inseticida","unidade":"Kg","preco":350.0,"estoque":0,"validade":null},{"codigo":87,"nome":"PIRIPROXIFEN NORTOX","comp":"(Piriproxifen) 200,00 g/L (20,00% m/v) Solvente Nafta de Petróleo 580,81 g/L (58,08% m/v) Outros Ingredientes 180,00 g/L (18,00% m/v)","formulacao":"Concentrado Emulsionável - EC","tipo":"Defensivo","classe":"Inseticida","unidade":"L","preco":84.24,"estoque":95.0,"validade":"2027-11-01"},{"codigo":88,"nome":"ACEMIP","comp":"(ACETAMIPRIDO) 200 g/Kg (20%m/m) Outros ingredientes 800 g/Kg (80%m/m)","formulacao":"Pó Solúvel em água (SP)","tipo":"Defensivo","classe":"Inseticida","unidade":"Kg","preco":24.34,"estoque":930.0,"validade":"2028-06-01"},{"codigo":89,"nome":"POLO 500 SC","comp":"(DIAFENTIUROM) 500 g/L (50,0% m/v) Outros Ingredientes: 545 g/L (54,5% m/v)","formulacao":"SUSPENSÃO CONCENTRADA (SC)","tipo":"Defensivo","classe":"Inseticida","unidade":"L","preco":75.92,"estoque":580.0,"validade":"2028-12-01"},{"codigo":90,"nome":"ELESTAL NEO","comp":"(ESPIROPIDIONA) 300 g/kg (30,0% m/m) (ACETAMIPRIDO) 240 g/kg (24,0% m/m) Outros Ingredientes: 460 g/kg (46,0% m/m)","formulacao":"GRÂNULOS DISPERSÍVEIS EM ÁGUA (WG)","tipo":"Defensivo","classe":"Inseticida","unidade":"Kg","preco":679.65,"estoque":95.0,"validade":"2027-01-01"},{"codigo":91,"nome":"BEAUVERIA IS","comp":"BEAUVERIA + ISARIA","formulacao":"Pó Solúvel em água (SP)","tipo":"Defensivos Biológicos","classe":"Inseticida","unidade":"Kg","preco":230.0,"estoque":200.0,"validade":null},{"codigo":92,"nome":"ETHREL","comp":"2-chloroethylphosphonic acid (ETEFOM) 240 g/L (24 % m/v) Outros ingredientes 865 g/L (86,5 % m/v)","formulacao":"(ETEFOM) 240 g/L (24 % m/v) Outros ingredientes 865 g/L (86,5 % m/v)","tipo":"Defensivo","classe":"Regulador de Crescimento","unidade":"L","preco":1520.0,"estoque":40.0,"validade":null},{"codigo":93,"nome":"MIX COBERTURA","comp":"Milheto 33% Bhachiaria encrustrada 67%","formulacao":"semente","tipo":"Semente","classe":"Semente","unidade":"Kg","preco":5.0,"estoque":28000.0,"validade":null},{"codigo":94,"nome":"BRACHIARIA RUZIZIENSIS","comp":"BRACHIARIA RUZIZIENSIS","formulacao":"semente","tipo":"Semente","classe":"Semente","unidade":"Kg","preco":7.5,"estoque":28000.0,"validade":null},{"codigo":95,"nome":"Regent 800 WG","comp":"(FIPRONIL) 800 g/kg (80% m/m) Outros Ingredientes 200 g/kg (20% m/m)","formulacao":"Grânulos Dispersíveis em água (WG)","tipo":"Defensivo","classe":"Inseticida","unidade":"Kg","preco":550.0,"estoque":100.0,"validade":null},{"codigo":96,"nome":"REPHON 800 WG","comp":"(FIPRONIL) 800 g/kg (80% m/m) Outros Ingredientes 200 g/kg (20% m/m)","formulacao":"Granulado dispersível em água (WG)","tipo":"Defensivo","classe":"Inseticida","unidade":"Kg","preco":600.0,"estoque":0,"validade":null},{"codigo":97,"nome":"BIOEXOS PLUS","comp":"0,3% Neem Oil","formulacao":"Liquido","tipo":"Defensivos Biológicos","classe":"Inseticida","unidade":"L","preco":0,"estoque":0,"validade":null},{"codigo":98,"nome":"GLADIUM","comp":"(ETOXISSULFUROM) 600 g/kg (60% m/m) Outros ingredientes 400 g/kg (40% m/m)","formulacao":"Grânulos dispersíveis em água (WG)","tipo":"Defensivo","classe":"Herbicida","unidade":"Kg","preco":1500.0,"estoque":10.0,"validade":null},{"codigo":99,"nome":"FOLIAR","comp":"Mn 10%","formulacao":"Po soluvel","tipo":"Fertilizante","classe":"Adubo Foliar","unidade":"Kg","preco":0,"estoque":0,"validade":null},{"codigo":100,"nome":"PLETHORA BR","comp":"(INDOXACARBE) 240,0 g/L (24,00% m/v) (NOVALUROM) 80,0 g/L (8,00% m/v) Outros Ingredientes 845,3 g/L (84,53% m/v)","formulacao":"Suspensão Concentrada (SC)","tipo":"Defensivo","classe":"Inseticida","unidade":"L","preco":290.0,"estoque":280.0,"validade":null},{"codigo":101,"nome":"VERSO","comp":"diethyl ((MALATIONA) 1000,0 g/L (100,0% m/v) Naft, aromático pesado 57,0 g/L (5,7% m/v) Outros ingredientes 144,0 g/L (14,4% m/v)","formulacao":"Concentrado Emulsionável (EC)","tipo":"Defensivo","classe":"Inseticida","unidade":"L","preco":38.0,"estoque":2000.0,"validade":null}];
+
+/* ===================== HELPERS ===================== */
+let _uid=0; const U=p=>(p||'id')+(_uid++);
+const nf=n=>(+n).toLocaleString('pt-BR',{maximumFractionDigits:3});
+const brl=n=>(+n).toLocaleString('pt-BR',{style:'currency',currency:'BRL'});
+const TODAY=new Date(); TODAY.setHours(0,0,0,0);
+const isoToday=TODAY.toISOString().slice(0,10);
+const diasAte=d=>{ if(!d) return null; const t=new Date(d+'T00:00:00'); return Math.round((t-TODAY)/86400000); };
+const fmtDate=d=>{ if(!d) return '—'; const [y,m,dd]=d.split('-'); return dd+'/'+m+'/'+y; };
+const esc=s=>String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+
+/* ===================== TAXONOMIA ===================== */
+const TIPO_PERFIL={
+  'Defensivo':'A','Defensivos Biológicos':'A','Semente':'A',
+  'Fertilizante':'B','Adjuvante':'B','Combustível/Lubrificante':'B',
+  'Peça':'C','EPI':'D','Ferramenta':'D','Consumo geral':'D','Outros':'D'
+};
+const TIPOS=Object.keys(TIPO_PERFIL);
+const TIPO_CLASSES={
+  'Defensivo':['Herbicida','Inseticida','Fungicida','Nematicida','Acaricida','Regulador de Crescimento'],
+  'Defensivos Biológicos':['Inseticida','Fungicida','Nematicida','Inoculante'],
+  'Fertilizante':['Adubo','Adubo Foliar'],'Semente':['Semente'],'Adjuvante':['Adjuvante'],
+  'Combustível/Lubrificante':['Combustível','Lubrificante'],
+  'Peça':['Máquina','Irrigação/Pivô','Usina Solar'],'EPI':['EPI'],'Ferramenta':['Ferramenta'],
+  'Consumo geral':['Limpeza','Escritório','Geral'],'Outros':['Outros'],
+};
+const TIPO_COLOR={'Defensivo':'#ef4444','Defensivos Biológicos':'#34d399','Fertilizante':'#a3e635',
+  'Semente':'#22c55e','Adjuvante':'#f59e0b','Peça':'#60a5fa','EPI':'#c084fc','Ferramenta':'#94a3b8',
+  'Combustível/Lubrificante':'#fb923c','Consumo geral':'#7dd3fc','Outros':'#9ca3af'};
+const PERFIL_NOME={A:'Controlado · lote + validade',B:'Granel / volume',C:'Peça de ativo',D:'Consumo simples'};
+const perfilDe=tipo=>TIPO_PERFIL[tipo]||'D';
+
+/* ===================== ESTADO + TABELAS DE REFERÊNCIA ===================== */
+const S={
+  fornecedores:[{nome:'Agro Insumos LTDA',cnpj:'',contato:'',fone:''},{nome:'Casa do Produtor',cnpj:'',contato:'',fone:''},
+    {nome:'Posto Fazenda',cnpj:'',contato:'',fone:''},{nome:'SolarTech Brasil',cnpj:'',contato:'',fone:''},
+    {nome:'Peças & Cia',cnpj:'',contato:'',fone:''}],
+  locais:['Galpão Almoxarifado','Depósito de Defensivos','Tanque de Diesel','Container de Peças'],
+  equipamentos:['Pivô 01','Pivô 02','Trator JD 6110','Pulverizador Jacto','Usina Solar — Inversor 1'],
+  unidades:[
+    {sim:'L',nome:'Litro',dim:'Volume',fator:1},
+    {sim:'mL',nome:'Mililitro',dim:'Volume',fator:0.001},
+    {sim:'m³',nome:'Metro cúbico',dim:'Volume',fator:1000},
+    {sim:'kg',nome:'Quilograma',dim:'Massa',fator:1},
+    {sim:'g',nome:'Grama',dim:'Massa',fator:0.001},
+    {sim:'ton',nome:'Tonelada',dim:'Massa',fator:1000},
+    {sim:'@',nome:'Arroba',dim:'Massa',fator:15},
+    {sim:'sc',nome:'Saca (soja 60 kg)',dim:'Massa',fator:60},
+    {sim:'un',nome:'Unidade',dim:'Contagem',fator:1},
+    {sim:'par',nome:'Par',dim:'Contagem',fator:1},
+    {sim:'cx',nome:'Caixa',dim:'Contagem',fator:1},
+    {sim:'Bag',nome:'Bag (embalagem)',dim:'Contagem',fator:1},
+    {sim:'Dose',nome:'Dose',dim:'Contagem',fator:1},
+  ],
+  formulacoes:[
+    {cod:'EC',nome:'Concentrado Emulsionável',grupo:'Defensivo (CropLife)'},
+    {cod:'SL',nome:'Concentrado Solúvel',grupo:'Defensivo (CropLife)'},
+    {cod:'SC',nome:'Suspensão Concentrada',grupo:'Defensivo (CropLife)'},
+    {cod:'SE',nome:'Suspoemulsão',grupo:'Defensivo (CropLife)'},
+    {cod:'EW',nome:'Emulsão óleo em água',grupo:'Defensivo (CropLife)'},
+    {cod:'ME',nome:'Microemulsão',grupo:'Defensivo (CropLife)'},
+    {cod:'OD',nome:'Dispersão Oleosa',grupo:'Defensivo (CropLife)'},
+    {cod:'CS',nome:'Suspensão de Cápsulas',grupo:'Defensivo (CropLife)'},
+    {cod:'ZC',nome:'Mistura de CS e SC',grupo:'Defensivo (CropLife)'},
+    {cod:'WG',nome:'Granulado Dispersível em Água',grupo:'Defensivo (CropLife)'},
+    {cod:'WP',nome:'Pó Molhável',grupo:'Defensivo (CropLife)'},
+    {cod:'SP',nome:'Pó Solúvel',grupo:'Defensivo (CropLife)'},
+    {cod:'SG',nome:'Granulado Solúvel',grupo:'Defensivo (CropLife)'},
+    {cod:'FS',nome:'Susp. p/ Trat. de Sementes',grupo:'Defensivo (CropLife)'},
+    {cod:'WS',nome:'Pó p/ Trat. de Sementes',grupo:'Defensivo (CropLife)'},
+    {cod:'GR',nome:'Granulado',grupo:'Defensivo (CropLife)'},
+    {cod:'DP',nome:'Pó Seco',grupo:'Defensivo (CropLife)'},
+    {cod:'DC',nome:'Concentrado Dispersível',grupo:'Defensivo (CropLife)'},
+    {cod:'UL',nome:'Líquido UL (ULV)',grupo:'Defensivo (CropLife)'},
+    {cod:'XX',nome:'Outros',grupo:'Defensivo (CropLife)'},
+    {cod:'LIQ',nome:'Líquido',grupo:'Forma física'},
+    {cod:'PO',nome:'Pó',grupo:'Forma física'},
+    {cod:'GRAN',nome:'Granulado',grupo:'Forma física'},
+    {cod:'OLEO',nome:'Óleo',grupo:'Forma física'},
+    {cod:'GRAO',nome:'Grão / Semente',grupo:'Forma física'},
+  ],
+  principios:['Glifosato','Glufosinato (sal de amônio)','Metalaxil-M','Fludioxonil','Difenoconazol',
+    'S-metolacloro','Diquat','Propiconazol','Azoxistrobina','Ciproconazol','Tebuconazol','Clorotalonil',
+    'Tiametoxam','Lambda-cialotrina','Diclosulam','Trifluralina','Cletodim','Flumioxazina','Fomesafem',
+    'Clomazona','Metomil','Benzoato de emamectina','Clorfenapir','Clorimurom-etílico','Imazetapir',
+    'Malationa','2,4-D','Fipronil','Etefom','Bacillus thuringiensis','Trichoderma','Pochonia',
+    'Purpureocillium','Bradyrhizobium japonicum'].map(n=>({nome:n})),
+  itens:[], entradas:[], saidas:[],
+};
+
+/* ===== parser de princípios ativos (composição estruturada) ===== */
+const naccent=s=>String(s||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toUpperCase();
+const numBR=s=>{s=String(s);if(s.indexOf(',')>=0)s=s.replace(/\./g,'').replace(',','.');return parseFloat(s);};
+const PA_ALIAS={
+  'Glifosato':['GLIFOSATO'],'Glufosinato (sal de amônio)':['GLUFOSINATO'],'Metalaxil-M':['METALAXIL'],
+  'Fludioxonil':['FLUDIOXONIL'],'Difenoconazol':['DIFENOCONAZOL'],'S-metolacloro':['METOLACLORO'],
+  'Diquat':['DIQUAT'],'Propiconazol':['PROPICONAZOL'],'Azoxistrobina':['AZOXISTROBINA'],
+  'Ciproconazol':['CIPROCONAZOL'],'Tebuconazol':['TEBUCONAZOL'],'Clorotalonil':['CLOROTALONIL'],
+  'Tiametoxam':['TIAMETOXAM'],'Lambda-cialotrina':['LAMBDA-CIALOTRINA','LAMBDA CIALOTRINA','CIALOTRINA'],
+  'Diclosulam':['DICLOSULAM'],'Trifluralina':['TRIFLURALINA'],'Cletodim':['CLETODIM'],
+  'Flumioxazina':['FLUMIOXAZINA'],'Fomesafem':['FOMESAFE'],'Clomazona':['CLOMAZONA'],
+  'Metomil':['METHOMYL','METOMIL'],'Benzoato de emamectina':['EMAMECTINA'],'Clorfenapir':['CLORFENAPIR'],
+  'Clorimurom-etílico':['CLORIMUROM'],'Imazetapir':['IMAZETAPIR'],'Malationa':['MALATIONA','MALATION'],
+  '2,4-D':['2,4-D','2,4 - D'],'Fipronil':['FIPRONIL'],'Etefom':['ETEFOM','ETHEPHON'],
+  'Bacillus thuringiensis':['THURINGIENSIS'],'Trichoderma':['TRICHODERMA'],'Pochonia':['POCHONIA'],
+  'Purpureocillium':['PURPUREOCILLIUM'],'Bradyrhizobium japonicum':['BRADYRHIZOBIUM'],
+};
+function parseAtivos(comp,tipo){
+  if(!comp) return [];
+  if(tipo!=='Defensivo'&&tipo!=='Defensivos Biológicos') return [];
+  const up=naccent(comp), out=[], used=new Set();
+  for(const nome in PA_ALIAS){
+    for(const al of PA_ALIAS[nome]){
+      const idx=up.indexOf(naccent(al));
+      if(idx<0) continue;
+      const win=up.slice(idx, idx+90);
+      let conc=null, un='';
+      let m=win.match(/([\d][\d.,]*)\s*G\s*\/\s*(L|KG)/);
+      if(m){ conc=numBR(m[1]); un='g/'+(m[2]==='L'?'L':'kg'); }
+      else { m=win.match(/([\d][\d.,]*)\s*%/); if(m){ conc=numBR(m[1]); un='%'; } }
+      if(!used.has(nome)){ used.add(nome); out.push({nome,conc:isNaN(conc)?null:conc,unidade:un}); }
+      break;
+    }
+  }
+  return out;
+}
+function parseGarantias(comp){
+  if(!comp) return [];
+  const out=[], seen=new Set();
+  String(comp).split('|').forEach(part=>{
+    const m=part.match(/([A-Za-zÀ-ú0-9.+]+)\s*:?\s*([\d][\d.,]*)\s*%/);
+    if(!m) return;
+    let el=m[1].trim().replace(/^K20$/i,'K2O').replace(/^C\.O$/i,'C Orgânico');
+    if(seen.has(el.toUpperCase())) return; seen.add(el.toUpperCase());
+    out.push({nome:el,conc:numBR(m[2]),unidade:'%'});
+  });
+  return out;
+}
+function compAtivosLabel(it){
+  const fmt=arr=>arr.map(a=>a.nome+(a.conc!=null?' '+nf(a.conc)+(a.unidade?' '+a.unidade:''):'')).join(' · ');
+  if(it.ativos&&it.ativos.length) return fmt(it.ativos);
+  if(it.garantias&&it.garantias.length) return fmt(it.garantias);
+  return it.compTexto||it.compRaw||it.comp||'';
+}
+
+/* normalizador de formulação -> código padrão */
+const COD_SET=new Set(S.formulacoes.map(f=>f.cod));
+function normFormulacao(raw){
+  if(!raw) return '';
+  const up=String(raw).toUpperCase();
+  const par=[...up.matchAll(/\(([A-Z]{2})\)/g)].map(x=>x[1]).filter(c=>COD_SET.has(c));
+  if(par.length) return par[par.length-1];
+  const toks=[...up.matchAll(/\b([A-Z]{2})\b/g)].map(x=>x[1]).filter(c=>COD_SET.has(c));
+  if(toks.length) return toks[toks.length-1];
+  if(/GRANUL|GR[ÂA]NULO/.test(up)) return 'GRAN';
+  if(/[ÓO]LEO/.test(up)) return 'OLEO';
+  if(/GR[ÃA]O|SEMENTE/.test(up)) return 'GRAO';
+  if(/L[IÍ]QUID|LILQUID/.test(up)) return 'LIQ';
+  if(/P[ÓO]/.test(up)) return 'PO';
+  return '';
+}
+const formObj=cod=>S.formulacoes.find(f=>f.cod===cod);
+const formLabel=cod=>{const f=formObj(cod);return f?`${f.cod} — ${f.nome}`:(cod||'—');};
+const UNI_MAP={'Kg':'kg'};
+const normUnidade=u=>UNI_MAP[u]||u||'un';
+const uniObj=sim=>S.unidades.find(u=>u.sim===sim);
+
+/* import do catálogo — DESATIVADO: o catálogo agora vem do banco (Cadastros),
+   carregado por carregarAlmoxSB(). PRODUTOS_RAW fica só como referência histórica. */
+/* (seed embutido removido na migração para o Supabase) */
+
+/* ===================== DERIVADOS ===================== */
+const getItem=id=>S.itens.find(i=>i.id===id);
+function saldoItem(id){
+  const e=S.entradas.filter(x=>x.itemId===id).reduce((a,x)=>a+x.qtd,0);
+  const s=S.saidas.filter(x=>x.itemId===id).reduce((a,x)=>a+x.qtd,0);
+  return e-s;
+}
+function custoMedio(id){
+  const ent=S.entradas.filter(x=>x.itemId===id);
+  const q=ent.reduce((a,x)=>a+x.qtd,0);
+  if(q) return ent.reduce((a,x)=>a+x.qtd*x.custoUnit,0)/q;
+  const it=getItem(id); return it?it.precoRef:0;
+}
+function lotesItem(id){
+  const map={};
+  S.entradas.filter(x=>x.itemId===id).forEach(x=>{
+    const k=x.lote||'—'; if(!map[k]) map[k]={lote:k,validade:x.validade,ent:0,sai:0};
+    map[k].ent+=x.qtd; if(x.validade&&(!map[k].validade||x.validade<map[k].validade)) map[k].validade=x.validade;
+  });
+  S.saidas.filter(x=>x.itemId===id).forEach(x=>{const k=x.lote||'—'; if(!map[k]) map[k]={lote:k,validade:null,ent:0,sai:0}; map[k].sai+=x.qtd;});
+  return Object.values(map).map(l=>({...l,saldo:l.ent-l.sai})).sort((a,b)=>(a.validade||'9999').localeCompare(b.validade||'9999'));
+}
+function proxValidade(id){const it=getItem(id);if(it.perfil!=='A')return null;const ls=lotesItem(id).filter(l=>l.saldo>0&&l.validade);return ls.length?ls[0].validade:null;}
+function statusItem(id){
+  const it=getItem(id), saldo=saldoItem(id); let vencido=false,vencendo=false;
+  if(it.perfil==='A') lotesItem(id).filter(l=>l.saldo>0).forEach(l=>{const d=diasAte(l.validade);if(d!==null){if(d<0)vencido=true;else if(d<=30)vencendo=true;}});
+  if(saldo<=0) return {k:'zerado',label:'🔴 zerado',cls:'st-err',rank:5};
+  if(vencido)  return {k:'vencido',label:'🔴 vencido',cls:'st-err',rank:4};
+  if(vencendo) return {k:'vencendo',label:'🟠 vencendo',cls:'st-warn',rank:3};
+  if(it.estoqueMin>0&&saldo<=it.estoqueMin) return {k:'baixo',label:'🟡 baixo',cls:'st-low',rank:2};
+  return {k:'ok',label:'✅ ok',cls:'st-ok',rank:1};
+}
+const usoUnidade=sim=>S.itens.filter(i=>i.unidade===sim).length;
+const usoFormulacao=cod=>S.itens.filter(i=>i.formCod===cod).length;
+
+/* ===================== VIEW / ROTEADOR ===================== */
+let VIEW='estoque', FILTER='all', SEARCH='', EDIT=null, ITAB='itens', DETAIL=null, MOV_EDIT=null;
+const titles={estoque:'📦 Estoque',entrada:'➕ Entrada',saida:'➖ Saída',itens:'📋 Itens'};
+
+function renderSummary(){
+  const valor=S.itens.reduce((a,i)=>a+saldoItem(i.id)*custoMedio(i.id),0);
+  let valid=0,baixo=0;
+  S.itens.forEach(i=>{const s=statusItem(i.id);if(s.k==='vencido'||s.k==='vencendo')valid++;if(s.k==='baixo'||s.k==='zerado')baixo++;});
+  document.getElementById('sumpills').innerHTML=`
+    <div class="pill"><span class="k">Itens</span><span class="v">${S.itens.length}</span></div>
+    <div class="pill"><span class="k">Valor estoque</span><span class="v">${brl(valor)}</span></div>
+    <div class="pill ${valid?'alert':''}"><span class="k">Validade</span><span class="v">${valid} <small>alertas</small></span></div>
+    <div class="pill ${baixo?'bad':''}"><span class="k">Sem saldo/baixo</span><span class="v">${baixo} <small>itens</small></span></div>`;
+}
+
+/* ---------- ESTOQUE ---------- */
+function estoqueHTML(){
+  const tipos=TIPOS.filter(t=>S.itens.some(i=>i.tipo===t));
+  const cont=t=>S.itens.filter(i=>i.tipo===t).length;
+  const q=SEARCH.toLowerCase();
+  const lista=S.itens.filter(i=>(FILTER==='all'||i.tipo===FILTER)&&(!q||(i.nome+' '+i.codigo+' '+i.comp+' '+i.classe).toLowerCase().includes(q)))
+    .sort((a,b)=>statusItem(b.id).rank-statusItem(a.id).rank||a.nome.localeCompare(b.nome));
+  const rows=lista.map(i=>{
+    const st=statusItem(i.id), saldo=saldoItem(i.id), cm=custoMedio(i.id), col=TIPO_COLOR[i.tipo]||'#888', val=proxValidade(i.id);
+    return `<tr class="rowlink" data-item="${i.id}">
+      <td><span class="dot" style="background:${col}"></span><span class="nome">${esc(i.nome)}</span><span class="pf">${i.perfil}</span>
+        <div class="sub">#${esc(i.codigo)} · ${esc(i.tipo)} › ${esc(i.classe)}${i.formCod?' · <b>'+esc(i.formCod)+'</b>':''}</div>
+        ${(()=>{const c=compAtivosLabel(i);return c?`<div class="comp" title="${esc(c)}">${esc(c)}</div>`:'';})()}</td>
+      <td class="num">${nf(saldo)} <span class="sub">${esc(i.unidade)}</span></td>
+      <td class="num">${cm?brl(cm):'—'}</td>
+      <td class="num">${cm?brl(saldo*cm):'—'}</td>
+      <td>${i.perfil==='A'?(val?fmtDate(val):'<span class="sub">s/ val.</span>'):'<span class="sub">—</span>'}</td>
+      <td><span class="badge ${st.cls}">${st.label}</span></td></tr>`;
+  }).join('');
+  return `<div class="toolbar"><input class="search" id="qSearch" placeholder="🔎 buscar nome, código, princípio ativo…" value="${esc(SEARCH)}"></div>
+    <div class="toolbar"><span class="lbl">Tipo</span>
+      <button class="fbtn ${FILTER==='all'?'on':''}" data-f="all">Todos <span class="c">${S.itens.length}</span></button>
+      ${tipos.map(t=>`<button class="fbtn ${FILTER===t?'on':''}" data-f="${esc(t)}">${esc(t)} <span class="c">${cont(t)}</span></button>`).join('')}</div>
+    <table class="tbl"><thead><tr><th>Item</th><th class="num">Saldo</th><th class="num">Custo méd.</th><th class="num">Valor</th><th>Validade</th><th>Status</th></tr></thead>
+      <tbody>${rows||'<tr><td colspan="6" class="empty">Nenhum item encontrado.</td></tr>'}</tbody></table>${DETAIL?itemDetailHTML(DETAIL):''}`;
+}
+function bindEstoque(){
+  document.querySelectorAll('.fbtn').forEach(b=>b.onclick=()=>{FILTER=b.dataset.f;route();});
+  document.querySelectorAll('[data-item]').forEach(r=>r.onclick=()=>{DETAIL=r.dataset.item;route();});
+  const ov=document.getElementById('mOv');
+  if(ov){ ov.onclick=e=>{ if(e.target===ov){DETAIL=null;MOV_EDIT=null;route();} };
+    const c1=document.getElementById('mClose'),c2=document.getElementById('mClose2'),me=document.getElementById('mEdit');
+    if(c1)c1.onclick=()=>{DETAIL=null;MOV_EDIT=null;route();}; if(c2)c2.onclick=()=>{DETAIL=null;MOV_EDIT=null;route();};
+    if(me)me.onclick=()=>{const id=DETAIL;DETAIL=null;VIEW='itens';ITAB='itens';EDIT=id;route();};
+    // admin: editar/excluir movimentações
+    document.querySelectorAll('[data-mvedit]').forEach(b=>b.onclick=()=>{const [k,d]=b.dataset.mvedit.split(':');MOV_EDIT={kind:k,dbid:+d};route();});
+    document.querySelectorAll('[data-mvdel]').forEach(b=>b.onclick=()=>{const [k,d]=b.dataset.mvdel.split(':');excluirMovSB(k,+d);});
+    const mvSave=document.getElementById('mvSave'); if(mvSave) mvSave.onclick=()=>_salvarMovEdit();
+    const mvCancel=document.getElementById('mvCancel'); if(mvCancel) mvCancel.onclick=()=>{MOV_EDIT=null;route();};
+  }
+  bindSearch();
+}
+function itemDetailHTML(id){
+  const it=getItem(id); if(!it) return '';
+  const st=statusItem(id), saldo=saldoItem(id), cm=custoMedio(id);
+  const _rows=arr=>arr.map(a=>`${esc(a.nome)} <b>${a.conc!=null?nf(a.conc):''} ${esc(a.unidade||'')}</b>`).join('<br>');
+  let compTitle='Composição', compBody='—';
+  if(it.ativos&&it.ativos.length){compTitle='Princípios ativos';compBody=_rows(it.ativos);}
+  else if(it.garantias&&it.garantias.length){compTitle='Garantias (composição)';compBody=_rows(it.garantias);}
+  else if(it.compTexto){compBody=esc(it.compTexto);}
+  const lotesRows = it.perfil==='A' ? lotesItem(id).map(l=>{
+    const d=diasAte(l.validade);
+    const tag=l.saldo<=0?'<span class="sub">esgotado</span>':(d!==null&&d<0?'<span class="badge st-err">vencido</span>':(d!==null&&d<=30?'<span class="badge st-warn">vence em '+d+'d</span>':'<span class="badge st-ok">ok</span>'));
+    return `<tr><td>${esc(l.lote)}</td><td>${fmtDate(l.validade)}</td><td class="num">${nf(l.saldo)}</td><td>${tag}</td></tr>`;
+  }).join('') : '';
+  const movs=[
+    ...S.entradas.filter(e=>e.itemId===id).map(e=>({kind:'en',dbid:e._dbid,data:e.data,tipo:'Entrada',qtd:e.qtd,absqtd:e.qtd,fornecedor:e.fornecedor||'',custoUnit:e.custoUnit,info:`${e.fornecedor||'—'}${e.nf?' · NF '+e.nf:''}`,lote:e.lote})),
+    ...S.saidas.filter(s=>s.itemId===id).map(s=>({kind:'sa',dbid:s._dbid,data:s.data,tipo:'Saída',qtd:-s.qtd,absqtd:s.qtd,requisitante:s.requisitante||'',info:`${s.requisitante||'—'}${s.destino&&s.destino.ref?' · '+s.destino.tipo+': '+s.destino.ref:(s.destino?' · '+s.destino.tipo:'')}`,lote:s.lote}))
+  ].sort((a,b)=>(b.data||'').localeCompare(a.data||''));
+  const movRows=movs.map(m=>{
+    const editing = IS_ADMIN && MOV_EDIT && MOV_EDIT.kind===m.kind && MOV_EDIT.dbid===m.dbid && m.dbid!=null;
+    if(editing){
+      const det = m.kind==='en'
+        ? `<input id="mvForn" placeholder="fornecedor" value="${esc(m.fornecedor)}" style="width:120px"> <input id="mvCusto" type="number" step="any" placeholder="custo unit." value="${m.custoUnit!=null?m.custoUnit:''}" style="width:90px">`
+        : `<input id="mvReq" placeholder="requisitante" value="${esc(m.requisitante)}" style="width:150px">`;
+      return `<tr><td><input type="date" id="mvData" value="${m.data||''}"></td><td><span class="badge ${m.kind==='en'?'st-ok':'st-warn'}">${m.tipo}</span></td><td class="num"><input type="number" step="any" id="mvQtd" value="${m.absqtd}" style="width:90px"></td><td>${det}</td><td style="white-space:nowrap"><button class="btn success" id="mvSave" style="padding:3px 9px;font-size:12px">salvar</button> <button class="btn ghost" id="mvCancel" style="padding:3px 9px;font-size:12px">cancelar</button></td></tr>`;
+    }
+    const acts = IS_ADMIN ? `<td style="white-space:nowrap">${m.dbid!=null?`<span class="x" data-mvedit="${m.kind}:${m.dbid}" title="Editar">✎</span> <span class="x xr" data-mvdel="${m.kind}:${m.dbid}" title="Excluir">✕</span>`:'<span class="sub">—</span>'}</td>` : '';
+    return `<tr><td class="sub">${fmtDate(m.data)}</td><td><span class="badge ${m.kind==='en'?'st-ok':'st-warn'}">${m.tipo}</span></td><td class="num">${m.qtd>0?'+':''}${nf(m.qtd)} ${esc(it.unidade)}</td><td class="sub">${esc(m.info)}${m.lote?' · lote '+esc(m.lote):''}</td>${acts}</tr>`;
+  }).join('');
+  const field=(k,v)=>`<div class="dfield"><span class="dk">${k}</span><span class="dv">${v}</span></div>`;
+  return `<div class="modal-ov" id="mOv"><div class="modal">
+    <div class="modal-h"><div><span class="dot" style="background:${TIPO_COLOR[it.tipo]||'#888'}"></span><b>${esc(it.nome)}</b> <span class="pf">${it.perfil}</span><div class="sub">#${esc(it.codigo)} · ${esc(it.tipo)} › ${esc(it.classe)} · ${PERFIL_NOME[it.perfil]}</div></div><span class="x" id="mClose" style="font-size:20px">✕</span></div>
+    <div class="dgrid">
+      ${field('Status',`<span class="badge ${st.cls}">${st.label}</span>`)}
+      ${field('Saldo atual',`<b>${nf(saldo)}</b> ${esc(it.unidade)}`)}
+      ${field('Estoque mínimo',nf(it.estoqueMin))}
+      ${field('Custo médio',cm?brl(cm):'—')}
+      ${field('Valor em estoque',cm?brl(saldo*cm):'—')}
+      ${field('Preço ref. 2025',it.precoRef?brl(it.precoRef):'—')}
+      ${field('Formulação',esc(formLabel(it.formCod)))}
+      ${field('Unidade',esc(it.unidade)+(uniObj(it.unidade)?' — '+esc(uniObj(it.unidade).nome):''))}
+      ${field('Local',esc(it.local)||'—')}
+      ${it.equipamentoId?field('Equipamento',esc(it.equipamentoId)):''}
+      ${it.comanda?field('Comanda',esc(it.comanda)):''}
+    </div>
+    <div class="sectit" style="margin-top:14px">${compTitle}</div><div class="dbox">${compBody}</div>
+    ${it.compRaw?`<div class="sectit" style="margin-top:12px">Composição importada (referência)</div><div class="dbox sub">${esc(it.compRaw)}</div>`:''}
+    ${it.perfil==='A'?`<div class="sectit" style="margin-top:14px">Lotes</div><table class="tbl"><thead><tr><th>Lote</th><th>Validade</th><th class="num">Saldo</th><th>Status</th></tr></thead><tbody>${lotesRows||'<tr><td colspan="4" class="empty">Sem lotes.</td></tr>'}</tbody></table>`:''}
+    <div class="sectit" style="margin-top:14px">Movimentações (${movs.length})${IS_ADMIN?' <span class="sub" style="font-weight:400">— admin: ✎ editar · ✕ excluir (recalcula saldo)</span>':''}</div>
+    <table class="tbl"><thead><tr><th>Data</th><th>Tipo</th><th class="num">Qtd</th><th>Detalhe</th>${IS_ADMIN?'<th>Ações</th>':''}</tr></thead><tbody>${movRows||`<tr><td colspan="${IS_ADMIN?5:4}" class="empty">Sem movimentações.</td></tr>`}</tbody></table>
+    <div class="formactions"><button class="btn" id="mEdit">✎ Editar item</button><button class="btn ghost" id="mClose2">Fechar</button></div>
+  </div></div>`;
+}
+function bindSearch(){
+  const s=document.getElementById('qSearch');
+  if(s) s.oninput=()=>{SEARCH=s.value;const pos=s.selectionStart;route();const ns=document.getElementById('qSearch');if(ns){ns.focus();ns.setSelectionRange(pos,pos);} };
+}
+
+/* ---------- ENTRADA ---------- */
+function entradaHTML(){
+  const opts=S.itens.slice().sort((a,b)=>a.nome.localeCompare(b.nome)).map(i=>`<option value="${i.id}">${esc(i.nome)} (${esc(i.unidade)})</option>`).join('');
+  return `<div class="cadwrap"><div class="cadhead"><h2>Nova entrada</h2><span class="pf-big" id="ePerfil">—</span></div>
+    <div class="fcol">
+      <label>Item <select id="eItem"><option value="">— selecione —</option>${opts}</select></label>
+      <div class="hint">Não achou? Cadastre primeiro em <b>📋 Itens</b>.</div>
+      <div class="two"><label>Data <input type="date" id="eData" value="${isoToday}"></label><label>Fornecedor <input list="dlForn" id="eForn" placeholder="—"></label></div>
+      <div class="three"><label>Nota Fiscal <input id="eNf" placeholder="nº"></label><label>Quantidade <input type="number" id="eQtd" min="0" step="any" placeholder="0"></label><label>Custo unit. (R$) <input type="number" id="eCusto" min="0" step="any" placeholder="0,00"></label></div>
+      <div id="eLoteBox" class="two" style="display:none"><label>Lote <input id="eLote" placeholder="ex.: L-2026A"></label><label>Validade <input type="date" id="eValid"></label></div>
+      <div class="totbox"><span class="k">Total da entrada</span><span class="v" id="eTotal">R$ 0,00</span></div>
+      <div class="formactions"><button class="btn success" id="eSalvar">Confirmar entrada</button><span class="fmsg" id="eMsg"></span></div>
+    </div><datalist id="dlForn">${S.fornecedores.map(f=>`<option value="${esc(f.nome)}">`).join('')}</datalist></div>`;
+}
+function bindEntrada(){
+  const $=id=>document.getElementById(id);
+  const upd=()=>{const it=getItem($('eItem').value);
+    $('ePerfil').textContent=it?`Perfil ${it.perfil} · ${PERFIL_NOME[it.perfil]}`:'—';
+    $('eLoteBox').style.display=(it&&it.perfil==='A')?'grid':'none';
+    if(it&&!$('eCusto').dataset.touched) $('eCusto').value=it.precoRef||'';
+    $('eTotal').textContent=brl((parseFloat($('eQtd').value)||0)*(parseFloat($('eCusto').value)||0));};
+  $('eItem').addEventListener('change',()=>{$('eCusto').dataset.touched='';upd();});
+  $('eQtd').addEventListener('input',upd);
+  $('eCusto').addEventListener('input',()=>{$('eCusto').dataset.touched='1';upd();});
+  $('eSalvar').onclick=()=>{const m=$('eMsg');m.className='fmsg err';
+    const it=getItem($('eItem').value);if(!it){m.textContent='Escolha um item.';return;}
+    const qtd=parseFloat($('eQtd').value),custo=parseFloat($('eCusto').value);
+    if(!(qtd>0)){m.textContent='Quantidade inválida.';return;} if(!(custo>=0)){m.textContent='Custo inválido.';return;}
+    let lote=null,validade=null;
+    if(it.perfil==='A'){lote=$('eLote').value.trim();validade=$('eValid').value;
+      if(!lote){m.textContent='Item controlado: informe o lote.';return;} if(!validade){m.textContent='Item controlado: informe a validade.';return;}}
+    const forn=$('eForn').value.trim();
+    const _ent={id:U('en'),itemId:it.id,data:$('eData').value||isoToday,fornecedor:forn,nf:$('eNf').value.trim(),qtd,custoUnit:custo,lote,validade};
+    S.entradas.push(_ent); salvarEntradaSB(it,_ent);
+    VIEW='estoque';FILTER='all';SEARCH='';route();};
+  upd();
+}
+
+/* ---------- SAÍDA ---------- */
+function saidaHTML(){
+  const opts=S.itens.filter(i=>saldoItem(i.id)>0).sort((a,b)=>a.nome.localeCompare(b.nome)).map(i=>`<option value="${i.id}">${esc(i.nome)} (saldo ${nf(saldoItem(i.id))} ${esc(i.unidade)})</option>`).join('');
+  return `<div class="cadwrap"><div class="cadhead"><h2>Nova saída / requisição</h2><span class="pf-big" id="sPerfil">—</span></div>
+    <div class="fcol">
+      <label>Item <select id="sItem"><option value="">— selecione —</option>${opts}</select></label>
+      <div class="saldoinfo" id="sSaldo"></div>
+      <div id="sLoteBox" style="display:none"><div class="sectit">Lote (FEFO — vence primeiro no topo)</div><label><select id="sLote"></select></label></div>
+      <div class="two"><label>Quantidade <input type="number" id="sQtd" min="0" step="any" placeholder="0"></label><label>Requisitante <input id="sReq" placeholder="quem retirou"></label></div>
+      <div class="two"><label>Destino <select id="sDestTipo"><option value="talhao">Talhão / cultura</option><option value="equipamento">Equipamento</option><option value="os">Ordem de serviço</option><option value="geral">Geral</option></select></label>
+        <label id="sRefWrap">Referência <input id="sRef" list="dlEquip" placeholder="—"></label></div>
+      <label>Observação <input id="sObs" placeholder="opcional"></label>
+      <div class="formactions"><button class="btn success" id="sSalvar">Confirmar saída</button><span class="fmsg" id="sMsg"></span></div>
+    </div><datalist id="dlEquip">${S.equipamentos.map(e=>`<option value="${esc(e)}">`).join('')}</datalist></div>`;
+}
+function bindSaida(){
+  const $=id=>document.getElementById(id);
+  const updRef=()=>{const t=$('sDestTipo').value;const lbl={talhao:'Talhão / cultura',equipamento:'Equipamento',os:'Nº da OS',geral:'Referência'}[t];
+    $('sRefWrap').style.display=(t==='geral')?'none':'flex';$('sRefWrap').childNodes[0].textContent=lbl+' ';$('sRef').setAttribute('list',t==='equipamento'?'dlEquip':'');};
+  const updItem=()=>{const it=getItem($('sItem').value);
+    $('sPerfil').textContent=it?`Perfil ${it.perfil} · ${PERFIL_NOME[it.perfil]}`:'—';
+    if(!it){$('sSaldo').innerHTML='';$('sLoteBox').style.display='none';return;}
+    $('sSaldo').innerHTML=`Saldo atual: <b>${nf(saldoItem(it.id))} ${esc(it.unidade)}</b>`;
+    if(it.perfil==='A'){const ls=lotesItem(it.id).filter(l=>l.saldo>0);$('sLoteBox').style.display='block';
+      $('sLote').innerHTML=ls.map(l=>{const d=diasAte(l.validade);const tag=d!==null&&d<0?' ⚠ vencido':(d!==null&&d<=30?' ⚠ vence em '+d+'d':'');
+        return `<option value="${esc(l.lote)}">${esc(l.lote)} · val ${fmtDate(l.validade)} · saldo ${nf(l.saldo)}${tag}</option>`;}).join('');}
+    else $('sLoteBox').style.display='none';};
+  $('sDestTipo').addEventListener('change',updRef);$('sItem').addEventListener('change',updItem);
+  $('sSalvar').onclick=()=>{const m=$('sMsg');m.className='fmsg err';
+    const it=getItem($('sItem').value);if(!it){m.textContent='Escolha um item.';return;}
+    const qtd=parseFloat($('sQtd').value);if(!(qtd>0)){m.textContent='Quantidade inválida.';return;}
+    let lote=null;
+    if(it.perfil==='A'){lote=$('sLote').value;const l=lotesItem(it.id).find(x=>x.lote===lote);
+      if(!l){m.textContent='Selecione um lote.';return;} if(qtd>l.saldo){m.textContent=`Lote ${lote} só tem ${nf(l.saldo)} ${it.unidade}.`;return;}}
+    else if(qtd>saldoItem(it.id)){m.textContent=`Saldo insuficiente (${nf(saldoItem(it.id))} ${it.unidade}).`;return;}
+    const tipo=$('sDestTipo').value,ref=tipo==='geral'?'':$('sRef').value.trim();
+    const _sai={id:U('sa'),itemId:it.id,data:isoToday,qtd,requisitante:$('sReq').value.trim(),destino:{tipo,ref},lote,obs:$('sObs').value.trim()};
+    S.saidas.push(_sai); salvarSaidaSB(it,_sai);
+    VIEW='estoque';FILTER='all';SEARCH='';route();};
+  updRef();updItem();
+}
+
+/* ---------- ITENS (com sub-abas) ---------- */
+function itensHTML(){
+  const tabs=[['itens','Itens'],['fornecedores','Fornecedores'],['unidades','Unidades'],['formulacoes','Formulações'],['principios','Princípios ativos']];
+  const sub=`<div class="subnav">${tabs.map(t=>`<button data-it="${t[0]}" class="${ITAB===t[0]?'on':''}">${t[1]}</button>`).join('')}</div>`;
+  let body='';
+  if(ITAB==='itens') body=itensTabHTML();
+  else if(ITAB==='fornecedores') body=fornecedoresHTML();
+  else if(ITAB==='unidades') body=unidadesHTML();
+  else if(ITAB==='formulacoes') body=formulacoesHTML();
+  else if(ITAB==='principios') body=principiosHTML();
+  return sub+body;
+}
+function bindItens(){
+  document.querySelectorAll('[data-it]').forEach(b=>b.onclick=()=>{ITAB=b.dataset.it;EDIT=null;SEARCH='';route();});
+  if(ITAB==='itens') bindItensTab();
+  else if(ITAB==='fornecedores') bindFornecedores();
+  else if(ITAB==='unidades') bindUnidades();
+  else if(ITAB==='formulacoes') bindFormulacoes();
+  else if(ITAB==='principios') bindPrincipios();
+}
+
+function itensTabHTML(){
+  const e=EDIT?getItem(EDIT):null;
+  const tipoSel=e?e.tipo:'Defensivo';
+  const tipoOpts=TIPOS.map(t=>`<option value="${esc(t)}" ${tipoSel===t?'selected':''}>${esc(t)}</option>`).join('');
+  const grupos=[...new Set(S.formulacoes.map(f=>f.grupo))];
+  const formOpts=grupos.map(g=>`<optgroup label="${esc(g)}">${S.formulacoes.filter(f=>f.grupo===g).map(f=>`<option value="${f.cod}" ${e&&e.formCod===f.cod?'selected':''}>${esc(f.cod)} — ${esc(f.nome)}</option>`).join('')}</optgroup>`).join('');
+  const uniOpts=S.unidades.map(u=>`<option value="${esc(u.sim)}" ${e&&e.unidade===u.sim?'selected':''}>${esc(u.sim)} — ${esc(u.nome)}</option>`).join('');
+  const q=SEARCH.toLowerCase();
+  const lista=S.itens.filter(i=>!q||(i.nome+' '+i.codigo+' '+i.comp+' '+i.classe).toLowerCase().includes(q)).sort((a,b)=>a.nome.localeCompare(b.nome));
+  const rows=lista.map(i=>`<tr>
+      <td><span class="dot" style="background:${TIPO_COLOR[i.tipo]||'#888'}"></span><span class="nome">${esc(i.nome)}</span><span class="pf">${i.perfil}</span>
+        <div class="sub">#${esc(i.codigo)} · ${esc(i.tipo)} › ${esc(i.classe)} · <b>${esc(i.formCod||'—')}</b></div></td>
+      <td class="num">${nf(saldoItem(i.id))} <span class="sub">${esc(i.unidade)}</span></td>
+      <td class="num sub">mín ${nf(i.estoqueMin)}</td>
+      <td><span class="x" data-edit="${i.id}" title="Editar">✎</span></td></tr>`).join('');
+  return `<div class="cadwrap" style="margin-bottom:18px"><div class="cadhead"><h2>${e?'Controle de estoque — '+esc(e.nome):'Itens'}</h2><span class="pf-big" id="iPerfil">—</span></div>
+    <div class="hint" style="margin:2px 0 10px">Os produtos vêm do módulo <b>Cadastros</b> (catálogo). Aqui você ajusta só o <b>controle de estoque</b> (estoque mínimo, local, equipamento) — clique no ✎ de um item. Os campos do catálogo aparecem só para conferência.</div>
+    <div class="fcol">
+      <div class="two"><label>Nome <input id="iNome" value="${e?esc(e.nome):''}" placeholder="ex.: Glifosato 480" disabled></label><label>Código <input id="iCod" value="${e?esc(e.codigo):''}" placeholder="—" disabled></label></div>
+      <div class="three"><label>Tipo <select id="iTipo" disabled>${tipoOpts}</select></label><label>Classe <input id="iClasse" list="dlClasse" value="${e?esc(e.classe):''}" placeholder="—" disabled></label><label>Unidade <select id="iUn" disabled>${uniOpts}</select></label></div>
+      <div class="two"><label>Formulação <select id="iForm" disabled><option value="">—</option>${formOpts}</select></label><label>Preço ref. 2025 (R$) <input type="number" id="iPreco" min="0" step="any" value="${e?e.precoRef:''}" placeholder="0,00" disabled></label></div>
+      <div id="iCompSec"></div>
+      <label id="iComandaWrap" style="display:none">Comanda <select id="iComanda"><option ${e&&e.comanda==='Visível'?'selected':''}>Visível</option><option ${e&&e.comanda==='Invisível'?'selected':''}>Invisível</option></select></label>
+      <div class="two"><label>Estoque mínimo <input type="number" id="iMin" min="0" step="any" value="${e?e.estoqueMin:''}" placeholder="0"></label><label>Local <input id="iLocal" list="dlLocal" value="${e&&e.local?esc(e.local):''}" placeholder="—"></label></div>
+      <label id="iEquipWrap" style="display:none">Equipamento (perfil C) <input id="iEquip" list="dlEquip" value="${e&&e.equipamentoId?esc(e.equipamentoId):''}" placeholder="máquina / pivô / inversor"></label>
+      <div class="formactions"><button class="btn success" id="iSalvar">${e?'Salvar alterações':'Cadastrar item'}</button>${e?'<button class="btn ghost" id="iCancel">Cancelar</button>':''}<span class="fmsg" id="iMsg"></span></div>
+    </div>
+    <datalist id="dlClasse"></datalist><datalist id="dlLocal">${S.locais.map(l=>`<option value="${esc(l)}">`).join('')}</datalist><datalist id="dlEquip">${S.equipamentos.map(eq=>`<option value="${esc(eq)}">`).join('')}</datalist></div>
+  <div class="toolbar"><input class="search" id="qSearch" placeholder="🔎 buscar item…" value="${esc(SEARCH)}"></div>
+  <table class="tbl"><thead><tr><th>Item cadastrado (${lista.length})</th><th class="num">Saldo</th><th class="num">Mínimo</th><th></th></tr></thead>
+    <tbody>${rows||'<tr><td colspan="4" class="empty">Nenhum item.</td></tr>'}</tbody></table>`;
+}
+function bindItensTab(){
+  const $=id=>document.getElementById(id);
+  const upd=()=>{const tipo=$('iTipo').value,pf=perfilDe(tipo);
+    $('iPerfil').textContent=`Perfil ${pf} · ${PERFIL_NOME[pf]}`;$('iEquipWrap').style.display=(pf==='C')?'flex':'none';
+    $('dlClasse').innerHTML=(TIPO_CLASSES[tipo]||[]).map(c=>`<option value="${esc(c)}">`).join('');
+    const nm=compModeFor(tipo);
+    if(nm!==COMP_MODE){ syncAtivos(); COMP_MODE=nm; initCompRows(); renderCompSection(); }
+    const classeV=$('iClasse').value.trim();
+    const showCom=(tipo==='Defensivo'||tipo==='Defensivos Biológicos'||classeV==='Adubo Foliar');
+    $('iComandaWrap').style.display=showCom?'flex':'none';};
+  $('iTipo').addEventListener('change',upd);
+  $('iClasse').addEventListener('input',upd);
+  $('iSalvar').onclick=()=>{const m=$('iMsg');m.className='fmsg err';
+    // catálogo (nome/tipo/composição) é do módulo Cadastros — aqui salva só o controle de estoque
+    if(!EDIT){m.textContent='Produtos são cadastrados no módulo Cadastros.';return;}
+    const it=getItem(EDIT);if(!it){m.textContent='Item não encontrado.';return;}
+    const equip=it.perfil==='C'?(($('iEquip')&&$('iEquip').value.trim())||null):null;
+    const local=($('iLocal')&&$('iLocal').value.trim())||'';
+    const showCom=(it.tipo==='Defensivo'||it.tipo==='Defensivos Biológicos'||it.classe==='Adubo Foliar');
+    it.estoqueMin=parseFloat($('iMin').value)||0; it.local=local; it.equipamentoId=equip;
+    if(showCom&&$('iComanda')) it.comanda=$('iComanda').value;
+    salvarConfigSB(it); EDIT=null; route();};
+  if($('iCancel')) $('iCancel').onclick=()=>{EDIT=null;route();};
+  document.querySelectorAll('[data-edit]').forEach(b=>b.onclick=()=>{EDIT=b.dataset.edit;window.scrollTo(0,0);route();});
+  // editor de composição (ativo / garantia / livre)
+  COMP_MODE=compModeFor($('iTipo').value);
+  initCompRows();
+  renderCompSection();
+  bindSearch();upd();
+}
+let FORM_ATIVOS=[], COMP_MODE='ativo';
+const PA_UN_ATIVO=['g/L','g/kg','%','% m/v','% m/m','mg/L','UFC/g'];
+const PA_UN_GAR=['%','g/L','g/kg','mg/kg','ppm'];
+const NUTRIENTES=['N','P','P2O5','K','K2O','Ca','Mg','S','B','Zn','Cu','Fe','Mn','Mo','Co','Ni','Cl','Na','Si','C Orgânico','Aminoácidos'];
+const compModeFor=t=>(t==='Defensivo'||t==='Defensivos Biológicos')?'ativo':(t==='Fertilizante')?'garantia':'livre';
+function initCompRows(){
+  const ed=EDIT?getItem(EDIT):null;
+  if(COMP_MODE==='ativo') FORM_ATIVOS=ed?JSON.parse(JSON.stringify(ed.ativos||[])):[];
+  else if(COMP_MODE==='garantia') FORM_ATIVOS=ed?JSON.parse(JSON.stringify(ed.garantias||[])):[];
+  else FORM_ATIVOS=[];
+}
+function renderCompSection(){
+  const sec=document.getElementById('iCompSec'); if(!sec) return;
+  const ed=EDIT?getItem(EDIT):null;
+  // No Almoxarifado a composição é SOMENTE LEITURA — o catálogo (princípios ativos /
+  // garantias / descrição) é mantido no módulo Cadastros. Aqui só conferimos.
+  const _rows=arr=>arr.map(a=>`${esc(a.nome)} <b>${a.conc!=null?nf(a.conc):''} ${esc(a.unidade||'')}</b>`).join('<br>');
+  let title='Composição', body='—';
+  if(ed){
+    if(ed.ativos&&ed.ativos.length){ title='Princípios ativos'; body=_rows(ed.ativos); }
+    else if(ed.garantias&&ed.garantias.length){ title='Garantias (composição)'; body=_rows(ed.garantias); }
+    else if(ed.compTexto||ed.compRaw){ body=esc(ed.compTexto||ed.compRaw); }
+  }
+  sec.innerHTML=`<div class="sectit">${title} <span class="sub" style="font-weight:400">(somente leitura — editar no módulo Cadastros)</span></div><div class="dbox">${body}</div>`
+    +(ed&&ed.compRaw&&(ed.ativos&&ed.ativos.length||ed.garantias&&ed.garantias.length)?`<div class="sectit" style="margin-top:10px">Composição importada (referência)</div><div class="dbox sub">${esc(ed.compRaw)}</div>`:'');
+}
+function renderAtivoRows(){
+  const c=document.getElementById('iAtivos'); if(!c) return;
+  const UN=COMP_MODE==='garantia'?PA_UN_GAR:PA_UN_ATIVO;
+  c.innerHTML=FORM_ATIVOS.length?FORM_ATIVOS.map((a,idx)=>{
+    const opts=(UN.includes(a.unidade)||!a.unidade?UN:[a.unidade,...UN]);
+    return `<div class="ativorow" data-idx="${idx}">
+      <input class="aNome" list="dlPA" placeholder="princípio ativo" value="${esc(a.nome||'')}">
+      <input class="aConc" type="number" step="any" placeholder="conc." value="${a.conc!=null?a.conc:''}">
+      <select class="aUn">${opts.map(u=>`<option ${a.unidade===u?'selected':''}>${esc(u)}</option>`).join('')}</select>
+      <span class="x xr" data-rm="${idx}" title="remover">✕</span></div>`;}).join('')
+    :'<div class="hint">Nenhum ativo cadastrado. Use “+ adicionar ativo”.</div>';
+  c.querySelectorAll('[data-rm]').forEach(b=>b.onclick=()=>{syncAtivos();FORM_ATIVOS.splice(+b.dataset.rm,1);renderAtivoRows();});
+}
+function syncAtivos(){
+  const c=document.getElementById('iAtivos'); if(!c) return;
+  FORM_ATIVOS=[...c.querySelectorAll('.ativorow')].map(r=>({
+    nome:r.querySelector('.aNome').value.trim(),
+    conc:r.querySelector('.aConc').value!==''?parseFloat(r.querySelector('.aConc').value):null,
+    unidade:r.querySelector('.aUn').value }));
+}
+
+/* ----- Unidades ----- */
+function unidadesHTML(){
+  const rows=S.unidades.map((u,idx)=>`<tr>
+    <td class="code">${esc(u.sim)}</td><td>${esc(u.nome)}</td><td>${esc(u.dim)}</td>
+    <td class="num">${nf(u.fator)} <span class="sub">${u.dim==='Massa'?'kg':u.dim==='Volume'?'L':'un'}</span></td>
+    <td class="num sub">${usoUnidade(u.sim)}</td>
+    <td><span class="x xr" data-del-uni="${idx}" title="Remover">✕</span></td></tr>`).join('');
+  return `<div class="regform"><div class="sectit">Nova unidade</div>
+    <div class="four"><label class="fcol">Símbolo <input id="uSim" placeholder="kg"></label><label class="fcol">Nome <input id="uNome" placeholder="Quilograma"></label>
+      <label class="fcol">Grandeza <select id="uDim"><option>Massa</option><option>Volume</option><option>Contagem</option></select></label>
+      <label class="fcol">Fator p/ base <input type="number" id="uFat" step="any" value="1"></label></div>
+    <div class="formactions"><button class="btn success sm" id="uAdd">Adicionar</button><span class="fmsg" id="uMsg"></span>
+      <span class="hint">Base por grandeza: <b>kg</b> (massa), <b>L</b> (volume), <b>un</b> (contagem). Ex.: ton = 1000, g = 0,001, @ = 15.</span></div></div>
+  <table class="tbl"><thead><tr><th>Símbolo</th><th>Nome</th><th>Grandeza</th><th class="num">Fator (base)</th><th class="num">Usos</th><th></th></tr></thead>
+    <tbody>${rows}</tbody></table>`;
+}
+function bindUnidades(){
+  const $=id=>document.getElementById(id);
+  $('uAdd').onclick=()=>{const m=$('uMsg');m.className='fmsg err';
+    const sim=$('uSim').value.trim();if(!sim){m.textContent='Informe o símbolo.';return;}
+    if(uniObj(sim)){m.textContent='Já existe essa unidade.';return;}
+    const fat=parseFloat($('uFat').value);if(!(fat>0)){m.textContent='Fator inválido.';return;}
+    S.unidades.push({sim,nome:$('uNome').value.trim()||sim,dim:$('uDim').value,fator:fat});route();};
+  document.querySelectorAll('[data-del-uni]').forEach(b=>b.onclick=()=>{const i=+b.dataset.delUni;const u=S.unidades[i];
+    if(usoUnidade(u.sim)>0){alert('Unidade "'+u.sim+'" está em uso por '+usoUnidade(u.sim)+' item(ns). Troque a unidade desses itens antes de remover.');return;}
+    S.unidades.splice(i,1);route();});
+}
+
+/* ----- Formulações ----- */
+function formulacoesHTML(){
+  const grupos=[...new Set(S.formulacoes.map(f=>f.grupo))];
+  const blocks=grupos.map(g=>{
+    const rows=S.formulacoes.filter(f=>f.grupo===g).map((f)=>{const idx=S.formulacoes.indexOf(f);
+      return `<tr><td class="code">${esc(f.cod)}</td><td>${esc(f.nome)}</td><td class="num sub">${usoFormulacao(f.cod)}</td>
+        <td><span class="x xr" data-del-form="${idx}" title="Remover">✕</span></td></tr>`;}).join('');
+    return `<div class="sectit" style="margin-top:14px">${esc(g)}</div>
+      <table class="tbl"><thead><tr><th>Código</th><th>Nome</th><th class="num">Usos</th><th></th></tr></thead><tbody>${rows}</tbody></table>`;}).join('');
+  return `<div class="regform"><div class="sectit">Nova formulação</div>
+    <div class="three"><label class="fcol">Código <input id="fCod" placeholder="EC"></label><label class="fcol">Nome <input id="fNome" placeholder="Concentrado Emulsionável"></label>
+      <label class="fcol">Grupo <select id="fGrupo"><option>Defensivo (CropLife)</option><option>Forma física</option></select></label></div>
+    <div class="formactions"><button class="btn success sm" id="fAdd">Adicionar</button><span class="fmsg" id="fMsg"></span>
+      <span class="hint">Códigos de defensivo seguem o padrão CropLife (Monograph nº 2).</span></div></div>${blocks}`;
+}
+function bindFormulacoes(){
+  const $=id=>document.getElementById(id);
+  $('fAdd').onclick=()=>{const m=$('fMsg');m.className='fmsg err';
+    const cod=$('fCod').value.trim().toUpperCase();if(!cod){m.textContent='Informe o código.';return;}
+    if(formObj(cod)){m.textContent='Código já existe.';return;}
+    S.formulacoes.push({cod,nome:$('fNome').value.trim()||cod,grupo:$('fGrupo').value});COD_SET.add(cod);route();};
+  document.querySelectorAll('[data-del-form]').forEach(b=>b.onclick=()=>{const i=+b.dataset.delForm;const f=S.formulacoes[i];
+    if(usoFormulacao(f.cod)>0){alert('Formulação "'+f.cod+'" está em uso por '+usoFormulacao(f.cod)+' item(ns).');return;}
+    COD_SET.delete(f.cod);S.formulacoes.splice(i,1);route();});
+}
+
+/* ----- Princípios ativos ----- */
+function principiosHTML(){
+  const q=SEARCH.toLowerCase();
+  const lista=S.principios.map((p,idx)=>({p,idx})).filter(o=>!q||o.p.nome.toLowerCase().includes(q)).sort((a,b)=>a.p.nome.localeCompare(b.p.nome));
+  const rows=lista.map(o=>`<tr><td class="nome">${esc(o.p.nome)}</td><td><span class="x xr" data-del-pa="${o.idx}" title="Remover">✕</span></td></tr>`).join('');
+  return `<div class="regform"><div class="sectit">Novo princípio ativo</div>
+    <div class="two"><label class="fcol">Nome <input id="paNome" placeholder="Glifosato"></label><div class="formactions" style="margin-top:0"><button class="btn success sm" id="paAdd">Adicionar</button><span class="fmsg" id="paMsg"></span></div></div>
+    <div class="hint" style="margin-top:8px">Lista de referência para padronizar a composição dos itens. Os nomes seguem os nomes comuns (ISO/Anvisa).</div></div>
+  <div class="toolbar"><input class="search" id="qSearch" placeholder="🔎 buscar princípio ativo…" value="${esc(SEARCH)}"></div>
+  <table class="tbl"><thead><tr><th>Princípio ativo (${lista.length})</th><th></th></tr></thead><tbody>${rows||'<tr><td colspan="2" class="empty">Nenhum.</td></tr>'}</tbody></table>`;
+}
+function bindPrincipios(){
+  const $=id=>document.getElementById(id);
+  $('paAdd').onclick=()=>{const m=$('paMsg');m.className='fmsg err';const nome=$('paNome').value.trim();
+    if(!nome){m.textContent='Informe o nome.';return;}
+    if(S.principios.some(p=>p.nome.toLowerCase()===nome.toLowerCase())){m.textContent='Já existe.';return;}
+    S.principios.push({nome});route();};
+  document.querySelectorAll('[data-del-pa]').forEach(b=>b.onclick=()=>{S.principios.splice(+b.dataset.delPa,1);route();});
+  bindSearch();
+}
+
+/* ----- Fornecedores ----- */
+const usoFornecedor=nome=>S.entradas.filter(e=>e.fornecedor===nome).length;
+function fornecedoresHTML(){
+  const q=SEARCH.toLowerCase();
+  const lista=S.fornecedores.map((f,idx)=>({f,idx})).filter(o=>!q||(o.f.nome+' '+o.f.cnpj+' '+o.f.contato).toLowerCase().includes(q)).sort((a,b)=>a.f.nome.localeCompare(b.f.nome));
+  const rows=lista.map(o=>`<tr>
+    <td class="nome">${esc(o.f.nome)}</td><td class="sub">${esc(o.f.cnpj)||'—'}</td><td class="sub">${esc(o.f.contato)||'—'}</td><td class="sub">${esc(o.f.fone)||'—'}</td>
+    <td class="num sub">${usoFornecedor(o.f.nome)}</td><td><span class="x xr" data-del-forn="${o.idx}" title="Remover">✕</span></td></tr>`).join('');
+  return `<div class="regform"><div class="sectit">Novo fornecedor</div>
+    <div class="two"><label class="fcol">Nome / Razão social <input id="fnNome" placeholder="ex.: Agro Insumos LTDA"></label><label class="fcol">CNPJ <input id="fnCnpj" placeholder="00.000.000/0000-00"></label></div>
+    <div class="two"><label class="fcol">Contato <input id="fnContato" placeholder="nome do vendedor"></label><label class="fcol">Telefone <input id="fnFone" placeholder="(00) 00000-0000"></label></div>
+    <div class="formactions"><button class="btn success sm" id="fnAdd">Adicionar</button><span class="fmsg" id="fnMsg"></span></div></div>
+  <div class="toolbar"><input class="search" id="qSearch" placeholder="🔎 buscar fornecedor…" value="${esc(SEARCH)}"></div>
+  <table class="tbl"><thead><tr><th>Fornecedor (${lista.length})</th><th>CNPJ</th><th>Contato</th><th>Telefone</th><th class="num">Entradas</th><th></th></tr></thead>
+    <tbody>${rows||'<tr><td colspan="6" class="empty">Nenhum fornecedor.</td></tr>'}</tbody></table>`;
+}
+function bindFornecedores(){
+  const $=id=>document.getElementById(id);
+  $('fnAdd').onclick=()=>{const m=$('fnMsg');m.className='fmsg err';const nome=$('fnNome').value.trim();
+    if(!nome){m.textContent='Informe o nome.';return;}
+    if(S.fornecedores.some(f=>f.nome.toLowerCase()===nome.toLowerCase())){m.textContent='Fornecedor já existe.';return;}
+    S.fornecedores.push({nome,cnpj:$('fnCnpj').value.trim(),contato:$('fnContato').value.trim(),fone:$('fnFone').value.trim()});route();};
+  document.querySelectorAll('[data-del-forn]').forEach(b=>b.onclick=()=>{const i=+b.dataset.delForn;const f=S.fornecedores[i];
+    if(usoFornecedor(f.nome)>0){alert('Fornecedor "'+f.nome+'" tem '+usoFornecedor(f.nome)+' entrada(s) lançada(s) e não pode ser removido.');return;}
+    S.fornecedores.splice(i,1);route();});
+  bindSearch();
+}
+
+/* ---------- ROUTE ---------- */
+function route(){
+  document.getElementById('vtitle').textContent=titles[VIEW]||'';
+  [...document.getElementById('nav').children].forEach(b=>b.classList.toggle('on',b.dataset.v===VIEW));
+  const main=document.getElementById('main');
+  if(VIEW==='estoque'){main.innerHTML=estoqueHTML();bindEstoque();}
+  else if(VIEW==='entrada'){main.innerHTML=entradaHTML();bindEntrada();}
+  else if(VIEW==='saida'){main.innerHTML=saidaHTML();bindSaida();}
+  else if(VIEW==='itens'){main.innerHTML=itensHTML();bindItens();}
+  renderSummary();
+}
+document.getElementById('nav').addEventListener('click',e=>{const b=e.target.closest('button');if(!b)return;VIEW=b.dataset.v;SEARCH='';DETAIL=null;if(VIEW==='itens'){EDIT=null;ITAB='itens';}route();});
+
+/* ===================== SUPABASE — conexão, login, carga e escrita ===================== */
+const SB_URL='https://ngdidjtfgmtkdkvqwfjf.supabase.co';
+const SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5nZGlkanRmZ210a2RrdnF3ZmpmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NTU5MDYsImV4cCI6MjA5NjUzMTkwNn0.OW9hGEFTvSYx_THv3DR9pt8xIVC0B9Pw2bTDGD6TBLk';
+let SB=null;
+/* ---- papel do usuário (admin pode editar/excluir movimentações) ---- */
+const ADMIN_EMAILS=['leydiovan@gmail.com'];
+let USER_EMAIL='', IS_ADMIN=false;
+async function _carregaPapel(){ try{ const {data}=await SB.auth.getUser(); USER_EMAIL=((data&&data.user&&data.user.email)||'').toLowerCase(); IS_ADMIN=ADMIN_EMAILS.includes(USER_EMAIL); }catch(e){ IS_ADMIN=false; } }
+function _statusSB(txt,cor){ let el=document.getElementById('sbStatus'); if(!el){ el=document.createElement('div'); el.id='sbStatus'; el.style.cssText='position:fixed;bottom:10px;right:10px;z-index:9999;padding:7px 12px;border-radius:8px;font:600 12px system-ui;box-shadow:0 2px 8px rgba(0,0,0,.3)'; document.body.appendChild(el);} el.textContent=txt; el.style.background=cor||'#333'; el.style.color='#fff'; }
+function _botaoSair(){ if(window.self!==window.top) return; let b=document.getElementById('btnSair'); if(b)return; b=document.createElement('button'); b.id='btnSair'; b.textContent='Sair'; b.style.cssText='position:fixed;top:10px;right:10px;z-index:9998;padding:6px 12px;border:1px solid #30363d;border-radius:8px;background:#21262d;color:#e6edf3;font:600 12px system-ui;cursor:pointer'; b.onclick=async()=>{ if(SB) await SB.auth.signOut(); location.reload(); }; document.body.appendChild(b); }
+function _telaLogin(){
+  let ov=document.getElementById('loginOverlay'); if(ov) return;
+  ov=document.createElement('div'); ov.id='loginOverlay';
+  ov.style.cssText='position:fixed;inset:0;z-index:99999;background:#0d1117;display:flex;align-items:center;justify-content:center;font-family:system-ui';
+  ov.innerHTML='<div style="background:#161b22;border:1px solid #30363d;border-radius:14px;padding:32px 28px;width:340px;box-shadow:0 8px 40px rgba(0,0,0,.5)"><div style="font-size:20px;font-weight:800;color:#e6edf3;text-align:center;margin-bottom:4px">Gestão Alabama Agro</div><div style="font-size:13px;color:#8b949e;text-align:center;margin-bottom:22px">Almoxarifado</div><label style="font-size:12px;color:#8b949e;display:block;margin-bottom:4px">E-mail</label><input id="lg_email" type="email" style="width:100%;padding:10px;border-radius:8px;border:1px solid #30363d;background:#0d1117;color:#e6edf3;margin-bottom:14px;box-sizing:border-box"><label style="font-size:12px;color:#8b949e;display:block;margin-bottom:4px">Senha</label><input id="lg_senha" type="password" style="width:100%;padding:10px;border-radius:8px;border:1px solid #30363d;background:#0d1117;color:#e6edf3;margin-bottom:18px;box-sizing:border-box"><button id="lg_btn" style="width:100%;padding:11px;border:0;border-radius:8px;background:#238636;color:#fff;font-weight:700;font-size:14px;cursor:pointer">Entrar</button><div id="lg_msg" style="font-size:12px;color:#f85149;text-align:center;margin-top:12px;min-height:16px"></div></div>';
+  document.body.appendChild(ov);
+  const tentar=async()=>{
+    const email=ov.querySelector('#lg_email').value.trim(), senha=ov.querySelector('#lg_senha').value, msg=ov.querySelector('#lg_msg');
+    if(!email||!senha){ msg.textContent='Preencha e-mail e senha.'; return; }
+    msg.style.color='#8b949e'; msg.textContent='Entrando…';
+    try{ const {error}=await SB.auth.signInWithPassword({email,password:senha}); if(error){ msg.style.color='#f85149'; msg.textContent='Erro: '+error.message; return; } ov.remove(); _botaoSair(); carregarAlmoxSB(); }
+    catch(e){ msg.style.color='#f85149'; msg.textContent='Falha: '+e.message; }
+  };
+  ov.querySelector('#lg_btn').onclick=tentar;
+  ov.querySelector('#lg_senha').addEventListener('keydown',e=>{ if(e.key==='Enter') tentar(); });
+}
+/* carrega catálogo do Cadastros + operacional do Almox */
+async function carregarAlmoxSB(){
+  try{
+    _statusSB('⏳ Carregando do banco…','#2c3e50');
+    await _carregaPapel();
+    for(const [tab,col] of [['fornecedores','fornecedores'],['unidades','unidades'],['formulacoes','formulacoes']]){
+      try{ const {data,error}=await SB.from(tab).select('*'); if(!error&&data&&data.length) S[col]=data; }catch(e){}
+    }
+    try{ const {data}=await SB.from('principios').select('nome'); if(data&&data.length) S.principios=data.map(r=>({nome:r.nome})); }catch(e){}
+    const {data:prod,error:ep}=await SB.from('produtos').select('*'); if(ep) throw ep;
+    S.itens=(prod||[]).filter(p=>p.codigo!=null).map(p=>{
+      const perfil=perfilDe(p.tipo);
+      const isDef=(p.tipo==='Defensivo'||p.tipo==='Defensivos Biológicos'), isFol=(p.classe==='Adubo Foliar');
+      return {id:String(p.codigo),codigo:p.codigo,nome:p.nome,comp:p.comp||'',compRaw:p.comp||'',
+        ativos:parseAtivos(p.comp||'',p.tipo),garantias:(p.tipo==='Fertilizante'?parseGarantias(p.comp||''):[]),compTexto:'',
+        comanda:(isDef||isFol)?'Visível':'',
+        formCod:normFormulacao(p.formulacao),formRaw:p.formulacao||'',tipo:p.tipo,classe:p.classe,perfil,
+        unidade:normUnidade(p.unidade)||p.unidade||'un',precoRef:p.preco||0,
+        estoqueMin:0,local:'',equipamentoId:null};
+    });
+    try{ const {data:cfg}=await SB.from('almox_config').select('*');
+      if(cfg&&cfg.length){ const m={}; cfg.forEach(c=>m[c.codigo]=c);
+        S.itens.forEach(it=>{ const c=m[it.codigo]; if(c){ it.estoqueMin=+c.estoque_min||0; it.local=c.local||''; it.equipamentoId=c.equipamento_id||null; if(c.comanda) it.comanda=c.comanda; } }); }
+    }catch(e){ console.warn('almox_config',e); }
+    try{ const {data:ents}=await SB.from('almox_entradas').select('*').order('id',{ascending:true});
+      S.entradas=(ents||[]).map(e=>({id:'en'+e.id,_dbid:e.id,itemId:String(e.item_codigo),data:e.data,fornecedor:e.fornecedor||'',nf:e.nf||'',qtd:+e.qtd||0,custoUnit:+e.custo_unit||0,lote:e.lote||null,validade:e.validade||null})); }catch(e){ console.warn('entradas',e); }
+    try{ const {data:sais}=await SB.from('almox_saidas').select('*').order('id',{ascending:true});
+      S.saidas=(sais||[]).map(s=>({id:'sa'+s.id,_dbid:s.id,itemId:String(s.item_codigo),data:s.data,qtd:+s.qtd||0,requisitante:s.requisitante||'',destino:{tipo:s.destino_tipo||'geral',ref:s.destino_ref||''},lote:s.lote||null,obs:s.obs||''})); }catch(e){ console.warn('saidas',e); }
+    _statusSB('✅ Almoxarifado do banco ('+S.itens.length+' itens)','#27ae60');
+    route();
+  }catch(e){ _statusSB('❌ Falha: '+e.message,'#c0392b'); console.error(e); route(); }
+}
+/* escrita incremental (padrão atividades) */
+async function salvarEntradaSB(it,en){
+  if(!SB){ _statusSB('⚠️ Sem conexão — só na memória','#e67e22'); return; }
+  try{ const {data,error}=await SB.from('almox_entradas').insert({item_codigo:it.codigo,data:en.data,fornecedor:en.fornecedor,nf:en.nf,qtd:en.qtd,custo_unit:en.custoUnit,lote:en.lote,validade:en.validade}).select('id').single();
+    if(error){ _statusSB('❌ Erro ao salvar entrada: '+error.message,'#c0392b'); return; }
+    if(data) en._dbid=data.id; _statusSB('✅ Entrada salva no banco','#27ae60');
+  }catch(e){ _statusSB('❌ Falha: '+e.message,'#c0392b'); }
+}
+async function salvarSaidaSB(it,sa){
+  if(!SB){ _statusSB('⚠️ Sem conexão — só na memória','#e67e22'); return; }
+  try{ const {data,error}=await SB.from('almox_saidas').insert({item_codigo:it.codigo,data:sa.data,qtd:sa.qtd,requisitante:sa.requisitante,destino_tipo:sa.destino.tipo,destino_ref:sa.destino.ref,lote:sa.lote,obs:sa.obs}).select('id').single();
+    if(error){ _statusSB('❌ Erro ao salvar saída: '+error.message,'#c0392b'); return; }
+    if(data) sa._dbid=data.id; _statusSB('✅ Saída salva no banco','#27ae60');
+  }catch(e){ _statusSB('❌ Falha: '+e.message,'#c0392b'); }
+}
+/* edição/exclusão de movimentações (somente admin) */
+async function excluirMovSB(kind,dbid){
+  if(!IS_ADMIN){ _statusSB('🔒 Só admin pode excluir','#e67e22'); return; }
+  if(!confirm('Excluir esta movimentação? O saldo será recalculado.')) return;
+  const tab=kind==='en'?'almox_entradas':'almox_saidas';
+  if(SB&&dbid!=null){ const {error}=await SB.from(tab).delete().eq('id',dbid); if(error){ _statusSB('❌ '+error.message,'#c0392b'); return; } }
+  if(kind==='en') S.entradas=S.entradas.filter(x=>x._dbid!==dbid);
+  else S.saidas=S.saidas.filter(x=>x._dbid!==dbid);
+  MOV_EDIT=null; _statusSB('✅ Movimentação excluída','#27ae60'); route();
+}
+async function _salvarMovEdit(){
+  if(!MOV_EDIT) return;
+  if(!IS_ADMIN){ _statusSB('🔒 Só admin pode editar','#e67e22'); return; }
+  const {kind,dbid}=MOV_EDIT, g=id=>document.getElementById(id);
+  const data=g('mvData')?(g('mvData').value||null):null;
+  const qtd=parseFloat(g('mvQtd').value)||0;
+  const tab=kind==='en'?'almox_entradas':'almox_saidas';
+  let campos;
+  if(kind==='en'){
+    const fornecedor=g('mvForn')?g('mvForn').value.trim():'';
+    const custo=(g('mvCusto')&&g('mvCusto').value!=='')?parseFloat(g('mvCusto').value):null;
+    campos={data,qtd,fornecedor,custo_unit:custo};
+  } else {
+    campos={data,qtd,requisitante:g('mvReq')?g('mvReq').value.trim():''};
+  }
+  if(SB&&dbid!=null){ const {error}=await SB.from(tab).update(campos).eq('id',dbid); if(error){ _statusSB('❌ '+error.message,'#c0392b'); return; } }
+  if(kind==='en'){ const e=S.entradas.find(x=>x._dbid===dbid); if(e){ e.data=campos.data; e.qtd=campos.qtd; e.fornecedor=campos.fornecedor; if(campos.custo_unit!=null) e.custoUnit=campos.custo_unit; } }
+  else { const s=S.saidas.find(x=>x._dbid===dbid); if(s){ s.data=campos.data; s.qtd=campos.qtd; s.requisitante=campos.requisitante; } }
+  MOV_EDIT=null; _statusSB('✅ Movimentação atualizada','#27ae60'); route();
+}
+async function salvarConfigSB(it){
+  if(!SB){ _statusSB('⚠️ Sem conexão — só na memória','#e67e22'); return; }
+  try{ const {error}=await SB.from('almox_config').upsert({codigo:it.codigo,estoque_min:it.estoqueMin||0,local:it.local||null,equipamento_id:it.equipamentoId||null,comanda:it.comanda||null},{onConflict:'codigo'});
+    if(error){ _statusSB('❌ Erro ao salvar config: '+error.message,'#c0392b'); return; }
+    _statusSB('✅ Controle de estoque salvo','#27ae60');
+  }catch(e){ _statusSB('❌ Falha: '+e.message,'#c0392b'); }
+}
+async function bootSupabase(){
+  if(!window.supabase){ _statusSB('⚠️ Lib Supabase não carregou (sem internet?)','#c0392b'); route(); return; }
+  SB=window.supabase.createClient(SB_URL,SB_KEY);
+  try{ const h=new URLSearchParams(location.hash.slice(1)); const at=h.get('at'), rt=h.get('rt');
+    if(at&&rt){ await SB.auth.setSession({access_token:at,refresh_token:rt}); history.replaceState(null,'',location.pathname+location.search); } }catch(e){ console.warn('handoff sessão',e); }
+  const {data}=await SB.auth.getSession();
+  if(data&&data.session){ _botaoSair(); carregarAlmoxSB(); }
+  else { _telaLogin(); route(); }
+}
+window.addEventListener('load',()=>{ setTimeout(bootSupabase,300); });
+</script>
+</body>
+</html>
