@@ -59,7 +59,7 @@ let STEP='login', USER_EMAIL='';
 let FUNCS=[], MAQS=[], IMPS=[], LOTES=[], SAFRA='', COMANDAS=[];
 let OPER=null;              // {id,nome,tipo} operador escolhido (salvo no aparelho)
 let DIA='';                 // 'AAAA-MM-DD'
-let PONTO=null;             // linha de ponto_pendente de hoje do operador (status do dia)
+let DIAREC=null;            // linha de campo_dia de hoje (início/fim do dia = ponto automático)
 let EXECS={};               // comanda_codigo -> execucao_campo de hoje
 let CUR=null;               // comanda aberta
 let EF={};                  // form da execução atual
@@ -112,36 +112,32 @@ async function carregarSafra(){
 }
 async function carregarDia(){
   if(!OPER) return;
-  // status do dia (ponto): consolidado tem prioridade; senão fila
-  PONTO=null;
-  try{ const {data}=await SB.from('ponto').select('*').eq('funcionario_id',OPER.id).eq('data',DIA); if(data&&data[0]){ PONTO=Object.assign({_st:'lançado'},data[0]); } }catch(e){}
-  if(!PONTO){ try{ const {data}=await SB.from('ponto_pendente').select('*').eq('funcionario_id',OPER.id).eq('data',DIA); if(data&&data[0]){ PONTO=Object.assign({_st:'fila'},data[0]); } }catch(e){} }
+  DIAREC=null;
+  try{ const {data}=await SB.from('campo_dia').select('*').eq('funcionario_id',OPER.id).eq('data',DIA); if(data&&data[0]) DIAREC=data[0]; }catch(e){}
   // execuções de hoje deste operador
   EXECS={};
   try{ const {data}=await SB.from('execucao_campo').select('*').eq('funcionario_id',OPER.id).eq('data',DIA); (data||[]).forEach(x=>{ if(x.comanda_codigo) EXECS[x.comanda_codigo]=x; }); }catch(e){}
 }
 
-/* ---------- ponto (início/fim do dia -> fila de aprovação) ---------- */
-function _pontoMarc(){ return (PONTO&&Array.isArray(PONTO.marcacoes))?PONTO.marcacoes:[]; }
-function diaIniciado(){ const m=_pontoMarc(); return m.length>0 && !!m[0].ent; }
-function diaFinalizado(){ const m=_pontoMarc(); return m.length>0 && !!m[0].ent && !!m[0].sai; }
-async function gravarPonto(marc){
-  const reg={ funcionario_id:OPER.id, data:DIA, marcacoes:marc, feriado:false, falta:false, folga:false, sem_he:false, enviado_por:USER_EMAIL||null };
-  const {error}=await SB.from('ponto_pendente').upsert(reg,{onConflict:'funcionario_id,data'}); if(error) throw error;
-  PONTO=Object.assign({_st:'fila'},reg);
+/* ---------- dia (início/fim = ponto automático; consolidado depois em Atividades) ---------- */
+function diaIniciado(){ return !!(DIAREC&&DIAREC.hora_inicio); }
+function diaFinalizado(){ return !!(DIAREC&&DIAREC.hora_inicio&&DIAREC.hora_fim); }
+function diaAprovado(){ return !!(DIAREC&&DIAREC.status==='aprovado'); }
+async function gravarDia(reg){
+  reg.funcionario_id=OPER.id; reg.data=DIA; reg.enviado_por=USER_EMAIL||null; reg.atualizado_em=new Date().toISOString();
+  const {error}=await SB.from('campo_dia').upsert(reg,{onConflict:'funcionario_id,data'}); if(error) throw error;
+  DIAREC=Object.assign(DIAREC||{},reg);
 }
 async function iniciarDia(){
-  if(PONTO&&PONTO._st==='lançado'){ _st('Dia já lançado/aprovado.','#e67e22'); return; }
-  try{ await gravarPonto([{ent:nowHM(),sai:''}]); _st('✅ Dia iniciado às '+_pontoMarc()[0].ent,'#27ae60'); render(); }
+  if(diaAprovado()){ _st('Dia já aprovado.','#e67e22'); return; }
+  try{ await gravarDia({hora_inicio:nowHM(), hora_fim:(DIAREC&&DIAREC.hora_fim)||null, status:'aberto'}); _st('✅ Dia iniciado às '+DIAREC.hora_inicio,'#27ae60'); render(); }
   catch(e){ _st('❌ '+e.message,'#c0392b'); }
 }
 async function finalizarDia(){
   if(!diaIniciado()){ _st('Inicie o dia primeiro.','#e67e22'); return; }
-  if(PONTO._st==='lançado'){ _st('Dia já aprovado — não dá pra alterar aqui.','#e67e22'); return; }
-  if(!confirm('Finalizar o dia agora ('+nowHM()+')?')) return;
-  const m=_pontoMarc().map(x=>({ent:x.ent||'',sai:x.sai||''})); if(!m.length) m.push({ent:nowHM(),sai:''});
-  m[0].sai=nowHM();
-  try{ await gravarPonto(m); _st('✅ Dia finalizado — '+m[0].ent+'–'+m[0].sai,'#27ae60'); render(); }
+  if(diaAprovado()){ _st('Dia já aprovado — não dá pra alterar.','#e67e22'); return; }
+  if(!confirm('Finalizar o dia agora ('+nowHM()+')? Isso fecha seu ponto do dia.')) return;
+  try{ await gravarDia({hora_inicio:DIAREC.hora_inicio, hora_fim:nowHM(), status:'enviado'}); _st('✅ Dia finalizado — '+DIAREC.hora_inicio+'–'+DIAREC.hora_fim,'#27ae60'); render(); }
   catch(e){ _st('❌ '+e.message,'#c0392b'); }
 }
 
@@ -182,12 +178,11 @@ function renderQuemSou(){
   _bindSair();
 }
 function renderHome(){
-  const ini=diaIniciado(), fim=diaFinalizado(); const m=_pontoMarc();
-  const aprovado=PONTO&&PONTO._st==='lançado';
+  const ini=diaIniciado(), fim=diaFinalizado(); const aprovado=diaAprovado();
   let dstatus;
-  if(aprovado) dstatus='<span class="pill on">dia aprovado</span>';
-  else if(fim) dstatus='<span class="pill on">dia '+esc(m[0].ent)+'–'+esc(m[0].sai)+'</span>';
-  else if(ini) dstatus='<span class="pill go">iniciado '+esc(m[0].ent)+'</span>';
+  if(aprovado) dstatus='<span class="pill on">dia aprovado '+esc((DIAREC.hora_inicio||'')+'–'+(DIAREC.hora_fim||''))+'</span>';
+  else if(fim) dstatus='<span class="pill on">dia '+esc(DIAREC.hora_inicio+'–'+DIAREC.hora_fim)+'</span>';
+  else if(ini) dstatus='<span class="pill go">iniciado '+esc(DIAREC.hora_inicio)+'</span>';
   else dstatus='<span class="pill">dia não iniciado</span>';
 
   const lista=comandasDoOperador();
@@ -206,9 +201,10 @@ function renderHome(){
       <div class="d">${_dlabel(DIA)} · safra ${esc(SAFRA||'—')} · ${dstatus}</div></div>
     <div class="card">
       ${!ini?`<button class="btn k" id="ini">▶ Iniciar o dia (${nowHM()})</button>`:''}
-      ${ini&&!fim&&!aprovado?`<button class="btn s" id="fim">■ Finalizar o dia</button>`:''}
-      ${aprovado?'<div class="hint">O ponto de hoje já foi aprovado pelo administrador.</div>':''}
-      <div class="hint">Iniciar/Finalizar o dia gera seu <b>ponto</b> (vai para aprovação do admin, junto com a coleta).</div>
+      ${ini&&!fim&&!aprovado?`<button class="btn s" id="fim">■ Finalizar o dia (ir embora)</button>`:''}
+      ${fim&&!aprovado?'<div class="hint">Dia finalizado. Seu <b>ponto</b> entra junto quando o admin aprovar a execução em Atividades.</div>':''}
+      ${aprovado?'<div class="hint">Dia já aprovado pelo administrador.</div>':''}
+      <div class="hint">Iniciar/Finalizar o dia define seu <b>ponto</b> (entrada/saída) automaticamente.</div>
     </div>
     <div class="sec">Comandas ${desigCount?('designadas a você ('+desigCount+')'):''}</div>
     ${cards||`<div class="card muted">Nenhuma comanda ${desigCount?'':'designada a você '}nesta safra.${desigCount?'':' <a class="lk" id="vt" style="display:inline">ver todas para teste</a>'}</div>`}
@@ -249,12 +245,12 @@ function renderExec(){
       <label>Trator / máquina</label><select id="f_maq">${maqOpt}</select>
       <label style="margin-top:10px">Implemento</label><select id="f_imp">${impOpt}</select>
 
-      <div class="sec">Tempo</div>
+      <div class="sec">Atividade (no talhão)</div>
       <div class="two">
-        <div><label>Início</label><input type="time" id="f_hi" value="${esc(EF.hora_inicio)}"><button class="lk agora" data-now="hi">usar agora (${nowHM()})</button></div>
-        <div><label>Fim</label><input type="time" id="f_hf" value="${esc(EF.hora_fim)}"><button class="lk agora" data-now="hf">usar agora (${nowHM()})</button></div>
+        <div><button class="btn ${EF.hora_inicio?'s':'b'}" id="ativ_ini">${EF.hora_inicio?('Início: '+esc(EF.hora_inicio)):'▶ Iniciar atividade'}</button></div>
+        <div><button class="btn ${EF.hora_fim?'s':(EF.hora_inicio?'k':'s')}" id="ativ_fim" ${EF.hora_inicio?'':'disabled'}>${EF.hora_fim?('Fim: '+esc(EF.hora_fim)):'■ Finalizar atividade'}</button></div>
       </div>
-      ${horas!=null?`<div class="hint">Tempo trabalhado: <b class="gold">${horas.toFixed(2)} h</b></div>`:''}
+      ${horas!=null?`<div class="hint">Tempo da atividade hoje: <b class="gold">${horas.toFixed(2)} h</b></div>`:'<div class="hint">Toque em <b>Iniciar</b> quando começar a trabalhar e em <b>Finalizar</b> quando parar.</div>'}
 
       <div class="sec">Hora-máquina / Diesel</div>
       <div class="two">
@@ -275,25 +271,34 @@ function renderExec(){
       <button class="btn k" id="salvar">Salvar / Enviar</button>
     </div>`;
   // captura mudanças no estado
-  const bind=(id,k,n)=>{ const el=$(id); if(el) el.onchange=()=>{ EF[k]= n?num(el.value):el.value; if(id==='f_hi'||id==='f_hf'||id==='f_hmi'||id==='f_hmf') render(); }; };
-  bind('f_maq','maquina_id'); bind('f_imp','implemento_id'); bind('f_hi','hora_inicio'); bind('f_hf','hora_fim');
+  const bind=(id,k,n)=>{ const el=$(id); if(el) el.onchange=()=>{ EF[k]= n?num(el.value):el.value; if(id==='f_hmi'||id==='f_hmf') render(); }; };
+  bind('f_maq','maquina_id'); bind('f_imp','implemento_id');
   bind('f_hmi','horimetro_ini'); bind('f_hmf','horimetro_fim'); bind('f_die','diesel_litros'); bind('f_area','area_ha'); bind('f_obs','obs');
   if($('f_concl'))$('f_concl').onchange=e=>{ EF.concluiu_lote=e.target.checked; };
-  document.querySelectorAll('[data-now]').forEach(b=>b.onclick=()=>{ EF[b.dataset.now==='hi'?'hora_inicio':'hora_fim']=nowHM(); render(); });
+  if($('ativ_ini'))$('ativ_ini').onclick=async()=>{ if(EF.hora_inicio && !confirm('Atividade já iniciada às '+EF.hora_inicio+'. Reiniciar agora?')) return; EF.maquina_id=$('f_maq').value; EF.implemento_id=$('f_imp').value; EF.hora_inicio=nowHM(); await _persistExecParcial(); render(); };
+  if($('ativ_fim'))$('ativ_fim').onclick=async()=>{ if(!EF.hora_inicio){ _st('Inicie a atividade primeiro.','#e67e22'); return; } EF.hora_fim=nowHM(); await _persistExecParcial(); render(); };
   if($('voltar'))$('voltar').onclick=()=>{ STEP='home'; render(); };
   if($('salvar'))$('salvar').onclick=salvarExec;
 }
+function _execReg(status){
+  return { comanda_codigo:CUR.codigo, safra:SAFRA, funcionario_id:OPER.id, lote_nome:CUR.lote_nome||null, data:DIA,
+    maquina_id:EF.maquina_id?+EF.maquina_id:null, implemento_id:EF.implemento_id?+EF.implemento_id:null,
+    hora_inicio:EF.hora_inicio||null, hora_fim:EF.hora_fim||null, horimetro_ini:num(EF.horimetro_ini), horimetro_fim:num(EF.horimetro_fim),
+    diesel_litros:num(EF.diesel_litros), area_ha:num(EF.area_ha), concluiu_lote:!!EF.concluiu_lote, obs:EF.obs||null,
+    status:status, enviado_por:USER_EMAIL||null, atualizado_em:new Date().toISOString() };
+}
+async function _persistExecParcial(){
+  if(!CUR) return;
+  try{ const reg=_execReg('aberto'); const {error}=await SB.from('execucao_campo').upsert(reg,{onConflict:'comanda_codigo,funcionario_id,data'}); if(error) throw error; EXECS[CUR.codigo]=reg; }
+  catch(e){ _st('❌ '+e.message,'#c0392b'); }
+}
 async function salvarExec(){
-  // recolhe valores atuais dos inputs (caso não tenham disparado change)
-  EF.maquina_id=$('f_maq').value; EF.implemento_id=$('f_imp').value; EF.hora_inicio=$('f_hi').value; EF.hora_fim=$('f_hf').value;
+  EF.maquina_id=$('f_maq').value; EF.implemento_id=$('f_imp').value;
   EF.horimetro_ini=num($('f_hmi').value); EF.horimetro_fim=num($('f_hmf').value); EF.diesel_litros=num($('f_die').value);
   EF.area_ha=num($('f_area').value); EF.obs=$('f_obs').value.trim(); EF.concluiu_lote=$('f_concl').checked;
   if(!EF.maquina_id){ _st('Escolha o trator/máquina.','#e67e22'); return; }
-  const reg={ comanda_codigo:CUR.codigo, safra:SAFRA, funcionario_id:OPER.id, lote_nome:CUR.lote_nome||null, data:DIA,
-    maquina_id:EF.maquina_id?+EF.maquina_id:null, implemento_id:EF.implemento_id?+EF.implemento_id:null,
-    hora_inicio:EF.hora_inicio||null, hora_fim:EF.hora_fim||null, horimetro_ini:EF.horimetro_ini, horimetro_fim:EF.horimetro_fim,
-    diesel_litros:EF.diesel_litros, area_ha:EF.area_ha, concluiu_lote:!!EF.concluiu_lote, obs:EF.obs||null,
-    status:'enviada', enviado_por:USER_EMAIL||null, atualizado_em:new Date().toISOString() };
+  if(!EF.hora_inicio){ _st('Inicie a atividade (botão ▶).','#e67e22'); return; }
+  const reg=_execReg('enviada');
   const b=$('salvar'); if(b){ b.disabled=true; b.textContent='Salvando…'; }
   try{
     const {error}=await SB.from('execucao_campo').upsert(reg,{onConflict:'comanda_codigo,funcionario_id,data'}); if(error) throw error;
