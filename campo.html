@@ -2,9 +2,18 @@
 <html lang="pt-BR">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,viewport-fit=cover">
 <title>Campo — Alabama Agro</title>
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="theme-color" content="#0d1117">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black">
+<meta name="apple-mobile-web-app-title" content="Campo">
+<link rel="apple-touch-icon" href="icon.svg">
+<link rel="icon" href="icon.svg">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script>if('serviceWorker' in navigator){window.addEventListener('load',function(){navigator.serviceWorker.register('sw.js').catch(function(){});});}</script>
 <style>
 :root{--bg:#0d1117;--bg2:#161b22;--bg3:#1c2333;--line:#30363d;--text:#e6edf3;--muted:#8b949e;--gold:#ffc107;--ok:#27ae60;--err:#f85149;--blue:#388bfd}
 *{box-sizing:border-box;margin:0;padding:0}
