@@ -3,7 +3,7 @@
      cai pro cache quando offline.
    - libs/ícone/manifest em cache-first.
    - chamadas ao Supabase (dados/auth) NÃO são cacheadas (vão sempre pela rede). */
-const CACHE = 'alabama-campo-v2';
+const CACHE = 'alabama-campo-v3';
 const SHELL = [
   'campo.html',
   'manifest.webmanifest',
@@ -34,25 +34,25 @@ self.addEventListener('fetch', e => {
   const url = new URL(e.request.url);
   if (url.hostname.endsWith('supabase.co')) return;   // dados/auth -> sempre rede
 
-  const isShell = e.request.mode === 'navigate' || url.pathname.endsWith('campo.html');
-  if (isShell) {
-    // network-first: pega a versão nova quando online; offline cai no cache
+  // lib estável do CDN: cache-first (raramente muda)
+  if (url.hostname.endsWith('jsdelivr.net')) {
     e.respondWith(
-      fetch(e.request).then(res => {
+      caches.match(e.request).then(hit => hit || fetch(e.request).then(res => {
         const copy = res.clone();
-        caches.open(CACHE).then(c => { try { c.put('campo.html', copy); } catch (_) {} });
+        caches.open(CACHE).then(c => { try { c.put(e.request, copy); } catch (_) {} });
         return res;
-      }).catch(() => caches.match(e.request).then(h => h || caches.match('campo.html')))
+      }))
     );
     return;
   }
 
-  // demais (lib, ícone, manifest): cache-first
+  // campo.html, manifest, ícones: NETWORK-FIRST (sempre a versão nova online;
+  // offline cai no cache; navegação sem cache cai no shell). Nunca "prende" o manifest.
   e.respondWith(
-    caches.match(e.request).then(hit => hit || fetch(e.request).then(res => {
+    fetch(e.request).then(res => {
       const copy = res.clone();
       caches.open(CACHE).then(c => { try { c.put(e.request, copy); } catch (_) {} });
       return res;
-    }).catch(() => undefined))
+    }).catch(() => caches.match(e.request).then(h => h || (e.request.mode === 'navigate' ? caches.match('campo.html') : undefined)))
   );
 });
