@@ -462,6 +462,9 @@ function renderNova(){
     <div class="actions"><button class="btn sm" id="nv_addprod">+ produto</button>
       <span class="hint">Para Adubação/Sólidos use uma linha de produto único (ou texto).</span></div></div>
 
+    <div class="sec">Operadores designados <span class="hint">(aparece no tablet de campo de cada um)</span></div>
+    <div id="nv_opwrap" class="note" style="font-size:13px;display:flex;flex-wrap:wrap;gap:8px 18px;align-items:center">${_operadoresCheckboxes()}</div>
+
     <div class="sec">Observações</div>
     <div class="row">
       <div class="fcol"><label>Observação</label><textarea id="nv_obs"></textarea></div>
@@ -855,6 +858,14 @@ function bindNova(){
   if(_planSeedTipo){ const t=$('#nv_tipo'); if(t){ t.value=_planSeedTipo; t.onchange&&t.onchange(); } _planSeedTipo=null; }
   if(_planSeedLote){ const l=$('#nv_lote'); if(l){ l.value=_planSeedLote; l.onchange&&l.onchange(); } _planSeedLote=null; }
 }
+function _operadoresCheckboxes(){
+  const ed=_editCodigo?S.comandas.find(x=>x.codigo===_editCodigo):null;
+  const sel=new Set(((ed&&ed.operadores)||[]).map(Number));
+  const fs=(S.funcionarios||[]).filter(f=>f.ativo!==false);
+  if(!fs.length) return '<span class="hint">Nenhum funcionário cadastrado (cadastre no módulo Funcionários).</span>';
+  return fs.map(f=>`<label style="display:inline-flex;align-items:center;gap:6px;cursor:pointer"><input type="checkbox" class="nv_oper" value="${f.id}" ${sel.has(f.id)?'checked':''}> ${esc(f.nome)}</label>`).join('');
+}
+function _lerOperadores(){ return Array.from(document.querySelectorAll('.nv_oper:checked')).map(c=>+c.value); }
 function salvarNova(){
   const tipo=$('#nv_tipo').value, lote=$('#nv_lote').value;
   const msg=$('#nv_msg');
@@ -866,7 +877,7 @@ function salvarNova(){
     if(!orig){msg.className='fmsg err';msg.textContent='Comanda não encontrada.';return;}
     const perfil=TIPO_PERFIL[tipo];
     const upd=Object.assign({},orig,{
-      tipoAtiv:tipo,perfil,loteNome:lote,
+      tipoAtiv:tipo,perfil,loteNome:lote,operadores:_lerOperadores(),
       dataExecucao:($('#nv_exec')?$('#nv_exec').value:''),
       taxa:$('#nv_taxa').value,faixa:$('#nv_faixa').value,capacidade:$('#nv_cap').value,
       produtos:novaProd.filter(p=>p.nome).map(p=>({...p,comp:''})),
@@ -2828,7 +2839,7 @@ function _comandaParaBanco(c){
   function num(v){ if(v===''||v==null) return null; const s=String(v).indexOf(',')>=0?String(v).replace(/\./g,'').replace(',','.'):String(v); const n=parseFloat(s); return isNaN(n)?null:n; }
   return {
     codigo:c.codigo, seq_geral:c.seqGeral, seq_tipo:c.seqTipo, status:c.status, safra:SAFRA,
-    tipo_ativ:c.tipoAtiv, perfil:c.perfil, lote_nome:c.loteNome,
+    tipo_ativ:c.tipoAtiv, perfil:c.perfil, lote_nome:c.loteNome, operadores:c.operadores||[],
     data_emissao:c.dataEmissao||null, data_execucao:c.dataExecucao||null,
     faixa:num(c.faixa), taxa:num(c.taxa), capacidade:num(c.capacidade),
     produtos:c.produtos||[], prod_texto:c.prodTexto||'',
@@ -2952,7 +2963,7 @@ function _comandaDoBanco(r){
   const dt=r.dados_tipo||{};
   return {
     codigo:r.codigo, seqGeral:r.seq_geral, seqTipo:r.seq_tipo, status:r.status,
-    tipoAtiv:r.tipo_ativ, perfil:r.perfil, loteNome:r.lote_nome,
+    tipoAtiv:r.tipo_ativ, perfil:r.perfil, loteNome:r.lote_nome, operadores:r.operadores||[],
     dataEmissao:r.data_emissao, dataExecucao:r.data_execucao,
     faixa:r.faixa, taxa:r.taxa, capacidade:r.capacidade,
     produtos:r.produtos||[], prodTexto:r.prod_texto||'',
@@ -2995,6 +3006,7 @@ async function carregarDoSupabase(){
     /* ----- UNIDADES (fator p/ converter população em bags etc.) ----- */
     try{ const r=await SB.from('unidades').select('*'); if(!r.error&&r.data&&r.data.length) S.unidades=r.data.map(u=>({sim:u.sim,nome:u.nome,dim:u.dim,fator:+u.fator||1})); }catch(e){ console.warn('unidades',e); }
     try{ const r=await SB.from('fornecedores').select('*'); if(!r.error&&r.data&&r.data.length) S.fornecedores=r.data.map(f=>({nome:f.nome})); }catch(e){ console.warn('fornecedores',e); }
+    try{ const r=await SB.from('funcionarios').select('id,nome,tipo,ativo').order('nome'); if(!r.error) S.funcionarios=(r.data||[]); }catch(e){ console.warn('funcionarios',e); }
 
     /* ----- PLANEJAMENTO da safra ----- */
     try{
