@@ -3,11 +3,13 @@
      cai pro cache quando offline.
    - libs/ícone/manifest em cache-first.
    - chamadas ao Supabase (dados/auth) NÃO são cacheadas (vão sempre pela rede). */
-const CACHE = 'alabama-campo-v1';
+const CACHE = 'alabama-campo-v2';
 const SHELL = [
   'campo.html',
   'manifest.webmanifest',
   'icon.svg',
+  'icon-192.png',
+  'icon-512.png',
   'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2'
 ];
 
