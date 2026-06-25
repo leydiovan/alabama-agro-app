@@ -200,7 +200,7 @@ async function _carregarDiasComanda(){
 }
 async function abrirComanda(cod){
   CUR=COMANDAS.find(c=>String(c.codigo)===String(cod)); if(!CUR){ _st('Comanda não encontrada.','#c0392b'); return; }
-  if(GPS.watchId!=null){ try{navigator.geolocation.clearWatch(GPS.watchId);}catch(e){} GPS.watchId=null; } GPS.running=false; GPS.pts=[]; GPS.cells=new Set(); GPS.areaHa=0; _TR=null;
+  if(GPS.watchId!=null){ try{navigator.geolocation.clearWatch(GPS.watchId);}catch(e){} GPS.watchId=null; } GPS.running=false; GPS.pts=[]; GPS.cells=new Set(); GPS.areaHa=0; GPS.bb=null; _TR=null;
   await _carregarDiasComanda();
   EXVIEW='menu'; STEP='exec'; render(); window.scrollTo(0,0);
 }
@@ -226,7 +226,7 @@ function abrirComandaDoc(){
   ov.querySelector('#docback').onclick=()=>ov.remove();
 }
 /* ===================== TELA DE TRABALHO (GPS — cobertura) ===================== */
-let GPS={running:false,watchId:null,pts:[],cells:new Set(),areaHa:0,speed:0,head:0,wake:null,acc:null,_lt:0};
+let GPS={running:false,watchId:null,pts:[],cells:new Set(),areaHa:0,speed:0,head:0,wake:null,acc:null,_lt:0,bb:null,_dt:null};
 const CELL=2; // m — resolução da cobertura
 function latLngToUTM(lat,lon,zona){
   const a=6378137.0,f=1/298.257223563,e2=f*(2-f),ep2=e2/(1-e2),k0=0.9996;
@@ -243,13 +243,16 @@ function _widthM(){ const m=IMPS.find(x=>String(x.id)===String(HDR.implemento_id
 function _otherDaysArea(){ return CUR_DAYS.filter(r=>r.data!==DIA).reduce((s,r)=>s+(+r.area_ha||0),0); }
 let _CV=null,_TR=null;
 function _setupCanvas(){ const cv=$('cv'); if(!cv) return; const dpr=window.devicePixelRatio||1; const w=cv.clientWidth,h=cv.clientHeight; cv.width=Math.max(1,Math.round(w*dpr)); cv.height=Math.max(1,Math.round(h*dpr)); _CV=cv; cv.getContext('2d').setTransform(dpr,0,0,dpr,0,0); _computeTransform(w,h); }
-function _computeTransform(w,h){ const poly=_polyUTM(); const all=(poly?poly.slice():[]).concat(GPS.pts.map(p=>[p.E,p.N]));
-  if(!all.length||!w||!h){ _TR=null; return; }
-  let minE=Infinity,maxE=-Infinity,minN=Infinity,maxN=-Infinity;
-  all.forEach(p=>{ if(p[0]<minE)minE=p[0]; if(p[0]>maxE)maxE=p[0]; if(p[1]<minN)minN=p[1]; if(p[1]>maxN)maxN=p[1]; });
+function _updBB(E,N){ if(!GPS.bb) GPS.bb={minE:E,maxE:E,minN:N,maxN:N}; else{ if(E<GPS.bb.minE)GPS.bb.minE=E; if(E>GPS.bb.maxE)GPS.bb.maxE=E; if(N<GPS.bb.minN)GPS.bb.minN=N; if(N>GPS.bb.maxN)GPS.bb.maxN=N; } }
+function _computeTransform(w,h){ if(!w||!h){ _TR=null; return; }
+  const poly=_polyUTM(); let minE=Infinity,maxE=-Infinity,minN=Infinity,maxN=-Infinity;
+  if(poly) poly.forEach(p=>{ if(p[0]<minE)minE=p[0]; if(p[0]>maxE)maxE=p[0]; if(p[1]<minN)minN=p[1]; if(p[1]>maxN)maxN=p[1]; });
+  if(GPS.bb){ if(GPS.bb.minE<minE)minE=GPS.bb.minE; if(GPS.bb.maxE>maxE)maxE=GPS.bb.maxE; if(GPS.bb.minN<minN)minN=GPS.bb.minN; if(GPS.bb.maxN>maxN)maxN=GPS.bb.maxN; }
+  if(!isFinite(minE)){ _TR=null; return; }
   const pad=18, spanE=Math.max(1,maxE-minE), spanN=Math.max(1,maxN-minN);
   _TR={minE,minN,sc:Math.min((w-2*pad)/spanE,(h-2*pad)/spanN),pad,w,h};
 }
+function _scheduleDraw(){ if(GPS._dt) return; GPS._dt=setTimeout(()=>{ GPS._dt=null; _computeTransform(_CV?_CV.clientWidth:0,_CV?_CV.clientHeight:0); _drawMapa(); },120); }
 function _x(E){ return _TR?(E-_TR.minE)*_TR.sc+_TR.pad:0; }
 function _y(N){ return _TR?(_TR.h-((N-_TR.minN)*_TR.sc+_TR.pad)):0; }
 function _drawMapa(){ const cv=_CV||$('cv'); if(!cv) return; const ctx=cv.getContext('2d'); const w=cv.clientWidth,h=cv.clientHeight;
@@ -263,9 +266,10 @@ function _hud(){ const el=$('hud'); if(!el) return; const loteA=areaLote(CUR.lot
   const pill=(l,v)=>'<span class="pill" style="background:#0d1117cc;backdrop-filter:blur(2px)">'+l+' <b class="gold">'+v+'</b></span>';
   el.innerHTML=pill('Vel',(GPS.speed||0).toFixed(0)+' km/h')+pill('Área',GPS.areaHa.toFixed(2)+' ha')+(pct!=null?pill('Lote',pct.toFixed(0)+'%'):'')+(GPS.acc!=null?pill('GPS','±'+Math.round(GPS.acc)+'m'):'');
 }
-function _markCells(aE,aN,bE,bN){ const hw=_widthM()/2; if(hw<=0) return; const dx=bE-aE,dy=bN-aN,len=Math.hypot(dx,dy); const steps=Math.max(1,Math.ceil(len/CELL)), r=Math.ceil(hw/CELL);
-  for(let s=0;s<=steps;s++){ const t=s/steps, cx=Math.round((aE+dx*t)/CELL), cy=Math.round((aN+dy*t)/CELL);
-    for(let i=-r;i<=r;i++)for(let j=-r;j<=r;j++){ if(i*i+j*j<=r*r) GPS.cells.add((cx+i)+'_'+(cy+j)); } }
+function _segDist(px,py,aE,aN,bE,bN){ const dx=bE-aE,dy=bN-aN,L2=dx*dx+dy*dy; let t=L2?((px-aE)*dx+(py-aN)*dy)/L2:0; t=t<0?0:(t>1?1:t); return Math.hypot(px-(aE+dx*t),py-(aN+dy*t)); }
+function _markCells(aE,aN,bE,bN){ const hw=_widthM()/2; if(hw<=0) return;
+  const i0=Math.floor((Math.min(aE,bE)-hw)/CELL),i1=Math.floor((Math.max(aE,bE)+hw)/CELL),j0=Math.floor((Math.min(aN,bN)-hw)/CELL),j1=Math.floor((Math.max(aN,bN)+hw)/CELL);
+  for(let i=i0;i<=i1;i++)for(let j=j0;j<=j1;j++){ if(_segDist((i+0.5)*CELL,(j+0.5)*CELL,aE,aN,bE,bN)<=hw) GPS.cells.add(i+'_'+j); }
   GPS.areaHa=GPS.cells.size*CELL*CELL/10000;
 }
 function _onFix(pos){ const cur=pos.coords; GPS.acc=cur.accuracy;
@@ -276,13 +280,14 @@ function _onFix(pos){ const cur=pos.coords; GPS.acc=cur.accuracy;
     if(GPS.running) _markCells(last.E,last.N,E,No);
     if(cur.speed!=null&&cur.speed>=0) GPS.speed=cur.speed*3.6; else { const dt=(t-(GPS._lt||t))/1000; if(dt>0) GPS.speed=d/dt*3.6; }
   }
-  GPS._lt=t; GPS.pts.push({E,N:No,lat:cur.latitude,lon:cur.longitude,t});
-  _computeTransform(_CV?_CV.clientWidth:0,_CV?_CV.clientHeight:0); _drawMapa(); _hud();
-  if(GPS.running&&GPS.pts.length%20===0) _saveGps(false);
+  GPS._lt=t; GPS.pts.push({E,N:No,lat:cur.latitude,lon:cur.longitude,t}); _updBB(E,No);
+  _hud(); _scheduleDraw();
+  if(GPS.running&&GPS.pts.length%40===0) _saveGps(false);
 }
-function _restoreToday(){ GPS.pts=[]; GPS.cells=new Set(); GPS.areaHa=0; GPS.speed=0;
+function _restoreToday(){ GPS.pts=[]; GPS.cells=new Set(); GPS.areaHa=0; GPS.speed=0; GPS.bb=null;
   const r=CUR_DAYS.find(x=>x.data===DIA); if(!r||!Array.isArray(r.trajeto)) return;
-  r.trajeto.forEach(p=>{ const lat=p[0],lon=p[1]; if(lat==null||lon==null) return; const u=latLngToUTM(lat,lon,23); if(GPS.pts.length){ const last=GPS.pts[GPS.pts.length-1]; _markCells(last.E,last.N,u[0],u[1]); } GPS.pts.push({E:u[0],N:u[1],lat,lon,t:p[2]||0}); });
+  r.trajeto.forEach(p=>{ const lat=p[0],lon=p[1]; if(lat==null||lon==null) return; const u=latLngToUTM(lat,lon,23); if(GPS.pts.length){ const last=GPS.pts[GPS.pts.length-1]; _markCells(last.E,last.N,u[0],u[1]); } GPS.pts.push({E:u[0],N:u[1],lat,lon,t:p[2]||0}); _updBB(u[0],u[1]); });
+  if((!GPS.cells.size||_widthM()<=0) && r.area_ha!=null) GPS.areaHa=+r.area_ha;   // mantém a área já salva se não dá p/ recomputar
 }
 async function _saveGps(final){ const r=CUR_DAYS.find(x=>x.data===DIA); if(!r) return;
   const patch={ trajeto:GPS.pts.map(p=>[+p.lat.toFixed(6),+p.lon.toFixed(6),p.t||0]), area_ha:+GPS.areaHa.toFixed(2), atualizado_em:new Date().toISOString() };
@@ -342,7 +347,7 @@ function renderTrabalho(){
   </div>`;
   if($('voltar'))$('voltar').onclick=()=>{ if(GPS.running){ _st('Toque em ■ Parar antes de sair.','#e67e22'); return; } EXVIEW='menu'; render(); };
   if($('h_maq'))$('h_maq').onchange=()=>{ HDR.maquina_id=$('h_maq').value; };
-  if($('h_imp'))$('h_imp').onchange=()=>{ HDR.implemento_id=$('h_imp').value; _drawMapa(); _hud(); };
+  if($('h_imp'))$('h_imp').onchange=()=>{ HDR.implemento_id=$('h_imp').value; GPS.cells=new Set(); GPS.areaHa=0; for(let i=1;i<GPS.pts.length;i++) _markCells(GPS.pts[i-1].E,GPS.pts[i-1].N,GPS.pts[i].E,GPS.pts[i].N); _drawMapa(); _hud(); };
   if($('gstart'))$('gstart').onclick=_gpsStart;
   if($('gstop'))$('gstop').onclick=_gpsStop;
   if($('concluir'))$('concluir').onclick=concluirLote;
@@ -350,11 +355,11 @@ function renderTrabalho(){
   setTimeout(()=>{ _setupCanvas(); _drawMapa(); _hud(); },30);
 }
 async function concluirLote(){
-  let r=CUR_DAYS.find(x=>x.data===DIA)||CUR_DAYS[0];
+  let r=CUR_DAYS.find(x=>x.data===DIA);
   if(!r){ _st('Inicie a atividade (▶) primeiro.','#e67e22'); return; }
   if(!confirm('Concluir o lote e enviar a comanda para aprovação?')) return;
   if(GPS.running) await _gpsStop(); else { await _saveGps(false); await _saveManual(); }
-  r=CUR_DAYS.find(x=>x.data===DIA)||CUR_DAYS[0];
+  r=CUR_DAYS.find(x=>x.data===DIA); if(!r) return;
   const patch={concluiu_lote:true,status:'enviada',atualizado_em:new Date().toISOString()}; if(!r.hora_fim) patch.hora_fim=nowHM();
   try{ const {error}=await SB.from('execucao_campo').update(patch).eq('id',r.id); if(error) throw error; STEP='fim'; render(); }
   catch(e){ _st('❌ '+e.message,'#c0392b'); }
@@ -370,6 +375,11 @@ function renderFim(){
   $('volta').onclick=async()=>{ STEP='home'; await carregarDia(); render(); };
 }
 
+/* mantém a tela ligada e salva quando o app volta/ sai (campo: troca de app, tela apaga) */
+document.addEventListener('visibilitychange',()=>{ if(!GPS.running) return;
+  if(document.visibilityState==='visible'){ if(navigator.wakeLock) navigator.wakeLock.request('screen').then(w=>GPS.wake=w).catch(()=>{}); }
+  else { _saveGps(false); } });
+window.addEventListener('pagehide',()=>{ if(GPS.running) _saveGps(false); });
 window.addEventListener('load',()=>{ setTimeout(boot,150); });
 </script>
 </body>
