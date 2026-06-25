@@ -13,11 +13,10 @@ body{background:var(--bg);color:var(--text);font:16px system-ui,Segoe UI,Arial,s
 .top h1{font-size:18px;display:flex;align-items:center;gap:8px}.top h1 .l{color:var(--gold)}
 .top .d{color:var(--muted);font-size:13px}
 .card{background:var(--bg2);border:1px solid var(--line);border-radius:14px;padding:12px 13px;margin-bottom:20px}
-.cbody2{display:flex;gap:8px;align-items:stretch;margin-top:8px}
-.cbody2 .turnos{flex:1;min-width:0}
-.cbody2 .turnos .turno{margin-bottom:8px}.cbody2 .turnos .turno:last-child{margin-bottom:0}
-.padtall{flex:0 0 84px;background:none;border:1.5px solid var(--gold);color:var(--gold);border-radius:10px;font-weight:800;font-size:14px;letter-spacing:.5px;cursor:pointer}
-.flagcol{display:flex;flex-direction:column;justify-content:center;gap:20px;padding-left:2px}
+.footer2{display:flex;align-items:stretch;justify-content:flex-end;gap:12px;margin-top:12px}
+.footer2 .padcol{flex:1;display:flex;flex-direction:column;gap:6px}
+.padtall{flex:1;min-height:74px;background:none;border:1.5px solid var(--gold);color:var(--gold);border-radius:10px;font-weight:800;font-size:15px;letter-spacing:.5px;cursor:pointer}
+.flagcol{flex:0 0 auto;display:flex;flex-direction:column;justify-content:center;gap:22px;padding-right:4px}
 .flagcol label{display:flex;align-items:center;gap:8px;font-size:15px;white-space:nowrap;color:var(--text)}
 .flagcol input{width:24px;height:24px}
 .card .nm{font-size:16px;font-weight:800}.card .tp{color:var(--muted);font-size:12px}
@@ -136,17 +135,16 @@ function renderPreencher(){
     if(JA[f.id]){ nLanc++; return `<div class="card lock"><div class="lockbadge">JÁ LANÇADO</div><div class="nm">${esc(f.nome)}</div><div class="tp">${TIPO[f.tipo]||f.tipo} · ${esc(_resumoJa(JA[f.id]))}</div></div>`; }
     nEdit++; const e=E[f.id]; const dis=e.falta||e.folga;
     const turnos=(e.m||[]).map((mc,i)=>`<div class="turno"><div><label>Entrada ${i+1}</label><input type="time" data-f="${f.id}" data-i="${i}" data-k="ent" value="${esc(mc.ent||'')}"></div><div><label>Saída ${i+1}</label><input type="time" data-f="${f.id}" data-i="${i}" data-k="sai" value="${esc(mc.sai||'')}"></div></div>`).join('');
-    const left=dis?`<div class="muted" style="align-self:center;font-size:16px;font-weight:700">${e.falta?'Faltou':'Folga'}</div>`:turnos;
+    const left=dis?`<div class="muted" style="padding:6px 0;font-size:16px;font-weight:700">${e.falta?'Faltou':'Folga'}</div>`:turnos;
     return `<div class="card"><div class="nm">${esc(f.nome)}</div><div class="tp">${TIPO[f.tipo]||f.tipo}</div>
-      <div class="cbody2">
-        <div class="turnos">${left}</div>
-        ${dis?'':`<button class="padtall" data-pad="${f.id}">PADRÃO</button>`}
+      <div style="margin-top:8px">${left}</div>
+      <div class="footer2">
+        ${dis?'':`<div class="padcol"><button class="padtall" data-pad="${f.id}">PADRÃO</button><button class="add" data-add="${f.id}">+ turno</button></div>`}
         <div class="flagcol">
           <label><input type="checkbox" data-flag="falta" data-f="${f.id}" ${e.falta?'checked':''}> Faltou</label>
           <label><input type="checkbox" data-flag="folga" data-f="${f.id}" ${e.folga?'checked':''}> Folga</label>
         </div>
-      </div>
-      ${dis?'':`<button class="add" data-add="${f.id}" style="margin-top:8px">+ turno</button>`}</div>`;
+      </div></div>`;
   }).join('');
   $('app').innerHTML=`<div class="top"><h1><span class="l">✍️</span> ${_dlabel(DATA)}${FERIADO?' · feriado':''}</h1><div class="d">${nEdit} a lançar${nLanc?(' · '+nLanc+' já lançado(s)'):''}</div></div>
     ${nEdit?'<button class="btn s" id="todos">⚡ Preencher TODOS os vazios com a jornada padrão</button>':''}
