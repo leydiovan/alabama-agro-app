@@ -1,0 +1,319 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
+<title>Campo — Alabama Agro</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+:root{--bg:#0d1117;--bg2:#161b22;--bg3:#1c2333;--line:#30363d;--text:#e6edf3;--muted:#8b949e;--gold:#ffc107;--ok:#27ae60;--err:#f85149;--blue:#388bfd}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--bg);color:var(--text);font:16px system-ui,Segoe UI,Arial,sans-serif;padding:12px 12px 96px;-webkit-text-size-adjust:100%}
+.top{position:sticky;top:0;background:var(--bg);padding:8px 0 10px;border-bottom:1px solid var(--line);margin-bottom:10px;z-index:5}
+.top h1{font-size:18px;display:flex;align-items:center;gap:8px}.top h1 .l{color:var(--gold)}
+.top .d{color:var(--muted);font-size:13px}
+.card{background:var(--bg2);border:1px solid var(--line);border-radius:14px;padding:13px 14px;margin-bottom:14px}
+.card .nm{font-size:16px;font-weight:800}.card .tp{color:var(--muted);font-size:12px;margin-top:2px}
+label{font-size:13px;color:var(--muted);display:block;margin-bottom:4px}
+input,select{width:100%;background:var(--bg);border:1px solid var(--line);border-radius:10px;color:var(--text);font-size:17px;padding:11px}
+input[type=time],input[type=number]{font-variant-numeric:tabular-nums}
+.two{display:flex;gap:10px}.two>div{flex:1}
+.btn{display:block;width:100%;border:0;border-radius:12px;padding:15px;font-size:17px;font-weight:800;cursor:pointer;margin-top:8px}
+.btn.g{background:var(--gold);color:#1a1100}.btn.k{background:var(--ok);color:#fff}.btn.s{background:var(--bg3);color:var(--text);border:1px solid var(--line)}
+.btn.b{background:var(--blue);color:#fff}.btn.danger{background:transparent;border:1px solid var(--err);color:var(--err)}
+.btn.sm{padding:9px 12px;font-size:14px;width:auto;display:inline-block;margin:0}
+.btn:disabled{opacity:.5}
+.bar{position:fixed;left:0;right:0;bottom:0;background:var(--bg2);border-top:1px solid var(--line);padding:10px 12px;display:flex;gap:10px;z-index:9}
+.bar .btn{margin:0}
+.lk{background:none;border:0;color:var(--gold);font-size:14px;cursor:pointer;padding:6px 0}
+.muted{color:var(--muted)}.ok{color:var(--ok)}.err{color:var(--err)}.gold{color:var(--gold)}
+.center{text-align:center}.big{font-size:54px}
+.pill{display:inline-block;padding:3px 10px;border-radius:20px;font-size:12px;font-weight:700;border:1px solid var(--line);color:var(--muted)}
+.pill.on{border-color:var(--ok);color:var(--ok)}.pill.go{border-color:var(--gold);color:var(--gold)}
+.cmd{display:block;width:100%;text-align:left;background:var(--bg2);border:1px solid var(--line);border-radius:14px;padding:13px 14px;margin-bottom:10px;cursor:pointer;color:var(--text)}
+.cmd:active{border-color:var(--gold)}
+.cmd .cod{font-weight:800;font-size:15px}
+.cmd .meta{color:var(--muted);font-size:13px;margin-top:3px}
+.cmd .st{float:right}
+.hint{color:var(--muted);font-size:13px;margin-top:8px;line-height:1.4}
+.kv{display:flex;justify-content:space-between;gap:10px;padding:7px 0;border-bottom:1px solid var(--line);font-size:14px}
+.kv b{font-weight:700}
+.sec{font-size:12px;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);margin:14px 0 6px}
+.agora{margin-top:4px}
+.fl{display:flex;gap:10px;align-items:center;margin-top:8px}.fl input{width:24px;height:24px}.fl label{margin:0;color:var(--text);font-size:15px}
+</style>
+</head>
+<body>
+<div id="app"><div class="center muted" style="margin-top:40px">Carregando…</div></div>
+<script>
+const SB_URL='https://ngdidjtfgmtkdkvqwfjf.supabase.co';
+const SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5nZGlkanRmZ210a2RrdnF3ZmpmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NTU5MDYsImV4cCI6MjA5NjUzMTkwNn0.OW9hGEFTvSYx_THv3DR9pt8xIVC0B9Pw2bTDGD6TBLk';
+let SB=null;
+const $=id=>document.getElementById(id);
+const esc=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const num=v=>{ const n=parseFloat(String(v==null?'':v).replace(',','.')); return isFinite(n)?n:null; };
+const brl=v=>'R$ '+(Number(v)||0).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2});
+const TIPO={registrado:'Registrado',diarista:'Diarista',temporario:'Temporário'};
+
+let STEP='login', USER_EMAIL='';
+let FUNCS=[], MAQS=[], IMPS=[], LOTES=[], SAFRA='', COMANDAS=[];
+let OPER=null;              // {id,nome,tipo} operador escolhido (salvo no aparelho)
+let DIA='';                 // 'AAAA-MM-DD'
+let PONTO=null;             // linha de ponto_pendente de hoje do operador (status do dia)
+let EXECS={};               // comanda_codigo -> execucao_campo de hoje
+let CUR=null;               // comanda aberta
+let EF={};                  // form da execução atual
+let VERTODAS=false;         // fallback: mostrar todas as comandas (sem designação)
+
+/* ---------- helpers ---------- */
+function nowHM(){ const d=new Date(); return String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0'); }
+function hoje(){ return new Date().toISOString().slice(0,10); }
+function _dlabel(ds){ const d=new Date(ds+'T12:00:00'); return ['Dom','Seg','Ter','Qua','Qui','Sex','Sáb'][d.getDay()]+' '+ds.split('-').reverse().join('/'); }
+function t2m(s){ if(!s) return null; const m=String(s).match(/^(\d{1,2}):(\d{2})$/); return m?(+m[1])*60+(+m[2]):null; }
+function horasEntre(a,b){ const x=t2m(a),y=t2m(b); if(x==null||y==null||y<=x) return null; return (y-x)/60; }
+function areaLote(nome){ const l=LOTES.find(x=>x.nome===nome); return l?l.area:null; }
+function _st(t,c){ let e=$('snack'); if(!e){ e=document.createElement('div'); e.id='snack'; e.style.cssText='position:fixed;left:12px;right:12px;bottom:78px;z-index:50;padding:11px 14px;border-radius:10px;font:600 14px system-ui;text-align:center;box-shadow:0 4px 14px rgba(0,0,0,.4)'; document.body.appendChild(e);} e.textContent=t; e.style.background=c||'#333'; e.style.color='#fff'; clearTimeout(e._t); e._t=setTimeout(()=>{e.remove();},3200); }
+
+/* ---------- boot / login ---------- */
+async function boot(){
+  if(!window.supabase){ $('app').innerHTML='<div class="center err" style="margin-top:40px">Sem internet (biblioteca não carregou).</div>'; return; }
+  SB=window.supabase.createClient(SB_URL,SB_KEY);
+  const {data}=await SB.auth.getSession();
+  if(data&&data.session){ entrar(); } else { STEP='login'; render(); }
+}
+function _msg(t,c){ const e=$('msg'); if(e){ e.textContent=t; e.style.color=c||'var(--muted)'; } }
+async function login(){
+  const em=$('e').value.trim(), pw=$('s').value;
+  if(!em||!pw){ _msg('Preencha e-mail e senha.','var(--gold)'); return; }
+  _msg('Entrando…'); try{ const {error}=await SB.auth.signInWithPassword({email:em,password:pw}); if(error){ _msg('Erro: '+error.message,'var(--err)'); return; } entrar(); }
+  catch(e){ _msg('Falha: '+e.message,'var(--err)'); }
+}
+async function entrar(){
+  DIA=hoje();
+  try{ const {data:u}=await SB.auth.getUser(); USER_EMAIL=(u&&u.user&&u.user.email)||''; }catch(e){}
+  try{ const {data:f}=await SB.from('funcionarios').select('id,nome,tipo,ativo').order('nome'); FUNCS=(f||[]).filter(x=>x.ativo!==false); }catch(e){ FUNCS=[]; }
+  try{ const {data:m}=await SB.from('maquinas').select('id,nome,categoria,id_frota,consumo_ref').order('nome'); MAQS=m||[]; }catch(e){ MAQS=[]; }
+  try{ const {data:i}=await SB.from('implementos').select('id,nome,categoria,id_frota,largura_trabalho').order('nome'); IMPS=i||[]; }catch(e){ IMPS=[]; }
+  try{ const {data:l}=await SB.from('lotes').select('nome,area').order('nome'); LOTES=l||[]; }catch(e){ LOTES=[]; }
+  await carregarSafra();
+  // operador salvo no aparelho?
+  let oid=null; try{ oid=+localStorage.getItem('campo_oper')||null; }catch(e){}
+  OPER = oid? (FUNCS.find(f=>f.id===oid)||null) : null;
+  if(OPER){ await carregarDia(); STEP='home'; } else { STEP='quemsou'; }
+  render();
+}
+async function carregarSafra(){
+  let safras=[]; try{ const {data}=await SB.from('safras').select('*'); safras=data||[]; }catch(e){}
+  const h=hoje();
+  let s=safras.find(x=>x.inicio&&x.fim&&x.inicio<=h&&h<=x.fim);
+  if(!s) s=safras.slice().sort((a,b)=>(b.ano||0)-(a.ano||0))[0];
+  SAFRA=s?s.nome:'';
+  try{ const {data}=await SB.from('comandas').select('*').eq('safra',SAFRA).neq('status','cancelada'); COMANDAS=data||[]; }catch(e){ COMANDAS=[]; }
+}
+async function carregarDia(){
+  if(!OPER) return;
+  // status do dia (ponto): consolidado tem prioridade; senão fila
+  PONTO=null;
+  try{ const {data}=await SB.from('ponto').select('*').eq('funcionario_id',OPER.id).eq('data',DIA); if(data&&data[0]){ PONTO=Object.assign({_st:'lançado'},data[0]); } }catch(e){}
+  if(!PONTO){ try{ const {data}=await SB.from('ponto_pendente').select('*').eq('funcionario_id',OPER.id).eq('data',DIA); if(data&&data[0]){ PONTO=Object.assign({_st:'fila'},data[0]); } }catch(e){} }
+  // execuções de hoje deste operador
+  EXECS={};
+  try{ const {data}=await SB.from('execucao_campo').select('*').eq('funcionario_id',OPER.id).eq('data',DIA); (data||[]).forEach(x=>{ if(x.comanda_codigo) EXECS[x.comanda_codigo]=x; }); }catch(e){}
+}
+
+/* ---------- ponto (início/fim do dia -> fila de aprovação) ---------- */
+function _pontoMarc(){ return (PONTO&&Array.isArray(PONTO.marcacoes))?PONTO.marcacoes:[]; }
+function diaIniciado(){ const m=_pontoMarc(); return m.length>0 && !!m[0].ent; }
+function diaFinalizado(){ const m=_pontoMarc(); return m.length>0 && !!m[0].ent && !!m[0].sai; }
+async function gravarPonto(marc){
+  const reg={ funcionario_id:OPER.id, data:DIA, marcacoes:marc, feriado:false, falta:false, folga:false, sem_he:false, enviado_por:USER_EMAIL||null };
+  const {error}=await SB.from('ponto_pendente').upsert(reg,{onConflict:'funcionario_id,data'}); if(error) throw error;
+  PONTO=Object.assign({_st:'fila'},reg);
+}
+async function iniciarDia(){
+  if(PONTO&&PONTO._st==='lançado'){ _st('Dia já lançado/aprovado.','#e67e22'); return; }
+  try{ await gravarPonto([{ent:nowHM(),sai:''}]); _st('✅ Dia iniciado às '+_pontoMarc()[0].ent,'#27ae60'); render(); }
+  catch(e){ _st('❌ '+e.message,'#c0392b'); }
+}
+async function finalizarDia(){
+  if(!diaIniciado()){ _st('Inicie o dia primeiro.','#e67e22'); return; }
+  if(PONTO._st==='lançado'){ _st('Dia já aprovado — não dá pra alterar aqui.','#e67e22'); return; }
+  if(!confirm('Finalizar o dia agora ('+nowHM()+')?')) return;
+  const m=_pontoMarc().map(x=>({ent:x.ent||'',sai:x.sai||''})); if(!m.length) m.push({ent:nowHM(),sai:''});
+  m[0].sai=nowHM();
+  try{ await gravarPonto(m); _st('✅ Dia finalizado — '+m[0].ent+'–'+m[0].sai,'#27ae60'); render(); }
+  catch(e){ _st('❌ '+e.message,'#c0392b'); }
+}
+
+/* ---------- comandas do operador ---------- */
+function comandasDoOperador(){
+  const desig=COMANDAS.filter(c=>(c.operadores||[]).map(Number).includes(OPER.id));
+  if(desig.length || !VERTODAS) return desig;
+  return COMANDAS.slice();
+}
+
+/* ===================== RENDER ===================== */
+function render(){
+  if(STEP==='login') return renderLogin();
+  if(STEP==='quemsou') return renderQuemSou();
+  if(STEP==='home') return renderHome();
+  if(STEP==='exec') return renderExec();
+  if(STEP==='fim') return renderFim();
+}
+function _botoesSair(){ return '<button class="lk" id="sair">sair</button> <button class="lk" id="troca" style="margin-left:14px">trocar operador</button>'; }
+function _bindSair(){ if($('sair'))$('sair').onclick=async()=>{ if(SB) await SB.auth.signOut(); location.reload(); }; if($('troca'))$('troca').onclick=()=>{ try{localStorage.removeItem('campo_oper');}catch(e){} OPER=null; STEP='quemsou'; render(); }; }
+
+function renderLogin(){
+  $('app').innerHTML=`<div class="top"><h1><span class="l">🚜</span> Campo</h1><div class="d">Alabama Agro</div></div>
+    <div class="card"><label>E-mail</label><input id="e" type="email" autocomplete="username">
+      <label style="margin-top:10px">Senha</label><input id="s" type="password" autocomplete="current-password">
+      <button class="btn g" id="b">Entrar</button>
+      <div id="msg" class="center" style="margin-top:10px;font-size:13px;min-height:16px"></div></div>`;
+  $('b').onclick=login; $('s').addEventListener('keydown',e=>{if(e.key==='Enter')login();});
+}
+function renderQuemSou(){
+  const opts=FUNCS.map(f=>`<option value="${f.id}">${esc(f.nome)} (${TIPO[f.tipo]||f.tipo})</option>`).join('');
+  $('app').innerHTML=`<div class="top"><h1><span class="l">👤</span> Quem é você?</h1><div class="d">Escolha o operador deste tablet (fica salvo no aparelho)</div></div>
+    <div class="card"><label>Operador</label><select id="op"><option value="">— escolha —</option>${opts}</select>
+      <button class="btn g" id="ok">Confirmar</button>
+      <div class="hint">Isso identifica de quem são as comandas e o ponto deste tablet. Você pode trocar depois em "trocar operador".</div></div>
+    <div style="margin-top:8px">${_botoesSair()}</div>`;
+  $('ok').onclick=async()=>{ const id=+$('op').value; if(!id){ _st('Escolha o operador.','#e67e22'); return; } OPER=FUNCS.find(f=>f.id===id); try{localStorage.setItem('campo_oper',String(id));}catch(e){} await carregarDia(); STEP='home'; render(); };
+  _bindSair();
+}
+function renderHome(){
+  const ini=diaIniciado(), fim=diaFinalizado(); const m=_pontoMarc();
+  const aprovado=PONTO&&PONTO._st==='lançado';
+  let dstatus;
+  if(aprovado) dstatus='<span class="pill on">dia aprovado</span>';
+  else if(fim) dstatus='<span class="pill on">dia '+esc(m[0].ent)+'–'+esc(m[0].sai)+'</span>';
+  else if(ini) dstatus='<span class="pill go">iniciado '+esc(m[0].ent)+'</span>';
+  else dstatus='<span class="pill">dia não iniciado</span>';
+
+  const lista=comandasDoOperador();
+  const desigCount=COMANDAS.filter(c=>(c.operadores||[]).map(Number).includes(OPER.id)).length;
+  const cards=lista.map(c=>{
+    const ex=EXECS[c.codigo]; const done=c.status==='executada';
+    let stbadge = done?'<span class="pill on st">concluída</span>'
+      : ex?(ex.concluiu_lote?'<span class="pill on st">enviada · lote concluído</span>':'<span class="pill go st">apontada hoje</span>')
+      : '<span class="pill st">a fazer</span>';
+    const area=areaLote(c.lote_nome);
+    return `<button class="cmd" data-cod="${esc(c.codigo)}">${stbadge}
+      <div class="cod">${esc(c.codigo)} · ${esc(c.tipo_ativ||'—')}</div>
+      <div class="meta">Lote ${esc(c.lote_nome||'—')}${area?(' · '+area+' ha'):''}${c.prod_texto?(' · '+esc(c.prod_texto)):''}</div></button>`;
+  }).join('');
+  $('app').innerHTML=`<div class="top"><h1><span class="l">🚜</span> ${esc(OPER.nome)}</h1>
+      <div class="d">${_dlabel(DIA)} · safra ${esc(SAFRA||'—')} · ${dstatus}</div></div>
+    <div class="card">
+      ${!ini?`<button class="btn k" id="ini">▶ Iniciar o dia (${nowHM()})</button>`:''}
+      ${ini&&!fim&&!aprovado?`<button class="btn s" id="fim">■ Finalizar o dia</button>`:''}
+      ${aprovado?'<div class="hint">O ponto de hoje já foi aprovado pelo administrador.</div>':''}
+      <div class="hint">Iniciar/Finalizar o dia gera seu <b>ponto</b> (vai para aprovação do admin, junto com a coleta).</div>
+    </div>
+    <div class="sec">Comandas ${desigCount?('designadas a você ('+desigCount+')'):''}</div>
+    ${cards||`<div class="card muted">Nenhuma comanda ${desigCount?'':'designada a você '}nesta safra.${desigCount?'':' <a class="lk" id="vt" style="display:inline">ver todas para teste</a>'}</div>`}
+    <div class="bar">${_botoesSairBar()}</div>`;
+  if($('ini'))$('ini').onclick=iniciarDia;
+  if($('fim'))$('fim').onclick=finalizarDia;
+  if($('vt'))$('vt').onclick=()=>{ VERTODAS=true; render(); };
+  document.querySelectorAll('[data-cod]').forEach(b=>b.onclick=()=>abrirComanda(b.dataset.cod));
+  _bindSairBar();
+}
+function _botoesSairBar(){ return `<button class="btn s" id="sair2">Sair</button><button class="btn s" id="troca2">Trocar operador</button>`; }
+function _bindSairBar(){ if($('sair2'))$('sair2').onclick=async()=>{ if(SB) await SB.auth.signOut(); location.reload(); }; if($('troca2'))$('troca2').onclick=()=>{ try{localStorage.removeItem('campo_oper');}catch(e){} OPER=null; STEP='quemsou'; render(); }; }
+
+function abrirComanda(cod){
+  CUR=COMANDAS.find(c=>String(c.codigo)===String(cod)); if(!CUR){ _st('Comanda não encontrada.','#c0392b'); return; }
+  const ex=EXECS[cod]||{};
+  EF={ maquina_id:ex.maquina_id||'', implemento_id:ex.implemento_id||'', hora_inicio:ex.hora_inicio||'', hora_fim:ex.hora_fim||'',
+       horimetro_ini:ex.horimetro_ini??'', horimetro_fim:ex.horimetro_fim??'', diesel_litros:ex.diesel_litros??'',
+       area_ha:ex.area_ha??'', obs:ex.obs||'', concluiu_lote:!!ex.concluiu_lote };
+  STEP='exec'; render(); window.scrollTo(0,0);
+}
+function renderExec(){
+  const c=CUR; const area=areaLote(c.lote_nome);
+  const maqOpt=`<option value="">— trator/máquina —</option>`+MAQS.map(m=>`<option value="${m.id}" ${String(EF.maquina_id)===String(m.id)?'selected':''}>${esc(m.nome)}${m.id_frota?(' ('+esc(m.id_frota)+')'):''}</option>`).join('');
+  const impOpt=`<option value="">— implemento (opcional) —</option>`+IMPS.map(m=>`<option value="${m.id}" ${String(EF.implemento_id)===String(m.id)?'selected':''}>${esc(m.nome)}${m.largura_trabalho?(' · '+m.largura_trabalho+'m'):''}</option>`).join('');
+  const horas=horasEntre(EF.hora_inicio,EF.hora_fim);
+  const hm=(EF.horimetro_ini!==''&&EF.horimetro_fim!=='')?(num(EF.horimetro_fim)-num(EF.horimetro_ini)):null;
+  $('app').innerHTML=`<div class="top"><h1><span class="l">📋</span> ${esc(c.codigo)}</h1><div class="d">${esc(c.tipo_ativ||'')} · Lote ${esc(c.lote_nome||'—')}${area?(' · '+area+' ha'):''}</div></div>
+    <div class="card">
+      <div class="kv"><span>Tipo</span><b>${esc(c.tipo_ativ||'—')}</b></div>
+      <div class="kv"><span>Lote</span><b>${esc(c.lote_nome||'—')}${area?(' · '+area+' ha'):''}</b></div>
+      ${c.prod_texto?`<div class="kv"><span>Produtos</span><b>${esc(c.prod_texto)}</b></div>`:''}
+      ${c.faixa?`<div class="kv"><span>Faixa</span><b>${esc(c.faixa)}</b></div>`:''}
+      ${c.obs?`<div class="kv"><span>Obs</span><b>${esc(c.obs)}</b></div>`:''}
+    </div>
+    <div class="card">
+      <div class="sec" style="margin-top:0">Máquina</div>
+      <label>Trator / máquina</label><select id="f_maq">${maqOpt}</select>
+      <label style="margin-top:10px">Implemento</label><select id="f_imp">${impOpt}</select>
+
+      <div class="sec">Tempo</div>
+      <div class="two">
+        <div><label>Início</label><input type="time" id="f_hi" value="${esc(EF.hora_inicio)}"><button class="lk agora" data-now="hi">usar agora (${nowHM()})</button></div>
+        <div><label>Fim</label><input type="time" id="f_hf" value="${esc(EF.hora_fim)}"><button class="lk agora" data-now="hf">usar agora (${nowHM()})</button></div>
+      </div>
+      ${horas!=null?`<div class="hint">Tempo trabalhado: <b class="gold">${horas.toFixed(2)} h</b></div>`:''}
+
+      <div class="sec">Hora-máquina / Diesel</div>
+      <div class="two">
+        <div><label>Horímetro início</label><input type="number" step="any" inputmode="decimal" id="f_hmi" value="${esc(EF.horimetro_ini)}"></div>
+        <div><label>Horímetro fim</label><input type="number" step="any" inputmode="decimal" id="f_hmf" value="${esc(EF.horimetro_fim)}"></div>
+      </div>
+      ${hm!=null&&isFinite(hm)?`<div class="hint">Horas de máquina: <b class="gold">${hm.toFixed(1)} h</b></div>`:''}
+      <label style="margin-top:10px">Diesel abastecido hoje (L)</label><input type="number" step="any" inputmode="decimal" id="f_die" value="${esc(EF.diesel_litros)}" placeholder="litros">
+
+      <div class="sec">Área feita hoje</div>
+      <label>Hectares (manual por enquanto)</label><input type="number" step="any" inputmode="decimal" id="f_area" value="${esc(EF.area_ha)}" placeholder="ha">
+      <label style="margin-top:10px">Observação</label><input id="f_obs" value="${esc(EF.obs)}" placeholder="opcional">
+
+      <div class="fl"><input type="checkbox" id="f_concl" ${EF.concluiu_lote?'checked':''}><label for="f_concl">Concluí o lote (enviar comanda para aprovação)</label></div>
+    </div>
+    <div class="bar">
+      <button class="btn s" id="voltar">◀ Voltar</button>
+      <button class="btn k" id="salvar">Salvar / Enviar</button>
+    </div>`;
+  // captura mudanças no estado
+  const bind=(id,k,n)=>{ const el=$(id); if(el) el.onchange=()=>{ EF[k]= n?num(el.value):el.value; if(id==='f_hi'||id==='f_hf'||id==='f_hmi'||id==='f_hmf') render(); }; };
+  bind('f_maq','maquina_id'); bind('f_imp','implemento_id'); bind('f_hi','hora_inicio'); bind('f_hf','hora_fim');
+  bind('f_hmi','horimetro_ini'); bind('f_hmf','horimetro_fim'); bind('f_die','diesel_litros'); bind('f_area','area_ha'); bind('f_obs','obs');
+  if($('f_concl'))$('f_concl').onchange=e=>{ EF.concluiu_lote=e.target.checked; };
+  document.querySelectorAll('[data-now]').forEach(b=>b.onclick=()=>{ EF[b.dataset.now==='hi'?'hora_inicio':'hora_fim']=nowHM(); render(); });
+  if($('voltar'))$('voltar').onclick=()=>{ STEP='home'; render(); };
+  if($('salvar'))$('salvar').onclick=salvarExec;
+}
+async function salvarExec(){
+  // recolhe valores atuais dos inputs (caso não tenham disparado change)
+  EF.maquina_id=$('f_maq').value; EF.implemento_id=$('f_imp').value; EF.hora_inicio=$('f_hi').value; EF.hora_fim=$('f_hf').value;
+  EF.horimetro_ini=num($('f_hmi').value); EF.horimetro_fim=num($('f_hmf').value); EF.diesel_litros=num($('f_die').value);
+  EF.area_ha=num($('f_area').value); EF.obs=$('f_obs').value.trim(); EF.concluiu_lote=$('f_concl').checked;
+  if(!EF.maquina_id){ _st('Escolha o trator/máquina.','#e67e22'); return; }
+  const reg={ comanda_codigo:CUR.codigo, safra:SAFRA, funcionario_id:OPER.id, lote_nome:CUR.lote_nome||null, data:DIA,
+    maquina_id:EF.maquina_id?+EF.maquina_id:null, implemento_id:EF.implemento_id?+EF.implemento_id:null,
+    hora_inicio:EF.hora_inicio||null, hora_fim:EF.hora_fim||null, horimetro_ini:EF.horimetro_ini, horimetro_fim:EF.horimetro_fim,
+    diesel_litros:EF.diesel_litros, area_ha:EF.area_ha, concluiu_lote:!!EF.concluiu_lote, obs:EF.obs||null,
+    status:'enviada', enviado_por:USER_EMAIL||null, atualizado_em:new Date().toISOString() };
+  const b=$('salvar'); if(b){ b.disabled=true; b.textContent='Salvando…'; }
+  try{
+    const {error}=await SB.from('execucao_campo').upsert(reg,{onConflict:'comanda_codigo,funcionario_id,data'}); if(error) throw error;
+    EXECS[CUR.codigo]=reg;
+    if(EF.concluiu_lote){ STEP='fim'; render(); }
+    else { _st('✅ Apontamento salvo (enviado para aprovação)','#27ae60'); STEP='home'; await carregarDia(); render(); }
+  }catch(e){ _st('❌ '+e.message,'#c0392b'); if(b){ b.disabled=false; b.textContent='Salvar / Enviar'; } }
+}
+function renderFim(){
+  $('app').innerHTML=`<div class="center" style="margin-top:46px">
+    <div class="big">✅</div>
+    <h1 style="font-size:22px;margin:10px 0">Comanda enviada</h1>
+    <div class="muted">${esc(CUR.codigo)} · lote ${esc(CUR.lote_nome||'')}</div>
+    <div class="muted" style="font-size:13px;margin-top:8px">Marcada como <b>lote concluído</b> e enviada para aprovação do administrador.</div>
+    <button class="btn g" id="volta" style="max-width:320px;margin:22px auto 0">Voltar às comandas</button>
+  </div>`;
+  $('volta').onclick=async()=>{ STEP='home'; await carregarDia(); render(); };
+}
+
+window.addEventListener('load',()=>{ setTimeout(boot,150); });
+</script>
+</body>
+</html>
