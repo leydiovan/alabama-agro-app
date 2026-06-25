@@ -216,19 +216,13 @@ function renderExecMenu(){
   if($('ic_trab'))$('ic_trab').onclick=()=>{ EXVIEW='trabalho'; render(); window.scrollTo(0,0); };
   if($('voltar'))$('voltar').onclick=async()=>{ STEP='home'; EXVIEW='menu'; await carregarDia(); render(); };
 }
-/* ---- abre a comanda impressa (idêntica) num overlay com iframe + pinça/zoom ---- */
-async function abrirComandaDoc(){
-  let s=null; try{ const {data}=await SB.auth.getSession(); s=data&&data.session; }catch(e){}
-  if(!s){ _st('Sessão expirada — entre de novo.','#c0392b'); return; }
-  const safra=CUR.safra||SAFRA||'';
-  const src='01_modulos_producao/modulo_atividades_supabase.html#view=comanda&cod='+encodeURIComponent(CUR.codigo)+'&via=auto&safra='+encodeURIComponent(safra)+'&at='+encodeURIComponent(s.access_token)+'&rt='+encodeURIComponent(s.refresh_token);
-  const vp=document.querySelector('meta[name=viewport]'); const vpOrig=vp?vp.getAttribute('content'):null;
-  if(vp) vp.setAttribute('content','width=device-width,initial-scale=1,maximum-scale=5,user-scalable=yes');  // habilita pinça/zoom
+/* ---- abre a comanda (placeholder até virar PDF offline; NUNCA carrega o admin) ---- */
+function abrirComandaDoc(){
   const ov=document.createElement('div'); ov.id='docov';
-  ov.style.cssText='position:fixed;inset:0;z-index:1000;background:#fff;display:flex;flex-direction:column';
-  ov.innerHTML='<div style="flex:0 0 auto;background:#0d1117;color:#fff;display:flex;align-items:center;gap:12px;padding:10px 12px"><button id="docback" style="font-size:16px;font-weight:700;background:#1c2333;color:#fff;border:1px solid #30363d;border-radius:8px;padding:10px 16px;width:auto;margin:0">← Voltar</button><b>Comanda '+esc(CUR.codigo)+'</b><span style="color:#8b949e;font-size:13px">pinça pra dar zoom</span></div><div style="flex:1;min-height:0"><iframe id="dociframe" src="'+esc(src)+'" style="border:0;width:100%;height:100%"></iframe></div>';
+  ov.style.cssText='position:fixed;inset:0;z-index:1000;background:#0d1117;color:#e6edf3;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:24px;text-align:center';
+  ov.innerHTML='<div style="font-size:52px">📄</div><h2 style="margin:10px 0">Comanda '+esc(CUR.codigo)+'</h2><div class="muted" style="max-width:360px;line-height:1.5">Aqui vai abrir a comanda como <b>PDF</b> — pra funcionar <b>offline</b> no campo e dar zoom direito, <u>sem acessar o sistema admin</u>. Estou montando esse formato.</div><button class="btn g" id="docback" style="max-width:240px;margin-top:22px">Voltar</button>';
   document.body.appendChild(ov);
-  ov.querySelector('#docback').onclick=()=>{ ov.remove(); if(vp&&vpOrig!=null) vp.setAttribute('content',vpOrig); };
+  ov.querySelector('#docback').onclick=()=>ov.remove();
 }
 function renderTrabalho(){
   const c=CUR; const area=areaLote(c.lote_nome);
