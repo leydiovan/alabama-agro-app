@@ -244,7 +244,7 @@ function _dayCard(r){
       <div><label>Horímetro início</label><input class="cardf" type="number" step="any" inputmode="decimal" data-d="${d}" data-f="horimetro_ini" value="${r.horimetro_ini??''}"></div>
       <div><label>Horímetro fim</label><input class="cardf" type="number" step="any" inputmode="decimal" data-d="${d}" data-f="horimetro_fim" value="${r.horimetro_fim??''}"></div>
     </div>
-    ${hm!=null&&isFinite(hm)?`<div class="hint">Hora-máquina: <b class="gold">${hm.toFixed(1)} h</b></div>`:''}
+    <div class="hint" id="hm_${r.id}">${(hm!=null&&isFinite(hm))?('Hora-máquina: <b class="gold">'+hm.toFixed(1)+' h</b>'):''}</div>
     <label style="margin-top:10px">Diesel (L)</label><input class="cardf" type="number" step="any" inputmode="decimal" data-d="${d}" data-f="diesel_litros" value="${r.diesel_litros??''}" placeholder="litros abastecidos">
     <label style="margin-top:10px">Área feita (ha)</label><input class="cardf" type="number" step="any" inputmode="decimal" data-d="${d}" data-f="area_ha" value="${r.area_ha??''}" placeholder="manual (GPS na fase 2)">
     <label style="margin-top:10px">Observação</label><input class="cardf" data-d="${d}" data-f="obs" value="${esc(r.obs||'')}" placeholder="opcional">
@@ -275,14 +275,16 @@ async function salvarCampoCard(d, campo, valor){
   const r=CUR_DAYS.find(x=>x.data===d); if(!r) return;
   const patch={atualizado_em:new Date().toISOString()}; patch[campo]=(campo==='obs')?(valor||null):num(valor);
   try{ const {error}=await SB.from('execucao_campo').update(patch).eq('id',r.id); if(error) throw error; Object.assign(r,patch);
-    if(campo==='horimetro_ini'||campo==='horimetro_fim') render();
+    if(campo==='horimetro_ini'||campo==='horimetro_fim'){ const el=$('hm_'+r.id); if(el){ const hm=(r.horimetro_ini!=null&&r.horimetro_fim!=null)?(num(r.horimetro_fim)-num(r.horimetro_ini)):null; el.innerHTML=(hm!=null&&isFinite(hm))?('Hora-máquina: <b class="gold">'+hm.toFixed(1)+' h</b>'):''; } }
   }catch(e){ _st('❌ '+e.message,'#c0392b'); }
 }
 async function concluirLote(){
   if(!CUR_DAYS.length){ _st('Nenhum dia lançado ainda.','#e67e22'); return; }
   if(!confirm('Concluir o lote e enviar a comanda para aprovação?')) return;
   const r=CUR_DAYS.find(x=>x.data===DIA)||CUR_DAYS[0];
-  try{ const {error}=await SB.from('execucao_campo').update({concluiu_lote:true, status:'enviada', atualizado_em:new Date().toISOString()}).eq('id',r.id); if(error) throw error;
+  const patch={concluiu_lote:true, status:'enviada', atualizado_em:new Date().toISOString()};
+  if(!r.hora_fim) patch.hora_fim=nowHM();   // se concluiu sem finalizar o dia, fecha agora
+  try{ const {error}=await SB.from('execucao_campo').update(patch).eq('id',r.id); if(error) throw error;
     STEP='fim'; render(); }
   catch(e){ _st('❌ '+e.message,'#c0392b'); }
 }
