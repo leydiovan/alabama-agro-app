@@ -37,6 +37,9 @@ td.n,th.n{text-align:right}
 .center{text-align:center}
 .big{font-size:54px}
 .add{color:var(--gold);font-size:14px;background:none;border:1px dashed var(--gold);border-radius:8px;padding:6px 10px;cursor:pointer;margin-top:4px}
+.padbtn{color:var(--gold);font-size:13px;font-weight:700;background:none;border:1px solid var(--gold);border-radius:8px;padding:7px 12px;cursor:pointer;margin-top:6px}
+.card.lock{position:relative;opacity:.55;filter:grayscale(.3)}
+.card.lock .lockbadge{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%) rotate(-8deg);background:#1c2333;border:2px solid var(--gold);color:var(--gold);font-weight:900;font-size:18px;letter-spacing:1px;padding:8px 18px;border-radius:10px;box-shadow:0 4px 14px rgba(0,0,0,.4);white-space:nowrap}
 </style>
 </head>
 <body>
@@ -48,7 +51,7 @@ let SB=null;
 const $=id=>document.getElementById(id);
 const esc=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const TIPO={registrado:'Registrado',diarista:'Diarista',temporario:'Temporário'};
-let CFG={}, FUNCS=[], STEP='login', DATA='', FERIADO=false, E={};   // E[fid]={m:[{ent,sai}],falta,folga}
+let CFG={}, FUNCS=[], STEP='login', DATA='', FERIADO=false, E={}, JA={};   // E[fid]={m:[{ent,sai}],falta,folga}; JA[fid]=registro já no banco
 
 /* ---- tempo / cálculo (igual ao módulo) ---- */
 function t2m(s){ if(!s) return null; const m=String(s).match(/^(\d{1,2}):(\d{2})$/); return m?(+m[1])*60+(+m[2]):null; }
@@ -107,43 +110,54 @@ function renderData(){
       <div class="fl" style="margin-top:12px"><label><input type="checkbox" id="fer"> Feriado (todos viram hora extra)</label></div>
       <button class="btn g" id="ir">Começar (${FUNCS.length} ativos)</button></div>
     <button class="lk" id="sair">sair</button>`;
-  $('ir').onclick=()=>{ DATA=$('dt').value||DATA; FERIADO=$('fer').checked; iniciar(); };
+  $('ir').onclick=async()=>{ DATA=$('dt').value||DATA; FERIADO=$('fer').checked; const b=$('ir'); b.disabled=true; b.textContent='Carregando…'; await iniciar(); };
   $('sair').onclick=async()=>{ await SB.auth.signOut(); location.reload(); };
 }
-function iniciar(){
-  E={}; const turnos=turnosPadrao(DATA);
-  FUNCS.forEach(f=>{ E[f.id]={ m:turnos.map(t=>({ent:t.ent,sai:t.sai})), falta:false, folga:false }; if(!E[f.id].m.length) E[f.id].m=[{ent:'',sai:''}]; });
+async function iniciar(){
+  JA={};
+  try{ const {data}=await SB.from('ponto').select('funcionario_id,marcacoes,falta,folga,feriado').eq('data',DATA); (data||[]).forEach(p=>JA[p.funcionario_id]=p); }catch(e){}
+  E={};
+  // cards começam VAZIOS (sem padrão automático); já-lançados ficam travados
+  FUNCS.forEach(f=>{ if(!JA[f.id]) E[f.id]={ m:[{ent:'',sai:''},{ent:'',sai:''}], falta:false, folga:false }; });
   STEP='preencher'; render();
 }
+function cardPadrao(fid){ if(JA[fid])return; const t=turnosPadrao(DATA); E[fid].m = t.length? t.map(x=>({ent:x.ent,sai:x.sai})) : [{ent:'',sai:''},{ent:'',sai:''}]; render(); }
+function _resumoJa(j){ return j.falta?'Faltou':(j.folga?'Folga':((j.marcacoes||[]).filter(x=>x.ent||x.sai).map(x=>(x.ent||'?')+'-'+(x.sai||'?')).join(' ')||'lançado'+(j.feriado?' · feriado':''))); }
 function renderPreencher(){
-  const cards=FUNCS.map(f=>{ const e=E[f.id]; const dis=e.falta||e.folga;
+  let nLanc=0, nEdit=0;
+  const cards=FUNCS.map(f=>{
+    if(JA[f.id]){ nLanc++; return `<div class="card lock"><div class="lockbadge">JÁ LANÇADO</div><div class="nm">${esc(f.nome)}</div><div class="tp">${TIPO[f.tipo]||f.tipo} · ${esc(_resumoJa(JA[f.id]))}</div></div>`; }
+    nEdit++; const e=E[f.id]; const dis=e.falta||e.folga;
     const turnos=(e.m||[]).map((mc,i)=>`<div class="turno"><div><label>Entrada ${i+1}</label><input type="time" data-f="${f.id}" data-i="${i}" data-k="ent" value="${esc(mc.ent||'')}" ${dis?'disabled':''}></div><div><label>Saída ${i+1}</label><input type="time" data-f="${f.id}" data-i="${i}" data-k="sai" value="${esc(mc.sai||'')}" ${dis?'disabled':''}></div></div>`).join('');
     return `<div class="card"><div class="nm">${esc(f.nome)}</div><div class="tp">${TIPO[f.tipo]||f.tipo}</div>
-      <div style="margin-top:8px">${turnos}</div>
-      ${dis?'':`<button class="add" data-add="${f.id}">+ turno (hora extra)</button>`}
+      <div style="margin-top:8px">${dis?'<div class="muted" style="padding:6px 0">'+(e.falta?'Faltou':'Folga')+'</div>':turnos}</div>
+      ${dis?'':`<div class="row" style="gap:8px"><button class="padbtn" data-pad="${f.id}">PADRÃO</button><button class="add" data-add="${f.id}">+ turno</button></div>`}
       <div class="fl"><label><input type="checkbox" data-flag="falta" data-f="${f.id}" ${e.falta?'checked':''}> Faltou</label>
         <label><input type="checkbox" data-flag="folga" data-f="${f.id}" ${e.folga?'checked':''}> Folga</label></div></div>`;
   }).join('');
-  $('app').innerHTML=`<div class="top"><h1><span class="l">✍️</span> ${_dlabel(DATA)}${FERIADO?' · feriado':''}</h1><div class="d">Preencha os horários · ${FUNCS.length} funcionários</div></div>
-    <button class="btn s" id="todos">⚡ Preencher todos com a jornada padrão</button>
+  $('app').innerHTML=`<div class="top"><h1><span class="l">✍️</span> ${_dlabel(DATA)}${FERIADO?' · feriado':''}</h1><div class="d">${nEdit} a lançar${nLanc?(' · '+nLanc+' já lançado(s)'):''}</div></div>
+    ${nEdit?'<button class="btn s" id="todos">⚡ Preencher TODOS os vazios com a jornada padrão</button>':''}
     ${cards||'<div class="card muted">Nenhum funcionário ativo.</div>'}
     <div class="bar"><button class="btn s" id="volta">◀ Data</button><button class="btn g" id="rev">Revisar ▶</button></div>`;
-  // binds
   document.querySelectorAll('input[type=time]').forEach(inp=>inp.onchange=()=>{ const e=E[+inp.dataset.f]; while(e.m.length<=+inp.dataset.i) e.m.push({ent:'',sai:''}); e.m[+inp.dataset.i][inp.dataset.k]=inp.value; });
   document.querySelectorAll('input[data-flag]').forEach(c=>c.onchange=()=>{ const e=E[+c.dataset.f]; e[c.dataset.flag]=c.checked; if(c.checked){ if(c.dataset.flag==='falta')e.folga=false; else e.falta=false; } render(); });
   document.querySelectorAll('[data-add]').forEach(b=>b.onclick=()=>{ E[+b.dataset.add].m.push({ent:'',sai:''}); render(); });
-  $('todos').onclick=()=>{ const turnos=turnosPadrao(DATA); FUNCS.forEach(f=>{ if(!E[f.id].falta&&!E[f.id].folga) E[f.id].m=turnos.map(t=>({ent:t.ent,sai:t.sai})); }); render(); };
+  document.querySelectorAll('[data-pad]').forEach(b=>b.onclick=()=>cardPadrao(+b.dataset.pad));
+  if($('todos')) $('todos').onclick=()=>{ const t=turnosPadrao(DATA); FUNCS.forEach(f=>{ if(JA[f.id])return; const e=E[f.id]; if(!e.falta&&!e.folga&&!(e.m||[]).some(x=>x.ent||x.sai)) e.m=t.map(x=>({ent:x.ent,sai:x.sai})); }); render(); };
   $('volta').onclick=()=>{ STEP='data'; render(); };
   $('rev').onclick=()=>{ STEP='revisar'; render(); };
 }
 function renderRevisar(){
+  const edit=FUNCS.filter(f=>!JA[f.id]);
+  const aEnviar=edit.filter(f=>{ const e=E[f.id]; return e.falta||e.folga||(e.m||[]).some(x=>x.ent||x.sai); });
+  const nJa=FUNCS.length-edit.length, nVazio=edit.length-aEnviar.length;
   let tExtra=0;
-  const rows=FUNCS.map(f=>{ const e=E[f.id]; const r=calc(DATA,e,FERIADO); tExtra+=r.extra;
+  const rows=aEnviar.map(f=>{ const e=E[f.id]; const r=calc(DATA,e,FERIADO); tExtra+=r.extra;
     const st=e.falta?'<span class="err">Faltou</span>':(e.folga?'<span class="muted">Folga</span>':(e.m||[]).filter(x=>x.ent||x.sai).map(x=>(x.ent||'?')+'-'+(x.sai||'?')).join(' ')||'<span class="muted">—</span>');
     return `<tr><td>${esc(f.nome)}</td><td>${st}</td><td class="n">${r.normal?m2hm(r.normal):'—'}</td><td class="n he">${r.extra?m2hm(r.extra):'—'}</td></tr>`;
-  }).join('');
+  }).join('')||'<tr><td colspan="4" class="muted">Nada novo para enviar.</td></tr>';
   $('app').innerHTML=`<div class="top"><h1><span class="l">✅</span> Revisar</h1><div class="d">${_dlabel(DATA)}${FERIADO?' · feriado':''} — confira antes de enviar</div></div>
-    <div class="card" style="padding:8px 12px"><b>Total de hora extra do dia: <span class="he">${m2hm(tExtra)}</span></b></div>
+    <div class="card" style="padding:8px 12px"><b>Vai enviar: ${aEnviar.length}</b> · HE do dia: <span class="he">${m2hm(tExtra)}</span>${nJa?` · <span class="muted">${nJa} já lançado(s) (não mexe)</span>`:''}${nVazio?` · <span class="muted">${nVazio} vazio(s) (não envia)</span>`:''}</div>
     <div class="card" style="padding:6px 8px"><table><thead><tr><th>Funcionário</th><th>Turnos</th><th class="n">Normal</th><th class="n">Extra</th></tr></thead><tbody>${rows}</tbody></table></div>
     <div class="card muted" style="font-size:13px">⚠️ Depois de enviar, este aparelho <b>não tem mais acesso</b> aos dados. Só dá pra corrigir agora, antes de enviar.</div>
     <div class="bar"><button class="btn s" id="corrigir">◀ Corrigir</button><button class="btn k" id="enviar">📤 Enviar</button></div>`;
@@ -152,9 +166,9 @@ function renderRevisar(){
 }
 async function enviar(){
   const btn=$('enviar'); if(btn){ btn.disabled=true; btn.textContent='Enviando…'; }
-  const linhas=FUNCS.map(f=>{ const e=E[f.id]; const marc=(e.m||[]).filter(x=>x&&(x.ent||x.sai)).map(x=>({ent:x.ent||'',sai:x.sai||''}));
+  const linhas=FUNCS.filter(f=>!JA[f.id]).map(f=>{ const e=E[f.id]; const marc=(e.m||[]).filter(x=>x&&(x.ent||x.sai)).map(x=>({ent:x.ent||'',sai:x.sai||''}));
     return { funcionario_id:f.id, data:DATA, marcacoes:marc, feriado:!!FERIADO, falta:!!e.falta, folga:!!e.folga, sem_he:false };
-  }).filter(l=>l.marcacoes.length || l.falta || l.folga);   // só envia quem tem algo
+  }).filter(l=>l.marcacoes.length || l.falta || l.folga);   // só envia quem tem algo e nao estava lançado
   try{
     if(linhas.length){ const {error}=await SB.from('ponto').upsert(linhas,{onConflict:'funcionario_id,data'}); if(error) throw error; }
     STEP='enviado'; E={}; window.scrollTo(0,0); render(); _enviadoN=linhas.length;
