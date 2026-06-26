@@ -352,8 +352,8 @@ async function _gpsLeave(){
   if(GPS.watchId!=null){ try{navigator.geolocation.clearWatch(GPS.watchId);}catch(e){} GPS.watchId=null; }
   try{ if(GPS.wake){ await GPS.wake.release(); GPS.wake=null; } }catch(e){}
   GPS.speed=0;
-  if(SESS){ const vazia=!GPS.pts.length && SESS.horimetro_ini==null && SESS.horimetro_fim==null && SESS.diesel_litros==null;
-    if(vazia){ try{ await SB.from('execucao_campo').delete().eq('id',SESS.id); }catch(e){} } else { await _saveGps(true); } }
+  // só fecha (enviada) a sessão que teve trabalho; vazia fica 'aberta' p/ retomar (operador não pode apagar — RLS)
+  if(SESS && GPS.pts.length) await _saveGps(true);
   SESS=null; await _carregarDiasComanda();
 }
 async function _trocarConjunto(){
