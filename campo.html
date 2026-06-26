@@ -13,7 +13,7 @@
 <link rel="apple-touch-icon" href="icon-192.png">
 <link rel="icon" href="icon.svg">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script>if('serviceWorker' in navigator){window.addEventListener('load',function(){navigator.serviceWorker.register('sw.js').catch(function(){});});}</script>
+<script>if('serviceWorker' in navigator){window.addEventListener('load',function(){navigator.serviceWorker.register('sw.js').then(function(reg){reg.addEventListener('updatefound',function(){var nw=reg.installing;if(!nw)return;nw.addEventListener('statechange',function(){if(nw.state==='installed'&&navigator.serviceWorker.controller){try{if(typeof GPS!=='undefined'&&GPS.watchId!=null){if(typeof _st==='function')_st('Atualização pronta — recarregue ao terminar','#3498db');}else{location.reload();}}catch(e){location.reload();}}});});}).catch(function(){});});}</script>
 <style>
 :root{--bg:#0d1117;--bg2:#161b22;--bg3:#1c2333;--line:#30363d;--text:#e6edf3;--muted:#8b949e;--gold:#ffc107;--ok:#27ae60;--err:#f85149;--blue:#388bfd}
 *{box-sizing:border-box;margin:0;padding:0}
@@ -228,11 +228,15 @@ async function _carregarDiasComanda(){
   const ult=CUR_DAYS[0];
   HDR={ maquina_id:(ult&&ult.maquina_id)||'', implemento_id:(ult&&ult.implemento_id)||'' };
 }
+let _abrindoCmd=false;
 async function abrirComanda(cod){
-  CUR=COMANDAS.find(c=>String(c.codigo)===String(cod)); if(!CUR){ _st('Comanda não encontrada.','#c0392b'); return; }
-  if(GPS.watchId!=null){ try{navigator.geolocation.clearWatch(GPS.watchId);}catch(e){} GPS.watchId=null; } GPS.pts=[]; GPS.cells=new Set(); GPS.areaHa=0; GPS.speed=0; SESS=null; DAYSEGS=[]; VIEW={follow:true,zoom:1,cx:null,cy:null}; ABAST=[]; ABFORM=false;
-  await _carregarDiasComanda(); await _carregarAbast();
-  EXVIEW='menu'; STEP='exec'; render(); window.scrollTo(0,0);
+  if(_abrindoCmd) return; _abrindoCmd=true;
+  try{
+    CUR=COMANDAS.find(c=>String(c.codigo)===String(cod)); if(!CUR){ _st('Comanda não encontrada.','#c0392b'); return; }
+    if(GPS.watchId!=null){ try{navigator.geolocation.clearWatch(GPS.watchId);}catch(e){} GPS.watchId=null; } GPS.pts=[]; GPS.cells=new Set(); GPS.areaHa=0; GPS.speed=0; SESS=null; DAYSEGS=[]; VIEW={follow:true,zoom:1,cx:null,cy:null}; ABAST=[]; ABFORM=false;
+    await _carregarDiasComanda(); await _carregarAbast();
+    EXVIEW='menu'; STEP='exec'; render(); window.scrollTo(0,0);
+  } finally { _abrindoCmd=false; }
 }
 /* ---- menu da comanda: dois ícones ---- */
 function _ultMaq(){ const r=CUR_DAYS.find(x=>x.maquina_id); return r?r.maquina_id:''; }
@@ -293,10 +297,12 @@ async function abrirComandaDoc(){
   const cod=CUR.codigo, safra=CUR.safra||SAFRA, path=_pdfPath(cod,safra);
   const ov=document.createElement('div'); ov.id='docov';
   ov.style.cssText='position:fixed;inset:0;z-index:1000;background:#0d1117;color:#e6edf3;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:24px;text-align:center';
-  ov.innerHTML='<div style="font-size:48px">📄</div><div style="margin-top:10px">Abrindo comanda '+esc(cod)+'…</div>';
+  ov.innerHTML='<div style="font-size:48px">📄</div><div style="margin-top:10px">Abrindo comanda '+esc(cod)+'…</div><button class="btn s" id="docback0" style="max-width:200px;margin-top:18px">Voltar</button>';
   document.body.appendChild(ov);
+  const _b0=ov.querySelector('#docback0'); if(_b0) _b0.onclick=()=>ov.remove();
   let blob=null, off=false;
-  try{ const {data,error}=await SB.storage.from('comandas-pdf').download(path); if(!error&&data&&data.size){ blob=data; _pdfCacheSet(path,data); } }catch(e){}
+  if(navigator.onLine){ try{ const {data,error}=await _q(SB.storage.from('comandas-pdf').download(path),5000); if(!error&&data&&data.size){ blob=data; _pdfCacheSet(path,data); } }catch(e){} }
+  if(!document.body.contains(ov)) return;   // usuário tocou Voltar enquanto baixava
   if(!blob){ const cch=await _pdfCacheGet(path); if(cch){ blob=cch; off=true; } }
   if(!blob){
     ov.innerHTML='<div style="font-size:48px">📄</div><h2 style="margin:10px 0">Comanda '+esc(cod)+'</h2><div class="muted" style="max-width:340px;line-height:1.5">A comanda em PDF ainda não foi gerada. Peça ao admin para <b>abrir e salvar</b> a comanda (gera o PDF) e conecte o tablet à internet uma vez para baixar.</div><button class="btn g" id="docback" style="max-width:240px;margin-top:22px">Voltar</button>';
@@ -399,7 +405,7 @@ function _onFix(pos){ const cur=pos.coords; GPS.acc=cur.accuracy;
   } else if(cur.speed!=null&&cur.speed>=0) GPS.speed=cur.speed*3.6;
   GPS._lt=t; GPS.pts.push({E,N:No,lat:cur.latitude,lon:cur.longitude,t,v:GPS.speed||0});
   _hud(); _scheduleDraw();
-  if(GPS.watchId!=null&&GPS.pts.length%40===0) _saveGps(false);
+  if(GPS.watchId!=null){ if(GPS.pts.length%40===0) _saveGps(false); else if(GPS.pts.length%5===0) _touchSess(); }   // local a cada 5 fixes, sync a cada 40
 }
 function _recalcCells(){ GPS.cells=new Set(); GPS.areaHa=0; for(let i=1;i<GPS.pts.length;i++) _markCells(GPS.pts[i-1].E,GPS.pts[i-1].N,GPS.pts[i].E,GPS.pts[i].N); }
 function _implLarg(id){ const m=IMPS.find(x=>String(x.id)===String(id)); return m&&m.largura_trabalho?+m.largura_trabalho:0; }
@@ -413,13 +419,15 @@ function _restoreSess(){ GPS.pts=[]; GPS.cells=new Set(); GPS.areaHa=0; GPS.spee
   if((!GPS.cells.size||_widthM()<=0) && SESS.area_ha!=null) GPS.areaHa=+SESS.area_ha;
 }
 /* ===== fila offline (outbox): sessões/abastecimentos locais 1º, sincroniza qdo tiver rede ===== */
-let PEND=0;
+let PEND=0; const _SYNCING=new Set();   // lids em sincronização (evita 2 inserts -> sessão duplicada)
 function _lid(){ return 'L'+Date.now().toString(36)+Math.random().toString(36).slice(2,7); }
 function _sessReg(s){ return { comanda_codigo:s.comanda_codigo, safra:s.safra, funcionario_id:s.funcionario_id, lote_nome:s.lote_nome, data:s.data, maquina_id:s.maquina_id, implemento_id:s.implemento_id, hora_inicio:s.hora_inicio, hora_fim:s.hora_fim||null, status:s.status, trajeto:s.trajeto||[], area_ha:s.area_ha||0, concluiu_lote:!!s.concluiu_lote, enviado_por:s.enviado_por||null, atualizado_em:s.atualizado_em||new Date().toISOString() }; }
 function _abastReg(a){ return { comanda_codigo:a.comanda_codigo, safra:a.safra, funcionario_id:a.funcionario_id, maquina_id:a.maquina_id, lote_nome:a.lote_nome, litros:a.litros, quando:a.quando, enviado_por:a.enviado_por||null }; }
-async function _syncSession(s){ if(!s) return false; if(!navigator.onLine||!SB) return false;
-  try{ if(!s.serverId){ const {data,error}=await SB.from('execucao_campo').insert(_sessReg(s)).select('id').single(); if(error) throw error; s.serverId=data.id; } else { const {error}=await SB.from('execucao_campo').update(_sessReg(s)).eq('id',s.serverId); if(error) throw error; } s.dirty=false; await _idbPut('sessions',s); return true; }
+async function _syncSession(s){ if(!s||_SYNCING.has(s.lid)) return false; if(!navigator.onLine||!SB) return false;
+  _SYNCING.add(s.lid); const v=s._v||0;
+  try{ if(!s.serverId){ const {data,error}=await SB.from('execucao_campo').insert(_sessReg(s)).select('id').single(); if(error) throw error; s.serverId=data.id; } else { const {error}=await SB.from('execucao_campo').update(_sessReg(s)).eq('id',s.serverId); if(error) throw error; } if((s._v||0)===v) s.dirty=false; await _idbPut('sessions',s); return true; }
   catch(e){ s.dirty=true; try{ await _idbPut('sessions',s); }catch(_){} return false; }
+  finally{ _SYNCING.delete(s.lid); }
 }
 async function _syncAbast(a){ if(!a) return false; if(!navigator.onLine||!SB) return false;
   try{ if(!a.serverId){ const {data,error}=await SB.from('abastecimentos').insert(_abastReg(a)).select('id').single(); if(error) throw error; a.serverId=data.id; } a.dirty=false; await _idbPut('abast',a); return true; }
@@ -428,17 +436,22 @@ async function _syncAbast(a){ if(!a) return false; if(!navigator.onLine||!SB) re
 async function _ensureLocal(r){ if(!r) return r; if(r.lid) return r; const s=Object.assign({}, r, { lid:_lid(), serverId:r.id, dirty:false }); s.id=s.lid; await _idbPut('sessions',s); return s; }
 async function _pendCount(){ try{ const s=(await _idbAll('sessions')).filter(x=>x.dirty).length; const a=(await _idbAll('abast')).filter(x=>x.dirty).length; return s+a; }catch(e){ return 0; } }
 async function _updPend(){ PEND=await _pendCount(); const b=$('pendbadge'); if(b){ b.textContent=PEND?('⏳ '+PEND+' p/ enviar'):'✓ tudo enviado'; b.style.background=PEND?'#3a2a00':'#0d2a14'; b.style.color=PEND?'#ffc107':'#3fb950'; } }
-async function _syncAll(){ if(!navigator.onLine||!SB) return; try{ const sess=(await _idbAll('sessions')).filter(s=>s.dirty); for(const s of sess) await _syncSession(s); const ab=(await _idbAll('abast')).filter(a=>a.dirty); for(const a of ab) await _syncAbast(a); }catch(e){} await _updPend(); }
+async function _syncAll(){ if(!navigator.onLine||!SB) return;
+  try{ const sess=(await _idbAll('sessions')).filter(s=>s.dirty); for(const s of sess) await _syncSession(s); const ab=(await _idbAll('abast')).filter(a=>a.dirty); for(const a of ab) await _syncAbast(a);
+    const hj=hoje(); const so=await _idbAll('sessions'); for(const s of so){ if(!s.dirty && s.serverId && String(s.data)<hj && !_SYNCING.has(s.lid)) await _idbDel('sessions',s.lid); }   // poda: sessões antigas já no servidor (cache cobre offline)
+  }catch(e){} await _updPend();
+}
+function _touchSess(){ if(!SESS) return; SESS.trajeto=GPS.pts.map(p=>[+p.lat.toFixed(6),+p.lon.toFixed(6),p.t||0,+(p.v||0).toFixed(1)]); SESS.area_ha=+GPS.areaHa.toFixed(2); SESS.atualizado_em=new Date().toISOString(); SESS.dirty=true; SESS._v=(SESS._v||0)+1; _idbPut('sessions',SESS); }   // só local (a cada poucos fixes) — sobrevive a crash
 async function _saveGps(final){ if(!SESS) return;
   SESS.trajeto=GPS.pts.map(p=>[+p.lat.toFixed(6),+p.lon.toFixed(6),p.t||0,+(p.v||0).toFixed(1)]);
   SESS.area_ha=+GPS.areaHa.toFixed(2); SESS.atualizado_em=new Date().toISOString();
   if(final){ SESS.hora_fim=nowHM(); SESS.status='enviada'; }
-  SESS.dirty=true; try{ await _idbPut('sessions',SESS); }catch(e){}   // local primeiro (sobrevive offline)
+  SESS.dirty=true; SESS._v=(SESS._v||0)+1; try{ await _idbPut('sessions',SESS); }catch(e){}   // local primeiro (sobrevive offline)
   await _syncSession(SESS); _updPend();
 }
 async function _novaSessao(){
   const lid=_lid();
-  const s={ lid, id:lid, serverId:null, dirty:true, comanda_codigo:CUR.codigo, safra:SAFRA, funcionario_id:OPER.id, lote_nome:CUR.lote_nome||null, data:DIA, maquina_id:HDR.maquina_id?+HDR.maquina_id:null, implemento_id:HDR.implemento_id?+HDR.implemento_id:null, hora_inicio:nowHM(), hora_fim:null, status:'aberto', trajeto:[], area_ha:0, concluiu_lote:false, enviado_por:USER_EMAIL||null, atualizado_em:new Date().toISOString() };
+  const s={ lid, id:lid, serverId:null, dirty:true, _v:1, comanda_codigo:CUR.codigo, safra:SAFRA, funcionario_id:OPER.id, lote_nome:CUR.lote_nome||null, data:DIA, maquina_id:HDR.maquina_id?+HDR.maquina_id:null, implemento_id:HDR.implemento_id?+HDR.implemento_id:null, hora_inicio:nowHM(), hora_fim:null, status:'aberto', trajeto:[], area_ha:0, concluiu_lote:false, enviado_por:USER_EMAIL||null, atualizado_em:new Date().toISOString() };
   try{ await _idbPut('sessions',s); }catch(e){}
   await _syncSession(s);          // tenta criar no servidor já (se online)
   await _carregarDiasComanda(); _updPend();
@@ -467,6 +480,7 @@ async function _gpsLeave(){
   // só fecha (enviada) a sessão que teve trabalho de verdade (>=2 pontos); vazia fica 'aberta' p/ retomar
   if(SESS && GPS.pts.length>=2) await _saveGps(true);
   SESS=null; await _carregarDiasComanda();
+  if(navigator.onLine) _syncAll();   // empurra a fila ao sair da tela de trabalho
 }
 async function _trocarConjunto(){
   const nm=$('h_maq')?$('h_maq').value:'', ni=$('h_imp')?$('h_imp').value:''; HDR.maquina_id=nm; HDR.implemento_id=ni;
@@ -491,8 +505,8 @@ function _bindGestures(cv){ if(_gestBound===cv) return; _gestBound=cv;
   const dist=ts=>Math.hypot(ts[0].clientX-ts[1].clientX, ts[0].clientY-ts[1].clientY);
   cv.addEventListener('touchstart',e=>{ if(e.touches.length>=2){ mode='pinch'; startD=dist(e.touches)||1; startZoom=VIEW.zoom; } else { mode='pan'; lx=e.touches[0].clientX; ly=e.touches[0].clientY; } },{passive:false});
   cv.addEventListener('touchmove',e=>{ e.preventDefault();
-    if(mode==='pinch'&&e.touches.length>=2){ VIEW.zoom=Math.max(0.3,Math.min(25,startZoom*dist(e.touches)/startD)); _drawMapa(); }
-    else if(mode==='pan'&&e.touches.length===1&&VIEW.cx!=null){ const t=e.touches[0],sc=_sc()||1; VIEW.cx-=(t.clientX-lx)/sc; VIEW.cy+=(t.clientY-ly)/sc; lx=t.clientX; ly=t.clientY; VIEW.follow=false; const b=$('btn_follow'); if(b) b.textContent='✋ Livre'; _drawMapa(); }
+    if(mode==='pinch'&&e.touches.length>=2){ VIEW.zoom=Math.max(0.3,Math.min(25,startZoom*dist(e.touches)/startD)); _scheduleDraw(); }
+    else if(mode==='pan'&&e.touches.length===1&&VIEW.cx!=null){ const t=e.touches[0],sc=_sc()||1; VIEW.cx-=(t.clientX-lx)/sc; VIEW.cy+=(t.clientY-ly)/sc; lx=t.clientX; ly=t.clientY; VIEW.follow=false; const b=$('btn_follow'); if(b) b.textContent='✋ Livre'; _scheduleDraw(); }
   },{passive:false});
   cv.addEventListener('touchend',()=>{ mode=null; },{passive:false});
 }
