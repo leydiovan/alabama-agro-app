@@ -1121,11 +1121,11 @@ async function cancelarFinalizacao(codigo){
   if(!confirm('Cancelar a finalização da comanda '+codigo+'?\n\nEla volta para "lançada" e as movimentações do campo voltam para a fila de aprovação (nada é apagado). Dá para refazer no tablet e reaprovar.')) return;
   try{
     const ret=Object.assign({}, c.geralRetorno||{}); delete ret.campo;
-    const {error}=await SB.from('comandas').update({status:'lancada', data_execucao:null, geral_retorno:ret}).eq('codigo',codigo).eq('safra',SAFRA);
+    const {error}=await SB.from('comandas').update({status:'lancada', data_execucao:null, geral_retorno:ret, diario:[]}).eq('codigo',codigo).eq('safra',SAFRA);
     if(error) throw error;
     const {error:e2}=await SB.from('execucao_campo').update({status:'enviada', concluiu_lote:false, atualizado_em:new Date().toISOString()}).eq('comanda_codigo',codigo).eq('safra',SAFRA).in('status',['aprovada','enviada','aberto']);
     if(e2) throw e2;
-    c.status='lancada'; c.dataExecucao=null; c.geralRetorno=ret;
+    c.status='lancada'; c.dataExecucao=null; c.geralRetorno=ret; c.diario=[];
     _statusSB('↩️ Finalização cancelada — comanda '+codigo+' reaberta','#27ae60');
     fecharFicha(); if(typeof renderPills==='function') renderPills(); if(APC!==undefined) APC=null; if(typeof _updNavAprovCampo==='function') _updNavAprovCampo(); render();
   }catch(e){ _statusSB('❌ '+e.message,'#c0392b'); }
@@ -3059,26 +3059,34 @@ function bindAprovCampo(){
 async function aprovarComandaCampo(key){
   const sp=String(key).split('|'); const codigo=sp[0], safra=sp[1]||'';
   const g=APC.comandas.find(x=>String(x.codigo)===codigo && (x.safra||'')===safra); if(!g) return;
-  if(!confirm('Aprovar a comanda '+codigo+' (safra '+safra+') com '+g.rows.length+' sessão(ões) em '+_apcResumo(g).dias+' dia(s)? Os números vão para a comanda.')) return;
-  const tot=_apcResumo(g);
+  if(!confirm('Aprovar a comanda '+codigo+'?\n\nOs dados do campo entram na comanda (diário + retorno) e ela fica EXECUTADA. Se precisar refazer, use "Cancelar finalização" na ficha.')) return;
   const c=(safra===SAFRA)?S.comandas.find(x=>x.codigo===codigo):null;
-  const ultimaData=g.rows.map(r=>r.data).filter(Boolean).sort().slice(-1)[0]||null;
   try{
-    const retorno=Object.assign({}, (c&&c.geralRetorno)||{}, {
-      campo:{ dias:tot.dias, area_ha:+tot.area.toFixed(2), diesel_l:+tot.diesel.toFixed(2), horas_trabalho:+tot.horas.toFixed(1),
-        operadores:[...new Set(g.rows.map(r=>APC.fun[r.funcionario_id]||('#'+r.funcionario_id)))],
-        abastecimentos:(g.abast||[]).map(a=>({litros:+a.litros, quando:a.quando, maquina:APC.maq[a.maquina_id]||null})),
-        aprovado_em:new Date().toISOString() }
+    // consolida TODAS as sessões COM trabalho da comanda (inclusive já aprovadas) — reaprovação é cumulativa
+    let allRows=g.rows.slice();
+    try{ const {data}=await SB.from('execucao_campo').select('*').eq('comanda_codigo',codigo).eq('safra',safra); if(data&&data.length) allRows=data.filter(r=>(Array.isArray(r.trajeto)&&r.trajeto.length>1)||r.area_ha||r.hora_fim||r.horimetro_ini!=null||r.diesel_litros!=null); }catch(e){}
+    allRows.sort((a,b)=>String((a.data||'')+(a.hora_inicio||'')).localeCompare(String((b.data||'')+(b.hora_inicio||''))));
+    const datas=allRows.map(r=>r.data).filter(Boolean).sort(); const ultimaData=datas.slice(-1)[0]||null;
+    const totArea=allRows.reduce((s,r)=>s+(+r.area_ha||0),0);
+    const totDiesel=(g.abast||[]).reduce((s,a)=>s+(+a.litros||0),0);
+    const horas=allRows.reduce((s,r)=>s+(_apcHoras(r.hora_inicio,r.hora_fim)||0),0);
+    const ndias=new Set(allRows.map(r=>r.data).filter(Boolean)).size;
+    const diario=allRows.map(r=>{ const a=+r.area_ha||0; const hi=r.hora_inicio||'', hf=r.hora_fim||''; const dies=totArea>0?(totDiesel*a/totArea):(allRows.length?totDiesel/allRows.length:0);
+      return { 'Data':r.data, 'Hora inicial':hi, 'Hora final':hf, 'Hora início':hi, 'Hora fim':hf, 'Início':hi, 'Fim':hf, 'Área':(a?_apcFmt(a):''), 'Diesel':(dies?+dies.toFixed(1):'') }; });
+    const maqs=[...new Set(allRows.map(r=>(APC.maq[r.maquina_id]||'')+(r.implemento_id?(' + '+(APC.imp[r.implemento_id]||'')):'')).filter(x=>x.trim()))].join('; ');
+    const opers=[...new Set(allRows.map(r=>APC.fun[r.funcionario_id]||('#'+r.funcionario_id)))].join(', ');
+    const geral=Object.assign({}, (c&&c.geralRetorno)||{}, {
+      'Data de início':datas[0]||'', 'Data de fim':ultimaData||'', 'Maquinário e implemento':maqs, 'Operador':opers,
+      campo:{ dias:ndias, area_ha:+totArea.toFixed(2), diesel_l:+totDiesel.toFixed(2), horas_trabalho:+horas.toFixed(1), operadores:opers.split(', ').filter(Boolean), abastecimentos:(g.abast||[]).map(a=>({litros:+a.litros, quando:a.quando, maquina:APC.maq[a.maquina_id]||null})), aprovado_em:new Date().toISOString() }
     });
-    const upd={ geral_retorno:retorno };
-    if(tot.concl){ upd.status='executada'; if(ultimaData) upd.data_execucao=ultimaData; }
+    const upd={ status:'executada', data_execucao:ultimaData, diario:diario, geral_retorno:geral };
     const {data:updRows,error}=await SB.from('comandas').update(upd).eq('codigo',codigo).eq('safra',safra).select('codigo');
     if(error) throw error;
     if(!updRows||!updRows.length) throw new Error('Comanda '+codigo+' não encontrada na safra '+safra+' — nada consolidado.');
-    if(c){ c.geralRetorno=retorno; if(tot.concl){ c.status='executada'; if(ultimaData) c.dataExecucao=ultimaData; } }
+    if(c){ c.status='executada'; c.dataExecucao=ultimaData; c.diario=diario; c.geralRetorno=geral; }
     const {error:e2}=await SB.from('execucao_campo').update({status:'aprovada', atualizado_em:new Date().toISOString()}).in('id', g.rows.map(r=>r.id));
     if(e2) throw e2;
-    _statusSB('✅ Comanda '+codigo+' aprovada ('+tot.dias+' dia(s))','#27ae60');
+    _statusSB('✅ Comanda '+codigo+' aprovada e executada ('+ndias+' dia(s) · '+(totArea?totArea.toFixed(2)+' ha':'')+')','#27ae60');
     await _loadAprovCampo(); _updNavAprovCampo(); renderPills(); render();
   }catch(e){ _statusSB('❌ '+e.message,'#c0392b'); }
 }
