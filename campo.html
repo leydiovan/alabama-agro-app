@@ -318,15 +318,25 @@ function _px(E){ return _CW/2 + (E-VIEW.cx)*_sc(); }
 function _py(N){ return _CH/2 - (N-VIEW.cy)*_sc(); }
 function _scheduleDraw(){ if(GPS._dt) return; GPS._dt=setTimeout(()=>{ GPS._dt=null; _drawMapa(); },120); }
 function _pathPoly(ctx,poly){ ctx.beginPath(); poly.forEach((p,i)=>{ const X=_px(p[0]),Y=_py(p[1]); i?ctx.lineTo(X,Y):ctx.moveTo(X,Y); }); ctx.closePath(); }
+function _velColor(v){ if(v==null||isNaN(v)) return 'rgba(170,170,170,.5)'; const c=Math.max(0,Math.min(15,+v)); const h=240-(c/15)*240; return 'hsla('+h.toFixed(0)+',85%,50%,.65)'; }
 function _drawMapa(){ const cv=_CV||$('cv'); if(!cv) return; if(!_CW){ _setupCanvas(); } const ctx=cv.getContext('2d');
   if(VIEW.follow && GPS.pts.length){ const l=GPS.pts[GPS.pts.length-1]; VIEW.cx=l.E; VIEW.cy=l.N; }
   ctx.clearRect(0,0,_CW,_CH); if(VIEW.cx==null) return;
   const poly=_polyUTM();
   if(poly){ _pathPoly(ctx,poly); ctx.fillStyle='rgba(60,90,40,.18)'; ctx.fill(); ctx.lineWidth=2; ctx.strokeStyle='#7ee787'; ctx.stroke(); }
   ctx.save(); if(poly){ _pathPoly(ctx,poly); ctx.clip(); }   // pinta SÓ dentro do talhão
-  ctx.lineJoin='round'; ctx.lineCap='round'; ctx.strokeStyle='rgba(255,193,7,.5)';
-  (DAYSEGS||[]).forEach(s=>{ if(!s.pts.length) return; ctx.lineWidth=Math.max(3,(s.larg||0)*_sc()); ctx.beginPath(); s.pts.forEach((p,i)=>{ const X=_px(p.E),Y=_py(p.N); i?ctx.lineTo(X,Y):ctx.moveTo(X,Y); }); ctx.stroke(); });
-  if(GPS.pts.length){ ctx.lineWidth=Math.max(3,_widthM()*_sc()); ctx.beginPath(); GPS.pts.forEach((p,i)=>{ const X=_px(p.E),Y=_py(p.N); i?ctx.lineTo(X,Y):ctx.moveTo(X,Y); }); ctx.stroke(); }
+  ctx.lineJoin='round'; ctx.lineCap='round';
+  const _mode=VIEW.mode||'cob';
+  const _drawLine=(pts,larg)=>{ if(!pts||!pts.length) return; ctx.lineWidth=Math.max(3,(larg||0)*_sc()); ctx.beginPath(); pts.forEach((p,i)=>{ const X=_px(p.E),Y=_py(p.N); i?ctx.lineTo(X,Y):ctx.moveTo(X,Y); }); ctx.stroke(); };
+  const _drawVel=(pts,larg)=>{ if(!pts||pts.length<2) return; ctx.lineWidth=Math.max(3,(larg||0)*_sc()); for(let i=1;i<pts.length;i++){ ctx.strokeStyle=_velColor(pts[i].v); ctx.beginPath(); ctx.moveTo(_px(pts[i-1].E),_py(pts[i-1].N)); ctx.lineTo(_px(pts[i].E),_py(pts[i].N)); ctx.stroke(); } };
+  if(_mode==='vel'){
+    (DAYSEGS||[]).forEach(s=>_drawVel(s.pts,s.larg));
+    if(GPS.pts.length) _drawVel(GPS.pts,_widthM());
+  } else {
+    ctx.strokeStyle='rgba(88,166,255,.45)'; (DAYSEGS||[]).filter(s=>!s.today).forEach(s=>_drawLine(s.pts,s.larg));   // outros dias (azul)
+    ctx.strokeStyle='rgba(255,193,7,.5)'; (DAYSEGS||[]).filter(s=>s.today).forEach(s=>_drawLine(s.pts,s.larg));      // hoje (âmbar)
+    if(GPS.pts.length){ ctx.strokeStyle='rgba(255,193,7,.6)'; _drawLine(GPS.pts,_widthM()); }                        // sessão ativa (hoje)
+  }
   ctx.restore();
   if(GPS.pts.length){ const last=GPS.pts[GPS.pts.length-1]; ctx.save(); ctx.translate(_px(last.E),_py(last.N)); ctx.rotate(GPS.head); ctx.fillStyle='#fff'; ctx.strokeStyle='#0d1117'; ctx.lineWidth=1.5; ctx.beginPath(); ctx.moveTo(0,-12); ctx.lineTo(9,10); ctx.lineTo(0,5); ctx.lineTo(-9,10); ctx.closePath(); ctx.fill(); ctx.stroke(); ctx.restore(); }
 }
@@ -352,23 +362,23 @@ function _onFix(pos){ const cur=pos.coords; GPS.acc=cur.accuracy;
     if(_paintOn()) _markCells(last.E,last.N,E,No);
     if(cur.speed!=null&&cur.speed>=0) GPS.speed=cur.speed*3.6; else { const dt=(t-(GPS._lt||t))/1000; if(dt>0) GPS.speed=d/dt*3.6; }
   } else if(cur.speed!=null&&cur.speed>=0) GPS.speed=cur.speed*3.6;
-  GPS._lt=t; GPS.pts.push({E,N:No,lat:cur.latitude,lon:cur.longitude,t});
+  GPS._lt=t; GPS.pts.push({E,N:No,lat:cur.latitude,lon:cur.longitude,t,v:GPS.speed||0});
   _hud(); _scheduleDraw();
   if(GPS.watchId!=null&&GPS.pts.length%40===0) _saveGps(false);
 }
 function _recalcCells(){ GPS.cells=new Set(); GPS.areaHa=0; for(let i=1;i<GPS.pts.length;i++) _markCells(GPS.pts[i-1].E,GPS.pts[i-1].N,GPS.pts[i].E,GPS.pts[i].N); }
 function _implLarg(id){ const m=IMPS.find(x=>String(x.id)===String(id)); return m&&m.largura_trabalho?+m.largura_trabalho:0; }
-function _rowPts(row){ const out=[]; if(Array.isArray(row.trajeto)) row.trajeto.forEach(p=>{ if(p[0]==null) return; const u=latLngToUTM(p[0],p[1],23); out.push({E:u[0],N:u[1]}); }); return out; }
+function _rowPts(row){ const out=[]; if(Array.isArray(row.trajeto)) row.trajeto.forEach(p=>{ if(p[0]==null) return; const u=latLngToUTM(p[0],p[1],23); out.push({E:u[0],N:u[1],v:p[3]}); }); return out; }
 function _maqNome(id){ const m=MAQS.find(x=>String(x.id)===String(id)); return m?m.nome:'(sem máquina)'; }
 function _impNome(id){ const m=IMPS.find(x=>String(x.id)===String(id)); return m?m.nome:''; }
-function _buildDaySegs(){ DAYSEGS=CUR_DAYS.filter(r=>(!SESS||String(r.id)!==String(SESS.id)) && Array.isArray(r.trajeto)&&r.trajeto.length>1).map(r=>({pts:_rowPts(r), larg:_implLarg(r.implemento_id)})); }
+function _buildDaySegs(){ DAYSEGS=CUR_DAYS.filter(r=>(!SESS||String(r.id)!==String(SESS.id)) && Array.isArray(r.trajeto)&&r.trajeto.length>1).map(r=>({pts:_rowPts(r), larg:_implLarg(r.implemento_id), today:(r.data===DIA)})); }
 function _restoreSess(){ GPS.pts=[]; GPS.cells=new Set(); GPS.areaHa=0; GPS.speed=0;
   if(!SESS||!Array.isArray(SESS.trajeto)) return;
-  SESS.trajeto.forEach(p=>{ const lat=p[0],lon=p[1]; if(lat==null) return; const u=latLngToUTM(lat,lon,23); if(GPS.pts.length){ const l=GPS.pts[GPS.pts.length-1]; _markCells(l.E,l.N,u[0],u[1]); } GPS.pts.push({E:u[0],N:u[1],lat,lon,t:p[2]||0}); });
+  SESS.trajeto.forEach(p=>{ const lat=p[0],lon=p[1]; if(lat==null) return; const u=latLngToUTM(lat,lon,23); if(GPS.pts.length){ const l=GPS.pts[GPS.pts.length-1]; _markCells(l.E,l.N,u[0],u[1]); } GPS.pts.push({E:u[0],N:u[1],lat,lon,t:p[2]||0,v:p[3]||0}); });
   if((!GPS.cells.size||_widthM()<=0) && SESS.area_ha!=null) GPS.areaHa=+SESS.area_ha;
 }
 async function _saveGps(final){ if(!SESS) return;
-  const patch={ trajeto:GPS.pts.map(p=>[+p.lat.toFixed(6),+p.lon.toFixed(6),p.t||0]), area_ha:+GPS.areaHa.toFixed(2), atualizado_em:new Date().toISOString() };
+  const patch={ trajeto:GPS.pts.map(p=>[+p.lat.toFixed(6),+p.lon.toFixed(6),p.t||0,+(p.v||0).toFixed(1)]), area_ha:+GPS.areaHa.toFixed(2), atualizado_em:new Date().toISOString() };
   if(final){ patch.hora_fim=nowHM(); patch.status='enviada'; }
   try{ const {error}=await SB.from('execucao_campo').update(patch).eq('id',SESS.id); if(error) throw error; Object.assign(SESS,patch); }catch(e){ if(final) _st('❌ '+e.message,'#c0392b'); }
 }
@@ -444,16 +454,19 @@ function renderTrabalho(){
       <div id="hud" style="position:absolute;top:8px;left:8px;right:8px;display:flex;gap:6px;flex-wrap:wrap"></div>
       <div style="position:absolute;right:10px;bottom:10px;display:flex;flex-direction:column;gap:8px;align-items:flex-end">
         <button class="btn s" id="btn_follow" style="width:auto;margin:0;padding:10px 14px">${VIEW.follow?'🎯 Seguindo':'✋ Livre'}</button>
+        <button class="btn s" id="btn_cmode" style="width:auto;margin:0;padding:10px 14px">${(VIEW.mode==='vel')?'🌡 Velocidade':'🎨 Cobertura'}</button>
         <button class="btn s" id="btn_pmode" style="width:auto;margin:0;padding:10px 14px">${manual?'✋ Manual':'🅰 Auto'}</button>
         ${manual?`<button class="btn ${GPS.painting?'k':'b'}" id="btn_paint" style="width:auto;margin:0;padding:10px 16px">${GPS.painting?'● Pintando':'▶ Pintar'}</button>`:''}
       </div>
-      ${_polyUTM()?'':'<div style="position:absolute;bottom:10px;left:10px;background:#3a1d00;color:#ffc107;border-radius:8px;padding:6px 10px;font-size:12px">Talhão sem poligonal</div>'}
+      <div id="vleg" style="display:${(VIEW.mode==='vel')?'flex':'none'};position:absolute;left:10px;bottom:10px;gap:8px;align-items:center;background:#0d1117cc;border-radius:8px;padding:6px 9px;font-size:11px;color:#fff">Vel: <span style="color:#3aa0ff">baixa</span><span style="width:54px;height:8px;border-radius:4px;background:linear-gradient(90deg,hsl(240,85%,50%),hsl(120,85%,50%),hsl(0,85%,50%))"></span><span style="color:#ff5b5b">alta</span></div>
+      ${_polyUTM()?'':'<div style="position:absolute;bottom:46px;left:10px;background:#3a1d00;color:#ffc107;border-radius:8px;padding:6px 10px;font-size:12px">Talhão sem poligonal</div>'}
     </div>
   </div>`;
   if($('voltar'))$('voltar').onclick=async()=>{ await _gpsLeave(); EXVIEW='menu'; render(); };
   if($('h_maq'))$('h_maq').onchange=_trocarConjunto;
   if($('h_imp'))$('h_imp').onchange=_trocarConjunto;
   if($('btn_follow'))$('btn_follow').onclick=()=>{ VIEW.follow=!VIEW.follow; $('btn_follow').textContent=VIEW.follow?'🎯 Seguindo':'✋ Livre'; _drawMapa(); };
+  if($('btn_cmode'))$('btn_cmode').onclick=()=>{ VIEW.mode=(VIEW.mode==='vel')?'cob':'vel'; $('btn_cmode').textContent=(VIEW.mode==='vel')?'🌡 Velocidade':'🎨 Cobertura'; const lg=$('vleg'); if(lg) lg.style.display=(VIEW.mode==='vel')?'flex':'none'; _drawMapa(); };
   if($('btn_pmode'))$('btn_pmode').onclick=()=>{ GPS.paintAuto=!GPS.paintAuto; if(GPS.paintAuto) GPS.painting=false; render(); };
   if($('btn_paint'))$('btn_paint').onclick=()=>{ GPS.painting=!GPS.painting; render(); };
   setTimeout(()=>{ _setupCanvas(); _drawMapa(); _hud(); },30);
