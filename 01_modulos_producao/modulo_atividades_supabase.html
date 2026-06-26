@@ -1892,7 +1892,7 @@ function cabecalhoSubsolagem(c){
 function diarioSubsolagem(c){
   const ex=c.status==='executada'; const G=ex?(c.geralRetorno||{}):null; const R=ex?(c.diario||null):null;
   let h='<div class="pf-diafull" style="margin-top:14px"><div class="pf-sech">DIÁRIO DA OPERAÇÃO</div>';
-  h+=_diarioGerais(['Operador','Maquinário e implemento','Data de início','Data de fim'], G);
+  h+=_diarioGerais(['Trator','Implemento','Data de início','Data de fim','Horas trabalhadas','Diesel total','Área','Operador'], G);
   h+=_diarioCargas(18, ['Data','Hora inicial','Hora final','Diesel','Área'], R);
   h+='</div>';
   return h;
