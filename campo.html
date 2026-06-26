@@ -377,9 +377,10 @@ function _drawMapa(){ const cv=_CV||$('cv'); if(!cv) return; if(!_CW){ _setupCan
     const w=CELL*_sc()+0.7;
     _VELC.map.forEach((v,key)=>{ const u=key.split('_'); const cE=(+u[0]+0.5)*CELL, cN=(+u[1]+0.5)*CELL; ctx.fillStyle=_velColor(v); ctx.fillRect(_px(cE-CELL/2),_py(cN+CELL/2),w,w); });
   } else {
-    ctx.strokeStyle='rgba(88,166,255,.45)'; (DAYSEGS||[]).filter(s=>!s.today).forEach(s=>_drawLine(s.pts,s.larg));   // outros dias (azul)
-    ctx.strokeStyle='rgba(255,193,7,.5)'; (DAYSEGS||[]).filter(s=>s.today).forEach(s=>_drawLine(s.pts,s.larg));      // hoje (âmbar)
-    if(GPS.pts.length){ ctx.strokeStyle='rgba(255,193,7,.6)'; _drawLine(GPS.pts,_widthM()); }                        // sessão ativa (hoje)
+    ctx.strokeStyle='rgba(180,120,255,.55)'; (DAYSEGS||[]).filter(s=>!s.mine).forEach(s=>_drawLine(s.pts,s.larg));          // OUTRO operador (roxo)
+    ctx.strokeStyle='rgba(88,166,255,.45)'; (DAYSEGS||[]).filter(s=>s.mine&&!s.today).forEach(s=>_drawLine(s.pts,s.larg)); // eu, outros dias (azul)
+    ctx.strokeStyle='rgba(255,193,7,.5)'; (DAYSEGS||[]).filter(s=>s.mine&&s.today).forEach(s=>_drawLine(s.pts,s.larg));    // eu, hoje (âmbar)
+    if(GPS.pts.length){ ctx.strokeStyle='rgba(255,193,7,.7)'; _drawLine(GPS.pts,_widthM()); }                             // sessão ativa
   }
   ctx.restore();
   if(GPS.pts.length){ const last=GPS.pts[GPS.pts.length-1]; ctx.save(); ctx.translate(_px(last.E),_py(last.N)); ctx.rotate(GPS.head); ctx.fillStyle='#fff'; ctx.strokeStyle='#0d1117'; ctx.lineWidth=1.5; ctx.beginPath(); ctx.moveTo(0,-12); ctx.lineTo(9,10); ctx.lineTo(0,5); ctx.lineTo(-9,10); ctx.closePath(); ctx.fill(); ctx.stroke(); ctx.restore(); }
@@ -418,7 +419,7 @@ function _implLarg(id){ const m=IMPS.find(x=>String(x.id)===String(id)); return 
 function _rowPts(row){ const out=[]; if(Array.isArray(row.trajeto)) row.trajeto.forEach(p=>{ if(p[0]==null) return; const u=latLngToUTM(p[0],p[1],23); out.push({E:u[0],N:u[1],v:p[3]}); }); return out; }
 function _maqNome(id){ const m=MAQS.find(x=>String(x.id)===String(id)); return m?m.nome:'(sem máquina)'; }
 function _impNome(id){ const m=IMPS.find(x=>String(x.id)===String(id)); return m?m.nome:''; }
-function _buildDaySegs(){ DAYSEGS=CUR_DAYS.filter(r=>(!SESS||String(r.id)!==String(SESS.id)) && Array.isArray(r.trajeto)&&r.trajeto.length>1).map(r=>({pts:_rowPts(r), larg:_implLarg(r.implemento_id), today:(r.data===DIA)})); _buildDayCells(); }
+function _buildDaySegs(){ DAYSEGS=CUR_DAYS.filter(r=>(!SESS||String(r.id)!==String(SESS.id)) && Array.isArray(r.trajeto)&&r.trajeto.length>1).map(r=>({pts:_rowPts(r), larg:_implLarg(r.implemento_id), today:(r.data===DIA), mine:String(r.funcionario_id)===String(OPER.id)})); _buildDayCells(); }
 function _restoreSess(){ GPS.pts=[]; GPS.cells=new Set(); GPS.areaHa=0; GPS.speed=0;
   if(!SESS||!Array.isArray(SESS.trajeto)) return;
   SESS.trajeto.forEach(p=>{ const lat=p[0],lon=p[1]; if(lat==null) return; const u=latLngToUTM(lat,lon,23); if(GPS.pts.length){ const l=GPS.pts[GPS.pts.length-1]; _markCells(l.E,l.N,u[0],u[1]); } GPS.pts.push({E:u[0],N:u[1],lat,lon,t:p[2]||0,v:p[3]||0}); });
@@ -540,6 +541,7 @@ function renderTrabalho(){
         ${manual?`<button class="btn ${GPS.painting?'k':'b'}" id="btn_paint" style="width:auto;margin:0;padding:10px 16px">${GPS.painting?'● Pintando':'▶ Pintar'}</button>`:''}
       </div>
       <div id="vleg" style="display:${(VIEW.mode==='vel')?'flex':'none'};position:absolute;left:10px;bottom:10px;gap:8px;align-items:center;background:#0d1117cc;border-radius:8px;padding:6px 9px;font-size:11px;color:#fff">Vel: <span style="color:#3aa0ff">baixa</span><span style="width:54px;height:8px;border-radius:4px;background:linear-gradient(90deg,hsl(240,85%,50%),hsl(120,85%,50%),hsl(0,85%,50%))"></span><span style="color:#ff5b5b">alta</span></div>
+      <div id="cleg" style="display:${(VIEW.mode==='vel')?'none':'flex'};position:absolute;left:10px;bottom:10px;gap:10px;align-items:center;background:#0d1117cc;border-radius:8px;padding:6px 9px;font-size:11px;color:#fff"><span style="color:#ffd24a">▮ eu hoje</span><span style="color:#58a6ff">▮ eu (out. dias)</span><span style="color:#bc8cff">▮ outro operador</span></div>
       ${_polyUTM()?'':'<div style="position:absolute;bottom:46px;left:10px;background:#3a1d00;color:#ffc107;border-radius:8px;padding:6px 10px;font-size:12px">Talhão sem poligonal</div>'}
     </div>
   </div>`;
@@ -547,7 +549,7 @@ function renderTrabalho(){
   if($('h_maq'))$('h_maq').onchange=_trocarConjunto;
   if($('h_imp'))$('h_imp').onchange=_trocarConjunto;
   if($('btn_follow'))$('btn_follow').onclick=()=>{ VIEW.follow=!VIEW.follow; $('btn_follow').textContent=VIEW.follow?'🎯 Seguindo':'✋ Livre'; _drawMapa(); };
-  if($('btn_cmode'))$('btn_cmode').onclick=()=>{ VIEW.mode=(VIEW.mode==='vel')?'cob':'vel'; $('btn_cmode').textContent=(VIEW.mode==='vel')?'🌡 Velocidade':'🎨 Cobertura'; const lg=$('vleg'); if(lg) lg.style.display=(VIEW.mode==='vel')?'flex':'none'; _drawMapa(); };
+  if($('btn_cmode'))$('btn_cmode').onclick=()=>{ VIEW.mode=(VIEW.mode==='vel')?'cob':'vel'; $('btn_cmode').textContent=(VIEW.mode==='vel')?'🌡 Velocidade':'🎨 Cobertura'; const lg=$('vleg'); if(lg) lg.style.display=(VIEW.mode==='vel')?'flex':'none'; const cg=$('cleg'); if(cg) cg.style.display=(VIEW.mode==='vel')?'none':'flex'; _drawMapa(); };
   if($('btn_pmode'))$('btn_pmode').onclick=()=>{ GPS.paintAuto=!GPS.paintAuto; if(GPS.paintAuto) GPS.painting=false; render(); };
   if($('btn_paint'))$('btn_paint').onclick=()=>{ GPS.painting=!GPS.painting; render(); };
   setTimeout(()=>{ _setupCanvas(); _drawMapa(); _hud(); },30);
