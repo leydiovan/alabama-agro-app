@@ -2947,7 +2947,7 @@ function _apcPrep(g){
 function _apcDrawMapa(cv,g){
   if(!cv||!cv.clientWidth) return;
   const key=g.codigo+'|'+(g.safra||''); const st=_apcState(key); if(!st._prep) st._prep=_apcPrep(g); const P=st._prep;
-  const dpr=window.devicePixelRatio||1, W=cv.clientWidth, H=220;
+  const dpr=window.devicePixelRatio||1, W=cv.clientWidth, H=cv.clientHeight||220;
   cv.width=W*dpr; cv.height=H*dpr; const ctx=cv.getContext('2d'); ctx.setTransform(dpr,0,0,dpr,0,0); ctx.clearRect(0,0,W,H);
   if(!P.ok){ ctx.fillStyle='#8b949e'; ctx.font='13px system-ui'; ctx.fillText('Sem mapa (talhão sem polígono ou sessão sem trajeto)',12,28); return; }
   const pad=12, spanE=Math.max(1,P.maxE-P.minE), spanN=Math.max(1,P.maxN-P.minN), sc0=Math.min((W-2*pad)/spanE,(H-2*pad)/spanN), sc=sc0*st.zoom;
@@ -3018,23 +3018,27 @@ function renderAprovCampo(){
       </tr>`;
     }).join('');
     const abast = (g.abast&&g.abast.length) ? `<div class="sub" style="margin:8px 2px 0"><b>⛽ Abastecimentos:</b> ${g.abast.map(a=>_apcFmt(a.litros)+' L ('+_apcDT(a.quando)+(APC.maq[a.maquina_id]?(' · '+_apcEsc(APC.maq[a.maquina_id])):'')+')').join(' · ')} = <b>${_apcFmt(tot.diesel)} L</b></div>` : '';
-    return `<div class="wrap" style="margin-bottom:16px">
-      <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">
-        <div><h2 style="margin:0">${_apcEsc(g.codigo)}${tipo?(' · '+_apcEsc(tipo)):''}</h2>
-          <div class="sub" style="margin:2px 0 0">Lote ${_apcEsc(lote||'—')} · safra ${_apcEsc(g.safra||'—')} · ${tot.dias} dia(s) · ${tot.area?(_apcFmt(tot.area)+' ha'):'—'} · ${tot.horas?(tot.horas.toFixed(1)+' h trabalho'):'—'} · ${tot.diesel?(_apcFmt(tot.diesel)+' L diesel'):'—'}${tot.concl?' · <b style="color:#2ea043">conclui o lote</b>':''}</div></div>
-        <div style="display:flex;gap:6px;flex-wrap:wrap"><button class="btn" data-apcver="${_apcEsc(g.codigo)}|${_apcEsc(g.safra||'')}">👁 Ver comanda</button><button class="btn success" data-apcok="${_apcEsc(g.codigo)}|${_apcEsc(g.safra||'')}">✓ Aprovar comanda</button></div>
+    return `<div class="wrap" style="margin-bottom:16px;max-width:none;display:flex;gap:18px;align-items:stretch;flex-wrap:wrap">
+      <div style="flex:1 1 440px;min-width:300px;display:flex;flex-direction:column">
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">
+          <div><h2 style="margin:0">${_apcEsc(g.codigo)}${tipo?(' · '+_apcEsc(tipo)):''}</h2>
+            <div class="sub" style="margin:2px 0 0">Lote ${_apcEsc(lote||'—')} · safra ${_apcEsc(g.safra||'—')} · ${tot.dias} dia(s) · ${tot.area?(_apcFmt(tot.area)+' ha'):'—'} · ${tot.horas?(tot.horas.toFixed(1)+' h trabalho'):'—'} · ${tot.diesel?(_apcFmt(tot.diesel)+' L diesel'):'—'}${tot.concl?' · <b style="color:#2ea043">conclui o lote</b>':''}</div></div>
+          <div style="display:flex;gap:6px;flex-wrap:wrap"><button class="btn" data-apcver="${_apcEsc(g.codigo)}|${_apcEsc(g.safra||'')}">👁 Ver comanda</button><button class="btn success" data-apcok="${_apcEsc(g.codigo)}|${_apcEsc(g.safra||'')}">✓ Aprovar comanda</button></div>
+        </div>
+        <table class="tbl" style="margin-top:8px"><thead><tr><th>Data</th><th>Operador</th><th>Máquina</th><th>Atividade</th><th style="text-align:right">Área</th><th></th></tr></thead><tbody>${linhas}</tbody></table>
+        ${abast}
       </div>
-      <table class="tbl" style="margin-top:8px"><thead><tr><th>Data</th><th>Operador</th><th>Máquina</th><th>Atividade</th><th style="text-align:right">Área</th><th></th></tr></thead><tbody>${linhas}</tbody></table>
-      ${abast}
-      <div class="sub" style="margin:10px 2px 4px;display:flex;gap:6px;align-items:center;flex-wrap:wrap">🗺️ Mapa de pintura
-        <button class="btn sm" data-apczoom="+" data-apckey="${_apcEsc(mkey)}">＋</button>
-        <button class="btn sm" data-apczoom="-" data-apckey="${_apcEsc(mkey)}">－</button>
-        <button class="btn sm" data-apczoom="0" data-apckey="${_apcEsc(mkey)}">⟲</button>
-        <button class="btn sm" data-apcmode="${_apcEsc(mkey)}">camada: ${mst.mode==='vel'?'velocidade':'cobertura'}</button>
-        ${mst.sel?`<button class="btn sm" data-apcselc="${_apcEsc(mkey)}">✕ destaque</button>`:''}
-        <span class="muted" style="font-size:11px">arraste/scroll/pinça p/ zoom · clique numa linha p/ destacar</span>
+      <div style="flex:1 1 460px;min-width:300px;display:flex;flex-direction:column">
+        <div class="sub" style="margin:0 2px 4px;display:flex;gap:6px;align-items:center;flex-wrap:wrap">🗺️ Mapa de pintura
+          <button class="btn sm" data-apczoom="+" data-apckey="${_apcEsc(mkey)}">＋</button>
+          <button class="btn sm" data-apczoom="-" data-apckey="${_apcEsc(mkey)}">－</button>
+          <button class="btn sm" data-apczoom="0" data-apckey="${_apcEsc(mkey)}">⟲</button>
+          <button class="btn sm" data-apcmode="${_apcEsc(mkey)}">camada: ${mst.mode==='vel'?'velocidade':'cobertura'}</button>
+          ${mst.sel?`<button class="btn sm" data-apcselc="${_apcEsc(mkey)}">✕ destaque</button>`:''}
+        </div>
+        <canvas data-apcmap="${_apcEsc(mkey)}" style="width:100%;flex:1;min-height:340px;display:block;background:#0d1117;border-radius:8px;touch-action:none"></canvas>
+        <div class="muted" style="font-size:11px;margin-top:4px">arraste/scroll/pinça p/ zoom · clique numa linha p/ destacar</div>
       </div>
-      <canvas data-apcmap="${_apcEsc(mkey)}" style="width:100%;height:220px;display:block;background:#0d1117;border-radius:8px;touch-action:none"></canvas>
     </div>`;
   }).join('');
   return `<div class="wrap"><h2>✅ Aprovações de campo <span class="sub">(${APC.comandas.length} comanda(s) na fila)</span></h2>
