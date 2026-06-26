@@ -98,7 +98,7 @@ async function _pdfCacheGet(k){ try{ const db=await _idb(); return await new Pro
 /* cache de dados de referência (offline-first): salva online, lê do cache se cair a rede */
 function _cacheSet(k,v){ try{ localStorage.setItem('campo_cache_'+k, JSON.stringify(v)); }catch(e){} }
 function _cacheGet(k,def){ try{ const s=localStorage.getItem('campo_cache_'+k); return s?JSON.parse(s):def; }catch(e){ return def; } }
-function _q(p,ms){ return Promise.race([ Promise.resolve(p), new Promise((_,rej)=>setTimeout(()=>rej(new Error('timeout')), ms||6000)) ]); }  // não pendura em rede ruim
+function _q(p,ms){ return Promise.race([ Promise.resolve(p), new Promise((_,rej)=>setTimeout(()=>rej(new Error('timeout')), ms||4000)) ]); }  // não pendura em rede ruim
 function _st(t,c){ let e=$('snack'); if(!e){ e=document.createElement('div'); e.id='snack'; e.style.cssText='position:fixed;left:12px;right:12px;bottom:78px;z-index:50;padding:11px 14px;border-radius:10px;font:600 14px system-ui;text-align:center;box-shadow:0 4px 14px rgba(0,0,0,.4)'; document.body.appendChild(e);} e.textContent=t; e.style.background=c||'#333'; e.style.color='#fff'; clearTimeout(e._t); e._t=setTimeout(()=>{e.remove();},3200); }
 
 /* ---------- boot / login ---------- */
@@ -118,10 +118,10 @@ async function login(){
 async function entrar(){
   DIA=hoje();
   try{ const {data:sd}=await SB.auth.getSession(); USER_EMAIL=(sd&&sd.session&&sd.session.user&&sd.session.user.email)||''; }catch(e){}   // getSession = local (não bate na rede)
-  try{ const {data:f,error}=await _q(SB.from('funcionarios').select('id,nome,tipo,ativo').order('nome')); if(error) throw error; FUNCS=(f||[]).filter(x=>x.ativo!==false); _cacheSet('funcs',FUNCS); }catch(e){ FUNCS=_cacheGet('funcs',[]); }
-  try{ const {data:m,error}=await _q(SB.from('maquinas').select('id,nome,categoria,id_frota,consumo_ref').order('nome')); if(error) throw error; MAQS=m||[]; _cacheSet('maqs',MAQS); }catch(e){ MAQS=_cacheGet('maqs',[]); }
-  try{ const {data:i,error}=await _q(SB.from('implementos').select('id,nome,categoria,id_frota,largura_trabalho').order('nome')); if(error) throw error; IMPS=i||[]; _cacheSet('imps',IMPS); }catch(e){ IMPS=_cacheGet('imps',[]); }
-  try{ const {data:l,error}=await _q(SB.from('lotes').select('nome,area,geom').order('nome')); if(error) throw error; LOTES=l||[]; _cacheSet('lotes',LOTES); }catch(e){ LOTES=_cacheGet('lotes',[]); }
+  try{ if(!navigator.onLine) throw 0; const {data:f,error}=await _q(SB.from('funcionarios').select('id,nome,tipo,ativo').order('nome')); if(error) throw error; FUNCS=(f||[]).filter(x=>x.ativo!==false); _cacheSet('funcs',FUNCS); }catch(e){ FUNCS=_cacheGet('funcs',[]); }
+  try{ if(!navigator.onLine) throw 0; const {data:m,error}=await _q(SB.from('maquinas').select('id,nome,categoria,id_frota,consumo_ref').order('nome')); if(error) throw error; MAQS=m||[]; _cacheSet('maqs',MAQS); }catch(e){ MAQS=_cacheGet('maqs',[]); }
+  try{ if(!navigator.onLine) throw 0; const {data:i,error}=await _q(SB.from('implementos').select('id,nome,categoria,id_frota,largura_trabalho').order('nome')); if(error) throw error; IMPS=i||[]; _cacheSet('imps',IMPS); }catch(e){ IMPS=_cacheGet('imps',[]); }
+  try{ if(!navigator.onLine) throw 0; const {data:l,error}=await _q(SB.from('lotes').select('nome,area,geom').order('nome')); if(error) throw error; LOTES=l||[]; _cacheSet('lotes',LOTES); }catch(e){ LOTES=_cacheGet('lotes',[]); }
   await carregarSafra();
   // operador salvo no aparelho?
   let oid=null; try{ oid=+localStorage.getItem('campo_oper')||null; }catch(e){}
@@ -132,18 +132,18 @@ async function entrar(){
 }
 window.addEventListener('online', async()=>{ if(!SB||!OPER) return; _st('🔄 Sincronizando…','#3498db'); await _syncAll(); await carregarDia(); if(STEP==='home') render(); else _updPend(); _st('✅ Sincronizado','#27ae60'); });
 async function carregarSafra(){
-  let safras=null; try{ const {data,error}=await _q(SB.from('safras').select('*')); if(error) throw error; safras=data||[]; _cacheSet('safras',safras); }catch(e){ safras=_cacheGet('safras',[]); }
+  let safras=null; try{ if(!navigator.onLine) throw 0; const {data,error}=await _q(SB.from('safras').select('*')); if(error) throw error; safras=data||[]; _cacheSet('safras',safras); }catch(e){ safras=_cacheGet('safras',[]); }
   const h=hoje();
   let s=safras.find(x=>x.inicio&&x.fim&&x.inicio<=h&&h<=x.fim);
   if(!s) s=safras.slice().sort((a,b)=>(b.ano||0)-(a.ano||0))[0];
   SAFRA=s?s.nome:(_cacheGet('safra','')||''); _cacheSet('safra',SAFRA);
-  try{ const {data,error}=await _q(SB.from('comandas').select('*').eq('safra',SAFRA).neq('status','cancelada')); if(error) throw error; COMANDAS=data||[]; _cacheSet('comandas',COMANDAS); }catch(e){ COMANDAS=_cacheGet('comandas',[]); }
+  try{ if(!navigator.onLine) throw 0; const {data,error}=await _q(SB.from('comandas').select('*').eq('safra',SAFRA).neq('status','cancelada')); if(error) throw error; COMANDAS=data||[]; _cacheSet('comandas',COMANDAS); }catch(e){ COMANDAS=_cacheGet('comandas',[]); }
 }
 async function carregarDia(){
   if(!OPER) return;
   // execuções de hoje deste operador (só p/ marcar o status das comandas na lista)
   EXECS={};
-  try{ const {data,error}=await _q(SB.from('execucao_campo').select('*').eq('funcionario_id',OPER.id).eq('data',DIA)); if(error) throw error; (data||[]).forEach(x=>{ if(x.comanda_codigo) EXECS[x.comanda_codigo]=x; }); _cacheSet('execs_'+DIA,EXECS); }catch(e){ EXECS=_cacheGet('execs_'+DIA,{})||{}; }
+  try{ if(!navigator.onLine) throw 0; const {data,error}=await _q(SB.from('execucao_campo').select('*').eq('funcionario_id',OPER.id).eq('data',DIA)); if(error) throw error; (data||[]).forEach(x=>{ if(x.comanda_codigo) EXECS[x.comanda_codigo]=x; }); _cacheSet('execs_'+DIA,EXECS); }catch(e){ EXECS=_cacheGet('execs_'+DIA,{})||{}; }
   try{ (await _idbAll('sessions')).filter(s=>String(s.funcionario_id)===String(OPER.id)&&s.data===DIA).forEach(s=>{ EXECS[s.comanda_codigo]=s; }); }catch(e){}   // sobrepõe com sessões locais (offline)
 }
 
@@ -212,17 +212,19 @@ function _botoesSairBar(){ return `<button class="btn s" id="sair2">Sair</button
 function _bindSairBar(){ if($('sair2'))$('sair2').onclick=async()=>{ if(SB) await SB.auth.signOut(); location.reload(); }; if($('troca2'))$('troca2').onclick=()=>{ try{localStorage.removeItem('campo_oper');}catch(e){} OPER=null; STEP='quemsou'; render(); }; }
 
 let CUR_DAYS=[];                 // execuções (1 card por dia) da comanda aberta
+let CUR_AREA=0;                  // área de união (ha) da comanda — calculada ao carregar, não por render
 let HDR={maquina_id:'',implemento_id:''};   // máquina/implemento escolhidos no cabeçalho
 let EXVIEW='menu';              // dentro da comanda: 'menu' (ícones) | 'trabalho' (apontamento)
 async function _carregarDiasComanda(){
   const _ck='days_'+CUR.codigo+'_'+OPER.id;
   let server=null;
-  try{ const {data,error}=await _q(SB.from('execucao_campo').select('*').eq('comanda_codigo',CUR.codigo).eq('funcionario_id',OPER.id).order('data',{ascending:false})); if(error) throw error; server=data||[]; _cacheSet(_ck,server); }catch(e){ server=null; }
+  try{ if(!navigator.onLine) throw 0; const {data,error}=await _q(SB.from('execucao_campo').select('*').eq('comanda_codigo',CUR.codigo).eq('funcionario_id',OPER.id).order('data',{ascending:false})); if(error) throw error; server=data||[]; _cacheSet(_ck,server); }catch(e){ server=null; }
   const local=(await _idbAll('sessions')).filter(s=>String(s.comanda_codigo)===String(CUR.codigo)&&String(s.funcionario_id)===String(OPER.id));
   const base=(server!==null)?server:(_cacheGet(_ck,[])||[]);
   const lsv={}; local.forEach(s=>{ if(s.serverId) lsv[String(s.serverId)]=true; });
   CUR_DAYS=local.concat(base.filter(r=>!lsv[String(r.id)])).sort((a,b)=>String(b.data||'').localeCompare(String(a.data||'')));
   if(server===null) _st('⚠️ Offline — usando dados do aparelho','#e67e22');
+  CUR_AREA=_unionAreaHa(CUR_DAYS);
   const ult=CUR_DAYS[0];
   HDR={ maquina_id:(ult&&ult.maquina_id)||'', implemento_id:(ult&&ult.implemento_id)||'' };
 }
@@ -235,7 +237,7 @@ async function abrirComanda(cod){
 /* ---- menu da comanda: dois ícones ---- */
 function _ultMaq(){ const r=CUR_DAYS.find(x=>x.maquina_id); return r?r.maquina_id:''; }
 async function _carregarAbast(){ ABAST=[]; if(!CUR||!OPER) return;
-  let server=null; try{ const {data,error}=await _q(SB.from('abastecimentos').select('*').eq('comanda_codigo',CUR.codigo).eq('funcionario_id',OPER.id).order('quando',{ascending:true})); if(error) throw error; server=data||[]; }catch(e){ server=null; }
+  let server=null; try{ if(!navigator.onLine) throw 0; const {data,error}=await _q(SB.from('abastecimentos').select('*').eq('comanda_codigo',CUR.codigo).eq('funcionario_id',OPER.id).order('quando',{ascending:true})); if(error) throw error; server=data||[]; }catch(e){ server=null; }
   const local=(await _idbAll('abast')).filter(a=>String(a.comanda_codigo)===String(CUR.codigo)&&String(a.funcionario_id)===String(OPER.id));
   const lsv={}; local.forEach(a=>{ if(a.serverId) lsv[String(a.serverId)]=true; });
   ABAST=(server||[]).filter(r=>!lsv[String(r.id)]).concat(local).sort((a,b)=>String(a.quando).localeCompare(String(b.quando)));
@@ -256,7 +258,7 @@ async function _lancarAbast(){
 function renderExecMenu(){
   const c=CUR; const area=areaLote(c.lote_nome);
   const concl=CUR_DAYS.some(r=>r.concluiu_lote)||c.status==='executada';
-  const areaCum=_unionAreaHa(CUR_DAYS);
+  const areaCum=CUR_AREA;
   const dias=[...new Set(CUR_DAYS.filter(r=>(Array.isArray(r.trajeto)&&r.trajeto.length>1)||r.area_ha).map(r=>r.data))].length;
   const hTrab=CUR_DAYS.reduce((s,r)=>{ const h=horasEntre(r.hora_inicio,r.hora_fim); return s+(h||0); },0);
   const abLista = ABAST.length ? ABAST.map(a=>`<div style="display:flex;justify-content:space-between;gap:8px;border-bottom:1px solid var(--line);padding:7px 0;font-size:14px"><span>${esc(_maqNome(a.maquina_id))}</span><b class="gold">${(+a.litros).toLocaleString('pt-BR')} L</b><span class="muted">${fmtDT(a.quando)}</span></div>`).join('') : '<div class="muted" style="font-size:13px">Nenhum abastecimento ainda.</div>';
