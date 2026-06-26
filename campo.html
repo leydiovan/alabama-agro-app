@@ -200,32 +200,35 @@ async function _carregarDiasComanda(){
 }
 async function abrirComanda(cod){
   CUR=COMANDAS.find(c=>String(c.codigo)===String(cod)); if(!CUR){ _st('Comanda não encontrada.','#c0392b'); return; }
-  if(GPS.watchId!=null){ try{navigator.geolocation.clearWatch(GPS.watchId);}catch(e){} GPS.watchId=null; } GPS.pts=[]; GPS.cells=new Set(); GPS.areaHa=0; GPS.speed=0; VIEW={follow:true,zoom:1,cx:null,cy:null};
+  if(GPS.watchId!=null){ try{navigator.geolocation.clearWatch(GPS.watchId);}catch(e){} GPS.watchId=null; } GPS.pts=[]; GPS.cells=new Set(); GPS.areaHa=0; GPS.speed=0; SESS=null; DAYSEGS=[]; VIEW={follow:true,zoom:1,cx:null,cy:null};
   await _carregarDiasComanda();
   EXVIEW='menu'; STEP='exec'; render(); window.scrollTo(0,0);
 }
 /* ---- menu da comanda: dois ícones ---- */
 function renderExecMenu(){
-  const c=CUR; const area=areaLote(c.lote_nome); const today=CUR_DAYS.find(r=>r.data===DIA);
+  const c=CUR; const area=areaLote(c.lote_nome);
+  const today=CUR_DAYS.filter(r=>r.data===DIA);
   const concl=CUR_DAYS.some(r=>r.concluiu_lote)||c.status==='executada';
-  const areaHoje=today&&today.area_ha!=null?(+today.area_ha).toFixed(2)+' ha':'—';
+  const sess = today.length ? today.map(r=>`
+    <div class="card" style="margin-bottom:10px;padding:12px 13px">
+      <div style="font-weight:800">${esc(_maqNome(r.maquina_id))}${r.implemento_id?(' + '+esc(_impNome(r.implemento_id))):''}</div>
+      <div class="hint" style="margin:2px 0 6px">${esc(r.hora_inicio||'—')}${r.hora_fim?('–'+esc(r.hora_fim)):' (aberta)'} · Área GPS: <b class="gold">${r.area_ha!=null?(+r.area_ha).toFixed(2)+' ha':'—'}</b></div>
+      <div class="two">
+        <div><label>Horímetro início</label><input type="number" step="any" inputmode="decimal" data-sid="${r.id}" data-f="horimetro_ini" value="${r.horimetro_ini!=null?r.horimetro_ini:''}"></div>
+        <div><label>Horímetro fim</label><input type="number" step="any" inputmode="decimal" data-sid="${r.id}" data-f="horimetro_fim" value="${r.horimetro_fim!=null?r.horimetro_fim:''}"></div>
+      </div>
+      <label style="margin-top:8px">Diesel (L)</label><input type="number" step="any" inputmode="decimal" data-sid="${r.id}" data-f="diesel_litros" value="${r.diesel_litros!=null?r.diesel_litros:''}" placeholder="litros">
+    </div>`).join('') : '<div class="card muted">Nenhuma sessão hoje. Abra a <b>Tela de trabalho</b> e comece a trabalhar.</div>';
   $('app').innerHTML=`<div class="top"><h1><span class="l">📋</span> ${esc(c.codigo)}</h1><div class="d">${esc(c.tipo_ativ||'')} · Lote ${esc(c.lote_nome||'—')}${area?(' · '+area+' ha'):''}</div></div>
     <button class="btn b huge" id="ic_cmd" style="margin-top:6px">📋 Ver comanda</button>
     <button class="btn k huge" id="ic_trab" style="margin-top:12px">🛰️ Tela de trabalho (GPS)</button>
-    <div class="card" style="margin-top:14px">
-      <div class="sec" style="margin-top:0;font-size:12px;text-transform:uppercase;letter-spacing:.5px;color:var(--muted)">Apontamento do dia</div>
-      <div class="two" style="margin-top:6px">
-        <div><label>Horímetro início</label><input type="number" step="any" inputmode="decimal" id="g_hmi" value="${today&&today.horimetro_ini!=null?today.horimetro_ini:''}"></div>
-        <div><label>Horímetro fim</label><input type="number" step="any" inputmode="decimal" id="g_hmf" value="${today&&today.horimetro_fim!=null?today.horimetro_fim:''}"></div>
-      </div>
-      <label style="margin-top:8px">Diesel (L)</label><input type="number" step="any" inputmode="decimal" id="g_die" value="${today&&today.diesel_litros!=null?today.diesel_litros:''}" placeholder="litros">
-      <div class="hint" style="margin-top:8px">Área feita hoje (GPS): <b class="gold">${areaHoje}</b></div>
-    </div>
+    <div class="sec" style="margin:14px 2px 6px;font-size:12px;text-transform:uppercase;letter-spacing:.5px;color:var(--muted)">Apontamento do dia (por conjunto)</div>
+    ${sess}
     ${concl?'<div class="card muted" style="text-align:center">✅ Lote concluído e enviado.</div>':'<button class="btn s" id="concluir">✔ Concluí o lote — enviar comanda</button>'}
     <div class="bar"><button class="btn s" id="voltar">◀ Voltar às comandas</button></div>`;
   if($('ic_cmd'))$('ic_cmd').onclick=abrirComandaDoc;
   if($('ic_trab'))$('ic_trab').onclick=async()=>{ const b=$('ic_trab'); if(b){b.disabled=true;b.textContent='abrindo GPS…';} await _gpsEnter(); EXVIEW='trabalho'; render(); window.scrollTo(0,0); };
-  ['g_hmi','g_hmf','g_die'].forEach(id=>{ const el=$(id); if(el) el.onchange=_saveManual; });
+  document.querySelectorAll('[data-sid]').forEach(el=>el.onchange=()=>_saveManualSess(el.dataset.sid, el.dataset.f, el.value));
   if($('concluir'))$('concluir').onclick=concluirLote;
   if($('voltar'))$('voltar').onclick=async()=>{ STEP='home'; EXVIEW='menu'; await carregarDia(); render(); };
 }
@@ -240,6 +243,7 @@ function abrirComandaDoc(){
 /* ===================== TELA DE TRABALHO (GPS — cobertura) ===================== */
 let GPS={watchId:null,pts:[],cells:new Set(),areaHa:0,speed:0,head:0,wake:null,acc:null,_lt:0,_dt:null,paintAuto:true,painting:false,inField:false};
 let VIEW={follow:true,zoom:1,cx:null,cy:null};
+let SESS=null, DAYSEGS=[];     // SESS = sessão ativa (conjunto atual); DAYSEGS = sessões já feitas (desenho)
 const CELL=2; // m — resolução da cobertura
 function latLngToUTM(lat,lon,zona){
   const a=6378137.0,f=1/298.257223563,e2=f*(2-f),ep2=e2/(1-e2),k0=0.9996;
@@ -253,7 +257,7 @@ function latLngToUTM(lat,lon,zona){
 }
 function _polyUTM(){ const l=LOTES.find(x=>x.nome===CUR.lote_nome); const g=l&&l.geom; return (g&&Array.isArray(g.ring)&&g.ring.length>2)?g.ring:null; }
 function _widthM(){ const m=IMPS.find(x=>String(x.id)===String(HDR.implemento_id)); return m&&m.largura_trabalho?+m.largura_trabalho:0; }
-function _otherDaysArea(){ return CUR_DAYS.filter(r=>r.data!==DIA).reduce((s,r)=>s+(+r.area_ha||0),0); }
+function _otherDaysArea(){ return CUR_DAYS.filter(r=>!SESS||String(r.id)!==String(SESS.id)).reduce((s,r)=>s+(+r.area_ha||0),0); }
 function _inPoly(E,N,ring){ if(!ring) return false; let inside=false; for(let i=0,j=ring.length-1;i<ring.length;j=i++){ const xi=ring[i][0],yi=ring[i][1],xj=ring[j][0],yj=ring[j][1]; if(((yi>N)!=(yj>N)) && (E < (xj-xi)*(N-yi)/((yj-yi)||1e-9)+xi)) inside=!inside; } return inside; }
 function _centroid(ring){ let sx=0,sy=0; ring.forEach(p=>{sx+=p[0];sy+=p[1];}); return [sx/ring.length,sy/ring.length]; }
 let _CV=null,_CW=0,_CH=0,_SC0=1;
@@ -276,11 +280,12 @@ function _drawMapa(){ const cv=_CV||$('cv'); if(!cv) return; if(!_CW){ _setupCan
   ctx.clearRect(0,0,_CW,_CH); if(VIEW.cx==null) return;
   const poly=_polyUTM();
   if(poly){ _pathPoly(ctx,poly); ctx.fillStyle='rgba(60,90,40,.18)'; ctx.fill(); ctx.lineWidth=2; ctx.strokeStyle='#7ee787'; ctx.stroke(); }
-  if(GPS.pts.length){ ctx.save();
-    if(poly){ _pathPoly(ctx,poly); ctx.clip(); }   // pinta SÓ dentro do talhão
-    const wpx=Math.max(3,_widthM()*_sc()); ctx.lineJoin='round'; ctx.lineCap='round'; ctx.lineWidth=wpx; ctx.strokeStyle='rgba(255,193,7,.5)'; ctx.beginPath(); GPS.pts.forEach((p,i)=>{ const X=_px(p.E),Y=_py(p.N); i?ctx.lineTo(X,Y):ctx.moveTo(X,Y); }); ctx.stroke();
-    ctx.restore();
-    const last=GPS.pts[GPS.pts.length-1]; ctx.save(); ctx.translate(_px(last.E),_py(last.N)); ctx.rotate(GPS.head); ctx.fillStyle='#fff'; ctx.strokeStyle='#0d1117'; ctx.lineWidth=1.5; ctx.beginPath(); ctx.moveTo(0,-12); ctx.lineTo(9,10); ctx.lineTo(0,5); ctx.lineTo(-9,10); ctx.closePath(); ctx.fill(); ctx.stroke(); ctx.restore(); }
+  ctx.save(); if(poly){ _pathPoly(ctx,poly); ctx.clip(); }   // pinta SÓ dentro do talhão
+  ctx.lineJoin='round'; ctx.lineCap='round'; ctx.strokeStyle='rgba(255,193,7,.5)';
+  (DAYSEGS||[]).forEach(s=>{ if(!s.pts.length) return; ctx.lineWidth=Math.max(3,(s.larg||0)*_sc()); ctx.beginPath(); s.pts.forEach((p,i)=>{ const X=_px(p.E),Y=_py(p.N); i?ctx.lineTo(X,Y):ctx.moveTo(X,Y); }); ctx.stroke(); });
+  if(GPS.pts.length){ ctx.lineWidth=Math.max(3,_widthM()*_sc()); ctx.beginPath(); GPS.pts.forEach((p,i)=>{ const X=_px(p.E),Y=_py(p.N); i?ctx.lineTo(X,Y):ctx.moveTo(X,Y); }); ctx.stroke(); }
+  ctx.restore();
+  if(GPS.pts.length){ const last=GPS.pts[GPS.pts.length-1]; ctx.save(); ctx.translate(_px(last.E),_py(last.N)); ctx.rotate(GPS.head); ctx.fillStyle='#fff'; ctx.strokeStyle='#0d1117'; ctx.lineWidth=1.5; ctx.beginPath(); ctx.moveTo(0,-12); ctx.lineTo(9,10); ctx.lineTo(0,5); ctx.lineTo(-9,10); ctx.closePath(); ctx.fill(); ctx.stroke(); ctx.restore(); }
 }
 function _hud(){ const el=$('hud'); if(!el) return; const loteA=areaLote(CUR.lote_nome)||0; const cum=_otherDaysArea()+GPS.areaHa; const pct=loteA>0?Math.min(100,cum/loteA*100):null;
   let stt,stc; if(GPS.paintAuto){ if(GPS.inField){ stt='● pintando'; stc='#27ae60'; } else { stt='○ fora do talhão'; stc='#f85149'; } } else { if(GPS.painting){ stt='● pintando'; stc='#27ae60'; } else { stt='|| pausado'; stc='#8b949e'; } }
@@ -309,31 +314,36 @@ function _onFix(pos){ const cur=pos.coords; GPS.acc=cur.accuracy;
   if(GPS.watchId!=null&&GPS.pts.length%40===0) _saveGps(false);
 }
 function _recalcCells(){ GPS.cells=new Set(); GPS.areaHa=0; for(let i=1;i<GPS.pts.length;i++) _markCells(GPS.pts[i-1].E,GPS.pts[i-1].N,GPS.pts[i].E,GPS.pts[i].N); }
-function _restoreToday(){ GPS.pts=[]; GPS.cells=new Set(); GPS.areaHa=0; GPS.speed=0;
-  const r=CUR_DAYS.find(x=>x.data===DIA); if(!r||!Array.isArray(r.trajeto)) return;
-  r.trajeto.forEach(p=>{ const lat=p[0],lon=p[1]; if(lat==null||lon==null) return; const u=latLngToUTM(lat,lon,23); if(GPS.pts.length){ const last=GPS.pts[GPS.pts.length-1]; _markCells(last.E,last.N,u[0],u[1]); } GPS.pts.push({E:u[0],N:u[1],lat,lon,t:p[2]||0}); });
-  if((!GPS.cells.size||_widthM()<=0) && r.area_ha!=null) GPS.areaHa=+r.area_ha;
+function _implLarg(id){ const m=IMPS.find(x=>String(x.id)===String(id)); return m&&m.largura_trabalho?+m.largura_trabalho:0; }
+function _rowPts(row){ const out=[]; if(Array.isArray(row.trajeto)) row.trajeto.forEach(p=>{ if(p[0]==null) return; const u=latLngToUTM(p[0],p[1],23); out.push({E:u[0],N:u[1]}); }); return out; }
+function _maqNome(id){ const m=MAQS.find(x=>String(x.id)===String(id)); return m?m.nome:'(sem máquina)'; }
+function _impNome(id){ const m=IMPS.find(x=>String(x.id)===String(id)); return m?m.nome:''; }
+function _buildDaySegs(){ DAYSEGS=CUR_DAYS.filter(r=>r.data===DIA && (!SESS||String(r.id)!==String(SESS.id)) && Array.isArray(r.trajeto)&&r.trajeto.length).map(r=>({pts:_rowPts(r), larg:_implLarg(r.implemento_id)})); }
+function _restoreSess(){ GPS.pts=[]; GPS.cells=new Set(); GPS.areaHa=0; GPS.speed=0;
+  if(!SESS||!Array.isArray(SESS.trajeto)) return;
+  SESS.trajeto.forEach(p=>{ const lat=p[0],lon=p[1]; if(lat==null) return; const u=latLngToUTM(lat,lon,23); if(GPS.pts.length){ const l=GPS.pts[GPS.pts.length-1]; _markCells(l.E,l.N,u[0],u[1]); } GPS.pts.push({E:u[0],N:u[1],lat,lon,t:p[2]||0}); });
+  if((!GPS.cells.size||_widthM()<=0) && SESS.area_ha!=null) GPS.areaHa=+SESS.area_ha;
 }
-async function _saveGps(final){ const r=CUR_DAYS.find(x=>x.data===DIA); if(!r) return;
+async function _saveGps(final){ if(!SESS) return;
   const patch={ trajeto:GPS.pts.map(p=>[+p.lat.toFixed(6),+p.lon.toFixed(6),p.t||0]), area_ha:+GPS.areaHa.toFixed(2), atualizado_em:new Date().toISOString() };
   if(final){ patch.hora_fim=nowHM(); patch.status='enviada'; }
-  try{ const {error}=await SB.from('execucao_campo').update(patch).eq('id',r.id); if(error) throw error; Object.assign(r,patch); }catch(e){ if(final) _st('❌ '+e.message,'#c0392b'); }
+  try{ const {error}=await SB.from('execucao_campo').update(patch).eq('id',SESS.id); if(error) throw error; Object.assign(SESS,patch); }catch(e){ if(final) _st('❌ '+e.message,'#c0392b'); }
 }
-async function _ensureDia(){ let r=CUR_DAYS.find(x=>x.data===DIA); if(r) return r;
+async function _novaSessao(){
   const reg={comanda_codigo:CUR.codigo,safra:SAFRA,funcionario_id:OPER.id,lote_nome:CUR.lote_nome||null,data:DIA,maquina_id:HDR.maquina_id?+HDR.maquina_id:null,implemento_id:HDR.implemento_id?+HDR.implemento_id:null,hora_inicio:nowHM(),status:'aberto',enviado_por:USER_EMAIL||null,atualizado_em:new Date().toISOString()};
-  try{ await SB.from('execucao_campo').upsert(reg,{onConflict:'comanda_codigo,funcionario_id,data'}); }catch(e){ _st('❌ '+e.message,'#c0392b'); }
-  await _carregarDiasComanda(); return CUR_DAYS.find(x=>x.data===DIA);
+  try{ const {data,error}=await SB.from('execucao_campo').insert(reg).select().single(); if(error) throw error; await _carregarDiasComanda(); return CUR_DAYS.find(r=>String(r.id)===String(data.id))||data; }catch(e){ _st('❌ '+e.message,'#c0392b'); return null; }
 }
-async function _saveManual(){ const r=await _ensureDia(); if(!r) return;
-  const patch={ horimetro_ini:num($('g_hmi')&&$('g_hmi').value), horimetro_fim:num($('g_hmf')&&$('g_hmf').value), diesel_litros:num($('g_die')&&$('g_die').value), atualizado_em:new Date().toISOString() };
-  try{ const {error}=await SB.from('execucao_campo').update(patch).eq('id',r.id); if(error) throw error; Object.assign(r,patch); }catch(e){ _st('❌ '+e.message,'#c0392b'); }
-}
-async function _saveMaqImp(){ const r=CUR_DAYS.find(x=>x.data===DIA); if(!r) return;
-  try{ await SB.from('execucao_campo').update({maquina_id:HDR.maquina_id?+HDR.maquina_id:null, implemento_id:HDR.implemento_id?+HDR.implemento_id:null, atualizado_em:new Date().toISOString()}).eq('id',r.id); Object.assign(r,{maquina_id:HDR.maquina_id?+HDR.maquina_id:null,implemento_id:HDR.implemento_id?+HDR.implemento_id:null}); }catch(e){}
+async function _saveManualSess(sid,campo,valor){ const r=CUR_DAYS.find(x=>String(x.id)===String(sid)); if(!r) return;
+  const patch={atualizado_em:new Date().toISOString()}; patch[campo]=num(valor);
+  try{ const {error}=await SB.from('execucao_campo').update(patch).eq('id',sid); if(error) throw error; Object.assign(r,patch); }catch(e){ _st('❌ '+e.message,'#c0392b'); }
 }
 async function _gpsEnter(){
   if(!navigator.geolocation){ _st('Sem GPS neste aparelho.','#c0392b'); return; }
-  await _ensureDia(); if(!GPS.pts.length) _restoreToday();
+  await _carregarDiasComanda();
+  SESS=CUR_DAYS.find(r=>r.data===DIA && r.status!=='aprovada' && !r.hora_fim) || null;
+  if(!SESS){ SESS=await _novaSessao(); if(!SESS) return; }
+  HDR.maquina_id=(SESS.maquina_id!=null?SESS.maquina_id:HDR.maquina_id)||''; HDR.implemento_id=(SESS.implemento_id!=null?SESS.implemento_id:HDR.implemento_id)||'';
+  _restoreSess(); _buildDaySegs();
   GPS.paintAuto=true; GPS.painting=false; VIEW={follow:true,zoom:1,cx:null,cy:null};
   try{ if(navigator.wakeLock) GPS.wake=await navigator.wakeLock.request('screen'); }catch(e){}
   try{ GPS.watchId=navigator.geolocation.watchPosition(_onFix,err=>_st('GPS: '+err.message,'#e67e22'),{enableHighAccuracy:true,maximumAge:0,timeout:15000}); }catch(e){ _st('❌ '+e.message,'#c0392b'); }
@@ -342,8 +352,20 @@ async function _gpsLeave(){
   if(GPS.watchId!=null){ try{navigator.geolocation.clearWatch(GPS.watchId);}catch(e){} GPS.watchId=null; }
   try{ if(GPS.wake){ await GPS.wake.release(); GPS.wake=null; } }catch(e){}
   GPS.speed=0;
-  if(CUR_DAYS.find(x=>x.data===DIA)) await _saveGps(true);
-  await _carregarDiasComanda();
+  if(SESS){ const vazia=!GPS.pts.length && SESS.horimetro_ini==null && SESS.horimetro_fim==null && SESS.diesel_litros==null;
+    if(vazia){ try{ await SB.from('execucao_campo').delete().eq('id',SESS.id); }catch(e){} } else { await _saveGps(true); } }
+  SESS=null; await _carregarDiasComanda();
+}
+async function _trocarConjunto(){
+  const nm=$('h_maq')?$('h_maq').value:'', ni=$('h_imp')?$('h_imp').value:''; HDR.maquina_id=nm; HDR.implemento_id=ni;
+  if(SESS && String(SESS.maquina_id||'')===String(nm) && String(SESS.implemento_id||'')===String(ni)){ _recalcCells(); _drawMapa(); _hud(); return; }
+  if(SESS && !GPS.pts.length){   // sessão atual vazia: só troca o conjunto dela
+    try{ await SB.from('execucao_campo').update({maquina_id:nm?+nm:null,implemento_id:ni?+ni:null,atualizado_em:new Date().toISOString()}).eq('id',SESS.id); Object.assign(SESS,{maquina_id:nm?+nm:null,implemento_id:ni?+ni:null}); }catch(e){}
+    _recalcCells(); _drawMapa(); _hud(); return;
+  }
+  if(SESS) await _saveGps(true);   // fecha a sessão anterior (com o que pintou)
+  await _carregarDiasComanda(); SESS=await _novaSessao(); if(!SESS) return;
+  _restoreSess(); _buildDaySegs(); _drawMapa(); _hud(); _st('Novo conjunto — sessão iniciada','#27ae60');
 }
 let _gestBound=null;
 function _bindGestures(cv){ if(_gestBound===cv) return; _gestBound=cv;
@@ -381,21 +403,22 @@ function renderTrabalho(){
     </div>
   </div>`;
   if($('voltar'))$('voltar').onclick=async()=>{ await _gpsLeave(); EXVIEW='menu'; render(); };
-  if($('h_maq'))$('h_maq').onchange=()=>{ HDR.maquina_id=$('h_maq').value; _saveMaqImp(); };
-  if($('h_imp'))$('h_imp').onchange=()=>{ HDR.implemento_id=$('h_imp').value; _saveMaqImp(); _recalcCells(); _drawMapa(); _hud(); };
+  if($('h_maq'))$('h_maq').onchange=_trocarConjunto;
+  if($('h_imp'))$('h_imp').onchange=_trocarConjunto;
   if($('btn_follow'))$('btn_follow').onclick=()=>{ VIEW.follow=!VIEW.follow; $('btn_follow').textContent=VIEW.follow?'🎯 Seguindo':'✋ Livre'; _drawMapa(); };
   if($('btn_pmode'))$('btn_pmode').onclick=()=>{ GPS.paintAuto=!GPS.paintAuto; if(GPS.paintAuto) GPS.painting=false; render(); };
   if($('btn_paint'))$('btn_paint').onclick=()=>{ GPS.painting=!GPS.painting; render(); };
   setTimeout(()=>{ _setupCanvas(); _drawMapa(); _hud(); },30);
 }
 async function concluirLote(){
-  await _saveManual();
-  let r=CUR_DAYS.find(x=>x.data===DIA);
-  if(!r){ _st('Sem apontamento hoje — abra a Tela de trabalho ou preencha o apontamento.','#e67e22'); return; }
+  const today=CUR_DAYS.filter(r=>r.data===DIA);
+  if(!today.length){ _st('Sem sessão hoje — abra a Tela de trabalho.','#e67e22'); return; }
   if(!confirm('Concluir o lote e enviar a comanda para aprovação?')) return;
-  const patch={concluiu_lote:true,status:'enviada',atualizado_em:new Date().toISOString()}; if(!r.hora_fim) patch.hora_fim=nowHM();
-  try{ const {error}=await SB.from('execucao_campo').update(patch).eq('id',r.id); if(error) throw error; STEP='fim'; render(); }
-  catch(e){ _st('❌ '+e.message,'#c0392b'); }
+  try{
+    for(const r of today){ const patch={status:'enviada',atualizado_em:new Date().toISOString()}; if(!r.hora_fim) patch.hora_fim=nowHM(); const {error}=await SB.from('execucao_campo').update(patch).eq('id',r.id); if(error) throw error; }
+    const ult=today[today.length-1]; await SB.from('execucao_campo').update({concluiu_lote:true,atualizado_em:new Date().toISOString()}).eq('id',ult.id);
+    STEP='fim'; render();
+  }catch(e){ _st('❌ '+e.message,'#c0392b'); }
 }
 function renderFim(){
   $('app').innerHTML=`<div class="center" style="margin-top:46px">
