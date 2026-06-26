@@ -88,6 +88,10 @@ function _dt2(n){ return String(n).padStart(2,'0'); }
 function nowLocalDT(){ const d=new Date(); return d.getFullYear()+'-'+_dt2(d.getMonth()+1)+'-'+_dt2(d.getDate())+'T'+_dt2(d.getHours())+':'+_dt2(d.getMinutes()); }
 function tsToLocalDT(ts){ const d=new Date(ts); return d.getFullYear()+'-'+_dt2(d.getMonth()+1)+'-'+_dt2(d.getDate())+'T'+_dt2(d.getHours())+':'+_dt2(d.getMinutes()); }
 function fmtDT(ts){ const d=new Date(ts); return _dt2(d.getDate())+'/'+_dt2(d.getMonth()+1)+' '+_dt2(d.getHours())+':'+_dt2(d.getMinutes()); }
+function _pdfPath(codigo,safra){ return 'comandas/'+String(safra||'').replace(/[^\w.-]/g,'-')+'/'+String(codigo)+'.pdf'; }
+function _idb(){ return new Promise((res,rej)=>{ let r; try{ r=indexedDB.open('campo-cache',1); }catch(e){ return rej(e); } r.onupgradeneeded=()=>{ try{ r.result.createObjectStore('pdfs'); }catch(e){} }; r.onsuccess=()=>res(r.result); r.onerror=()=>rej(r.error); }); }
+async function _pdfCacheSet(k,blob){ try{ const db=await _idb(); await new Promise((res,rej)=>{ const tx=db.transaction('pdfs','readwrite'); tx.objectStore('pdfs').put(blob,k); tx.oncomplete=res; tx.onerror=()=>rej(tx.error); }); }catch(e){} }
+async function _pdfCacheGet(k){ try{ const db=await _idb(); return await new Promise((res)=>{ const tx=db.transaction('pdfs','readonly'); const rq=tx.objectStore('pdfs').get(k); rq.onsuccess=()=>res(rq.result||null); rq.onerror=()=>res(null); }); }catch(e){ return null; } }
 function _st(t,c){ let e=$('snack'); if(!e){ e=document.createElement('div'); e.id='snack'; e.style.cssText='position:fixed;left:12px;right:12px;bottom:78px;z-index:50;padding:11px 14px;border-radius:10px;font:600 14px system-ui;text-align:center;box-shadow:0 4px 14px rgba(0,0,0,.4)'; document.body.appendChild(e);} e.textContent=t; e.style.background=c||'#333'; e.style.color='#fff'; clearTimeout(e._t); e._t=setTimeout(()=>{e.remove();},3200); }
 
 /* ---------- boot / login ---------- */
@@ -259,13 +263,25 @@ function renderExecMenu(){
   if($('concluir'))$('concluir').onclick=concluirLote;
   if($('voltar'))$('voltar').onclick=async()=>{ STEP='home'; EXVIEW='menu'; ABFORM=false; await carregarDia(); render(); };
 }
-/* ---- abre a comanda (placeholder até virar PDF offline; NUNCA carrega o admin) ---- */
-function abrirComandaDoc(){
+/* ---- abre a comanda em PDF (baixa online → cacheia → abre offline; NUNCA carrega o admin) ---- */
+async function abrirComandaDoc(){
+  const cod=CUR.codigo, safra=CUR.safra||SAFRA, path=_pdfPath(cod,safra);
   const ov=document.createElement('div'); ov.id='docov';
   ov.style.cssText='position:fixed;inset:0;z-index:1000;background:#0d1117;color:#e6edf3;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:24px;text-align:center';
-  ov.innerHTML='<div style="font-size:52px">📄</div><h2 style="margin:10px 0">Comanda '+esc(CUR.codigo)+'</h2><div class="muted" style="max-width:360px;line-height:1.5">Aqui vai abrir a comanda como <b>PDF</b> — pra funcionar <b>offline</b> no campo e dar zoom direito, <u>sem acessar o sistema admin</u>. Estou montando esse formato.</div><button class="btn g" id="docback" style="max-width:240px;margin-top:22px">Voltar</button>';
+  ov.innerHTML='<div style="font-size:48px">📄</div><div style="margin-top:10px">Abrindo comanda '+esc(cod)+'…</div>';
   document.body.appendChild(ov);
-  ov.querySelector('#docback').onclick=()=>ov.remove();
+  let blob=null, off=false;
+  try{ const {data,error}=await SB.storage.from('comandas-pdf').download(path); if(!error&&data&&data.size){ blob=data; _pdfCacheSet(path,data); } }catch(e){}
+  if(!blob){ const cch=await _pdfCacheGet(path); if(cch){ blob=cch; off=true; } }
+  if(!blob){
+    ov.innerHTML='<div style="font-size:48px">📄</div><h2 style="margin:10px 0">Comanda '+esc(cod)+'</h2><div class="muted" style="max-width:340px;line-height:1.5">A comanda em PDF ainda não foi gerada. Peça ao admin para <b>abrir e salvar</b> a comanda (gera o PDF) e conecte o tablet à internet uma vez para baixar.</div><button class="btn g" id="docback" style="max-width:240px;margin-top:22px">Voltar</button>';
+    ov.querySelector('#docback').onclick=()=>ov.remove(); return;
+  }
+  const url=URL.createObjectURL(blob);
+  ov.style.cssText='position:fixed;inset:0;z-index:1000;background:#161b22;color:#e6edf3;display:flex;flex-direction:column';
+  ov.innerHTML='<div style="height:52px;display:flex;align-items:center;gap:10px;padding:0 10px;flex:0 0 auto"><button class="btn s" id="docback" style="margin:0;padding:9px 14px">◀ Voltar</button><div style="font-weight:700">Comanda '+esc(cod)+'</div>'+(off?'<span class="muted" style="font-size:12px">(offline)</span>':'')+'<div style="flex:1"></div><button class="btn s" id="docopen" style="margin:0;padding:9px 14px">Abrir ⤢</button></div><iframe src="'+url+'" style="flex:1;width:100%;border:0;background:#fff"></iframe>';
+  ov.querySelector('#docback').onclick=()=>{ try{URL.revokeObjectURL(url);}catch(e){} ov.remove(); };
+  const ob=ov.querySelector('#docopen'); if(ob) ob.onclick=()=>{ try{ window.open(url,'_blank'); }catch(e){} };
 }
 /* ===================== TELA DE TRABALHO (GPS — cobertura) ===================== */
 let GPS={watchId:null,pts:[],cells:new Set(),areaHa:0,speed:0,head:0,wake:null,acc:null,_lt:0,_dt:null,paintAuto:true,painting:false,inField:false};
