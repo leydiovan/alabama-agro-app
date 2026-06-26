@@ -280,22 +280,29 @@ function _pdfPath(codigo,safra){ return 'comandas/'+String(safra||'').replace(/[
 function _viaPdf(c){ const aer=/A[eé]rea/i.test(c.tipoAtiv); const soVia1=/Gradagem|Plantio|Subsolagem|Colheita de Gr|Colheita de Fibras|Fibras/i.test(c.tipoAtiv); return soVia1?'geral':(aer?'piloto':'operador'); }
 function _aguardarImgs(el){ const imgs=[].slice.call(el.querySelectorAll('img')); return Promise.race([ Promise.all(imgs.map(im=>(im.complete&&im.naturalWidth)?1:new Promise(r=>{ im.onload=im.onerror=()=>r(1); }))), new Promise(r=>setTimeout(()=>r(1),4000)) ]); }
 async function _gerarEenviarPDF(c){
+  let cont=null, cover=null;
   try{
     if(!window.html2pdf){ _statusSB('⚠️ Lib de PDF não carregou — PDF não gerado','#e67e22'); return; }
     _statusSB('📄 Gerando PDF da comanda '+c.codigo+'…','#3498db');
-    const cont=document.createElement('div');
-    cont.style.cssText='position:fixed;left:-99999px;top:0;width:210mm;background:#fff;color:#000;';
+    // capa opaca por cima (esconde o render do usuário) + container VISÍVEL e renderizado embaixo
+    cover=document.createElement('div');
+    cover.style.cssText='position:fixed;inset:0;z-index:99998;background:#0d1117;color:#fff;display:flex;align-items:center;justify-content:center;font:600 16px system-ui';
+    cover.textContent='📄 Gerando PDF da comanda '+c.codigo+'…';
+    cont=document.createElement('div');
+    cont.style.cssText='position:fixed;left:0;top:0;z-index:99997;width:794px;background:#fff;color:#000;';
     cont.innerHTML=_comandaHtml(c,_viaPdf(c));
-    document.body.appendChild(cont);
+    document.body.appendChild(cover); document.body.appendChild(cont);
     await _aguardarImgs(cont);
-    const opt={ margin:0, image:{type:'jpeg',quality:0.98}, html2canvas:{scale:3,useCORS:true,backgroundColor:'#ffffff'}, jsPDF:{unit:'mm',format:'a4',orientation:'portrait'}, pagebreak:{mode:['css','legacy']} };
-    let blob;
-    try{ blob=await html2pdf().set(opt).from(cont).outputPdf('blob'); } finally{ cont.remove(); }
+    await new Promise(r=>setTimeout(r,80));
+    const opt={ margin:0, image:{type:'jpeg',quality:0.98}, html2canvas:{scale:3,useCORS:true,backgroundColor:'#ffffff',windowWidth:794,width:794,scrollX:0,scrollY:0}, jsPDF:{unit:'mm',format:'a4',orientation:'portrait'}, pagebreak:{mode:['css','legacy']} };
+    const blob=await html2pdf().set(opt).from(cont).outputPdf('blob');
+    if(!blob || blob.size<5000) throw new Error('PDF saiu vazio (conteúdo não renderizou)');
     const {error}=await SB.storage.from('comandas-pdf').upload(_pdfPath(c.codigo,SAFRA), blob, {upsert:true, contentType:'application/pdf'});
     if(error) throw error;
     try{ await SB.from('comandas').update({pdf_at:new Date().toISOString()}).eq('codigo',c.codigo).eq('safra',SAFRA); c.pdfAt=new Date().toISOString(); }catch(e){}
     _statusSB('📄 PDF da comanda '+c.codigo+' pronto (o tablet já baixa)','#27ae60');
   }catch(e){ console.error('pdf',e); _statusSB('⚠️ PDF não gerado: '+(e.message||e),'#e67e22'); }
+  finally{ if(cont) cont.remove(); if(cover) cover.remove(); }
 }
 
 /* ====================== CUSTO (matemática pura) ====================== */
