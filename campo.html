@@ -54,25 +54,27 @@ input[type=time],input[type=number]{font-variant-numeric:tabular-nums}
 .sec{font-size:12px;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);margin:14px 0 6px}
 .agora{margin-top:4px}
 .fl{display:flex;gap:10px;align-items:center;margin-top:8px}.fl input{width:24px;height:24px}.fl label{margin:0;color:var(--text);font-size:15px}
-/* ---- visual "app de tablet" no menu da comanda ---- */
-.hcard{background:linear-gradient(135deg,#1f2940,#161b22);border:1px solid var(--line);border-radius:18px;padding:16px;margin-bottom:14px;box-shadow:0 6px 20px rgba(0,0,0,.25)}
-.hcard .cd{display:flex;align-items:center;gap:10px;font-size:26px;font-weight:900;letter-spacing:.5px}
-.hcard .cd .l{color:var(--gold)}
-.hcard .sb{color:var(--muted);font-size:14px;margin-top:7px;line-height:1.5}
-.hcard .sb b{color:var(--text)}
-.tiles{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px}
-.tile{display:flex;flex-direction:column;gap:5px;border:1px solid var(--line);border-radius:18px;padding:18px 16px;min-height:124px;cursor:pointer;color:var(--text);text-align:left;background:var(--bg2);transition:transform .06s}
-.tile .ic{font-size:30px;line-height:1}
-.tile .tt{font-size:18px;font-weight:800;margin-top:auto}
-.tile .ds{font-size:12.5px;color:var(--muted);line-height:1.35}
-.tile:active{transform:scale(.97)}
-.tile:disabled{opacity:.55}
-.tile.b{background:linear-gradient(135deg,#1d3a5f,#15233a);border-color:#2a4a6e}
-.tile.k{background:linear-gradient(135deg,#15402a,#13251c);border-color:#2a5a3e}
-.stats{display:flex;gap:10px;margin-bottom:14px}
-.stat{flex:1;background:var(--bg2);border:1px solid var(--line);border-radius:14px;padding:12px 8px;text-align:center}
-.stat .v{font-size:21px;font-weight:900;color:var(--gold);font-variant-numeric:tabular-nums}
-.stat .l{font-size:10.5px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-top:3px}
+/* ---- menu da comanda: painel de ícones (cara de app) ---- */
+.hbar{display:flex;align-items:center;gap:10px;margin:2px 2px 6px}
+.hbar .cd{font-size:22px;font-weight:900;letter-spacing:.5px}
+.hbar .cd .l{color:var(--gold)}
+.hsub{color:var(--muted);font-size:13px;margin:0 2px 12px}
+.hsub b{color:var(--text)}
+.statline{display:flex;gap:8px;margin-bottom:16px}
+.statline .s{flex:1;background:var(--bg2);border:1px solid var(--line);border-radius:12px;padding:9px 6px;text-align:center}
+.statline .s .v{font-size:18px;font-weight:900;color:var(--gold);font-variant-numeric:tabular-nums}
+.statline .s .l{font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-top:2px}
+.apps{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:14px;margin-bottom:16px}
+.app{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;background:var(--bg2);border:1px solid var(--line);border-radius:22px;padding:22px 10px;cursor:pointer;color:var(--text);min-height:150px;position:relative;transition:transform .06s}
+.app:active{transform:scale(.96)}
+.app:disabled{opacity:.55}
+.app .ico{width:70px;height:70px;border-radius:22px;display:flex;align-items:center;justify-content:center;font-size:38px;line-height:1}
+.app .lb{font-size:17px;font-weight:800}
+.app.a1 .ico{background:rgba(56,139,253,.20)}
+.app.a2 .ico{background:rgba(39,174,96,.20)}
+.app.a3 .ico{background:rgba(255,193,7,.18)}
+.app.a4 .ico{background:rgba(158,110,253,.20)}
+.app .bdg{position:absolute;top:12px;right:12px;background:var(--gold);color:#1a1100;font-size:12px;font-weight:900;border-radius:20px;min-width:22px;height:22px;display:flex;align-items:center;justify-content:center;padding:0 6px}
 .shdr{display:flex;align-items:center;justify-content:space-between;gap:10px;margin:4px 2px 8px}
 .shdr .t{font-size:12px;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);font-weight:700}
 </style>
@@ -298,23 +300,21 @@ function renderExecMenu(){
       <div class="hint" style="margin-top:6px">O consumo conta deste abastecimento até o anterior (ou o início do trabalho).</div>
     </div>` : '';
   $('app').innerHTML=`
-    <div class="hcard">
-      <div class="cd"><span class="l">📋</span> ${esc(c.codigo)}<span class="pill ${concl?'on':'go'}" style="margin-left:auto">${concl?'lote concluído':'em andamento'}</span></div>
-      <div class="sb">${esc(c.tipo_ativ||'—')} · Lote <b>${esc(c.lote_nome||'—')}</b>${area?(' · '+area+' ha'):''}</div>
+    <div class="hbar"><div class="cd"><span class="l">📋</span> ${esc(c.codigo)}</div><span class="pill ${concl?'on':'go'}" style="margin-left:auto">${concl?'lote concluído':'em andamento'}</span></div>
+    <div class="hsub">${esc(c.tipo_ativ||'—')} · Lote <b>${esc(c.lote_nome||'—')}</b>${area?(' · '+area+' ha'):''}</div>
+    <div class="statline">
+      <div class="s"><div class="v">${areaCum.toFixed(2)}</div><div class="l">ha</div></div>
+      <div class="s"><div class="v">${dias}</div><div class="l">dias</div></div>
+      <div class="s"><div class="v">${hTrab?hTrab.toFixed(1):'0'}</div><div class="l">horas</div></div>
     </div>
-    <div class="tiles">
-      <button class="tile b" id="ic_cmd"><div class="ic">📄</div><div class="tt">Ver comanda</div><div class="ds">Abre o PDF · funciona offline</div></button>
-      <button class="tile k" id="ic_trab"><div class="ic">🛰️</div><div class="tt">Tela de trabalho</div><div class="ds">GPS · pinta a área no mapa</div></button>
+    <div class="apps">
+      <button class="app a1" id="ic_cmd"><div class="ico">📄</div><div class="lb">Comanda</div></button>
+      <button class="app a2" id="ic_trab"><div class="ico">🛰️</div><div class="lb">Trabalhar</div></button>
+      ${concl?'':`<button class="app a3" id="ab_novo"><div class="ico">⛽</div><div class="lb">Abastecer</div>${ABAST.length?`<span class="bdg">${ABAST.length}</span>`:''}</button>`}
+      ${concl?`<button class="app a4" disabled><div class="ico">✅</div><div class="lb">Concluído</div></button>`:`<button class="app a4" id="concluir"><div class="ico">🏁</div><div class="lb">Concluir lote</div></button>`}
     </div>
-    <div class="stats">
-      <div class="stat"><div class="v">${areaCum.toFixed(2)}</div><div class="l">ha feitos</div></div>
-      <div class="stat"><div class="v">${dias}</div><div class="l">dia(s)</div></div>
-      <div class="stat"><div class="v">${hTrab?hTrab.toFixed(1):'0'}</div><div class="l">horas</div></div>
-    </div>
-    <div class="shdr"><span class="t">⛽ Abastecimentos (diesel)</span>${(concl||ABFORM)?'':'<button class="btn sm g" id="ab_novo" style="padding:8px 14px">＋ Lançar</button>'}</div>
-    <div class="card" style="margin-bottom:12px">${abLista}</div>
     ${form}
-    ${concl?'<div class="card center" style="border-color:var(--ok);color:var(--ok);font-weight:800;margin-bottom:12px">✅ Lote concluído e enviado</div>':'<button class="btn k huge" id="concluir">✔ Concluí o lote — enviar comanda</button>'}
+    ${ABAST.length?`<div class="shdr"><span class="t">⛽ Abastecimentos</span></div><div class="card" style="margin-bottom:12px">${abLista}</div>`:''}
     <div class="bar"><button class="btn s" id="voltar">◀ Voltar às comandas</button></div>`;
   if($('ic_cmd'))$('ic_cmd').onclick=async()=>{ const b=$('ic_cmd'); if(b)b.disabled=true; try{ await abrirComandaDoc(); } finally{ if(b)b.disabled=false; } };
   if($('ic_trab'))$('ic_trab').onclick=async()=>{ const b=$('ic_trab'); if(b){b.disabled=true;b.style.opacity='.6';} await _gpsEnter(); EXVIEW='trabalho'; render(); window.scrollTo(0,0); };
