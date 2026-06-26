@@ -2836,60 +2836,62 @@ async function _updNavAprovCampo(){
     btn.textContent='✅ Aprovações de campo'+(n?(' ('+n+')'):''); }catch(e){}
 }
 async function _loadAprovCampo(){
-  APC={comandas:[], maq:{}, imp:{}, fun:{}};
+  APC={comandas:[], maq:{}, imp:{}, fun:{}, abast:{}};
   try{
-    const [ex,mq,im,fu]=await Promise.all([
+    const [ex,mq,im,fu,ab]=await Promise.all([
       SB.from('execucao_campo').select('*').in('status',['enviada','aberto']).order('data',{ascending:true}),
       SB.from('maquinas').select('id,nome'),
       SB.from('implementos').select('id,nome'),
-      SB.from('funcionarios').select('id,nome')
+      SB.from('funcionarios').select('id,nome'),
+      SB.from('abastecimentos').select('*').order('quando',{ascending:true})
     ]);
     (mq.data||[]).forEach(m=>APC.maq[m.id]=m.nome);
     (im.data||[]).forEach(m=>APC.imp[m.id]=m.nome);
     (fu.data||[]).forEach(m=>APC.fun[m.id]=m.nome);
+    const abByKey={}; (ab.data||[]).forEach(a=>{ const k=a.comanda_codigo+'|'+(a.safra||''); (abByKey[k]||(abByKey[k]=[])).push(a); });
     const hoje=new Date().toISOString().slice(0,10);
     const _temTrab=r=>((Array.isArray(r.trajeto)&&r.trajeto.length>1)||r.area_ha||r.horimetro_ini!=null||r.horimetro_fim!=null||r.diesel_litros!=null);
     const byc={};
     // só sessões COM trabalho; 'enviada' = pronto p/ aprovar; 'aberto' só de dia passado (sessão abandonada — não some)
-    (ex.data||[]).filter(r=>_temTrab(r) && (r.status==='enviada' || (r.status==='aberto' && String(r.data)<hoje))).forEach(r=>{ const k=r.comanda_codigo+'|'+(r.safra||''); const g=byc[k]||(byc[k]={codigo:r.comanda_codigo, safra:r.safra||'', rows:[]}); g.rows.push(r); });
+    (ex.data||[]).filter(r=>_temTrab(r) && (r.status==='enviada' || (r.status==='aberto' && String(r.data)<hoje))).forEach(r=>{ const k=r.comanda_codigo+'|'+(r.safra||''); const g=byc[k]||(byc[k]={codigo:r.comanda_codigo, safra:r.safra||'', rows:[], abast:[]}); g.rows.push(r); });
+    Object.values(byc).forEach(g=>{ g.abast=abByKey[g.codigo+'|'+(g.safra||'')]||[]; });
     APC.comandas=Object.values(byc).sort((a,b)=>String(a.codigo).localeCompare(String(b.codigo)));
   }catch(e){ console.warn('loadAprovCampo',e); APC.comandas=[]; }
 }
-function _apcResumo(rows){
-  let area=0,diesel=0,hmaq=0,dias=rows.length,concl=false;
-  rows.forEach(r=>{ area+=_apcNum(r.area_ha); diesel+=_apcNum(r.diesel_litros);
-    if(r.horimetro_ini!=null&&r.horimetro_fim!=null) hmaq+=Math.max(0,_apcNum(r.horimetro_fim)-_apcNum(r.horimetro_ini));
-    if(r.concluiu_lote) concl=true; });
-  return {area,diesel,hmaq,dias,concl};
+function _apcResumo(g){
+  const rows=g.rows||[]; let area=0,horas=0,concl=false; const dd=new Set();
+  rows.forEach(r=>{ area+=_apcNum(r.area_ha); const h=_apcHoras(r.hora_inicio,r.hora_fim); if(h) horas+=h; if(r.data) dd.add(r.data); if(r.concluiu_lote) concl=true; });
+  const diesel=(g.abast||[]).reduce((s,a)=>s+_apcNum(a.litros),0);
+  return {area,diesel,horas,dias:dd.size,concl};
 }
+function _apcDT(ts){ if(!ts) return '—'; const d=new Date(ts); const p=n=>String(n).padStart(2,'0'); return p(d.getDate())+'/'+p(d.getMonth()+1)+' '+p(d.getHours())+':'+p(d.getMinutes()); }
 function renderAprovCampo(){
   if(!IS_ADMIN) return '<div class="wrap"><p class="note">🔒 Apenas administrador.</p></div>';
   if(APC===null) return '<div class="wrap"><p class="note">⏳ Carregando execuções enviadas…</p></div>';
   if(!APC.comandas.length) return '<div class="wrap"><h2>✅ Aprovações de campo</h2><p class="note">🎉 Nada na fila. O que os operadores enviarem pelo tablet aparece aqui pra você revisar e aprovar.</p></div>';
   const blocos=APC.comandas.map(g=>{
     const c=(g.safra===SAFRA)?S.comandas.find(x=>x.codigo===g.codigo):null; const r0=g.rows[0];
-    const tipo=c?c.tipoAtiv:''; const lote=c?c.loteNome:(r0?r0.lote_nome:''); const tot=_apcResumo(g.rows);
+    const tipo=c?c.tipoAtiv:''; const lote=c?c.loteNome:(r0?r0.lote_nome:''); const tot=_apcResumo(g);
     const linhas=g.rows.map(r=>{
       const h=_apcHoras(r.hora_inicio,r.hora_fim);
-      const hm=(r.horimetro_ini!=null&&r.horimetro_fim!=null)?Math.max(0,_apcNum(r.horimetro_fim)-_apcNum(r.horimetro_ini)):null;
       return `<tr>
         <td>${_apcEsc((r.data||'').split('-').reverse().join('/'))}</td>
         <td>${_apcEsc(APC.fun[r.funcionario_id]||('#'+r.funcionario_id))}</td>
         <td>${_apcEsc(APC.maq[r.maquina_id]||'—')}${r.implemento_id?(' + '+_apcEsc(APC.imp[r.implemento_id]||'')):''}</td>
         <td>${_apcEsc(r.hora_inicio||'—')}–${_apcEsc(r.hora_fim||'—')}${h?(' ('+h.toFixed(1)+'h)'):''}</td>
-        <td style="text-align:right">${hm!=null?hm.toFixed(1)+'h':'—'}</td>
-        <td style="text-align:right">${r.diesel_litros!=null?_apcFmt(r.diesel_litros)+' L':'—'}</td>
         <td style="text-align:right">${r.area_ha!=null?_apcFmt(r.area_ha)+' ha':'—'}</td>
         <td style="white-space:nowrap">${r.concluiu_lote?'<b style="color:#2ea043">lote ✓</b> ':''}<button class="btn sm" data-apcdel="${r.id}" title="Descartar este">✕</button></td>
       </tr>`;
     }).join('');
+    const abast = (g.abast&&g.abast.length) ? `<div class="sub" style="margin:8px 2px 0"><b>⛽ Abastecimentos:</b> ${g.abast.map(a=>_apcFmt(a.litros)+' L ('+_apcDT(a.quando)+(APC.maq[a.maquina_id]?(' · '+_apcEsc(APC.maq[a.maquina_id])):'')+')').join(' · ')} = <b>${_apcFmt(tot.diesel)} L</b></div>` : '';
     return `<div class="wrap" style="margin-bottom:16px">
       <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">
         <div><h2 style="margin:0">${_apcEsc(g.codigo)}${tipo?(' · '+_apcEsc(tipo)):''}</h2>
-          <div class="sub" style="margin:2px 0 0">Lote ${_apcEsc(lote||'—')} · safra ${_apcEsc(g.safra||'—')} · ${tot.dias} dia(s) · ${tot.area?(_apcFmt(tot.area)+' ha'):'—'} · ${tot.diesel?(_apcFmt(tot.diesel)+' L diesel'):'—'}${tot.hmaq?(' · '+tot.hmaq.toFixed(1)+' h-máq'):''}${tot.concl?' · <b style="color:#2ea043">conclui o lote</b>':''}</div></div>
+          <div class="sub" style="margin:2px 0 0">Lote ${_apcEsc(lote||'—')} · safra ${_apcEsc(g.safra||'—')} · ${tot.dias} dia(s) · ${tot.area?(_apcFmt(tot.area)+' ha'):'—'} · ${tot.horas?(tot.horas.toFixed(1)+' h trabalho'):'—'} · ${tot.diesel?(_apcFmt(tot.diesel)+' L diesel'):'—'}${tot.concl?' · <b style="color:#2ea043">conclui o lote</b>':''}</div></div>
         <button class="btn success" data-apcok="${_apcEsc(g.codigo)}|${_apcEsc(g.safra||'')}">✓ Aprovar comanda</button>
       </div>
-      <table class="tbl" style="margin-top:8px"><thead><tr><th>Data</th><th>Operador</th><th>Máquina</th><th>Atividade</th><th style="text-align:right">H-máq</th><th style="text-align:right">Diesel</th><th style="text-align:right">Área</th><th></th></tr></thead><tbody>${linhas}</tbody></table>
+      <table class="tbl" style="margin-top:8px"><thead><tr><th>Data</th><th>Operador</th><th>Máquina</th><th>Atividade</th><th style="text-align:right">Área</th><th></th></tr></thead><tbody>${linhas}</tbody></table>
+      ${abast}
     </div>`;
   }).join('');
   return `<div class="wrap"><h2>✅ Aprovações de campo <span class="sub">(${APC.comandas.length} comanda(s) na fila)</span></h2>
@@ -2904,14 +2906,16 @@ function bindAprovCampo(){
 async function aprovarComandaCampo(key){
   const sp=String(key).split('|'); const codigo=sp[0], safra=sp[1]||'';
   const g=APC.comandas.find(x=>String(x.codigo)===codigo && (x.safra||'')===safra); if(!g) return;
-  if(!confirm('Aprovar a comanda '+codigo+' (safra '+safra+') com '+g.rows.length+' dia(s)? Os números vão para a comanda.')) return;
-  const tot=_apcResumo(g.rows);
+  if(!confirm('Aprovar a comanda '+codigo+' (safra '+safra+') com '+g.rows.length+' sessão(ões) em '+_apcResumo(g).dias+' dia(s)? Os números vão para a comanda.')) return;
+  const tot=_apcResumo(g);
   const c=(safra===SAFRA)?S.comandas.find(x=>x.codigo===codigo):null;
   const ultimaData=g.rows.map(r=>r.data).filter(Boolean).sort().slice(-1)[0]||null;
   try{
     const retorno=Object.assign({}, (c&&c.geralRetorno)||{}, {
-      campo:{ dias:tot.dias, area_ha:+tot.area.toFixed(2), diesel_l:+tot.diesel.toFixed(2), horas_maquina:+tot.hmaq.toFixed(1),
-        operadores:[...new Set(g.rows.map(r=>APC.fun[r.funcionario_id]||('#'+r.funcionario_id)))], aprovado_em:new Date().toISOString() }
+      campo:{ dias:tot.dias, area_ha:+tot.area.toFixed(2), diesel_l:+tot.diesel.toFixed(2), horas_trabalho:+tot.horas.toFixed(1),
+        operadores:[...new Set(g.rows.map(r=>APC.fun[r.funcionario_id]||('#'+r.funcionario_id)))],
+        abastecimentos:(g.abast||[]).map(a=>({litros:+a.litros, quando:a.quando, maquina:APC.maq[a.maquina_id]||null})),
+        aprovado_em:new Date().toISOString() }
     });
     const upd={ geral_retorno:retorno };
     if(tot.concl){ upd.status='executada'; if(ultimaData) upd.data_execucao=ultimaData; }

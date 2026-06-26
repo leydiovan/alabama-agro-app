@@ -74,6 +74,7 @@ let OPER=null;              // {id,nome,tipo} operador escolhido (salvo no apare
 let DIA='';                 // 'AAAA-MM-DD'
 let EXECS={};               // comanda_codigo -> execucao_campo de hoje (status das comandas)
 let CUR=null;               // comanda aberta
+let ABAST=[], ABFORM=false; // abastecimentos da comanda + form aberto?
 let VERTODAS=false;         // fallback: mostrar todas as comandas (sem designação)
 
 /* ---------- helpers ---------- */
@@ -83,6 +84,10 @@ function _dlabel(ds){ const d=new Date(ds+'T12:00:00'); return ['Dom','Seg','Ter
 function t2m(s){ if(!s) return null; const m=String(s).match(/^(\d{1,2}):(\d{2})$/); return m?(+m[1])*60+(+m[2]):null; }
 function horasEntre(a,b){ const x=t2m(a),y=t2m(b); if(x==null||y==null||y<=x) return null; return (y-x)/60; }
 function areaLote(nome){ const l=LOTES.find(x=>x.nome===nome); return l?l.area:null; }
+function _dt2(n){ return String(n).padStart(2,'0'); }
+function nowLocalDT(){ const d=new Date(); return d.getFullYear()+'-'+_dt2(d.getMonth()+1)+'-'+_dt2(d.getDate())+'T'+_dt2(d.getHours())+':'+_dt2(d.getMinutes()); }
+function tsToLocalDT(ts){ const d=new Date(ts); return d.getFullYear()+'-'+_dt2(d.getMonth()+1)+'-'+_dt2(d.getDate())+'T'+_dt2(d.getHours())+':'+_dt2(d.getMinutes()); }
+function fmtDT(ts){ const d=new Date(ts); return _dt2(d.getDate())+'/'+_dt2(d.getMonth()+1)+' '+_dt2(d.getHours())+':'+_dt2(d.getMinutes()); }
 function _st(t,c){ let e=$('snack'); if(!e){ e=document.createElement('div'); e.id='snack'; e.style.cssText='position:fixed;left:12px;right:12px;bottom:78px;z-index:50;padding:11px 14px;border-radius:10px;font:600 14px system-ui;text-align:center;box-shadow:0 4px 14px rgba(0,0,0,.4)'; document.body.appendChild(e);} e.textContent=t; e.style.background=c||'#333'; e.style.color='#fff'; clearTimeout(e._t); e._t=setTimeout(()=>{e.remove();},3200); }
 
 /* ---------- boot / login ---------- */
@@ -200,37 +205,59 @@ async function _carregarDiasComanda(){
 }
 async function abrirComanda(cod){
   CUR=COMANDAS.find(c=>String(c.codigo)===String(cod)); if(!CUR){ _st('Comanda não encontrada.','#c0392b'); return; }
-  if(GPS.watchId!=null){ try{navigator.geolocation.clearWatch(GPS.watchId);}catch(e){} GPS.watchId=null; } GPS.pts=[]; GPS.cells=new Set(); GPS.areaHa=0; GPS.speed=0; SESS=null; DAYSEGS=[]; VIEW={follow:true,zoom:1,cx:null,cy:null};
-  await _carregarDiasComanda();
+  if(GPS.watchId!=null){ try{navigator.geolocation.clearWatch(GPS.watchId);}catch(e){} GPS.watchId=null; } GPS.pts=[]; GPS.cells=new Set(); GPS.areaHa=0; GPS.speed=0; SESS=null; DAYSEGS=[]; VIEW={follow:true,zoom:1,cx:null,cy:null}; ABAST=[]; ABFORM=false;
+  await _carregarDiasComanda(); await _carregarAbast();
   EXVIEW='menu'; STEP='exec'; render(); window.scrollTo(0,0);
 }
 /* ---- menu da comanda: dois ícones ---- */
+function _ultMaq(){ const r=CUR_DAYS.find(x=>x.maquina_id); return r?r.maquina_id:''; }
+async function _carregarAbast(){ ABAST=[]; if(!CUR||!OPER) return;
+  try{ const {data}=await SB.from('abastecimentos').select('*').eq('comanda_codigo',CUR.codigo).eq('funcionario_id',OPER.id).order('quando',{ascending:true}); ABAST=data||[]; }catch(e){}
+}
+async function _lancarAbast(){
+  const l=num($('ab_l')&&$('ab_l').value); if(!l||l<=0){ _st('Informe os litros.','#e67e22'); return; }
+  const dtv=$('ab_dt')&&$('ab_dt').value; if(!dtv){ _st('Informe a data/hora.','#e67e22'); return; }
+  const quando=new Date(dtv), agora=new Date();
+  if(quando>agora){ _st('A data/hora não pode ser no futuro.','#e67e22'); return; }
+  if(ABAST.length){ const prev=new Date(ABAST[ABAST.length-1].quando); if(quando<prev){ _st('Não pode ser antes do abastecimento anterior ('+fmtDT(prev)+').','#e67e22'); return; } }
+  const maq=$('ab_maq')&&$('ab_maq').value;
+  const reg={ comanda_codigo:CUR.codigo, safra:SAFRA, funcionario_id:OPER.id, maquina_id:maq?+maq:null, lote_nome:CUR.lote_nome||null, litros:l, quando:quando.toISOString(), enviado_por:USER_EMAIL||null };
+  const b=$('ab_save'); if(b){ b.disabled=true; b.textContent='Salvando…'; }
+  try{ const {error}=await SB.from('abastecimentos').insert(reg); if(error) throw error; ABFORM=false; await _carregarAbast(); _st('⛽ Abastecimento lançado','#27ae60'); render(); }
+  catch(e){ _st('❌ '+e.message,'#c0392b'); if(b){ b.disabled=false; b.textContent='Salvar abastecimento'; } }
+}
 function renderExecMenu(){
   const c=CUR; const area=areaLote(c.lote_nome);
-  const today=CUR_DAYS.filter(r=>r.data===DIA && ((Array.isArray(r.trajeto)&&r.trajeto.length>1) || r.area_ha || r.horimetro_ini!=null || r.horimetro_fim!=null || r.diesel_litros!=null));
   const concl=CUR_DAYS.some(r=>r.concluiu_lote)||c.status==='executada';
-  const sess = today.length ? today.map(r=>`
-    <div class="card" style="margin-bottom:10px;padding:12px 13px">
-      <div style="font-weight:800">${esc(_maqNome(r.maquina_id))}${r.implemento_id?(' + '+esc(_impNome(r.implemento_id))):''}</div>
-      <div class="hint" style="margin:2px 0 6px">${esc(r.hora_inicio||'—')}${r.hora_fim?('–'+esc(r.hora_fim)):' (aberta)'} · Área GPS: <b class="gold">${r.area_ha!=null?(+r.area_ha).toFixed(2)+' ha':'—'}</b></div>
-      <div class="two">
-        <div><label>Horímetro início</label><input type="number" step="any" inputmode="decimal" data-sid="${r.id}" data-f="horimetro_ini" value="${r.horimetro_ini!=null?r.horimetro_ini:''}"></div>
-        <div><label>Horímetro fim</label><input type="number" step="any" inputmode="decimal" data-sid="${r.id}" data-f="horimetro_fim" value="${r.horimetro_fim!=null?r.horimetro_fim:''}"></div>
-      </div>
-      <label style="margin-top:8px">Diesel (L)</label><input type="number" step="any" inputmode="decimal" data-sid="${r.id}" data-f="diesel_litros" value="${r.diesel_litros!=null?r.diesel_litros:''}" placeholder="litros">
-    </div>`).join('') : '<div class="card muted">Nenhuma sessão hoje. Abra a <b>Tela de trabalho</b> e comece a trabalhar.</div>';
+  const areaCum=CUR_DAYS.reduce((s,r)=>s+(+r.area_ha||0),0);
+  const dias=[...new Set(CUR_DAYS.filter(r=>(Array.isArray(r.trajeto)&&r.trajeto.length>1)||r.area_ha).map(r=>r.data))].length;
+  const hTrab=CUR_DAYS.reduce((s,r)=>{ const h=horasEntre(r.hora_inicio,r.hora_fim); return s+(h||0); },0);
+  const abLista = ABAST.length ? ABAST.map(a=>`<div style="display:flex;justify-content:space-between;gap:8px;border-bottom:1px solid var(--line);padding:7px 0;font-size:14px"><span>${esc(_maqNome(a.maquina_id))}</span><b class="gold">${(+a.litros).toLocaleString('pt-BR')} L</b><span class="muted">${fmtDT(a.quando)}</span></div>`).join('') : '<div class="muted" style="font-size:13px">Nenhum abastecimento ainda.</div>';
+  const prev=ABAST.length?ABAST[ABAST.length-1]:null; const minDT=prev?tsToLocalDT(prev.quando):''; const nowDT=nowLocalDT();
+  const maqOpt=MAQS.map(m=>`<option value="${m.id}" ${String((prev&&prev.maquina_id)||_ultMaq())===String(m.id)?'selected':''}>${esc(m.nome)}</option>`).join('');
+  const form = ABFORM ? `<div class="card" style="border-color:var(--gold)">
+      <label>Litros abastecidos</label><input type="number" step="any" inputmode="decimal" id="ab_l" placeholder="ex.: 120">
+      <label style="margin-top:8px">Quando (data e hora)</label><input type="datetime-local" id="ab_dt" value="${nowDT}" ${minDT?('min="'+minDT+'"'):''} max="${nowDT}">
+      <label style="margin-top:8px">Máquina</label><select id="ab_maq">${maqOpt}</select>
+      <div class="two" style="margin-top:10px"><button class="btn k" id="ab_save" style="margin:0">Salvar</button><button class="btn s" id="ab_cancel" style="margin:0">Cancelar</button></div>
+      <div class="hint" style="margin-top:6px">O consumo conta deste abastecimento até o anterior (ou o início do trabalho).</div>
+    </div>` : '';
   $('app').innerHTML=`<div class="top"><h1><span class="l">📋</span> ${esc(c.codigo)}</h1><div class="d">${esc(c.tipo_ativ||'')} · Lote ${esc(c.lote_nome||'—')}${area?(' · '+area+' ha'):''}</div></div>
     <button class="btn b huge" id="ic_cmd" style="margin-top:6px">📋 Ver comanda</button>
     <button class="btn k huge" id="ic_trab" style="margin-top:12px">🛰️ Tela de trabalho (GPS)</button>
-    <div class="sec" style="margin:14px 2px 6px;font-size:12px;text-transform:uppercase;letter-spacing:.5px;color:var(--muted)">Apontamento do dia (por conjunto)</div>
-    ${sess}
-    ${concl?'<div class="card muted" style="text-align:center">✅ Lote concluído e enviado.</div>':'<button class="btn s" id="concluir">✔ Concluí o lote — enviar comanda</button>'}
+    <div class="card" style="margin-top:14px"><div class="hint" style="margin:0">Trabalho (GPS): <b class="gold">${areaCum.toFixed(2)} ha</b> · ${dias} dia(s)${hTrab?(' · '+hTrab.toFixed(1)+' h'):''}</div></div>
+    <div class="sec" style="margin:10px 2px 6px;font-size:12px;text-transform:uppercase;letter-spacing:.5px;color:var(--muted)">⛽ Abastecimentos (diesel)</div>
+    <div class="card">${abLista}</div>
+    ${form || (concl?'':`<button class="btn s" id="ab_novo">⛽ Lançar abastecimento</button>`)}
+    ${concl?'<div class="card muted" style="text-align:center;margin-top:10px">✅ Lote concluído e enviado.</div>':'<button class="btn s" id="concluir" style="margin-top:10px">✔ Concluí o lote — enviar comanda</button>'}
     <div class="bar"><button class="btn s" id="voltar">◀ Voltar às comandas</button></div>`;
   if($('ic_cmd'))$('ic_cmd').onclick=abrirComandaDoc;
   if($('ic_trab'))$('ic_trab').onclick=async()=>{ const b=$('ic_trab'); if(b){b.disabled=true;b.textContent='abrindo GPS…';} await _gpsEnter(); EXVIEW='trabalho'; render(); window.scrollTo(0,0); };
-  document.querySelectorAll('[data-sid]').forEach(el=>el.onchange=()=>_saveManualSess(el.dataset.sid, el.dataset.f, el.value));
+  if($('ab_novo'))$('ab_novo').onclick=()=>{ ABFORM=true; render(); };
+  if($('ab_cancel'))$('ab_cancel').onclick=()=>{ ABFORM=false; render(); };
+  if($('ab_save'))$('ab_save').onclick=_lancarAbast;
   if($('concluir'))$('concluir').onclick=concluirLote;
-  if($('voltar'))$('voltar').onclick=async()=>{ STEP='home'; EXVIEW='menu'; await carregarDia(); render(); };
+  if($('voltar'))$('voltar').onclick=async()=>{ STEP='home'; EXVIEW='menu'; ABFORM=false; await carregarDia(); render(); };
 }
 /* ---- abre a comanda (placeholder até virar PDF offline; NUNCA carrega o admin) ---- */
 function abrirComandaDoc(){
