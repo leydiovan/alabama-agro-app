@@ -1103,8 +1103,7 @@ function abrirFicha(codigo,seq){
         <div class="kv"><div class="k">Execução</div><div class="v">${fmtData(c.dataExecucao)}</div></div>
         <div class="kv"><div class="k">Custo total</div><div class="v" style="color:var(--ok-l)">${c.status==='executada'?fmtR$(cst.total):'—'}</div></div>
       </div>
-      <div class="sec">Produtos previstos</div>
-      ${prodBlock}
+      ${c.perfil==='MAQUINA'?'':`<div class="sec">Produtos previstos</div>${prodBlock}`}
       ${c.obs?`<div class="sec">Observações</div><div class="obsbox">${esc(c.obs)}</div>`:''}
       ${c.obsDestacada?`<div class="obsbox crit" style="margin-top:8px">⚠ ${esc(c.obsDestacada)}</div>`:''}
       ${ratBlock}
@@ -1272,7 +1271,12 @@ async function _carregarConjLive(codigo, safra, elId){
   const area=rows.reduce((s,r)=>s+(+r.area_ha||0),0);
   const opers=[...new Set(rows.map(r=>APC.fun[r.funcionario_id]).filter(Boolean))].join(', ');
   const g={'Operador':opers, campo:{ conjuntos, dias:new Set(datas).size, horas_trabalho:+horas.toFixed(1), diesel_l:+totDiesel.toFixed(2), area_ha:+area.toFixed(2) }};
-  el.innerHTML=_conjTabela(g);
+  const lista=rows.slice().sort((a,b)=>String((a.data||'')+(a.hora_inicio||'')).localeCompare(String((b.data||'')+(b.hora_inicio||'')))).map(r=>{
+    const h=_apcHoras(r.hora_inicio,r.hora_fim);
+    return '<tr><td>'+esc(r.data?fmtData(r.data):'')+'</td><td>'+esc(APC.fun[r.funcionario_id]||('#'+r.funcionario_id))+'</td><td>'+esc(_maqLabel(r.maquina_id)||'—')+'</td><td>'+esc((r.hora_inicio||'—')+'–'+(r.hora_fim||'—'))+(h?(' ('+h.toFixed(1).replace('.',',')+'h)'):'')+'</td><td style="text-align:right">'+(r.area_ha!=null?fmtArea(r.area_ha)+' ha':'—')+'</td></tr>';
+  }).join('');
+  el.innerHTML=_conjTabela(g)
+    +'<div class="sec">Movimentações (sessões)</div><table class="ptbl"><thead><tr><th>Data</th><th>Operador</th><th>Trator</th><th>Horário</th><th style="text-align:right">Área</th></tr></thead><tbody>'+lista+'</tbody></table>';
 }
 function retornoView(c){
   const def=camposRetorno(c);
@@ -3139,7 +3143,7 @@ async function _verMapaComanda(codigo,safra){
     <canvas data-apcmap="${_apcEsc(key)}" style="width:100%;height:58vh;display:block;background:#0d1117;touch-action:none"></canvas>
     <div style="flex:1;min-height:0;overflow:auto;border-top:1px solid #30363d"><table class="tbl"><thead><tr><th>Data</th><th>Operador</th><th>Máquina</th><th>Início</th><th style="text-align:right">Área</th></tr></thead><tbody>${linhas}</tbody></table></div>
   </div>`;
-  requestAnimationFrame(()=>_apcBindMap(ov,false));   // espera o layout p/ o canvas ter altura/largura corretas
+  _apcBindMap(ov,false);   // canvas já tem 58vh -> desenha/binda na hora (rAF não dispara em 2º plano)
 }
 async function aprovarComandaCampo(key){
   const sp=String(key).split('|'); const codigo=sp[0], safra=sp[1]||'';
