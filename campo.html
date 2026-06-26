@@ -218,8 +218,8 @@ let EXVIEW='menu';              // dentro da comanda: 'menu' (ícones) | 'trabal
 async function _carregarDiasComanda(){
   const _ck='days_'+CUR.codigo+'_'+OPER.id;
   let server=null;
-  try{ if(!navigator.onLine) throw 0; const {data,error}=await _q(SB.from('execucao_campo').select('*').eq('comanda_codigo',CUR.codigo).eq('funcionario_id',OPER.id).order('data',{ascending:false})); if(error) throw error; server=data||[]; _cacheSet(_ck,server); }catch(e){ server=null; }
-  let local=(await _idbAll('sessions')).filter(s=>String(s.comanda_codigo)===String(CUR.codigo)&&String(s.funcionario_id)===String(OPER.id));
+  try{ if(!navigator.onLine) throw 0; const {data,error}=await _q(SB.from('execucao_campo').select('*').eq('comanda_codigo',CUR.codigo).order('data',{ascending:false})); if(error) throw error; server=data||[]; _cacheSet(_ck,server); }catch(e){ server=null; }   // TODOS os operadores (pinta o que os outros fizeram)
+  let local=(await _idbAll('sessions')).filter(s=>String(s.comanda_codigo)===String(CUR.codigo)&&String(s.funcionario_id)===String(OPER.id));   // local só tem as minhas
   if(server!==null) local=await _reconcile(local, server);   // tira o que o admin descartou
   const base=(server!==null)?server:(_cacheGet(_ck,[])||[]);
   const lsv={}; local.forEach(s=>{ if(s.serverId) lsv[String(s.serverId)]=true; });
@@ -240,7 +240,7 @@ async function abrirComanda(cod){
   } finally { _abrindoCmd=false; }
 }
 /* ---- menu da comanda: dois ícones ---- */
-function _ultMaq(){ const r=CUR_DAYS.find(x=>x.maquina_id); return r?r.maquina_id:''; }
+function _ultMaq(){ const r=CUR_DAYS.find(x=>x.maquina_id && String(x.funcionario_id)===String(OPER.id)); return r?r.maquina_id:''; }
 async function _carregarAbast(){ ABAST=[]; if(!CUR||!OPER) return;
   let server=null; try{ if(!navigator.onLine) throw 0; const {data,error}=await _q(SB.from('abastecimentos').select('*').eq('comanda_codigo',CUR.codigo).eq('funcionario_id',OPER.id).order('quando',{ascending:true})); if(error) throw error; server=data||[]; }catch(e){ server=null; }
   const local=(await _idbAll('abast')).filter(a=>String(a.comanda_codigo)===String(CUR.codigo)&&String(a.funcionario_id)===String(OPER.id));
@@ -357,8 +357,12 @@ function _coverAreaHa(){ let n=_DAYCELLS.size; GPS.cells.forEach(k=>{ if(!_DAYCE
 function _unionAreaHa(rows){ const set=new Set(),poly=_polyUTM(); (rows||[]).forEach(r=>_addCells(_rowPts(r),_implLarg(r.implemento_id)/2,poly,set)); return set.size*CELL*CELL/10000; }
 function _velColor(v){ if(v==null||isNaN(v)) return 'rgba(170,170,170,.5)'; const c=Math.max(0,Math.min(15,+v)); const h=240-(c/15)*240; return 'hsla('+h.toFixed(0)+',85%,50%,.65)'; }
 function _velSig(){ return GPS.pts.length+'|'+(DAYSEGS||[]).length+'|'+(DAYSEGS||[]).reduce((a,s)=>a+s.pts.length,0)+'|'+DIA; }
-function _markCellsMap(aE,aN,bE,bN,v,poly,hw,map){ if(hw<=0) return; const i0=Math.floor((Math.min(aE,bE)-hw)/CELL),i1=Math.floor((Math.max(aE,bE)+hw)/CELL),j0=Math.floor((Math.min(aN,bN)-hw)/CELL),j1=Math.floor((Math.max(aN,bN)+hw)/CELL); for(let i=i0;i<=i1;i++)for(let j=j0;j<=j1;j++){ const cE=(i+0.5)*CELL,cN=(j+0.5)*CELL; if(_segDist(cE,cN,aE,aN,bE,bN)<=hw && (!poly||_inPoly(cE,cN,poly))) map.set(i+'_'+j, v||0); } }
-function _buildVelCells(){ const map=new Map(); const poly=_polyUTM(); (DAYSEGS||[]).forEach(s=>{ const hw=(s.larg||0)/2; for(let i=1;i<s.pts.length;i++) _markCellsMap(s.pts[i-1].E,s.pts[i-1].N,s.pts[i].E,s.pts[i].N,s.pts[i].v,poly,hw,map); }); const hw=_widthM()/2; for(let i=1;i<GPS.pts.length;i++) _markCellsMap(GPS.pts[i-1].E,GPS.pts[i-1].N,GPS.pts[i].E,GPS.pts[i].N,GPS.pts[i].v,poly,hw,map); return map; }
+function _markCellsMap(aE,aN,bE,bN,v,poly,hw,map){ if(hw<=0) return; const i0=Math.floor((Math.min(aE,bE)-hw)/CELL),i1=Math.floor((Math.max(aE,bE)+hw)/CELL),j0=Math.floor((Math.min(aN,bN)-hw)/CELL),j1=Math.floor((Math.max(aN,bN)+hw)/CELL); for(let i=i0;i<=i1;i++)for(let j=j0;j<=j1;j++){ const k=i+'_'+j; if(map.has(k)) continue; const cE=(i+0.5)*CELL,cN=(j+0.5)*CELL; if(_segDist(cE,cN,aE,aN,bE,bN)<=hw && (!poly||_inPoly(cE,cN,poly))) map.set(k, v||0); } }   // 1º a pintar vence (não substitui)
+function _buildVelCells(){ const map=new Map(); const poly=_polyUTM();
+  const segs=(DAYSEGS||[]).slice().reverse();   // mais antigos primeiro (cronologia: quem passou antes vale)
+  segs.forEach(s=>{ const hw=(s.larg||0)/2; for(let i=1;i<s.pts.length;i++) _markCellsMap(s.pts[i-1].E,s.pts[i-1].N,s.pts[i].E,s.pts[i].N,s.pts[i].v,poly,hw,map); });
+  const hw=_widthM()/2; for(let i=1;i<GPS.pts.length;i++) _markCellsMap(GPS.pts[i-1].E,GPS.pts[i-1].N,GPS.pts[i].E,GPS.pts[i].N,GPS.pts[i].v,poly,hw,map);   // sessão ativa (mais nova) por último
+  return map; }
 function _drawMapa(){ const cv=_CV||$('cv'); if(!cv) return; if(!_CW){ _setupCanvas(); } const ctx=cv.getContext('2d');
   if(VIEW.follow && GPS.pts.length){ const l=GPS.pts[GPS.pts.length-1]; VIEW.cx=l.E; VIEW.cy=l.N; }
   ctx.clearRect(0,0,_CW,_CH); if(VIEW.cx==null) return;
@@ -404,6 +408,7 @@ function _onFix(pos){ const cur=pos.coords; GPS.acc=cur.accuracy;
     GPS.head=Math.atan2(E-last.E,No-last.N);
     if(_paintOn()) _markCells(last.E,last.N,E,No);
   } else if(cur.speed!=null&&cur.speed>=0) GPS.speed=cur.speed*3.6;
+  if(!SESS) SESS=_novaSessaoObj();   // sessão nasce no 1º ponto (não cria zerada ao só entrar/sair)
   GPS._lt=t; GPS.pts.push({E,N:No,lat:cur.latitude,lon:cur.longitude,t,v:GPS.speed||0});
   _hud(); _scheduleDraw();
   if(GPS.watchId!=null){ if(GPS.pts.length%40===0) _saveGps(false); else if(GPS.pts.length%5===0) _touchSess(); }   // local a cada 5 fixes, sync a cada 40
@@ -452,11 +457,11 @@ async function _saveGps(final){ if(!SESS) return;
   SESS.dirty=true; SESS._v=(SESS._v||0)+1; try{ await _idbPut('sessions',SESS); }catch(e){}   // local primeiro (sobrevive offline)
   await _syncSession(SESS); _updPend();
 }
-async function _novaSessao(){
-  const lid=_lid();
-  const s={ lid, id:lid, serverId:null, dirty:true, _v:1, comanda_codigo:CUR.codigo, safra:SAFRA, funcionario_id:OPER.id, lote_nome:CUR.lote_nome||null, data:DIA, maquina_id:HDR.maquina_id?+HDR.maquina_id:null, implemento_id:HDR.implemento_id?+HDR.implemento_id:null, hora_inicio:nowHM(), hora_fim:null, status:'aberto', trajeto:[], area_ha:0, concluiu_lote:false, enviado_por:USER_EMAIL||null, atualizado_em:new Date().toISOString() };
+function _novaSessaoObj(){ const lid=_lid(); return { lid, id:lid, serverId:null, dirty:true, _v:1, comanda_codigo:CUR.codigo, safra:SAFRA, funcionario_id:OPER.id, lote_nome:CUR.lote_nome||null, data:DIA, maquina_id:HDR.maquina_id?+HDR.maquina_id:null, implemento_id:HDR.implemento_id?+HDR.implemento_id:null, hora_inicio:nowHM(), hora_fim:null, status:'aberto', trajeto:[], area_ha:0, concluiu_lote:false, enviado_por:USER_EMAIL||null, atualizado_em:new Date().toISOString() }; }
+async function _novaSessao(){            // (mantida p/ compat; o fluxo normal cria preguiçoso no 1º ponto)
+  const s=_novaSessaoObj();
   try{ await _idbPut('sessions',s); }catch(e){}
-  await _syncSession(s);          // tenta criar no servidor já (se online)
+  await _syncSession(s);
   await _carregarDiasComanda(); _updPend();
   return s;
 }
@@ -467,10 +472,11 @@ async function _saveManualSess(sid,campo,valor){ const r=CUR_DAYS.find(x=>String
 async function _gpsEnter(){
   if(!navigator.geolocation){ _st('Sem GPS neste aparelho.','#c0392b'); return; }
   await _carregarDiasComanda();
-  let found=CUR_DAYS.find(r=>r.data===DIA && r.status!=='aprovada' && !r.hora_fim) || null;
+  // retoma só a MINHA sessão aberta de hoje; senão começa vazio e cria no 1º ponto (sem sessão zerada)
+  let found=CUR_DAYS.find(r=>r.data===DIA && String(r.funcionario_id)===String(OPER.id) && r.status!=='aprovada' && !r.hora_fim) || null;
   if(found){ const wasLocal=!!found.lid; SESS=await _ensureLocal(found); if(!wasLocal) await _carregarDiasComanda(); }
-  else { SESS=await _novaSessao(); if(!SESS) return; }
-  HDR.maquina_id=(SESS.maquina_id!=null?SESS.maquina_id:HDR.maquina_id)||''; HDR.implemento_id=(SESS.implemento_id!=null?SESS.implemento_id:HDR.implemento_id)||'';
+  else { SESS=null; }
+  HDR.maquina_id=(SESS&&SESS.maquina_id!=null?SESS.maquina_id:HDR.maquina_id)||''; HDR.implemento_id=(SESS&&SESS.implemento_id!=null?SESS.implemento_id:HDR.implemento_id)||'';
   _restoreSess(); _buildDaySegs();
   GPS.paintAuto=true; GPS.painting=false; VIEW={follow:true,zoom:1,cx:null,cy:null};
   try{ if(navigator.wakeLock) GPS.wake=await navigator.wakeLock.request('screen'); }catch(e){}
@@ -480,26 +486,24 @@ async function _gpsLeave(){
   if(GPS.watchId!=null){ try{navigator.geolocation.clearWatch(GPS.watchId);}catch(e){} GPS.watchId=null; }
   try{ if(GPS.wake){ await GPS.wake.release(); GPS.wake=null; } }catch(e){}
   GPS.speed=0;
-  // só fecha (enviada) a sessão que teve trabalho de verdade (>=2 pontos); vazia fica 'aberta' p/ retomar
-  if(SESS && GPS.pts.length>=2) await _saveGps(true);
+  if(SESS && GPS.pts.length>=2) await _saveGps(true);                                  // teve trabalho -> fecha (enviada)
+  else if(SESS && SESS.lid){ try{ await _idbDel('sessions',SESS.lid); }catch(e){} }    // vazia (0-1 ponto) -> descarta, nada de movimentação zerada
   SESS=null; await _carregarDiasComanda();
   if(navigator.onLine) _syncAll();   // empurra a fila ao sair da tela de trabalho
 }
 async function _trocarConjunto(){
   const nm=$('h_maq')?$('h_maq').value:'', ni=$('h_imp')?$('h_imp').value:''; HDR.maquina_id=nm; HDR.implemento_id=ni;
   if(SESS && String(SESS.maquina_id||'')===String(nm) && String(SESS.implemento_id||'')===String(ni)){ _recalcCells(); _drawMapa(); _hud(); return; }
-  if(SESS && !GPS.pts.length){   // sessão atual vazia: só troca o conjunto dela
-    SESS.maquina_id=nm?+nm:null; SESS.implemento_id=ni?+ni:null; SESS.atualizado_em=new Date().toISOString(); SESS.dirty=true;
-    try{ await _idbPut('sessions',SESS); }catch(e){} await _syncSession(SESS); _updPend();
+  if(!GPS.pts.length){   // nada pintado ainda: só troca o conjunto (lazy cria a sessão no 1º ponto com o conjunto novo)
+    if(SESS){ SESS.maquina_id=nm?+nm:null; SESS.implemento_id=ni?+ni:null; SESS.atualizado_em=new Date().toISOString(); SESS.dirty=true; SESS._v=(SESS._v||0)+1; try{ await _idbPut('sessions',SESS); }catch(e){} await _syncSession(SESS); _updPend(); }
     _recalcCells(); _drawMapa(); _hud(); return;
   }
-  // sessão com trabalho: PAUSA o GPS, fecha a anterior e abre nova com o conjunto NOVO
+  // sessão com trabalho: PAUSA o GPS, fecha a anterior; a nova nasce no 1º ponto com o conjunto NOVO
   const tinhaWatch=GPS.watchId!=null;
   if(GPS.watchId!=null){ try{navigator.geolocation.clearWatch(GPS.watchId);}catch(e){} GPS.watchId=null; }
   if(SESS) await _saveGps(true);
-  HDR.maquina_id=nm; HDR.implemento_id=ni;   // garante o conjunto NOVO no insert (carregarDias sobrescreve HDR)
-  SESS=await _novaSessao();
-  if(SESS){ HDR.maquina_id=SESS.maquina_id||''; HDR.implemento_id=SESS.implemento_id||''; _restoreSess(); _buildDaySegs(); _drawMapa(); _hud(); _st('Novo conjunto — sessão iniciada','#27ae60'); }
+  SESS=null; GPS.pts=[]; GPS.cells=new Set(); GPS.areaHa=0;   // a anterior vai p/ DAYSEGS; o desenho ativo zera
+  await _carregarDiasComanda(); _buildDaySegs(); _drawMapa(); _hud(); _st('Conjunto trocado — nova sessão começa ao mover','#27ae60');
   if(tinhaWatch){ try{ GPS.watchId=navigator.geolocation.watchPosition(_onFix,err=>_st('GPS: '+err.message,'#e67e22'),{enableHighAccuracy:true,maximumAge:0,timeout:15000}); }catch(e){} }
 }
 let _gestBound=null;
@@ -549,7 +553,7 @@ function renderTrabalho(){
   setTimeout(()=>{ _setupCanvas(); _drawMapa(); _hud(); },30);
 }
 async function concluirLote(){
-  const today=CUR_DAYS.filter(r=>r.data===DIA && (r.hora_fim || (Array.isArray(r.trajeto)&&r.trajeto.length) || r.area_ha));
+  const today=CUR_DAYS.filter(r=>r.data===DIA && String(r.funcionario_id)===String(OPER.id) && (r.hora_fim || (Array.isArray(r.trajeto)&&r.trajeto.length) || r.area_ha));   // só as MINHAS de hoje
   if(!today.length){ _st('Sem sessão com trabalho hoje — abra a Tela de trabalho.','#e67e22'); return; }
   if(!confirm('Concluir o lote e enviar a comanda para aprovação?')) return;
   for(let k=0;k<today.length;k++){ const r=await _ensureLocal(today[k]); r.status='enviada'; if(!r.hora_fim) r.hora_fim=nowHM(); if(k===today.length-1) r.concluiu_lote=true; r.dirty=true; r.atualizado_em=new Date().toISOString(); try{ await _idbPut('sessions',r); }catch(e){} await _syncSession(r); }
