@@ -419,7 +419,26 @@ function _implLarg(id){ const m=IMPS.find(x=>String(x.id)===String(id)); return 
 function _rowPts(row){ const out=[]; if(Array.isArray(row.trajeto)) row.trajeto.forEach(p=>{ if(p[0]==null) return; const u=latLngToUTM(p[0],p[1],23); out.push({E:u[0],N:u[1],v:p[3]}); }); return out; }
 function _maqNome(id){ const m=MAQS.find(x=>String(x.id)===String(id)); return m?m.nome:'(sem máquina)'; }
 function _impNome(id){ const m=IMPS.find(x=>String(x.id)===String(id)); return m?m.nome:''; }
-function _buildDaySegs(){ DAYSEGS=CUR_DAYS.filter(r=>(!SESS||String(r.id)!==String(SESS.id)) && Array.isArray(r.trajeto)&&r.trajeto.length>1).map(r=>({pts:_rowPts(r), larg:_implLarg(r.implemento_id), today:(r.data===DIA), mine:String(r.funcionario_id)===String(OPER.id)})); _buildDayCells(); }
+function _funNome(id){ const f=(FUNCS||[]).find(x=>String(x.id)===String(id)); return f?f.nome:('#'+id); }
+function _buildDaySegs(){ DAYSEGS=CUR_DAYS.filter(r=>(!SESS||String(r.id)!==String(SESS.id)) && Array.isArray(r.trajeto)&&r.trajeto.length>1).map(r=>({pts:_rowPts(r), larg:_implLarg(r.implemento_id), today:(r.data===DIA), mine:String(r.funcionario_id)===String(OPER.id), nome:_funNome(r.funcionario_id), maq:_maqNome(r.maquina_id), hora:(r.hora_inicio||'')+(r.hora_fim?('–'+r.hora_fim):''), data:r.data})); _buildDayCells(); }
+function _mapHitInfo(clientX,clientY){
+  const cv=_CV||$('cv'); if(!cv||VIEW.cx==null) return null;
+  const r=cv.getBoundingClientRect(), x=clientX-r.left, y=clientY-r.top, sc=_sc()||1;
+  const E=VIEW.cx+(x-_CW/2)/sc, N=VIEW.cy-(y-_CH/2)/sc;
+  let best=null, bestD=Infinity;
+  const test=(pts,hw,info)=>{ if(!pts||pts.length<2) return; for(let i=1;i<pts.length;i++){ const d=_segDist(E,N,pts[i-1].E,pts[i-1].N,pts[i].E,pts[i].N); if(d<bestD){ bestD=d; best={info,hw}; } } };
+  (DAYSEGS||[]).forEach(s=>test(s.pts,(s.larg||0)/2,s));
+  if(GPS.pts.length) test(GPS.pts,_widthM()/2,{_active:true,mine:true,maq:_maqNome(HDR.maquina_id)});
+  if(!best) return null;
+  if(bestD > Math.max(best.hw,3)+5/sc) return null;   // só se tocou DENTRO da faixa (+ folga)
+  return best.info;
+}
+function _mapTap(clientX,clientY){
+  const inf=_mapHitInfo(clientX,clientY); if(!inf) return;
+  const nome = inf._active ? ((OPER&&OPER.nome)?(OPER.nome+' (você, agora)'):'Você (agora)') : (inf.nome||(inf.mine?'Você':'Operador'));
+  const ex=[]; if(inf.maq) ex.push(inf.maq); if(inf.hora) ex.push(inf.hora); if(inf.data && inf.data!==DIA) ex.push((inf.data||'').split('-').reverse().slice(0,2).join('/'));
+  _st('👤 '+nome+(ex.length?(' · '+ex.join(' · ')):''), inf._active?'#1f6feb':(inf.mine?'#9a7d00':'#6e40c9'));
+}
 function _restoreSess(){ GPS.pts=[]; GPS.cells=new Set(); GPS.areaHa=0; GPS.speed=0;
   if(!SESS||!Array.isArray(SESS.trajeto)) return;
   SESS.trajeto.forEach(p=>{ const lat=p[0],lon=p[1]; if(lat==null) return; const u=latLngToUTM(lat,lon,23); if(GPS.pts.length){ const l=GPS.pts[GPS.pts.length-1]; _markCells(l.E,l.N,u[0],u[1]); } GPS.pts.push({E:u[0],N:u[1],lat,lon,t:p[2]||0,v:p[3]||0}); });
@@ -509,14 +528,15 @@ async function _trocarConjunto(){
 }
 let _gestBound=null;
 function _bindGestures(cv){ if(_gestBound===cv) return; _gestBound=cv;
-  let mode=null,startD=1,startZoom=1,lx=0,ly=0;
+  let mode=null,startD=1,startZoom=1,lx=0,ly=0,tx=0,ty=0,moved=0,tapTS=0;
   const dist=ts=>Math.hypot(ts[0].clientX-ts[1].clientX, ts[0].clientY-ts[1].clientY);
-  cv.addEventListener('touchstart',e=>{ if(e.touches.length>=2){ mode='pinch'; startD=dist(e.touches)||1; startZoom=VIEW.zoom; } else { mode='pan'; lx=e.touches[0].clientX; ly=e.touches[0].clientY; } },{passive:false});
+  cv.addEventListener('touchstart',e=>{ if(e.touches.length>=2){ mode='pinch'; startD=dist(e.touches)||1; startZoom=VIEW.zoom; } else { mode='pan'; lx=e.touches[0].clientX; ly=e.touches[0].clientY; tx=lx; ty=ly; moved=0; } },{passive:false});
   cv.addEventListener('touchmove',e=>{ e.preventDefault();
     if(mode==='pinch'&&e.touches.length>=2){ VIEW.zoom=Math.max(0.3,Math.min(25,startZoom*dist(e.touches)/startD)); _scheduleDraw(); }
-    else if(mode==='pan'&&e.touches.length===1&&VIEW.cx!=null){ const t=e.touches[0],sc=_sc()||1; VIEW.cx-=(t.clientX-lx)/sc; VIEW.cy+=(t.clientY-ly)/sc; lx=t.clientX; ly=t.clientY; VIEW.follow=false; const b=$('btn_follow'); if(b) b.textContent='✋ Livre'; _scheduleDraw(); }
+    else if(mode==='pan'&&e.touches.length===1&&VIEW.cx!=null){ const t=e.touches[0],sc=_sc()||1; moved+=Math.abs(t.clientX-lx)+Math.abs(t.clientY-ly); VIEW.cx-=(t.clientX-lx)/sc; VIEW.cy+=(t.clientY-ly)/sc; lx=t.clientX; ly=t.clientY; VIEW.follow=false; const b=$('btn_follow'); if(b) b.textContent='✋ Livre'; _scheduleDraw(); }
   },{passive:false});
-  cv.addEventListener('touchend',()=>{ mode=null; },{passive:false});
+  cv.addEventListener('touchend',e=>{ if(mode==='pan'&&moved<8){ tapTS=Date.now(); _mapTap(tx,ty); } mode=null; },{passive:false});
+  cv.addEventListener('click',e=>{ if(Date.now()-tapTS<600) return; _mapTap(e.clientX,e.clientY); });   // desktop (ignora o click sintético pós-toque)
 }
 function renderTrabalho(){
   const c=CUR; const manual=!GPS.paintAuto;
