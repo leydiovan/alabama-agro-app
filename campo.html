@@ -92,6 +92,9 @@ function _pdfPath(codigo,safra){ return 'comandas/'+String(safra||'').replace(/[
 function _idb(){ return new Promise((res,rej)=>{ let r; try{ r=indexedDB.open('campo-cache',1); }catch(e){ return rej(e); } r.onupgradeneeded=()=>{ try{ r.result.createObjectStore('pdfs'); }catch(e){} }; r.onsuccess=()=>res(r.result); r.onerror=()=>rej(r.error); }); }
 async function _pdfCacheSet(k,blob){ try{ const db=await _idb(); await new Promise((res,rej)=>{ const tx=db.transaction('pdfs','readwrite'); tx.objectStore('pdfs').put(blob,k); tx.oncomplete=res; tx.onerror=()=>rej(tx.error); }); }catch(e){} }
 async function _pdfCacheGet(k){ try{ const db=await _idb(); return await new Promise((res)=>{ const tx=db.transaction('pdfs','readonly'); const rq=tx.objectStore('pdfs').get(k); rq.onsuccess=()=>res(rq.result||null); rq.onerror=()=>res(null); }); }catch(e){ return null; } }
+/* cache de dados de referência (offline-first): salva online, lê do cache se cair a rede */
+function _cacheSet(k,v){ try{ localStorage.setItem('campo_cache_'+k, JSON.stringify(v)); }catch(e){} }
+function _cacheGet(k,def){ try{ const s=localStorage.getItem('campo_cache_'+k); return s?JSON.parse(s):def; }catch(e){ return def; } }
 function _st(t,c){ let e=$('snack'); if(!e){ e=document.createElement('div'); e.id='snack'; e.style.cssText='position:fixed;left:12px;right:12px;bottom:78px;z-index:50;padding:11px 14px;border-radius:10px;font:600 14px system-ui;text-align:center;box-shadow:0 4px 14px rgba(0,0,0,.4)'; document.body.appendChild(e);} e.textContent=t; e.style.background=c||'#333'; e.style.color='#fff'; clearTimeout(e._t); e._t=setTimeout(()=>{e.remove();},3200); }
 
 /* ---------- boot / login ---------- */
@@ -111,10 +114,10 @@ async function login(){
 async function entrar(){
   DIA=hoje();
   try{ const {data:u}=await SB.auth.getUser(); USER_EMAIL=(u&&u.user&&u.user.email)||''; }catch(e){}
-  try{ const {data:f}=await SB.from('funcionarios').select('id,nome,tipo,ativo').order('nome'); FUNCS=(f||[]).filter(x=>x.ativo!==false); }catch(e){ FUNCS=[]; }
-  try{ const {data:m}=await SB.from('maquinas').select('id,nome,categoria,id_frota,consumo_ref').order('nome'); MAQS=m||[]; }catch(e){ MAQS=[]; }
-  try{ const {data:i}=await SB.from('implementos').select('id,nome,categoria,id_frota,largura_trabalho').order('nome'); IMPS=i||[]; }catch(e){ IMPS=[]; }
-  try{ const {data:l}=await SB.from('lotes').select('nome,area,geom').order('nome'); LOTES=l||[]; }catch(e){ LOTES=[]; }
+  try{ const {data:f,error}=await SB.from('funcionarios').select('id,nome,tipo,ativo').order('nome'); if(error) throw error; FUNCS=(f||[]).filter(x=>x.ativo!==false); _cacheSet('funcs',FUNCS); }catch(e){ FUNCS=_cacheGet('funcs',[]); }
+  try{ const {data:m,error}=await SB.from('maquinas').select('id,nome,categoria,id_frota,consumo_ref').order('nome'); if(error) throw error; MAQS=m||[]; _cacheSet('maqs',MAQS); }catch(e){ MAQS=_cacheGet('maqs',[]); }
+  try{ const {data:i,error}=await SB.from('implementos').select('id,nome,categoria,id_frota,largura_trabalho').order('nome'); if(error) throw error; IMPS=i||[]; _cacheSet('imps',IMPS); }catch(e){ IMPS=_cacheGet('imps',[]); }
+  try{ const {data:l,error}=await SB.from('lotes').select('nome,area,geom').order('nome'); if(error) throw error; LOTES=l||[]; _cacheSet('lotes',LOTES); }catch(e){ LOTES=_cacheGet('lotes',[]); }
   await carregarSafra();
   // operador salvo no aparelho?
   let oid=null; try{ oid=+localStorage.getItem('campo_oper')||null; }catch(e){}
@@ -123,18 +126,18 @@ async function entrar(){
   render();
 }
 async function carregarSafra(){
-  let safras=[]; try{ const {data}=await SB.from('safras').select('*'); safras=data||[]; }catch(e){}
+  let safras=null; try{ const {data,error}=await SB.from('safras').select('*'); if(error) throw error; safras=data||[]; _cacheSet('safras',safras); }catch(e){ safras=_cacheGet('safras',[]); }
   const h=hoje();
   let s=safras.find(x=>x.inicio&&x.fim&&x.inicio<=h&&h<=x.fim);
   if(!s) s=safras.slice().sort((a,b)=>(b.ano||0)-(a.ano||0))[0];
-  SAFRA=s?s.nome:'';
-  try{ const {data}=await SB.from('comandas').select('*').eq('safra',SAFRA).neq('status','cancelada'); COMANDAS=data||[]; }catch(e){ COMANDAS=[]; }
+  SAFRA=s?s.nome:(_cacheGet('safra','')||''); _cacheSet('safra',SAFRA);
+  try{ const {data,error}=await SB.from('comandas').select('*').eq('safra',SAFRA).neq('status','cancelada'); if(error) throw error; COMANDAS=data||[]; _cacheSet('comandas',COMANDAS); }catch(e){ COMANDAS=_cacheGet('comandas',[]); }
 }
 async function carregarDia(){
   if(!OPER) return;
   // execuções de hoje deste operador (só p/ marcar o status das comandas na lista)
   EXECS={};
-  try{ const {data}=await SB.from('execucao_campo').select('*').eq('funcionario_id',OPER.id).eq('data',DIA); (data||[]).forEach(x=>{ if(x.comanda_codigo) EXECS[x.comanda_codigo]=x; }); }catch(e){}
+  try{ const {data,error}=await SB.from('execucao_campo').select('*').eq('funcionario_id',OPER.id).eq('data',DIA); if(error) throw error; (data||[]).forEach(x=>{ if(x.comanda_codigo) EXECS[x.comanda_codigo]=x; }); _cacheSet('execs_'+DIA,EXECS); }catch(e){ EXECS=_cacheGet('execs_'+DIA,{})||{}; }
 }
 
 /* ---------- comandas do operador ---------- */
@@ -203,7 +206,8 @@ let HDR={maquina_id:'',implemento_id:''};   // máquina/implemento escolhidos no
 let EXVIEW='menu';              // dentro da comanda: 'menu' (ícones) | 'trabalho' (apontamento)
 async function _carregarDiasComanda(){
   CUR_DAYS=[];
-  try{ const {data}=await SB.from('execucao_campo').select('*').eq('comanda_codigo',CUR.codigo).eq('funcionario_id',OPER.id).order('data',{ascending:false}); CUR_DAYS=data||[]; }catch(e){ _st('❌ '+e.message,'#c0392b'); }
+  const _ck='days_'+CUR.codigo+'_'+OPER.id;
+  try{ const {data,error}=await SB.from('execucao_campo').select('*').eq('comanda_codigo',CUR.codigo).eq('funcionario_id',OPER.id).order('data',{ascending:false}); if(error) throw error; CUR_DAYS=data||[]; _cacheSet(_ck,CUR_DAYS); }catch(e){ CUR_DAYS=_cacheGet(_ck,[]); _st('⚠️ Offline — usando dados salvos no aparelho','#e67e22'); }
   const ult=CUR_DAYS[0];
   HDR={ maquina_id:(ult&&ult.maquina_id)||'', implemento_id:(ult&&ult.implemento_id)||'' };
 }
@@ -318,7 +322,11 @@ function _px(E){ return _CW/2 + (E-VIEW.cx)*_sc(); }
 function _py(N){ return _CH/2 - (N-VIEW.cy)*_sc(); }
 function _scheduleDraw(){ if(GPS._dt) return; GPS._dt=setTimeout(()=>{ GPS._dt=null; _drawMapa(); },120); }
 function _pathPoly(ctx,poly){ ctx.beginPath(); poly.forEach((p,i)=>{ const X=_px(p[0]),Y=_py(p[1]); i?ctx.lineTo(X,Y):ctx.moveTo(X,Y); }); ctx.closePath(); }
+let _VELC=null;
 function _velColor(v){ if(v==null||isNaN(v)) return 'rgba(170,170,170,.5)'; const c=Math.max(0,Math.min(15,+v)); const h=240-(c/15)*240; return 'hsla('+h.toFixed(0)+',85%,50%,.65)'; }
+function _velSig(){ return GPS.pts.length+'|'+(DAYSEGS||[]).length+'|'+(DAYSEGS||[]).reduce((a,s)=>a+s.pts.length,0)+'|'+DIA; }
+function _markCellsMap(aE,aN,bE,bN,v,poly,hw,map){ if(hw<=0) return; const i0=Math.floor((Math.min(aE,bE)-hw)/CELL),i1=Math.floor((Math.max(aE,bE)+hw)/CELL),j0=Math.floor((Math.min(aN,bN)-hw)/CELL),j1=Math.floor((Math.max(aN,bN)+hw)/CELL); for(let i=i0;i<=i1;i++)for(let j=j0;j<=j1;j++){ const cE=(i+0.5)*CELL,cN=(j+0.5)*CELL; if(_segDist(cE,cN,aE,aN,bE,bN)<=hw && (!poly||_inPoly(cE,cN,poly))) map.set(i+'_'+j, v||0); } }
+function _buildVelCells(){ const map=new Map(); const poly=_polyUTM(); (DAYSEGS||[]).forEach(s=>{ const hw=(s.larg||0)/2; for(let i=1;i<s.pts.length;i++) _markCellsMap(s.pts[i-1].E,s.pts[i-1].N,s.pts[i].E,s.pts[i].N,s.pts[i].v,poly,hw,map); }); const hw=_widthM()/2; for(let i=1;i<GPS.pts.length;i++) _markCellsMap(GPS.pts[i-1].E,GPS.pts[i-1].N,GPS.pts[i].E,GPS.pts[i].N,GPS.pts[i].v,poly,hw,map); return map; }
 function _drawMapa(){ const cv=_CV||$('cv'); if(!cv) return; if(!_CW){ _setupCanvas(); } const ctx=cv.getContext('2d');
   if(VIEW.follow && GPS.pts.length){ const l=GPS.pts[GPS.pts.length-1]; VIEW.cx=l.E; VIEW.cy=l.N; }
   ctx.clearRect(0,0,_CW,_CH); if(VIEW.cx==null) return;
@@ -328,10 +336,10 @@ function _drawMapa(){ const cv=_CV||$('cv'); if(!cv) return; if(!_CW){ _setupCan
   ctx.lineJoin='round'; ctx.lineCap='round';
   const _mode=VIEW.mode||'cob';
   const _drawLine=(pts,larg)=>{ if(!pts||!pts.length) return; ctx.lineWidth=Math.max(3,(larg||0)*_sc()); ctx.beginPath(); pts.forEach((p,i)=>{ const X=_px(p.E),Y=_py(p.N); i?ctx.lineTo(X,Y):ctx.moveTo(X,Y); }); ctx.stroke(); };
-  const _drawVel=(pts,larg)=>{ if(!pts||pts.length<2) return; ctx.lineWidth=Math.max(3,(larg||0)*_sc()); for(let i=1;i<pts.length;i++){ ctx.strokeStyle=_velColor(pts[i].v); ctx.beginPath(); ctx.moveTo(_px(pts[i-1].E),_py(pts[i-1].N)); ctx.lineTo(_px(pts[i].E),_py(pts[i].N)); ctx.stroke(); } };
   if(_mode==='vel'){
-    (DAYSEGS||[]).forEach(s=>_drawVel(s.pts,s.larg));
-    if(GPS.pts.length) _drawVel(GPS.pts,_widthM());
+    const sig=_velSig(); if(!_VELC||_VELC.sig!==sig) _VELC={sig, map:_buildVelCells()};   // mesma faixa da cobertura, pintada por km/h
+    const w=CELL*_sc()+0.7;
+    _VELC.map.forEach((v,key)=>{ const u=key.split('_'); const cE=(+u[0]+0.5)*CELL, cN=(+u[1]+0.5)*CELL; ctx.fillStyle=_velColor(v); ctx.fillRect(_px(cE-CELL/2),_py(cN+CELL/2),w,w); });
   } else {
     ctx.strokeStyle='rgba(88,166,255,.45)'; (DAYSEGS||[]).filter(s=>!s.today).forEach(s=>_drawLine(s.pts,s.larg));   // outros dias (azul)
     ctx.strokeStyle='rgba(255,193,7,.5)'; (DAYSEGS||[]).filter(s=>s.today).forEach(s=>_drawLine(s.pts,s.larg));      // hoje (âmbar)
