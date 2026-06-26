@@ -1101,7 +1101,7 @@ function abrirFicha(codigo,seq){
         <div class="kv"><div class="k">Capacidade</div><div class="v">${esc(c.capacidade??'—')}</div></div>`}
         <div class="kv"><div class="k">Emissão</div><div class="v">${fmtData(c.dataEmissao)}</div></div>
         <div class="kv"><div class="k">Execução</div><div class="v">${fmtData(c.dataExecucao)}</div></div>
-        <div class="kv"><div class="k">Custo total</div><div class="v" style="color:var(--ok-l)">${c.status==='executada'?fmtR$(cst.total):'—'}</div></div>
+        ${c.perfil==='MAQUINA'?'':`<div class="kv"><div class="k">Custo total</div><div class="v" style="color:var(--ok-l)">${c.status==='executada'?fmtR$(cst.total):'—'}</div></div>`}
       </div>
       ${c.perfil==='MAQUINA'?'':`<div class="sec">Produtos previstos</div>${prodBlock}`}
       ${c.obs?`<div class="sec">Observações</div><div class="obsbox">${esc(c.obs)}</div>`:''}
@@ -1234,9 +1234,17 @@ function cancelarEdicaoRetorno(cod){
 /* diário: visualização (executada) */
 function _conjTabela(g){
   const conj=(g.campo&&g.campo.conjuntos)||[], cp=g.campo||{};
-  let h='<div class="sec">Conjuntos / máquinas usadas</div><table class="ptbl"><thead><tr><th>Trator</th><th>Implemento</th><th>Operador</th><th>Início</th><th>Fim</th><th>Horas</th><th>Diesel</th><th>Área</th></tr></thead><tbody>';
-  conj.forEach(o=>{ h+='<tr><td>'+esc(o.trator||'—')+'</td><td>'+esc(o.implemento||'—')+'</td><td>'+esc(o.operador||'—')+'</td><td>'+esc(o.inicio||'')+'</td><td>'+esc(o.fim||'')+'</td><td>'+(o.horas?String(o.horas).replace('.',',')+' h':'')+'</td><td>'+(o.diesel?fmtBR(o.diesel)+' L':'')+'</td><td>'+(o.area?fmtArea(o.area)+' ha':'')+'</td></tr>'; });
-  h+='</tbody></table><div class="hint" style="margin-top:6px"><b>Totais:</b> '+(cp.dias||0)+' dia(s) · '+(cp.horas_trabalho!=null?String(cp.horas_trabalho).replace('.',',')+' h':'')+(cp.diesel_l?(' · '+fmtBR(cp.diesel_l)+' L diesel'):'')+(cp.area_ha?(' · '+fmtArea(cp.area_ha)+' ha'):'')+(g['Operador']?(' · Operador(es): '+esc(g['Operador'])):'')+'</div>';
+  const tA=+cp.area_ha||0, tD=+cp.diesel_l||0, tH=+cp.horas_trabalho||0;
+  const dha=tA>0?tD/tA:0, hah=tH>0?tA/tH:0;
+  const hh=v=>String(v).replace('.',',');
+  const chip=(l,v)=>'<div style="flex:1;min-width:120px;background:var(--bg3);border:1px solid var(--border);border-radius:10px;padding:8px 11px"><div style="font-size:11px;color:var(--muted2)">'+l+'</div><div style="font-size:17px;font-weight:800">'+v+'</div></div>';
+  let h='<div style="display:flex;flex-wrap:wrap;gap:8px;margin:2px 0 12px">'
+    +chip('Diesel total', tD?fmtBR(tD)+' L':'—')+chip('Diesel/ha', dha?fmtBR(+dha.toFixed(1))+' L/ha':'—')
+    +chip('ha/h', hah?fmtBR(+hah.toFixed(2))+' ha/h':'—')+chip('Tempo total', tH?hh(tH)+' h':'—')+'</div>';
+  h+='<div class="sec">Conjuntos / máquinas usadas</div><table class="ptbl"><thead><tr><th>Trator</th><th>Implemento</th><th>Operador</th><th>Início</th><th>Fim</th><th>Horas</th><th>Área</th><th>Diesel</th><th>Diesel/ha</th><th>ha/h</th></tr></thead><tbody>';
+  conj.forEach(o=>{ const dh=o.area>0?o.diesel/o.area:0, ph=o.horas>0?o.area/o.horas:0;
+    h+='<tr><td>'+esc(o.trator||'—')+'</td><td>'+esc(o.implemento||'—')+'</td><td>'+esc(o.operador||'—')+'</td><td>'+esc(o.inicio||'')+'</td><td>'+esc(o.fim||'')+'</td><td>'+(o.horas?hh(o.horas)+' h':'')+'</td><td>'+(o.area?fmtArea(o.area)+' ha':'')+'</td><td>'+(o.diesel?fmtBR(o.diesel)+' L':'')+'</td><td>'+(dh?fmtBR(+dh.toFixed(1)):'—')+'</td><td>'+(ph?fmtBR(+ph.toFixed(2)):'—')+'</td></tr>'; });
+  h+='</tbody><tfoot><tr style="font-weight:800;background:var(--bg3)"><td colspan="5">Totais — '+(cp.dias||0)+' dia(s)</td><td>'+(tH?hh(tH)+' h':'')+'</td><td>'+(tA?fmtArea(tA)+' ha':'')+'</td><td>'+(tD?fmtBR(tD)+' L':'')+'</td><td>'+(dha?fmtBR(+dha.toFixed(1)):'')+'</td><td>'+(hah?fmtBR(+hah.toFixed(2)):'')+'</td></tr></tfoot></table>';
   return h;
 }
 async function _ensureMaqMaps(){
