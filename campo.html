@@ -255,7 +255,7 @@ function renderExecMenu(){
     ${form || (concl?'':`<button class="btn s" id="ab_novo">⛽ Lançar abastecimento</button>`)}
     ${concl?'<div class="card muted" style="text-align:center;margin-top:10px">✅ Lote concluído e enviado.</div>':'<button class="btn s" id="concluir" style="margin-top:10px">✔ Concluí o lote — enviar comanda</button>'}
     <div class="bar"><button class="btn s" id="voltar">◀ Voltar às comandas</button></div>`;
-  if($('ic_cmd'))$('ic_cmd').onclick=abrirComandaDoc;
+  if($('ic_cmd'))$('ic_cmd').onclick=async()=>{ const b=$('ic_cmd'); if(b)b.disabled=true; try{ await abrirComandaDoc(); } finally{ if(b)b.disabled=false; } };
   if($('ic_trab'))$('ic_trab').onclick=async()=>{ const b=$('ic_trab'); if(b){b.disabled=true;b.textContent='abrindo GPS…';} await _gpsEnter(); EXVIEW='trabalho'; render(); window.scrollTo(0,0); };
   if($('ab_novo'))$('ab_novo').onclick=()=>{ ABFORM=true; render(); };
   if($('ab_cancel'))$('ab_cancel').onclick=()=>{ ABFORM=false; render(); };

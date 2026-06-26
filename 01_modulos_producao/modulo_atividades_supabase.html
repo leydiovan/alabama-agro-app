@@ -3000,6 +3000,7 @@ async function atualizarComandaSB(c){
     const { error } = await SB.from('comandas').update(reg).eq('codigo', c.codigo).eq('safra', SAFRA);
     if(error){ _statusSB('❌ Erro ao atualizar: '+error.message,'#c0392b'); console.error(error); return false; }
     _statusSB('✅ Comanda '+c.codigo+' atualizada no banco','#27ae60');
+    await _gerarEenviarPDF(c);
     return true;
   }catch(e){ _statusSB('❌ Falha: '+e.message,'#c0392b'); console.error(e); return false; }
 }
@@ -3015,18 +3016,6 @@ async function salvarComandaSB(c){
     await _gerarEenviarPDF(c);
     return true;
   }catch(e){ _statusSB('❌ Falha: '+e.message,'#c0392b'); console.error(e); return false; }
-}
-
-function atualizarComandaSB(c){
-  if(!SB){ _statusSB('⚠️ Sem conexão — edição só na memória','#e67e22'); return; }
-  try{
-    (async()=>{
-      const {error}=await SB.from('comandas').update(_comandaParaBanco(c)).eq('codigo',c.codigo).eq('safra',SAFRA);
-      if(error){ _statusSB('❌ Erro ao atualizar: '+error.message,'#c0392b'); console.error(error); return; }
-      _statusSB('✅ Comanda '+c.codigo+' atualizada no banco','#27ae60');
-      await _gerarEenviarPDF(c);
-    })();
-  }catch(e){ _statusSB('❌ Falha: '+e.message,'#c0392b'); console.error(e); }
 }
 
 function abrirEditar(codigo){
