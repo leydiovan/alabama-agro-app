@@ -1079,6 +1079,7 @@ function abrirFicha(codigo,seq){
           <button class="btn" onclick="imprimir('${c.codigo}','${viaCod3}')">${viaBtn3}</button>`}
           <button class="btn" onclick="abrirEditar('${c.codigo}')">✏️ Editar comanda</button>
           <button class="btn" onclick="editarRetorno('${c.codigo}')">📝 Editar retorno</button>
+          <button class="btn" onclick="_verMapaComanda('${c.codigo}','${SAFRA}')">🗺️ Ver mapa</button>
           <button class="btn danger" onclick="cancelarFinalizacao('${c.codigo}')">↩️ Cancelar finalização (refazer no tablet)</button>`;
   }
 
@@ -1705,7 +1706,7 @@ function cabecalhoGradagem(c){
 function diarioGradagem(c){
   const ex=c.status==='executada'; const G=ex?(c.geralRetorno||{}):null; const R=ex?(c.diario||null):null;
   let h='<div class="pf-diafull" style="margin-top:14px"><div class="pf-sech">DIÁRIO DA OPERAÇÃO</div>';
-  h+=_diarioGerais(['Data de início','Data de fim','Maquinário e implemento','Operador'], G);
+  h+=_diarioGerais(['Trator','Implemento','Data de início','Data de fim','Horas trabalhadas','Diesel total','Área','Operador'], G);
   h+=_diarioCargas(18, ['Data','Hora inicial','Hora final','Diesel','Área'], R);
   h+='</div>';
   return h;
@@ -2934,7 +2935,7 @@ function _apcUTM(lat,lon,zona){
   return [E,No];
 }
 function _apcLoteRing(nome){ const l=(S.lotes||[]).find(x=>x.nome===nome); const g=l&&l.geom; return (g&&Array.isArray(g.ring)&&g.ring.length>2)?g.ring:null; }
-let APCMAP={};   // estado do mapa por comanda: {zoom, ox, oy, sel, mode, _prep}
+let APCMAP={}, _APCEXTRA={};   // estado do mapa por comanda: {zoom, ox, oy, sel, mode, _prep}; _APCEXTRA = grupos fora da fila (visualizador)
 function _apcState(key){ return APCMAP[key]||(APCMAP[key]={zoom:1,ox:0,oy:0,sel:null,mode:'cob'}); }
 function _apcVelColor(v){ if(v==null||isNaN(v)) return 'rgba(170,170,170,.6)'; const c=Math.max(0,Math.min(15,+v)); const h=240-(c/15)*240; return 'hsla('+h.toFixed(0)+',85%,50%,.75)'; }
 function _apcPrep(g){
@@ -2962,7 +2963,7 @@ function _apcDrawMapa(cv,g){
   });
   ctx.restore();
 }
-function _apcRedraw(key){ try{ const cv=document.querySelector('[data-apcmap="'+(window.CSS&&CSS.escape?CSS.escape(key):key)+'"]'); const g=APC&&APC.comandas.find(x=>(x.codigo+'|'+(x.safra||''))===key); if(cv&&g) _apcDrawMapa(cv,g); }catch(e){} }
+function _apcRedraw(key){ try{ const cv=document.querySelector('[data-apcmap="'+(window.CSS&&CSS.escape?CSS.escape(key):key)+'"]'); const g=(APC&&APC.comandas.find(x=>(x.codigo+'|'+(x.safra||''))===key))||_APCEXTRA[key]; if(cv&&g) _apcDrawMapa(cv,g); }catch(e){} }
 function _apcZoomAt(key,f,mx,my){ const s=_apcState(key); const sc0=s._sc0||1,pad=s._pad||12,H=s._H||220; const z0=s.zoom; s.zoom=Math.max(0.5,Math.min(20,s.zoom*f)); const scOld=sc0*z0, scNew=sc0*s.zoom; if(scOld>0){ const Ax=(mx-(pad+s.ox))/scOld; s.ox=mx-Ax*scNew-pad; const Ay=((H-pad)+s.oy-my)/scOld; s.oy=my+Ay*scNew-(H-pad); } _apcRedraw(key); }   // mantém o ponto sob o cursor fixo
 function _apcBindCanvas(cv,key){
   if(cv._apcBound) return; cv._apcBound=true;
@@ -3050,11 +3051,44 @@ function bindAprovCampo(){
   $$('[data-apcok]').forEach(b=>b.onclick=()=>aprovarComandaCampo(b.dataset.apcok));
   $$('[data-apcdel]').forEach(b=>b.onclick=()=>descartarExecCampo(b.dataset.apcdel));
   $$('[data-apcver]').forEach(b=>b.onclick=()=>{ const sp=String(b.dataset.apcver).split('|'); _apcVerComanda(sp[0],sp[1]||''); });
-  $$('[data-apczoom]').forEach(b=>b.onclick=()=>{ const k=b.dataset.apckey, st=_apcState(k), op=b.dataset.apczoom; if(op==='0'){ st.zoom=1; st.ox=0; st.oy=0; _apcRedraw(k); } else { _apcZoomAt(k, op==='+'?1.3:1/1.3, (st._W||300)/2, (st._H||220)/2); } });   // +/- zoom no centro
-  $$('[data-apcmode]').forEach(b=>b.onclick=()=>{ const k=b.dataset.apcmode, st=_apcState(k); st.mode=(st.mode==='vel')?'cob':'vel'; b.textContent='camada: '+(st.mode==='vel'?'velocidade':'cobertura'); _apcRedraw(k); });
-  $$('[data-apcselc]').forEach(b=>b.onclick=()=>{ _apcState(b.dataset.apcselc).sel=null; render(); });
-  $$('[data-apcsel]').forEach(tr=>tr.onclick=(e)=>{ if(e.target.closest('button')) return; const k=tr.dataset.apckey, id=tr.dataset.apcsel, st=_apcState(k); st.sel=(String(st.sel)===String(id))?null:id; render(); });
-  $$('[data-apcmap]').forEach(cv=>{ const k=cv.dataset.apcmap; const g=APC.comandas.find(x=>(x.codigo+'|'+(x.safra||''))===k); if(g){ _apcBindCanvas(cv,k); try{ _apcDrawMapa(cv,g); }catch(e){ console.warn('apcmap',e); } } });
+  _apcBindMap(document,true);
+}
+/* liga os controles do mapa (zoom/camada/seleção/canvas) dentro de um root; aprov=true re-renderiza a fila, senão só redesenha */
+function _apcBindMap(root,aprov){
+  root=root||document; const qa=s=>[].slice.call(root.querySelectorAll(s));
+  const mark=(k)=>{ const sel=_apcState(k).sel; qa('[data-apcsel]').forEach(tr=>{ if(tr.dataset.apckey===k) tr.style.background=(String(sel)===String(tr.dataset.apcsel))?'#16324a':''; }); };
+  qa('[data-apczoom]').forEach(b=>b.onclick=()=>{ const k=b.dataset.apckey, st=_apcState(k), op=b.dataset.apczoom; if(op==='0'){ st.zoom=1; st.ox=0; st.oy=0; _apcRedraw(k); } else { _apcZoomAt(k, op==='+'?1.3:1/1.3, (st._W||300)/2, (st._H||220)/2); } });
+  qa('[data-apcmode]').forEach(b=>b.onclick=()=>{ const k=b.dataset.apcmode, st=_apcState(k); st.mode=(st.mode==='vel')?'cob':'vel'; b.textContent='camada: '+(st.mode==='vel'?'velocidade':'cobertura'); _apcRedraw(k); });
+  qa('[data-apcselc]').forEach(b=>b.onclick=()=>{ const k=b.dataset.apcselc; _apcState(k).sel=null; if(aprov) render(); else { mark(k); _apcRedraw(k); } });
+  qa('[data-apcsel]').forEach(tr=>tr.onclick=(e)=>{ if(e.target.closest('button')) return; const k=tr.dataset.apckey, id=tr.dataset.apcsel, st=_apcState(k); st.sel=(String(st.sel)===String(id))?null:id; if(aprov) render(); else { mark(k); _apcRedraw(k); } });
+  qa('[data-apcmap]').forEach(cv=>{ const k=cv.dataset.apcmap; const g=(APC&&APC.comandas.find(x=>(x.codigo+'|'+(x.safra||''))===k))||_APCEXTRA[k]; if(g){ _apcBindCanvas(cv,k); try{ _apcDrawMapa(cv,g); }catch(e){ console.warn('apcmap',e); } } });
+}
+async function _verMapaComanda(codigo,safra){
+  const ov=document.createElement('div'); ov.id='mapaov';
+  ov.style.cssText='position:fixed;inset:0;z-index:99991;background:#0d1117;color:#e6edf3;display:flex;flex-direction:column';
+  ov.innerHTML='<div style="display:flex;align-items:center;gap:10px;padding:8px 10px;background:#161b22"><button class="btn" id="mapaclose" style="width:auto;margin:0">◀ Voltar</button><b>🗺️ Mapa · Comanda '+_apcEsc(codigo)+'</b></div><div style="flex:1;display:flex;align-items:center;justify-content:center" id="mapabody"><span style="color:#8b949e">⏳ carregando sessões…</span></div>';
+  document.body.appendChild(ov);
+  ov.querySelector('#mapaclose').onclick=()=>{ try{ delete _APCEXTRA['M|'+codigo+'|'+(safra||'')]; }catch(e){} ov.remove(); };
+  let rows=[]; try{ const {data}=await SB.from('execucao_campo').select('*').eq('comanda_codigo',codigo).eq('safra',safra); rows=(data||[]).filter(r=>Array.isArray(r.trajeto)&&r.trajeto.length>1); }catch(e){}
+  if(!APC||!APC.maq||!Object.keys(APC.maq||{}).length){ try{ const [mq,im,fu]=await Promise.all([SB.from('maquinas').select('id,nome'),SB.from('implementos').select('id,nome,largura_trabalho'),SB.from('funcionarios').select('id,nome')]); APC=APC||{comandas:[]}; APC.maq=APC.maq||{}; APC.imp=APC.imp||{}; APC.impLarg=APC.impLarg||{}; APC.fun=APC.fun||{}; (mq.data||[]).forEach(m=>APC.maq[m.id]=m.nome); (im.data||[]).forEach(m=>{APC.imp[m.id]=m.nome;APC.impLarg[m.id]=m.largura_trabalho?+m.largura_trabalho:0;}); (fu.data||[]).forEach(m=>APC.fun[m.id]=m.nome); }catch(e){} }
+  if(!document.body.contains(ov)) return;
+  const body=ov.querySelector('#mapabody'); if(!body) return;
+  if(!rows.length){ body.innerHTML='<span style="color:#8b949e">Sem trajeto de GPS nesta comanda.</span>'; return; }
+  const key='M|'+codigo+'|'+(safra||''); _APCEXTRA[key]={codigo,safra:safra||'',rows}; delete APCMAP[key]; _apcState(key);
+  const linhas=rows.slice().sort((a,b)=>String((a.data||'')+(a.hora_inicio||'')).localeCompare(String((b.data||'')+(b.hora_inicio||'')))).map(r=>`<tr data-apcsel="${r.id}" data-apckey="${_apcEsc(key)}" style="cursor:pointer"><td>${_apcEsc((r.data||'').split('-').reverse().slice(0,2).join('/'))}</td><td>${_apcEsc(APC.fun[r.funcionario_id]||('#'+r.funcionario_id))}</td><td>${_apcEsc(APC.maq[r.maquina_id]||'—')}</td><td>${_apcEsc(r.hora_inicio||'')}</td><td style="text-align:right">${r.area_ha!=null?_apcFmt(r.area_ha)+' ha':'—'}</td></tr>`).join('');
+  body.outerHTML=`<div style="flex:1;display:flex;flex-direction:column;min-height:0">
+    <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;padding:6px 10px">
+      <button class="btn sm" data-apczoom="+" data-apckey="${_apcEsc(key)}">＋</button>
+      <button class="btn sm" data-apczoom="-" data-apckey="${_apcEsc(key)}">－</button>
+      <button class="btn sm" data-apczoom="0" data-apckey="${_apcEsc(key)}">⟲</button>
+      <button class="btn sm" data-apcmode="${_apcEsc(key)}">camada: cobertura</button>
+      <button class="btn sm" data-apcselc="${_apcEsc(key)}">✕ destaque</button>
+      <span style="color:#8b949e;font-size:11px">arraste/scroll/pinça p/ zoom · toque numa linha p/ destacar</span>
+    </div>
+    <canvas data-apcmap="${_apcEsc(key)}" style="flex:1;width:100%;min-height:0;display:block;background:#0d1117;touch-action:none"></canvas>
+    <div style="max-height:32vh;overflow:auto;border-top:1px solid #30363d"><table class="tbl"><thead><tr><th>Data</th><th>Operador</th><th>Máquina</th><th>Início</th><th style="text-align:right">Área</th></tr></thead><tbody>${linhas}</tbody></table></div>
+  </div>`;
+  _apcBindMap(ov,false);
 }
 async function aprovarComandaCampo(key){
   const sp=String(key).split('|'); const codigo=sp[0], safra=sp[1]||'';
@@ -3074,9 +3108,14 @@ async function aprovarComandaCampo(key){
     const diario=allRows.map(r=>{ const a=+r.area_ha||0; const hi=r.hora_inicio||'', hf=r.hora_fim||''; const dies=totArea>0?(totDiesel*a/totArea):(allRows.length?totDiesel/allRows.length:0);
       return { 'Data':r.data, 'Hora inicial':hi, 'Hora final':hf, 'Hora início':hi, 'Hora fim':hf, 'Início':hi, 'Fim':hf, 'Área':(a?_apcFmt(a):''), 'Diesel':(dies?+dies.toFixed(1):'') }; });
     const maqs=[...new Set(allRows.map(r=>(APC.maq[r.maquina_id]||'')+(r.implemento_id?(' + '+(APC.imp[r.implemento_id]||'')):'')).filter(x=>x.trim()))].join('; ');
+    const trator=[...new Set(allRows.map(r=>APC.maq[r.maquina_id]).filter(Boolean))].join('; ');
+    const implem=[...new Set(allRows.map(r=>APC.imp[r.implemento_id]).filter(Boolean))].join('; ');
     const opers=[...new Set(allRows.map(r=>APC.fun[r.funcionario_id]||('#'+r.funcionario_id)))].join(', ');
     const geral=Object.assign({}, (c&&c.geralRetorno)||{}, {
-      'Data de início':datas[0]||'', 'Data de fim':ultimaData||'', 'Maquinário e implemento':maqs, 'Operador':opers,
+      'Trator':trator, 'Implemento':implem,
+      'Data de início':datas[0]?fmtData(datas[0]):'', 'Data de fim':ultimaData?fmtData(ultimaData):'',
+      'Horas trabalhadas':horas?(horas.toFixed(1).replace('.',',')+' h'):'', 'Diesel total':totDiesel?(_apcFmt(totDiesel)+' L'):'', 'Área':totArea?(_apcFmt(totArea)+' ha'):'',
+      'Maquinário e implemento':maqs, 'Operador':opers,
       campo:{ dias:ndias, area_ha:+totArea.toFixed(2), diesel_l:+totDiesel.toFixed(2), horas_trabalho:+horas.toFixed(1), operadores:opers.split(', ').filter(Boolean), abastecimentos:(g.abast||[]).map(a=>({litros:+a.litros, quando:a.quando, maquina:APC.maq[a.maquina_id]||null})), aprovado_em:new Date().toISOString() }
     });
     const upd={ status:'executada', data_execucao:ultimaData, diario:diario, geral_retorno:geral };
