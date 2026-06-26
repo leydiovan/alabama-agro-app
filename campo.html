@@ -290,7 +290,7 @@ function _drawMapa(){ const cv=_CV||$('cv'); if(!cv) return; if(!_CW){ _setupCan
 function _hud(){ const el=$('hud'); if(!el) return; const loteA=areaLote(CUR.lote_nome)||0; const cum=_otherDaysArea()+GPS.areaHa; const pct=loteA>0?Math.min(100,cum/loteA*100):null;
   let stt,stc; if(GPS.paintAuto){ if(GPS.inField){ stt='● pintando'; stc='#27ae60'; } else { stt='○ fora do talhão'; stc='#f85149'; } } else { if(GPS.painting){ stt='● pintando'; stc='#27ae60'; } else { stt='|| pausado'; stc='#8b949e'; } }
   const pill=(l,v,c)=>'<span class="pill" style="background:#0d1117cc">'+(l?l+' ':'')+'<b style="color:'+(c||'#ffc107')+'">'+v+'</b></span>';
-  el.innerHTML=pill('',stt,stc)+pill('Vel',(GPS.speed||0).toFixed(0)+' km/h')+pill('Área',GPS.areaHa.toFixed(2)+' ha')+(pct!=null?pill('Lote',pct.toFixed(0)+'%'):'')+(GPS.acc!=null?pill('GPS','±'+Math.round(GPS.acc)+'m'):'');
+  el.innerHTML=pill('',stt,stc)+pill('Vel',(GPS.speed||0).toFixed(0)+' km/h')+pill('Área',cum.toFixed(2)+' ha')+(pct!=null?pill('Lote',pct.toFixed(0)+'%'):'')+(GPS.acc!=null?pill('GPS','±'+Math.round(GPS.acc)+'m'):'');
 }
 function _segDist(px,py,aE,aN,bE,bN){ const dx=bE-aE,dy=bN-aN,L2=dx*dx+dy*dy; let t=L2?((px-aE)*dx+(py-aN)*dy)/L2:0; t=t<0?0:(t>1?1:t); return Math.hypot(px-(aE+dx*t),py-(aN+dy*t)); }
 function _markCells(aE,aN,bE,bN){ const hw=_widthM()/2; if(hw<=0) return; const poly=_polyUTM();
@@ -318,7 +318,7 @@ function _implLarg(id){ const m=IMPS.find(x=>String(x.id)===String(id)); return 
 function _rowPts(row){ const out=[]; if(Array.isArray(row.trajeto)) row.trajeto.forEach(p=>{ if(p[0]==null) return; const u=latLngToUTM(p[0],p[1],23); out.push({E:u[0],N:u[1]}); }); return out; }
 function _maqNome(id){ const m=MAQS.find(x=>String(x.id)===String(id)); return m?m.nome:'(sem máquina)'; }
 function _impNome(id){ const m=IMPS.find(x=>String(x.id)===String(id)); return m?m.nome:''; }
-function _buildDaySegs(){ DAYSEGS=CUR_DAYS.filter(r=>r.data===DIA && (!SESS||String(r.id)!==String(SESS.id)) && Array.isArray(r.trajeto)&&r.trajeto.length).map(r=>({pts:_rowPts(r), larg:_implLarg(r.implemento_id)})); }
+function _buildDaySegs(){ DAYSEGS=CUR_DAYS.filter(r=>(!SESS||String(r.id)!==String(SESS.id)) && Array.isArray(r.trajeto)&&r.trajeto.length>1).map(r=>({pts:_rowPts(r), larg:_implLarg(r.implemento_id)})); }
 function _restoreSess(){ GPS.pts=[]; GPS.cells=new Set(); GPS.areaHa=0; GPS.speed=0;
   if(!SESS||!Array.isArray(SESS.trajeto)) return;
   SESS.trajeto.forEach(p=>{ const lat=p[0],lon=p[1]; if(lat==null) return; const u=latLngToUTM(lat,lon,23); if(GPS.pts.length){ const l=GPS.pts[GPS.pts.length-1]; _markCells(l.E,l.N,u[0],u[1]); } GPS.pts.push({E:u[0],N:u[1],lat,lon,t:p[2]||0}); });
