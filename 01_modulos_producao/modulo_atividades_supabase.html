@@ -2893,7 +2893,7 @@ async function _updNavAprovCampo(){
     btn.textContent='✅ Aprovações de campo'+(n?(' ('+n+')'):''); }catch(e){}
 }
 async function _loadAprovCampo(){
-  APC={comandas:[], maq:{}, imp:{}, impLarg:{}, fun:{}, abast:{}};
+  APC={comandas:[], maq:{}, imp:{}, impLarg:{}, fun:{}, abast:{}}; APCMAP={};
   try{
     const [ex,mq,im,fu,ab]=await Promise.all([
       SB.from('execucao_campo').select('*').in('status',['enviada','aberto']).order('data',{ascending:true}),
@@ -2934,21 +2934,44 @@ function _apcUTM(lat,lon,zona){
   return [E,No];
 }
 function _apcLoteRing(nome){ const l=(S.lotes||[]).find(x=>x.nome===nome); const g=l&&l.geom; return (g&&Array.isArray(g.ring)&&g.ring.length>2)?g.ring:null; }
-function _apcDrawMapa(cv,g){
-  if(!cv||!cv.clientWidth) return; const dpr=window.devicePixelRatio||1; const W=cv.clientWidth, H=220;
-  cv.width=W*dpr; cv.height=H*dpr; const ctx=cv.getContext('2d'); ctx.scale(dpr,dpr); ctx.clearRect(0,0,W,H);
+let APCMAP={};   // estado do mapa por comanda: {zoom, ox, oy, sel, mode, _prep}
+function _apcState(key){ return APCMAP[key]||(APCMAP[key]={zoom:1,ox:0,oy:0,sel:null,mode:'cob'}); }
+function _apcVelColor(v){ if(v==null||isNaN(v)) return 'rgba(170,170,170,.6)'; const c=Math.max(0,Math.min(15,+v)); const h=240-(c/15)*240; return 'hsla('+h.toFixed(0)+',85%,50%,.75)'; }
+function _apcPrep(g){
   const ring=_apcLoteRing(g.rows[0]?g.rows[0].lote_nome:'');
-  const segs=g.rows.filter(r=>Array.isArray(r.trajeto)&&r.trajeto.length>1).map(r=>({ pts:r.trajeto.filter(p=>p&&p[0]!=null).map(p=>{const u=_apcUTM(p[0],p[1],23);return {E:u[0],N:u[1]};}), larg:(APC&&APC.impLarg&&APC.impLarg[r.implemento_id])||0 }));
+  const segs=g.rows.filter(r=>Array.isArray(r.trajeto)&&r.trajeto.length>1).map(r=>({ id:String(r.id), pts:r.trajeto.filter(p=>p&&p[0]!=null).map(p=>{const u=_apcUTM(p[0],p[1],23);return {E:u[0],N:u[1],v:(p[3]!=null?+p[3]:null)};}), larg:(APC&&APC.impLarg&&APC.impLarg[r.implemento_id])||0 }));
   let minE=Infinity,maxE=-Infinity,minN=Infinity,maxN=-Infinity; const acc=(E,N)=>{ if(E<minE)minE=E; if(E>maxE)maxE=E; if(N<minN)minN=N; if(N>maxN)maxN=N; };
   if(ring) ring.forEach(p=>acc(p[0],p[1])); segs.forEach(s=>s.pts.forEach(p=>acc(p.E,p.N)));
-  if(!isFinite(minE)){ ctx.fillStyle='#8b949e'; ctx.font='13px system-ui'; ctx.fillText('Sem mapa (talhão sem polígono ou sessão sem trajeto)',12,28); return; }
-  const pad=12, spanE=Math.max(1,maxE-minE), spanN=Math.max(1,maxN-minN), sc=Math.min((W-2*pad)/spanE,(H-2*pad)/spanN);
-  const px=E=>pad+(E-minE)*sc, py=N=>H-pad-(N-minN)*sc;
-  if(ring){ ctx.beginPath(); ring.forEach((p,i)=>{const X=px(p[0]),Y=py(p[1]); i?ctx.lineTo(X,Y):ctx.moveTo(X,Y);}); ctx.closePath(); ctx.fillStyle='rgba(60,90,40,.18)'; ctx.fill(); ctx.lineWidth=1.5; ctx.strokeStyle='#7ee787'; ctx.stroke(); }
-  ctx.save(); if(ring){ ctx.beginPath(); ring.forEach((p,i)=>{const X=px(p[0]),Y=py(p[1]); i?ctx.lineTo(X,Y):ctx.moveTo(X,Y);}); ctx.closePath(); ctx.clip(); }
-  ctx.lineJoin='round'; ctx.lineCap='round'; ctx.strokeStyle='rgba(255,193,7,.6)';
-  segs.forEach(s=>{ if(s.pts.length<2) return; ctx.lineWidth=Math.max(2,(s.larg||0)*sc); ctx.beginPath(); s.pts.forEach((p,i)=>{const X=px(p.E),Y=py(p.N); i?ctx.lineTo(X,Y):ctx.moveTo(X,Y);}); ctx.stroke(); });
+  return {ring,segs,minE,minN,maxE,maxN,ok:isFinite(minE)};
+}
+function _apcDrawMapa(cv,g){
+  if(!cv||!cv.clientWidth) return;
+  const key=g.codigo+'|'+(g.safra||''); const st=_apcState(key); if(!st._prep) st._prep=_apcPrep(g); const P=st._prep;
+  const dpr=window.devicePixelRatio||1, W=cv.clientWidth, H=220;
+  cv.width=W*dpr; cv.height=H*dpr; const ctx=cv.getContext('2d'); ctx.setTransform(dpr,0,0,dpr,0,0); ctx.clearRect(0,0,W,H);
+  if(!P.ok){ ctx.fillStyle='#8b949e'; ctx.font='13px system-ui'; ctx.fillText('Sem mapa (talhão sem polígono ou sessão sem trajeto)',12,28); return; }
+  const pad=12, spanE=Math.max(1,P.maxE-P.minE), spanN=Math.max(1,P.maxN-P.minN), sc0=Math.min((W-2*pad)/spanE,(H-2*pad)/spanN), sc=sc0*st.zoom;
+  const px=E=>pad+(E-P.minE)*sc+st.ox, py=N=>H-pad-(N-P.minN)*sc+st.oy;
+  if(P.ring){ ctx.beginPath(); P.ring.forEach((p,i)=>{const X=px(p[0]),Y=py(p[1]); i?ctx.lineTo(X,Y):ctx.moveTo(X,Y);}); ctx.closePath(); ctx.fillStyle='rgba(60,90,40,.18)'; ctx.fill(); ctx.lineWidth=1.5; ctx.strokeStyle='#7ee787'; ctx.stroke(); }
+  ctx.save(); if(P.ring){ ctx.beginPath(); P.ring.forEach((p,i)=>{const X=px(p[0]),Y=py(p[1]); i?ctx.lineTo(X,Y):ctx.moveTo(X,Y);}); ctx.closePath(); ctx.clip(); }
+  ctx.lineJoin='round'; ctx.lineCap='round';
+  P.segs.forEach(s=>{ if(s.pts.length<2) return; const dim=st.sel&&st.sel!==s.id; const lw=Math.max(2,(s.larg||0)*sc);
+    if(st.mode==='vel'){ for(let i=1;i<s.pts.length;i++){ ctx.strokeStyle=dim?'rgba(120,120,120,.15)':_apcVelColor(s.pts[i].v); ctx.lineWidth=lw; ctx.beginPath(); ctx.moveTo(px(s.pts[i-1].E),py(s.pts[i-1].N)); ctx.lineTo(px(s.pts[i].E),py(s.pts[i].N)); ctx.stroke(); } }
+    else { ctx.strokeStyle=dim?'rgba(255,193,7,.12)':(st.sel===s.id?'rgba(56,160,255,.9)':'rgba(255,193,7,.6)'); ctx.lineWidth=lw; ctx.beginPath(); s.pts.forEach((p,i)=>{const X=px(p.E),Y=py(p.N); i?ctx.lineTo(X,Y):ctx.moveTo(X,Y);}); ctx.stroke(); }
+  });
   ctx.restore();
+}
+function _apcRedraw(key){ try{ const cv=document.querySelector('[data-apcmap="'+(window.CSS&&CSS.escape?CSS.escape(key):key)+'"]'); const g=APC&&APC.comandas.find(x=>(x.codigo+'|'+(x.safra||''))===key); if(cv&&g) _apcDrawMapa(cv,g); }catch(e){} }
+function _apcBindCanvas(cv,key){
+  if(cv._apcBound) return; cv._apcBound=true; const st=()=>_apcState(key);
+  let drag=false,lx=0,ly=0,pd=0,z0=1;
+  cv.addEventListener('wheel',e=>{ e.preventDefault(); const s=st(); s.zoom=Math.max(0.5,Math.min(20,s.zoom*(e.deltaY<0?1.15:1/1.15))); _apcRedraw(key); },{passive:false});
+  cv.addEventListener('pointerdown',e=>{ if(e.pointerType==='touch'){return;} try{cv.setPointerCapture(e.pointerId);}catch(_){} drag=true; lx=e.clientX; ly=e.clientY; });
+  cv.addEventListener('pointermove',e=>{ if(!drag) return; const s=st(); s.ox+=e.clientX-lx; s.oy+=e.clientY-ly; lx=e.clientX; ly=e.clientY; _apcRedraw(key); });
+  cv.addEventListener('pointerup',e=>{ drag=false; try{cv.releasePointerCapture(e.pointerId);}catch(_){} });
+  cv.addEventListener('touchstart',e=>{ if(e.touches.length>=2){ drag=false; pd=Math.hypot(e.touches[0].clientX-e.touches[1].clientX,e.touches[0].clientY-e.touches[1].clientY); z0=st().zoom; } else { drag=true; lx=e.touches[0].clientX; ly=e.touches[0].clientY; } },{passive:false});
+  cv.addEventListener('touchmove',e=>{ e.preventDefault(); const s=st(); if(e.touches.length>=2){ const d=Math.hypot(e.touches[0].clientX-e.touches[1].clientX,e.touches[0].clientY-e.touches[1].clientY); if(pd) s.zoom=Math.max(0.5,Math.min(20,z0*d/pd)); _apcRedraw(key); } else if(drag){ s.ox+=e.touches[0].clientX-lx; s.oy+=e.touches[0].clientY-ly; lx=e.touches[0].clientX; ly=e.touches[0].clientY; _apcRedraw(key); } },{passive:false});
+  cv.addEventListener('touchend',e=>{ if(e.touches.length<2) pd=0; if(e.touches.length===0) drag=false; });
 }
 function _apcComandaPreenchida(c,g){
   const AM=(APC&&APC.maq)||{}, AI=(APC&&APC.imp)||{}, AF=(APC&&APC.fun)||{};
@@ -2979,9 +3002,10 @@ function renderAprovCampo(){
   const blocos=APC.comandas.map(g=>{
     const c=(g.safra===SAFRA)?S.comandas.find(x=>x.codigo===g.codigo):null; const r0=g.rows[0];
     const tipo=c?c.tipoAtiv:''; const lote=c?c.loteNome:(r0?r0.lote_nome:''); const tot=_apcResumo(g);
+    const mkey=g.codigo+'|'+(g.safra||''); const mst=_apcState(mkey);
     const linhas=g.rows.map(r=>{
       const h=_apcHoras(r.hora_inicio,r.hora_fim);
-      return `<tr>
+      return `<tr data-apcsel="${r.id}" data-apckey="${_apcEsc(mkey)}" style="cursor:pointer${String(mst.sel)===String(r.id)?';background:#16324a':''}" title="Clique p/ destacar no mapa">
         <td>${_apcEsc((r.data||'').split('-').reverse().join('/'))}</td>
         <td>${_apcEsc(APC.fun[r.funcionario_id]||('#'+r.funcionario_id))}</td>
         <td>${_apcEsc(APC.maq[r.maquina_id]||'—')}${r.implemento_id?(' + '+_apcEsc(APC.imp[r.implemento_id]||'')):''}</td>
@@ -2999,8 +3023,15 @@ function renderAprovCampo(){
       </div>
       <table class="tbl" style="margin-top:8px"><thead><tr><th>Data</th><th>Operador</th><th>Máquina</th><th>Atividade</th><th style="text-align:right">Área</th><th></th></tr></thead><tbody>${linhas}</tbody></table>
       ${abast}
-      <div class="sub" style="margin:10px 2px 4px">🗺️ Mapa de pintura</div>
-      <canvas data-apcmap="${_apcEsc(g.codigo)}|${_apcEsc(g.safra||'')}" style="width:100%;height:220px;display:block;background:#0d1117;border-radius:8px"></canvas>
+      <div class="sub" style="margin:10px 2px 4px;display:flex;gap:6px;align-items:center;flex-wrap:wrap">🗺️ Mapa de pintura
+        <button class="btn sm" data-apczoom="+" data-apckey="${_apcEsc(mkey)}">＋</button>
+        <button class="btn sm" data-apczoom="-" data-apckey="${_apcEsc(mkey)}">－</button>
+        <button class="btn sm" data-apczoom="0" data-apckey="${_apcEsc(mkey)}">⟲</button>
+        <button class="btn sm" data-apcmode="${_apcEsc(mkey)}">camada: ${mst.mode==='vel'?'velocidade':'cobertura'}</button>
+        ${mst.sel?`<button class="btn sm" data-apcselc="${_apcEsc(mkey)}">✕ destaque</button>`:''}
+        <span class="muted" style="font-size:11px">arraste/scroll/pinça p/ zoom · clique numa linha p/ destacar</span>
+      </div>
+      <canvas data-apcmap="${_apcEsc(mkey)}" style="width:100%;height:220px;display:block;background:#0d1117;border-radius:8px;touch-action:none"></canvas>
     </div>`;
   }).join('');
   return `<div class="wrap"><h2>✅ Aprovações de campo <span class="sub">(${APC.comandas.length} comanda(s) na fila)</span></h2>
@@ -3012,7 +3043,11 @@ function bindAprovCampo(){
   $$('[data-apcok]').forEach(b=>b.onclick=()=>aprovarComandaCampo(b.dataset.apcok));
   $$('[data-apcdel]').forEach(b=>b.onclick=()=>descartarExecCampo(b.dataset.apcdel));
   $$('[data-apcver]').forEach(b=>b.onclick=()=>{ const sp=String(b.dataset.apcver).split('|'); _apcVerComanda(sp[0],sp[1]||''); });
-  $$('[data-apcmap]').forEach(cv=>{ const sp=String(cv.dataset.apcmap).split('|'); const g=APC.comandas.find(x=>String(x.codigo)===sp[0]&&(x.safra||'')===(sp[1]||'')); if(g){ try{ _apcDrawMapa(cv,g); }catch(e){ console.warn('apcmap',e); } } });
+  $$('[data-apczoom]').forEach(b=>b.onclick=()=>{ const k=b.dataset.apckey, st=_apcState(k), op=b.dataset.apczoom; if(op==='+') st.zoom=Math.min(20,st.zoom*1.3); else if(op==='-') st.zoom=Math.max(0.5,st.zoom/1.3); else { st.zoom=1; st.ox=0; st.oy=0; } _apcRedraw(k); });
+  $$('[data-apcmode]').forEach(b=>b.onclick=()=>{ const k=b.dataset.apcmode, st=_apcState(k); st.mode=(st.mode==='vel')?'cob':'vel'; b.textContent='camada: '+(st.mode==='vel'?'velocidade':'cobertura'); _apcRedraw(k); });
+  $$('[data-apcselc]').forEach(b=>b.onclick=()=>{ _apcState(b.dataset.apcselc).sel=null; render(); });
+  $$('[data-apcsel]').forEach(tr=>tr.onclick=(e)=>{ if(e.target.closest('button')) return; const k=tr.dataset.apckey, id=tr.dataset.apcsel, st=_apcState(k); st.sel=(String(st.sel)===String(id))?null:id; render(); });
+  $$('[data-apcmap]').forEach(cv=>{ const k=cv.dataset.apcmap; const g=APC.comandas.find(x=>(x.codigo+'|'+(x.safra||''))===k); if(g){ _apcBindCanvas(cv,k); try{ _apcDrawMapa(cv,g); }catch(e){ console.warn('apcmap',e); } } });
 }
 async function aprovarComandaCampo(key){
   const sp=String(key).split('|'); const codigo=sp[0], safra=sp[1]||'';
