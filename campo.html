@@ -89,7 +89,10 @@ function nowLocalDT(){ const d=new Date(); return d.getFullYear()+'-'+_dt2(d.get
 function tsToLocalDT(ts){ const d=new Date(ts); return d.getFullYear()+'-'+_dt2(d.getMonth()+1)+'-'+_dt2(d.getDate())+'T'+_dt2(d.getHours())+':'+_dt2(d.getMinutes()); }
 function fmtDT(ts){ const d=new Date(ts); return _dt2(d.getDate())+'/'+_dt2(d.getMonth()+1)+' '+_dt2(d.getHours())+':'+_dt2(d.getMinutes()); }
 function _pdfPath(codigo,safra){ return 'comandas/'+String(safra||'').replace(/[^\w.-]/g,'-')+'/'+String(codigo)+'.pdf'; }
-function _idb(){ return new Promise((res,rej)=>{ let r; try{ r=indexedDB.open('campo-cache',1); }catch(e){ return rej(e); } r.onupgradeneeded=()=>{ try{ r.result.createObjectStore('pdfs'); }catch(e){} }; r.onsuccess=()=>res(r.result); r.onerror=()=>rej(r.error); }); }
+function _idb(){ return new Promise((res,rej)=>{ let r; try{ r=indexedDB.open('campo-cache',2); }catch(e){ return rej(e); } r.onupgradeneeded=()=>{ const db=r.result; if(!db.objectStoreNames.contains('pdfs')) db.createObjectStore('pdfs'); if(!db.objectStoreNames.contains('sessions')) db.createObjectStore('sessions',{keyPath:'lid'}); if(!db.objectStoreNames.contains('abast')) db.createObjectStore('abast',{keyPath:'lid'}); }; r.onsuccess=()=>res(r.result); r.onerror=()=>rej(r.error); }); }
+function _idbPut(store,val){ return new Promise(async(res,rej)=>{ try{ const db=await _idb(); const tx=db.transaction(store,'readwrite'); tx.objectStore(store).put(val); tx.oncomplete=()=>res(1); tx.onerror=()=>rej(tx.error); }catch(e){ rej(e); } }); }
+function _idbAll(store){ return new Promise(async(res)=>{ try{ const db=await _idb(); const tx=db.transaction(store,'readonly'); const rq=tx.objectStore(store).getAll(); rq.onsuccess=()=>res(rq.result||[]); rq.onerror=()=>res([]); }catch(e){ res([]); } }); }
+function _idbDel(store,key){ return new Promise(async(res)=>{ try{ const db=await _idb(); const tx=db.transaction(store,'readwrite'); tx.objectStore(store).delete(key); tx.oncomplete=()=>res(1); tx.onerror=()=>res(0); }catch(e){ res(0); } }); }
 async function _pdfCacheSet(k,blob){ try{ const db=await _idb(); await new Promise((res,rej)=>{ const tx=db.transaction('pdfs','readwrite'); tx.objectStore('pdfs').put(blob,k); tx.oncomplete=res; tx.onerror=()=>rej(tx.error); }); }catch(e){} }
 async function _pdfCacheGet(k){ try{ const db=await _idb(); return await new Promise((res)=>{ const tx=db.transaction('pdfs','readonly'); const rq=tx.objectStore('pdfs').get(k); rq.onsuccess=()=>res(rq.result||null); rq.onerror=()=>res(null); }); }catch(e){ return null; } }
 /* cache de dados de referência (offline-first): salva online, lê do cache se cair a rede */
@@ -124,7 +127,9 @@ async function entrar(){
   OPER = oid? (FUNCS.find(f=>f.id===oid)||null) : null;
   if(OPER){ await carregarDia(); STEP='home'; } else { STEP='quemsou'; }
   render();
+  _updPend(); if(navigator.onLine) _syncAll().then(async()=>{ if(OPER){ await carregarDia(); if(STEP==='home') render(); } });
 }
+window.addEventListener('online', async()=>{ if(!SB||!OPER) return; _st('🔄 Sincronizando…','#3498db'); await _syncAll(); await carregarDia(); if(STEP==='home') render(); else _updPend(); _st('✅ Sincronizado','#27ae60'); });
 async function carregarSafra(){
   let safras=null; try{ const {data,error}=await SB.from('safras').select('*'); if(error) throw error; safras=data||[]; _cacheSet('safras',safras); }catch(e){ safras=_cacheGet('safras',[]); }
   const h=hoje();
@@ -138,6 +143,7 @@ async function carregarDia(){
   // execuções de hoje deste operador (só p/ marcar o status das comandas na lista)
   EXECS={};
   try{ const {data,error}=await SB.from('execucao_campo').select('*').eq('funcionario_id',OPER.id).eq('data',DIA); if(error) throw error; (data||[]).forEach(x=>{ if(x.comanda_codigo) EXECS[x.comanda_codigo]=x; }); _cacheSet('execs_'+DIA,EXECS); }catch(e){ EXECS=_cacheGet('execs_'+DIA,{})||{}; }
+  try{ (await _idbAll('sessions')).filter(s=>String(s.funcionario_id)===String(OPER.id)&&s.data===DIA).forEach(s=>{ EXECS[s.comanda_codigo]=s; }); }catch(e){}   // sobrepõe com sessões locais (offline)
 }
 
 /* ---------- comandas do operador ---------- */
@@ -190,12 +196,15 @@ function renderHome(){
       <div class="meta">Lote ${esc(c.lote_nome||'—')}${area?(' · '+area+' ha'):''}${c.prod_texto?(' · '+esc(c.prod_texto)):''}</div></button>`;
   }).join('');
   $('app').innerHTML=`<div class="top"><h1><span class="l">🚜</span> ${esc(OPER.nome)}</h1>
-      <div class="d">${_dlabel(DIA)} · safra ${esc(SAFRA||'—')}</div></div>
+      <div class="d">${_dlabel(DIA)} · safra ${esc(SAFRA||'—')}</div>
+      <div style="margin-top:6px"><span id="pendbadge" style="font-size:12px;padding:3px 9px;border-radius:6px"></span> <button class="lk" id="btnsync">sincronizar</button></div></div>
     <div class="sec">Comandas ${desigCount?('designadas a você ('+desigCount+')'):''}</div>
     ${cards||`<div class="card muted">Nenhuma comanda ${desigCount?'':'designada a você '}nesta safra.${desigCount?'':' <a class="lk" id="vt" style="display:inline">ver todas para teste</a>'}</div>`}
     <div class="bar">${_botoesSairBar()}</div>`;
   if($('vt'))$('vt').onclick=()=>{ VERTODAS=true; render(); };
   document.querySelectorAll('[data-cod]').forEach(b=>b.onclick=()=>abrirComanda(b.dataset.cod));
+  _updPend();
+  if($('btnsync'))$('btnsync').onclick=async()=>{ if(!navigator.onLine){ _st('Sem internet agora.','#e67e22'); return; } _st('🔄 Sincronizando…','#3498db'); await _syncAll(); await carregarDia(); _st('✅ Sincronizado','#27ae60'); render(); };
   _bindSairBar();
 }
 function _botoesSairBar(){ return `<button class="btn s" id="sair2">Sair</button><button class="btn s" id="troca2">Trocar operador</button>`; }
@@ -205,9 +214,14 @@ let CUR_DAYS=[];                 // execuções (1 card por dia) da comanda aber
 let HDR={maquina_id:'',implemento_id:''};   // máquina/implemento escolhidos no cabeçalho
 let EXVIEW='menu';              // dentro da comanda: 'menu' (ícones) | 'trabalho' (apontamento)
 async function _carregarDiasComanda(){
-  CUR_DAYS=[];
   const _ck='days_'+CUR.codigo+'_'+OPER.id;
-  try{ const {data,error}=await SB.from('execucao_campo').select('*').eq('comanda_codigo',CUR.codigo).eq('funcionario_id',OPER.id).order('data',{ascending:false}); if(error) throw error; CUR_DAYS=data||[]; _cacheSet(_ck,CUR_DAYS); }catch(e){ CUR_DAYS=_cacheGet(_ck,[]); _st('⚠️ Offline — usando dados salvos no aparelho','#e67e22'); }
+  let server=null;
+  try{ const {data,error}=await SB.from('execucao_campo').select('*').eq('comanda_codigo',CUR.codigo).eq('funcionario_id',OPER.id).order('data',{ascending:false}); if(error) throw error; server=data||[]; _cacheSet(_ck,server); }catch(e){ server=null; }
+  const local=(await _idbAll('sessions')).filter(s=>String(s.comanda_codigo)===String(CUR.codigo)&&String(s.funcionario_id)===String(OPER.id));
+  const base=(server!==null)?server:(_cacheGet(_ck,[])||[]);
+  const lsv={}; local.forEach(s=>{ if(s.serverId) lsv[String(s.serverId)]=true; });
+  CUR_DAYS=local.concat(base.filter(r=>!lsv[String(r.id)])).sort((a,b)=>String(b.data||'').localeCompare(String(a.data||'')));
+  if(server===null) _st('⚠️ Offline — usando dados do aparelho','#e67e22');
   const ult=CUR_DAYS[0];
   HDR={ maquina_id:(ult&&ult.maquina_id)||'', implemento_id:(ult&&ult.implemento_id)||'' };
 }
@@ -220,7 +234,10 @@ async function abrirComanda(cod){
 /* ---- menu da comanda: dois ícones ---- */
 function _ultMaq(){ const r=CUR_DAYS.find(x=>x.maquina_id); return r?r.maquina_id:''; }
 async function _carregarAbast(){ ABAST=[]; if(!CUR||!OPER) return;
-  try{ const {data}=await SB.from('abastecimentos').select('*').eq('comanda_codigo',CUR.codigo).eq('funcionario_id',OPER.id).order('quando',{ascending:true}); ABAST=data||[]; }catch(e){}
+  let server=null; try{ const {data,error}=await SB.from('abastecimentos').select('*').eq('comanda_codigo',CUR.codigo).eq('funcionario_id',OPER.id).order('quando',{ascending:true}); if(error) throw error; server=data||[]; }catch(e){ server=null; }
+  const local=(await _idbAll('abast')).filter(a=>String(a.comanda_codigo)===String(CUR.codigo)&&String(a.funcionario_id)===String(OPER.id));
+  const lsv={}; local.forEach(a=>{ if(a.serverId) lsv[String(a.serverId)]=true; });
+  ABAST=(server||[]).filter(r=>!lsv[String(r.id)]).concat(local).sort((a,b)=>String(a.quando).localeCompare(String(b.quando)));
 }
 async function _lancarAbast(){
   const l=num($('ab_l')&&$('ab_l').value); if(!l||l<=0){ _st('Informe os litros.','#e67e22'); return; }
@@ -229,10 +246,11 @@ async function _lancarAbast(){
   if(quando>agora){ _st('A data/hora não pode ser no futuro.','#e67e22'); return; }
   if(ABAST.length){ const prev=new Date(ABAST[ABAST.length-1].quando); if(quando<prev){ _st('Não pode ser antes do abastecimento anterior ('+fmtDT(prev)+').','#e67e22'); return; } }
   const maq=$('ab_maq')&&$('ab_maq').value;
-  const reg={ comanda_codigo:CUR.codigo, safra:SAFRA, funcionario_id:OPER.id, maquina_id:maq?+maq:null, lote_nome:CUR.lote_nome||null, litros:l, quando:quando.toISOString(), enviado_por:USER_EMAIL||null };
+  const reg={ lid:_lid(), serverId:null, dirty:true, comanda_codigo:CUR.codigo, safra:SAFRA, funcionario_id:OPER.id, maquina_id:maq?+maq:null, lote_nome:CUR.lote_nome||null, litros:l, quando:quando.toISOString(), enviado_por:USER_EMAIL||null };
   const b=$('ab_save'); if(b){ b.disabled=true; b.textContent='Salvando…'; }
-  try{ const {error}=await SB.from('abastecimentos').insert(reg); if(error) throw error; ABFORM=false; await _carregarAbast(); _st('⛽ Abastecimento lançado','#27ae60'); render(); }
-  catch(e){ _st('❌ '+e.message,'#c0392b'); if(b){ b.disabled=false; b.textContent='Salvar abastecimento'; } }
+  try{ await _idbPut('abast',reg); }catch(e){}            // local primeiro
+  await _syncAbast(reg); ABFORM=false; await _carregarAbast(); _updPend();
+  _st(reg.dirty?'⛽ Salvo no aparelho (envia ao ter rede)':'⛽ Abastecimento lançado', reg.dirty?'#e67e22':'#27ae60'); render();
 }
 function renderExecMenu(){
   const c=CUR; const area=areaLote(c.lote_nome);
@@ -385,14 +403,37 @@ function _restoreSess(){ GPS.pts=[]; GPS.cells=new Set(); GPS.areaHa=0; GPS.spee
   SESS.trajeto.forEach(p=>{ const lat=p[0],lon=p[1]; if(lat==null) return; const u=latLngToUTM(lat,lon,23); if(GPS.pts.length){ const l=GPS.pts[GPS.pts.length-1]; _markCells(l.E,l.N,u[0],u[1]); } GPS.pts.push({E:u[0],N:u[1],lat,lon,t:p[2]||0,v:p[3]||0}); });
   if((!GPS.cells.size||_widthM()<=0) && SESS.area_ha!=null) GPS.areaHa=+SESS.area_ha;
 }
+/* ===== fila offline (outbox): sessões/abastecimentos locais 1º, sincroniza qdo tiver rede ===== */
+let PEND=0;
+function _lid(){ return 'L'+Date.now().toString(36)+Math.random().toString(36).slice(2,7); }
+function _sessReg(s){ return { comanda_codigo:s.comanda_codigo, safra:s.safra, funcionario_id:s.funcionario_id, lote_nome:s.lote_nome, data:s.data, maquina_id:s.maquina_id, implemento_id:s.implemento_id, hora_inicio:s.hora_inicio, hora_fim:s.hora_fim||null, status:s.status, trajeto:s.trajeto||[], area_ha:s.area_ha||0, concluiu_lote:!!s.concluiu_lote, enviado_por:s.enviado_por||null, atualizado_em:s.atualizado_em||new Date().toISOString() }; }
+function _abastReg(a){ return { comanda_codigo:a.comanda_codigo, safra:a.safra, funcionario_id:a.funcionario_id, maquina_id:a.maquina_id, lote_nome:a.lote_nome, litros:a.litros, quando:a.quando, enviado_por:a.enviado_por||null }; }
+async function _syncSession(s){ if(!s) return false; if(!navigator.onLine||!SB) return false;
+  try{ if(!s.serverId){ const {data,error}=await SB.from('execucao_campo').insert(_sessReg(s)).select('id').single(); if(error) throw error; s.serverId=data.id; } else { const {error}=await SB.from('execucao_campo').update(_sessReg(s)).eq('id',s.serverId); if(error) throw error; } s.dirty=false; await _idbPut('sessions',s); return true; }
+  catch(e){ s.dirty=true; try{ await _idbPut('sessions',s); }catch(_){} return false; }
+}
+async function _syncAbast(a){ if(!a) return false; if(!navigator.onLine||!SB) return false;
+  try{ if(!a.serverId){ const {data,error}=await SB.from('abastecimentos').insert(_abastReg(a)).select('id').single(); if(error) throw error; a.serverId=data.id; } a.dirty=false; await _idbPut('abast',a); return true; }
+  catch(e){ a.dirty=true; try{ await _idbPut('abast',a); }catch(_){} return false; }
+}
+async function _ensureLocal(r){ if(!r) return r; if(r.lid) return r; const s=Object.assign({}, r, { lid:_lid(), serverId:r.id, dirty:false }); s.id=s.lid; await _idbPut('sessions',s); return s; }
+async function _pendCount(){ try{ const s=(await _idbAll('sessions')).filter(x=>x.dirty).length; const a=(await _idbAll('abast')).filter(x=>x.dirty).length; return s+a; }catch(e){ return 0; } }
+async function _updPend(){ PEND=await _pendCount(); const b=$('pendbadge'); if(b){ b.textContent=PEND?('⏳ '+PEND+' p/ enviar'):'✓ tudo enviado'; b.style.background=PEND?'#3a2a00':'#0d2a14'; b.style.color=PEND?'#ffc107':'#3fb950'; } }
+async function _syncAll(){ if(!navigator.onLine||!SB) return; try{ const sess=(await _idbAll('sessions')).filter(s=>s.dirty); for(const s of sess) await _syncSession(s); const ab=(await _idbAll('abast')).filter(a=>a.dirty); for(const a of ab) await _syncAbast(a); }catch(e){} await _updPend(); }
 async function _saveGps(final){ if(!SESS) return;
-  const patch={ trajeto:GPS.pts.map(p=>[+p.lat.toFixed(6),+p.lon.toFixed(6),p.t||0,+(p.v||0).toFixed(1)]), area_ha:+GPS.areaHa.toFixed(2), atualizado_em:new Date().toISOString() };
-  if(final){ patch.hora_fim=nowHM(); patch.status='enviada'; }
-  try{ const {error}=await SB.from('execucao_campo').update(patch).eq('id',SESS.id); if(error) throw error; Object.assign(SESS,patch); }catch(e){ if(final) _st('❌ '+e.message,'#c0392b'); }
+  SESS.trajeto=GPS.pts.map(p=>[+p.lat.toFixed(6),+p.lon.toFixed(6),p.t||0,+(p.v||0).toFixed(1)]);
+  SESS.area_ha=+GPS.areaHa.toFixed(2); SESS.atualizado_em=new Date().toISOString();
+  if(final){ SESS.hora_fim=nowHM(); SESS.status='enviada'; }
+  SESS.dirty=true; try{ await _idbPut('sessions',SESS); }catch(e){}   // local primeiro (sobrevive offline)
+  await _syncSession(SESS); _updPend();
 }
 async function _novaSessao(){
-  const reg={comanda_codigo:CUR.codigo,safra:SAFRA,funcionario_id:OPER.id,lote_nome:CUR.lote_nome||null,data:DIA,maquina_id:HDR.maquina_id?+HDR.maquina_id:null,implemento_id:HDR.implemento_id?+HDR.implemento_id:null,hora_inicio:nowHM(),status:'aberto',enviado_por:USER_EMAIL||null,atualizado_em:new Date().toISOString()};
-  try{ const {data,error}=await SB.from('execucao_campo').insert(reg).select().single(); if(error) throw error; await _carregarDiasComanda(); return CUR_DAYS.find(r=>String(r.id)===String(data.id))||data; }catch(e){ _st('❌ '+e.message,'#c0392b'); return null; }
+  const lid=_lid();
+  const s={ lid, id:lid, serverId:null, dirty:true, comanda_codigo:CUR.codigo, safra:SAFRA, funcionario_id:OPER.id, lote_nome:CUR.lote_nome||null, data:DIA, maquina_id:HDR.maquina_id?+HDR.maquina_id:null, implemento_id:HDR.implemento_id?+HDR.implemento_id:null, hora_inicio:nowHM(), hora_fim:null, status:'aberto', trajeto:[], area_ha:0, concluiu_lote:false, enviado_por:USER_EMAIL||null, atualizado_em:new Date().toISOString() };
+  try{ await _idbPut('sessions',s); }catch(e){}
+  await _syncSession(s);          // tenta criar no servidor já (se online)
+  await _carregarDiasComanda(); _updPend();
+  return s;
 }
 async function _saveManualSess(sid,campo,valor){ const r=CUR_DAYS.find(x=>String(x.id)===String(sid)); if(!r) return;
   const patch={atualizado_em:new Date().toISOString()}; patch[campo]=num(valor);
@@ -401,8 +442,9 @@ async function _saveManualSess(sid,campo,valor){ const r=CUR_DAYS.find(x=>String
 async function _gpsEnter(){
   if(!navigator.geolocation){ _st('Sem GPS neste aparelho.','#c0392b'); return; }
   await _carregarDiasComanda();
-  SESS=CUR_DAYS.find(r=>r.data===DIA && r.status!=='aprovada' && !r.hora_fim) || null;
-  if(!SESS){ SESS=await _novaSessao(); if(!SESS) return; }
+  let found=CUR_DAYS.find(r=>r.data===DIA && r.status!=='aprovada' && !r.hora_fim) || null;
+  if(found){ const wasLocal=!!found.lid; SESS=await _ensureLocal(found); if(!wasLocal) await _carregarDiasComanda(); }
+  else { SESS=await _novaSessao(); if(!SESS) return; }
   HDR.maquina_id=(SESS.maquina_id!=null?SESS.maquina_id:HDR.maquina_id)||''; HDR.implemento_id=(SESS.implemento_id!=null?SESS.implemento_id:HDR.implemento_id)||'';
   _restoreSess(); _buildDaySegs();
   GPS.paintAuto=true; GPS.painting=false; VIEW={follow:true,zoom:1,cx:null,cy:null};
@@ -421,7 +463,8 @@ async function _trocarConjunto(){
   const nm=$('h_maq')?$('h_maq').value:'', ni=$('h_imp')?$('h_imp').value:''; HDR.maquina_id=nm; HDR.implemento_id=ni;
   if(SESS && String(SESS.maquina_id||'')===String(nm) && String(SESS.implemento_id||'')===String(ni)){ _recalcCells(); _drawMapa(); _hud(); return; }
   if(SESS && !GPS.pts.length){   // sessão atual vazia: só troca o conjunto dela
-    try{ const {error}=await SB.from('execucao_campo').update({maquina_id:nm?+nm:null,implemento_id:ni?+ni:null,atualizado_em:new Date().toISOString()}).eq('id',SESS.id); if(error) throw error; Object.assign(SESS,{maquina_id:nm?+nm:null,implemento_id:ni?+ni:null}); }catch(e){ _st('❌ '+e.message,'#c0392b'); }
+    SESS.maquina_id=nm?+nm:null; SESS.implemento_id=ni?+ni:null; SESS.atualizado_em=new Date().toISOString(); SESS.dirty=true;
+    try{ await _idbPut('sessions',SESS); }catch(e){} await _syncSession(SESS); _updPend();
     _recalcCells(); _drawMapa(); _hud(); return;
   }
   // sessão com trabalho: PAUSA o GPS, fecha a anterior e abre nova com o conjunto NOVO
@@ -483,11 +526,8 @@ async function concluirLote(){
   const today=CUR_DAYS.filter(r=>r.data===DIA && (r.hora_fim || (Array.isArray(r.trajeto)&&r.trajeto.length) || r.area_ha));
   if(!today.length){ _st('Sem sessão com trabalho hoje — abra a Tela de trabalho.','#e67e22'); return; }
   if(!confirm('Concluir o lote e enviar a comanda para aprovação?')) return;
-  try{
-    for(const r of today){ const patch={status:'enviada',atualizado_em:new Date().toISOString()}; if(!r.hora_fim) patch.hora_fim=nowHM(); const {error}=await SB.from('execucao_campo').update(patch).eq('id',r.id); if(error) throw error; }
-    const ult=today[today.length-1]; await SB.from('execucao_campo').update({concluiu_lote:true,atualizado_em:new Date().toISOString()}).eq('id',ult.id);
-    STEP='fim'; render();
-  }catch(e){ _st('❌ '+e.message,'#c0392b'); }
+  for(let k=0;k<today.length;k++){ const r=await _ensureLocal(today[k]); r.status='enviada'; if(!r.hora_fim) r.hora_fim=nowHM(); if(k===today.length-1) r.concluiu_lote=true; r.dirty=true; r.atualizado_em=new Date().toISOString(); try{ await _idbPut('sessions',r); }catch(e){} await _syncSession(r); }
+  _updPend(); STEP='fim'; render();
 }
 function renderFim(){
   $('app').innerHTML=`<div class="center" style="margin-top:46px">
