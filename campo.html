@@ -142,9 +142,9 @@ async function carregarSafra(){
 async function carregarDia(){
   if(!OPER) return;
   // execuções de hoje deste operador (só p/ marcar o status das comandas na lista)
-  EXECS={};
-  try{ if(!navigator.onLine) throw 0; const {data,error}=await _q(SB.from('execucao_campo').select('*').eq('funcionario_id',OPER.id).eq('data',DIA)); if(error) throw error; (data||[]).forEach(x=>{ if(x.comanda_codigo) EXECS[x.comanda_codigo]=x; }); _cacheSet('execs_'+DIA,EXECS); }catch(e){ EXECS=_cacheGet('execs_'+DIA,{})||{}; }
-  try{ (await _idbAll('sessions')).filter(s=>String(s.funcionario_id)===String(OPER.id)&&s.data===DIA).forEach(s=>{ EXECS[s.comanda_codigo]=s; }); }catch(e){}   // sobrepõe com sessões locais (offline)
+  EXECS={}; let _srvDia=null;
+  try{ if(!navigator.onLine) throw 0; const {data,error}=await _q(SB.from('execucao_campo').select('*').eq('funcionario_id',OPER.id).eq('data',DIA)); if(error) throw error; _srvDia=data||[]; _srvDia.forEach(x=>{ if(x.comanda_codigo) EXECS[x.comanda_codigo]=x; }); _cacheSet('execs_'+DIA,EXECS); }catch(e){ EXECS=_cacheGet('execs_'+DIA,{})||{}; }
+  try{ let loc=(await _idbAll('sessions')).filter(s=>String(s.funcionario_id)===String(OPER.id)&&s.data===DIA); if(_srvDia!==null) loc=await _reconcile(loc,_srvDia); loc.forEach(s=>{ EXECS[s.comanda_codigo]=s; }); }catch(e){}   // sessões locais (offline) + remove descartadas pelo admin
 }
 
 /* ---------- comandas do operador ---------- */
@@ -219,7 +219,8 @@ async function _carregarDiasComanda(){
   const _ck='days_'+CUR.codigo+'_'+OPER.id;
   let server=null;
   try{ if(!navigator.onLine) throw 0; const {data,error}=await _q(SB.from('execucao_campo').select('*').eq('comanda_codigo',CUR.codigo).eq('funcionario_id',OPER.id).order('data',{ascending:false})); if(error) throw error; server=data||[]; _cacheSet(_ck,server); }catch(e){ server=null; }
-  const local=(await _idbAll('sessions')).filter(s=>String(s.comanda_codigo)===String(CUR.codigo)&&String(s.funcionario_id)===String(OPER.id));
+  let local=(await _idbAll('sessions')).filter(s=>String(s.comanda_codigo)===String(CUR.codigo)&&String(s.funcionario_id)===String(OPER.id));
+  if(server!==null) local=await _reconcile(local, server);   // tira o que o admin descartou
   const base=(server!==null)?server:(_cacheGet(_ck,[])||[]);
   const lsv={}; local.forEach(s=>{ if(s.serverId) lsv[String(s.serverId)]=true; });
   CUR_DAYS=local.concat(base.filter(r=>!lsv[String(r.id)])).sort((a,b)=>String(b.data||'').localeCompare(String(a.data||'')));
@@ -434,6 +435,8 @@ async function _syncAbast(a){ if(!a) return false; if(!navigator.onLine||!SB) re
   catch(e){ a.dirty=true; try{ await _idbPut('abast',a); }catch(_){} return false; }
 }
 async function _ensureLocal(r){ if(!r) return r; if(r.lid) return r; const s=Object.assign({}, r, { lid:_lid(), serverId:r.id, dirty:false }); s.id=s.lid; await _idbPut('sessions',s); return s; }
+/* remove do aparelho sessões que sumiram do servidor (admin descartou) — só as já sincronizadas, não-sujas e não-ativas */
+async function _reconcile(localArr, serverArr){ if(!serverArr) return localArr; const sIds=new Set(serverArr.map(r=>String(r.id))); const keep=[]; for(const s of localArr){ if(s.serverId && !sIds.has(String(s.serverId)) && !s.dirty && (!SESS||String(SESS.lid)!==String(s.lid))){ await _idbDel('sessions',s.lid); } else keep.push(s); } return keep; }
 async function _pendCount(){ try{ const s=(await _idbAll('sessions')).filter(x=>x.dirty).length; const a=(await _idbAll('abast')).filter(x=>x.dirty).length; return s+a; }catch(e){ return 0; } }
 async function _updPend(){ PEND=await _pendCount(); const b=$('pendbadge'); if(b){ b.textContent=PEND?('⏳ '+PEND+' p/ enviar'):'✓ tudo enviado'; b.style.background=PEND?'#3a2a00':'#0d2a14'; b.style.color=PEND?'#ffc107':'#3fb950'; } }
 async function _syncAll(){ if(!navigator.onLine||!SB) return;
