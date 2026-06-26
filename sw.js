@@ -3,7 +3,7 @@
      => abre INSTANTÂNEO do cache (não trava em rede ruim) e atualiza em 2º plano.
      (efeito: depois de publicar, a versão nova entra no PRÓXIMO open online)
    - Supabase (dados/auth): sempre rede, nunca cacheado. */
-const CACHE = 'alabama-campo-v4';
+const CACHE = 'alabama-campo-v5';
 const SHELL = [
   './',
   'index.html',
@@ -36,7 +36,14 @@ self.addEventListener('fetch', e => {
   const url = new URL(e.request.url);
   if (url.hostname.endsWith('supabase.co')) return;   // dados/auth -> sempre rede
 
-  // tudo o mais (shell + libs): stale-while-revalidate
+  // SÓ o shell do tablet é cacheado. Módulos admin (01_/05_/.../qualquer outra página)
+  // vão SEMPRE pela rede (sem cache) -> admin nunca fica preso em versão velha.
+  const isLib = url.hostname.endsWith('jsdelivr.net');
+  const p = url.pathname;
+  const isShell = isLib || p.endsWith('/') || /\/(campo\.html|index\.html|manifest\.webmanifest|icon\.svg|icon-192\.png|icon-512\.png)$/.test(p);
+  if (!isShell) return;   // não intercepta -> rede direta (sempre fresco)
+
+  // shell + libs: stale-while-revalidate
   e.respondWith((async () => {
     const cache = await caches.open(CACHE);
     const cached = await cache.match(e.request);
