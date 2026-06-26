@@ -444,9 +444,9 @@ async function _ensureLocal(r){ if(!r) return r; if(r.lid) return r; const s=Obj
 async function _reconcile(localArr, serverArr){ if(!serverArr) return localArr; const sIds=new Set(serverArr.map(r=>String(r.id))); const keep=[]; for(const s of localArr){ if(s.serverId && !sIds.has(String(s.serverId)) && !s.dirty && (!SESS||String(SESS.lid)!==String(s.lid))){ await _idbDel('sessions',s.lid); } else keep.push(s); } return keep; }
 async function _pendCount(){ try{ const s=(await _idbAll('sessions')).filter(x=>x.dirty).length; const a=(await _idbAll('abast')).filter(x=>x.dirty).length; return s+a; }catch(e){ return 0; } }
 async function _updPend(){ PEND=await _pendCount(); const b=$('pendbadge'); if(b){ b.textContent=PEND?('⏳ '+PEND+' p/ enviar'):'✓ tudo enviado'; b.style.background=PEND?'#3a2a00':'#0d2a14'; b.style.color=PEND?'#ffc107':'#3fb950'; } }
-async function _syncAll(){ if(!navigator.onLine||!SB) return;
-  try{ const sess=(await _idbAll('sessions')).filter(s=>s.dirty); for(const s of sess) await _syncSession(s); const ab=(await _idbAll('abast')).filter(a=>a.dirty); for(const a of ab) await _syncAbast(a);
-    const hj=hoje(); const so=await _idbAll('sessions'); for(const s of so){ if(!s.dirty && s.serverId && String(s.data)<hj && !_SYNCING.has(s.lid)) await _idbDel('sessions',s.lid); }   // poda: sessões antigas já no servidor (cache cobre offline)
+async function _syncAll(){ if(!navigator.onLine||!SB) return; const act=SESS&&SESS.lid;   // NÃO mexe na sessão ATIVA (ela sincroniza pelo _saveGps; evita inserir cópia duplicada)
+  try{ const sess=(await _idbAll('sessions')).filter(s=>s.dirty && s.lid!==act); for(const s of sess) await _syncSession(s); const ab=(await _idbAll('abast')).filter(a=>a.dirty); for(const a of ab) await _syncAbast(a);
+    const hj=hoje(); const so=await _idbAll('sessions'); for(const s of so){ if(!s.dirty && s.serverId && String(s.data)<hj && !_SYNCING.has(s.lid) && s.lid!==act) await _idbDel('sessions',s.lid); }   // poda: sessões antigas já no servidor (cache cobre offline)
   }catch(e){} await _updPend();
 }
 function _touchSess(){ if(!SESS) return; SESS.trajeto=GPS.pts.map(p=>[+p.lat.toFixed(6),+p.lon.toFixed(6),p.t||0,+(p.v||0).toFixed(1)]); SESS.area_ha=+GPS.areaHa.toFixed(2); SESS.atualizado_em=new Date().toISOString(); SESS.dirty=true; SESS._v=(SESS._v||0)+1; _idbPut('sessions',SESS); }   // só local (a cada poucos fixes) — sobrevive a crash
