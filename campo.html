@@ -448,7 +448,7 @@ function _onFix(pos){ const cur=pos.coords; GPS.acc=cur.accuracy;
 function _recalcCells(){ GPS.cells=new Set(); GPS.areaHa=0; for(let i=1;i<GPS.pts.length;i++) _markCells(GPS.pts[i-1].E,GPS.pts[i-1].N,GPS.pts[i].E,GPS.pts[i].N); }
 function _implLarg(id){ const m=IMPS.find(x=>String(x.id)===String(id)); return m&&m.largura_trabalho?+m.largura_trabalho:0; }
 function _rowPts(row){ const out=[]; if(Array.isArray(row.trajeto)) row.trajeto.forEach(p=>{ if(p[0]==null) return; const u=latLngToUTM(p[0],p[1],23); out.push({E:u[0],N:u[1],v:p[3]}); }); return out; }
-function _maqNome(id){ const m=MAQS.find(x=>String(x.id)===String(id)); return m?m.nome:'(sem máquina)'; }
+function _maqNome(id){ const m=MAQS.find(x=>String(x.id)===String(id)); return m?((m.id_frota?m.id_frota+' — ':'')+m.nome):'(sem máquina)'; }
 function _impNome(id){ const m=IMPS.find(x=>String(x.id)===String(id)); return m?m.nome:''; }
 function _funNome(id){ const f=(FUNCS||[]).find(x=>String(x.id)===String(id)); return f?f.nome:('#'+id); }
 function _buildDaySegs(){ DAYSEGS=CUR_DAYS.filter(r=>(!SESS||String(r.id)!==String(SESS.id)) && Array.isArray(r.trajeto)&&r.trajeto.length>1).map(r=>({pts:_rowPts(r), larg:_implLarg(r.implemento_id), today:(r.data===DIA), mine:String(r.funcionario_id)===String(OPER.id), nome:_funNome(r.funcionario_id), maq:_maqNome(r.maquina_id), hora:(r.hora_inicio||'')+(r.hora_fim?('–'+r.hora_fim):''), data:r.data})); _buildDayCells(); }

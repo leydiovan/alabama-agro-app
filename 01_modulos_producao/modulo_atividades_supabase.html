@@ -1230,16 +1230,28 @@ function cancelarEdicaoRetorno(cod){
   abrirFicha(c.codigo,c.seqGeral);
 }
 /* diário: visualização (executada) */
+function _conjTabela(g){
+  const conj=(g.campo&&g.campo.conjuntos)||[], cp=g.campo||{};
+  let h='<div class="sec">Conjuntos / máquinas usadas</div><table class="ptbl"><thead><tr><th>Trator</th><th>Implemento</th><th>Início</th><th>Fim</th><th>Horas</th><th>Diesel</th><th>Área</th></tr></thead><tbody>';
+  conj.forEach(o=>{ h+='<tr><td>'+esc(o.trator||'—')+'</td><td>'+esc(o.implemento||'—')+'</td><td>'+esc(o.inicio||'')+'</td><td>'+esc(o.fim||'')+'</td><td>'+(o.horas?String(o.horas).replace('.',',')+' h':'')+'</td><td>'+(o.diesel?fmtBR(o.diesel)+' L':'')+'</td><td>'+(o.area?fmtArea(o.area)+' ha':'')+'</td></tr>'; });
+  h+='</tbody></table><div class="hint" style="margin-top:6px"><b>Totais:</b> '+(cp.dias||0)+' dia(s) · '+(cp.horas_trabalho!=null?String(cp.horas_trabalho).replace('.',',')+' h':'')+(cp.diesel_l?(' · '+fmtBR(cp.diesel_l)+' L diesel'):'')+(cp.area_ha?(' · '+fmtArea(cp.area_ha)+' ha'):'')+(g['Operador']?(' · Operador(es): '+esc(g['Operador'])):'')+'</div>';
+  return h;
+}
 function retornoView(c){
   const def=camposRetorno(c);
   const g=c.geralRetorno||{};
-  // bloco geral
+  // bloco geral — máquina: lista de CONJUNTOS (pode ter >1 trator); senão campos do tipo
   let geralHTML='';
-  const gerKeys=def.gerais.filter(k=>g[k]&&String(g[k]).trim());
-  if(gerKeys.length){
-    geralHTML='<div class="sec">Dados gerais</div><div class="row" style="flex-wrap:wrap;gap:6px 18px">'
-      +gerKeys.map(k=>`<div class="fcol" style="min-width:180px"><label>${esc(k)}</label><div>${esc(g[k])}</div></div>`).join('')
-      +'</div>';
+  const conj=g.campo&&g.campo.conjuntos;
+  if(c.perfil==='MAQUINA' && conj && conj.length){
+    geralHTML=_conjTabela(g);
+  } else {
+    const gerKeys=def.gerais.filter(k=>g[k]&&String(g[k]).trim());
+    if(gerKeys.length){
+      geralHTML='<div class="sec">Dados gerais</div><div class="row" style="flex-wrap:wrap;gap:6px 18px">'
+        +gerKeys.map(k=>`<div class="fcol" style="min-width:180px"><label>${esc(k)}</label><div>${esc(g[k])}</div></div>`).join('')
+        +'</div>';
+    }
   }
   // lista
   let head=def.colunas.map(col=>`<th>${esc(col)}</th>`).join('');
@@ -2894,17 +2906,17 @@ async function _updNavAprovCampo(){
     btn.textContent='✅ Aprovações de campo'+(n?(' ('+n+')'):''); }catch(e){}
 }
 async function _loadAprovCampo(){
-  APC={comandas:[], maq:{}, imp:{}, impLarg:{}, fun:{}, abast:{}}; APCMAP={};
+  APC={comandas:[], maq:{}, maqFrota:{}, imp:{}, impFrota:{}, impLarg:{}, fun:{}, abast:{}}; APCMAP={};
   try{
     const [ex,mq,im,fu,ab]=await Promise.all([
       SB.from('execucao_campo').select('*').in('status',['enviada','aberto']).order('data',{ascending:true}),
-      SB.from('maquinas').select('id,nome'),
-      SB.from('implementos').select('id,nome,largura_trabalho'),
+      SB.from('maquinas').select('id,nome,id_frota'),
+      SB.from('implementos').select('id,nome,largura_trabalho,id_frota'),
       SB.from('funcionarios').select('id,nome'),
       SB.from('abastecimentos').select('*').order('quando',{ascending:true})
     ]);
-    (mq.data||[]).forEach(m=>APC.maq[m.id]=m.nome);
-    (im.data||[]).forEach(m=>{ APC.imp[m.id]=m.nome; APC.impLarg[m.id]=m.largura_trabalho?+m.largura_trabalho:0; });
+    (mq.data||[]).forEach(m=>{ APC.maq[m.id]=m.nome; APC.maqFrota[m.id]=m.id_frota||''; });
+    (im.data||[]).forEach(m=>{ APC.imp[m.id]=m.nome; APC.impFrota[m.id]=m.id_frota||''; APC.impLarg[m.id]=m.largura_trabalho?+m.largura_trabalho:0; });
     (fu.data||[]).forEach(m=>APC.fun[m.id]=m.nome);
     const abByKey={}; (ab.data||[]).forEach(a=>{ const k=a.comanda_codigo+'|'+(a.safra||''); (abByKey[k]||(abByKey[k]=[])).push(a); });
     const hoje=new Date().toISOString().slice(0,10);
@@ -2923,6 +2935,8 @@ function _apcResumo(g){
   return {area,diesel,horas,dias:dd.size,concl};
 }
 function _apcDT(ts){ if(!ts) return '—'; const d=new Date(ts); const p=n=>String(n).padStart(2,'0'); return p(d.getDate())+'/'+p(d.getMonth()+1)+' '+p(d.getHours())+':'+p(d.getMinutes()); }
+function _maqLabel(id){ if(id==null) return ''; const f=APC&&APC.maqFrota&&APC.maqFrota[id], n=APC&&APC.maq&&APC.maq[id]; return (f?f+' — ':'')+(n||('#'+id)); }
+function _impLabel(id){ if(id==null) return ''; const f=APC&&APC.impFrota&&APC.impFrota[id], n=APC&&APC.imp&&APC.imp[id]; return (f?f+' — ':'')+(n||('#'+id)); }
 /* ---- mapa de pintura na aprovação (reprojeta trajeto lat/lon -> UTM, igual ao tablet) ---- */
 function _apcUTM(lat,lon,zona){
   const a=6378137.0,f=1/298.257223563,e2=f*(2-f),ep2=e2/(1-e2),k0=0.9996;
@@ -3012,7 +3026,7 @@ function renderAprovCampo(){
       return `<tr data-apcsel="${r.id}" data-apckey="${_apcEsc(mkey)}" style="cursor:pointer${String(mst.sel)===String(r.id)?';background:#16324a':''}" title="Clique p/ destacar no mapa">
         <td>${_apcEsc((r.data||'').split('-').reverse().join('/'))}</td>
         <td>${_apcEsc(APC.fun[r.funcionario_id]||('#'+r.funcionario_id))}</td>
-        <td>${_apcEsc(APC.maq[r.maquina_id]||'—')}${r.implemento_id?(' + '+_apcEsc(APC.imp[r.implemento_id]||'')):''}</td>
+        <td>${_apcEsc(_maqLabel(r.maquina_id)||'—')}${r.implemento_id?(' + '+_apcEsc(_impLabel(r.implemento_id))):''}</td>
         <td>${_apcEsc(r.hora_inicio||'—')}–${_apcEsc(r.hora_fim||'—')}${h?(' ('+h.toFixed(1)+'h)'):''}</td>
         <td style="text-align:right">${r.area_ha!=null?_apcFmt(r.area_ha)+' ha':'—'}</td>
         <td style="white-space:nowrap">${r.concluiu_lote?'<b style="color:#2ea043">lote ✓</b> ':''}<button class="btn sm" data-apcdel="${r.id}" title="Descartar este">✕</button></td>
@@ -3075,7 +3089,7 @@ async function _verMapaComanda(codigo,safra){
   const body=ov.querySelector('#mapabody'); if(!body) return;
   if(!rows.length){ body.innerHTML='<span style="color:#8b949e">Sem trajeto de GPS nesta comanda.</span>'; return; }
   const key='M|'+codigo+'|'+(safra||''); _APCEXTRA[key]={codigo,safra:safra||'',rows}; delete APCMAP[key]; _apcState(key);
-  const linhas=rows.slice().sort((a,b)=>String((a.data||'')+(a.hora_inicio||'')).localeCompare(String((b.data||'')+(b.hora_inicio||'')))).map(r=>`<tr data-apcsel="${r.id}" data-apckey="${_apcEsc(key)}" style="cursor:pointer"><td>${_apcEsc((r.data||'').split('-').reverse().slice(0,2).join('/'))}</td><td>${_apcEsc(APC.fun[r.funcionario_id]||('#'+r.funcionario_id))}</td><td>${_apcEsc(APC.maq[r.maquina_id]||'—')}</td><td>${_apcEsc(r.hora_inicio||'')}</td><td style="text-align:right">${r.area_ha!=null?_apcFmt(r.area_ha)+' ha':'—'}</td></tr>`).join('');
+  const linhas=rows.slice().sort((a,b)=>String((a.data||'')+(a.hora_inicio||'')).localeCompare(String((b.data||'')+(b.hora_inicio||'')))).map(r=>`<tr data-apcsel="${r.id}" data-apckey="${_apcEsc(key)}" style="cursor:pointer"><td>${_apcEsc((r.data||'').split('-').reverse().slice(0,2).join('/'))}</td><td>${_apcEsc(APC.fun[r.funcionario_id]||('#'+r.funcionario_id))}</td><td>${_apcEsc(_maqLabel(r.maquina_id)||'—')}</td><td>${_apcEsc(r.hora_inicio||'')}</td><td style="text-align:right">${r.area_ha!=null?_apcFmt(r.area_ha)+' ha':'—'}</td></tr>`).join('');
   body.outerHTML=`<div style="flex:1;display:flex;flex-direction:column;min-height:0">
     <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;padding:6px 10px">
       <button class="btn sm" data-apczoom="+" data-apckey="${_apcEsc(key)}">＋</button>
@@ -3107,16 +3121,19 @@ async function aprovarComandaCampo(key){
     const ndias=new Set(allRows.map(r=>r.data).filter(Boolean)).size;
     const diario=allRows.map(r=>{ const a=+r.area_ha||0; const hi=r.hora_inicio||'', hf=r.hora_fim||''; const dies=totArea>0?(totDiesel*a/totArea):(allRows.length?totDiesel/allRows.length:0);
       return { 'Data':r.data, 'Hora inicial':hi, 'Hora final':hf, 'Hora início':hi, 'Hora fim':hf, 'Início':hi, 'Fim':hf, 'Área':(a?_apcFmt(a):''), 'Diesel':(dies?+dies.toFixed(1):'') }; });
-    const maqs=[...new Set(allRows.map(r=>(APC.maq[r.maquina_id]||'')+(r.implemento_id?(' + '+(APC.imp[r.implemento_id]||'')):'')).filter(x=>x.trim()))].join('; ');
-    const trator=[...new Set(allRows.map(r=>APC.maq[r.maquina_id]).filter(Boolean))].join('; ');
-    const implem=[...new Set(allRows.map(r=>APC.imp[r.implemento_id]).filter(Boolean))].join('; ');
+    const maqs=[...new Set(allRows.map(r=>_maqLabel(r.maquina_id)+(r.implemento_id?(' + '+_impLabel(r.implemento_id)):'')).filter(x=>x.trim()))].join('; ');
+    const trator=[...new Set(allRows.map(r=>_maqLabel(r.maquina_id)).filter(Boolean))].join('; ');
+    const implem=[...new Set(allRows.map(r=>_impLabel(r.implemento_id)).filter(Boolean))].join('; ');
     const opers=[...new Set(allRows.map(r=>APC.fun[r.funcionario_id]||('#'+r.funcionario_id)))].join(', ');
+    // lista por CONJUNTO (trator+implemento) — pode haver mais de um trator na comanda
+    const cj={}; allRows.forEach(r=>{ const k=(r.maquina_id||'-')+'|'+(r.implemento_id||'-'); const o=cj[k]||(cj[k]={maq:r.maquina_id,imp:r.implemento_id,area:0,horas:0,d0:null,d1:null}); o.area+=(+r.area_ha||0); const hh=_apcHoras(r.hora_inicio,r.hora_fim); if(hh) o.horas+=hh; if(r.data){ if(!o.d0||r.data<o.d0) o.d0=r.data; if(!o.d1||r.data>o.d1) o.d1=r.data; } });
+    const conjuntos=Object.values(cj).map(o=>({ trator:_maqLabel(o.maq)||'—', implemento:_impLabel(o.imp)||'—', inicio:o.d0?fmtData(o.d0):'', fim:o.d1?fmtData(o.d1):'', horas:o.horas?+o.horas.toFixed(1):0, area:+o.area.toFixed(2), diesel:totArea>0?+(totDiesel*o.area/totArea).toFixed(1):0 }));
     const geral=Object.assign({}, (c&&c.geralRetorno)||{}, {
       'Trator':trator, 'Implemento':implem,
       'Data de início':datas[0]?fmtData(datas[0]):'', 'Data de fim':ultimaData?fmtData(ultimaData):'',
       'Horas trabalhadas':horas?(horas.toFixed(1).replace('.',',')+' h'):'', 'Diesel total':totDiesel?(_apcFmt(totDiesel)+' L'):'', 'Área':totArea?(_apcFmt(totArea)+' ha'):'',
       'Maquinário e implemento':maqs, 'Operador':opers,
-      campo:{ dias:ndias, area_ha:+totArea.toFixed(2), diesel_l:+totDiesel.toFixed(2), horas_trabalho:+horas.toFixed(1), operadores:opers.split(', ').filter(Boolean), abastecimentos:(g.abast||[]).map(a=>({litros:+a.litros, quando:a.quando, maquina:APC.maq[a.maquina_id]||null})), aprovado_em:new Date().toISOString() }
+      campo:{ dias:ndias, area_ha:+totArea.toFixed(2), diesel_l:+totDiesel.toFixed(2), horas_trabalho:+horas.toFixed(1), operadores:opers.split(', ').filter(Boolean), conjuntos:conjuntos, abastecimentos:(g.abast||[]).map(a=>({litros:+a.litros, quando:a.quando, maquina:_maqLabel(a.maquina_id)||null})), aprovado_em:new Date().toISOString() }
     });
     const upd={ status:'executada', data_execucao:ultimaData, diario:diario, geral_retorno:geral };
     const {data:updRows,error}=await SB.from('comandas').update(upd).eq('codigo',codigo).eq('safra',safra).select('codigo');
