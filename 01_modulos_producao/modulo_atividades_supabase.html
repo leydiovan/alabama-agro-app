@@ -3002,7 +3002,7 @@ function _apcPrep(g){
 }
 function _apcDrawMapa(cv,g){
   if(!cv||!cv.clientWidth) return;
-  const key=g.codigo+'|'+(g.safra||''); const st=_apcState(key); if(!st._prep) st._prep=_apcPrep(g); const P=st._prep;
+  const key=(cv.dataset&&cv.dataset.apcmap)||(g.codigo+'|'+(g.safra||'')); const st=_apcState(key); if(!st._prep) st._prep=_apcPrep(g); const P=st._prep;
   const dpr=window.devicePixelRatio||1, W=cv.clientWidth, H=cv.clientHeight||220;
   cv.width=W*dpr; cv.height=H*dpr; const ctx=cv.getContext('2d'); ctx.setTransform(dpr,0,0,dpr,0,0); ctx.clearRect(0,0,W,H);
   if(!P.ok){ ctx.fillStyle='#8b949e'; ctx.font='13px system-ui'; ctx.fillText('Sem mapa (talhão sem polígono ou sessão sem trajeto)',12,28); return; }
