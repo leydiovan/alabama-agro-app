@@ -54,6 +54,27 @@ input[type=time],input[type=number]{font-variant-numeric:tabular-nums}
 .sec{font-size:12px;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);margin:14px 0 6px}
 .agora{margin-top:4px}
 .fl{display:flex;gap:10px;align-items:center;margin-top:8px}.fl input{width:24px;height:24px}.fl label{margin:0;color:var(--text);font-size:15px}
+/* ---- visual "app de tablet" no menu da comanda ---- */
+.hcard{background:linear-gradient(135deg,#1f2940,#161b22);border:1px solid var(--line);border-radius:18px;padding:16px;margin-bottom:14px;box-shadow:0 6px 20px rgba(0,0,0,.25)}
+.hcard .cd{display:flex;align-items:center;gap:10px;font-size:26px;font-weight:900;letter-spacing:.5px}
+.hcard .cd .l{color:var(--gold)}
+.hcard .sb{color:var(--muted);font-size:14px;margin-top:7px;line-height:1.5}
+.hcard .sb b{color:var(--text)}
+.tiles{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px}
+.tile{display:flex;flex-direction:column;gap:5px;border:1px solid var(--line);border-radius:18px;padding:18px 16px;min-height:124px;cursor:pointer;color:var(--text);text-align:left;background:var(--bg2);transition:transform .06s}
+.tile .ic{font-size:30px;line-height:1}
+.tile .tt{font-size:18px;font-weight:800;margin-top:auto}
+.tile .ds{font-size:12.5px;color:var(--muted);line-height:1.35}
+.tile:active{transform:scale(.97)}
+.tile:disabled{opacity:.55}
+.tile.b{background:linear-gradient(135deg,#1d3a5f,#15233a);border-color:#2a4a6e}
+.tile.k{background:linear-gradient(135deg,#15402a,#13251c);border-color:#2a5a3e}
+.stats{display:flex;gap:10px;margin-bottom:14px}
+.stat{flex:1;background:var(--bg2);border:1px solid var(--line);border-radius:14px;padding:12px 8px;text-align:center}
+.stat .v{font-size:21px;font-weight:900;color:var(--gold);font-variant-numeric:tabular-nums}
+.stat .l{font-size:10.5px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-top:3px}
+.shdr{display:flex;align-items:center;justify-content:space-between;gap:10px;margin:4px 2px 8px}
+.shdr .t{font-size:12px;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);font-weight:700}
 </style>
 </head>
 <body>
@@ -276,17 +297,27 @@ function renderExecMenu(){
       <div class="two" style="margin-top:10px"><button class="btn k" id="ab_save" style="margin:0">Salvar</button><button class="btn s" id="ab_cancel" style="margin:0">Cancelar</button></div>
       <div class="hint" style="margin-top:6px">O consumo conta deste abastecimento até o anterior (ou o início do trabalho).</div>
     </div>` : '';
-  $('app').innerHTML=`<div class="top"><h1><span class="l">📋</span> ${esc(c.codigo)}</h1><div class="d">${esc(c.tipo_ativ||'')} · Lote ${esc(c.lote_nome||'—')}${area?(' · '+area+' ha'):''}</div></div>
-    <button class="btn b huge" id="ic_cmd" style="margin-top:6px">📋 Ver comanda</button>
-    <button class="btn k huge" id="ic_trab" style="margin-top:12px">🛰️ Tela de trabalho (GPS)</button>
-    <div class="card" style="margin-top:14px"><div class="hint" style="margin:0">Trabalho (GPS): <b class="gold">${areaCum.toFixed(2)} ha</b> · ${dias} dia(s)${hTrab?(' · '+hTrab.toFixed(1)+' h'):''}</div></div>
-    <div class="sec" style="margin:10px 2px 6px;font-size:12px;text-transform:uppercase;letter-spacing:.5px;color:var(--muted)">⛽ Abastecimentos (diesel)</div>
-    <div class="card">${abLista}</div>
-    ${form || (concl?'':`<button class="btn s" id="ab_novo">⛽ Lançar abastecimento</button>`)}
-    ${concl?'<div class="card muted" style="text-align:center;margin-top:10px">✅ Lote concluído e enviado.</div>':'<button class="btn s" id="concluir" style="margin-top:10px">✔ Concluí o lote — enviar comanda</button>'}
+  $('app').innerHTML=`
+    <div class="hcard">
+      <div class="cd"><span class="l">📋</span> ${esc(c.codigo)}<span class="pill ${concl?'on':'go'}" style="margin-left:auto">${concl?'lote concluído':'em andamento'}</span></div>
+      <div class="sb">${esc(c.tipo_ativ||'—')} · Lote <b>${esc(c.lote_nome||'—')}</b>${area?(' · '+area+' ha'):''}</div>
+    </div>
+    <div class="tiles">
+      <button class="tile b" id="ic_cmd"><div class="ic">📄</div><div class="tt">Ver comanda</div><div class="ds">Abre o PDF · funciona offline</div></button>
+      <button class="tile k" id="ic_trab"><div class="ic">🛰️</div><div class="tt">Tela de trabalho</div><div class="ds">GPS · pinta a área no mapa</div></button>
+    </div>
+    <div class="stats">
+      <div class="stat"><div class="v">${areaCum.toFixed(2)}</div><div class="l">ha feitos</div></div>
+      <div class="stat"><div class="v">${dias}</div><div class="l">dia(s)</div></div>
+      <div class="stat"><div class="v">${hTrab?hTrab.toFixed(1):'0'}</div><div class="l">horas</div></div>
+    </div>
+    <div class="shdr"><span class="t">⛽ Abastecimentos (diesel)</span>${(concl||ABFORM)?'':'<button class="btn sm g" id="ab_novo" style="padding:8px 14px">＋ Lançar</button>'}</div>
+    <div class="card" style="margin-bottom:12px">${abLista}</div>
+    ${form}
+    ${concl?'<div class="card center" style="border-color:var(--ok);color:var(--ok);font-weight:800;margin-bottom:12px">✅ Lote concluído e enviado</div>':'<button class="btn k huge" id="concluir">✔ Concluí o lote — enviar comanda</button>'}
     <div class="bar"><button class="btn s" id="voltar">◀ Voltar às comandas</button></div>`;
   if($('ic_cmd'))$('ic_cmd').onclick=async()=>{ const b=$('ic_cmd'); if(b)b.disabled=true; try{ await abrirComandaDoc(); } finally{ if(b)b.disabled=false; } };
-  if($('ic_trab'))$('ic_trab').onclick=async()=>{ const b=$('ic_trab'); if(b){b.disabled=true;b.textContent='abrindo GPS…';} await _gpsEnter(); EXVIEW='trabalho'; render(); window.scrollTo(0,0); };
+  if($('ic_trab'))$('ic_trab').onclick=async()=>{ const b=$('ic_trab'); if(b){b.disabled=true;b.style.opacity='.6';} await _gpsEnter(); EXVIEW='trabalho'; render(); window.scrollTo(0,0); };
   if($('ab_novo'))$('ab_novo').onclick=()=>{ ABFORM=true; render(); };
   if($('ab_cancel'))$('ab_cancel').onclick=()=>{ ABFORM=false; render(); };
   if($('ab_save'))$('ab_save').onclick=_lancarAbast;
