@@ -360,12 +360,17 @@ async function _trocarConjunto(){
   const nm=$('h_maq')?$('h_maq').value:'', ni=$('h_imp')?$('h_imp').value:''; HDR.maquina_id=nm; HDR.implemento_id=ni;
   if(SESS && String(SESS.maquina_id||'')===String(nm) && String(SESS.implemento_id||'')===String(ni)){ _recalcCells(); _drawMapa(); _hud(); return; }
   if(SESS && !GPS.pts.length){   // sessão atual vazia: só troca o conjunto dela
-    try{ await SB.from('execucao_campo').update({maquina_id:nm?+nm:null,implemento_id:ni?+ni:null,atualizado_em:new Date().toISOString()}).eq('id',SESS.id); Object.assign(SESS,{maquina_id:nm?+nm:null,implemento_id:ni?+ni:null}); }catch(e){}
+    try{ const {error}=await SB.from('execucao_campo').update({maquina_id:nm?+nm:null,implemento_id:ni?+ni:null,atualizado_em:new Date().toISOString()}).eq('id',SESS.id); if(error) throw error; Object.assign(SESS,{maquina_id:nm?+nm:null,implemento_id:ni?+ni:null}); }catch(e){ _st('❌ '+e.message,'#c0392b'); }
     _recalcCells(); _drawMapa(); _hud(); return;
   }
-  if(SESS) await _saveGps(true);   // fecha a sessão anterior (com o que pintou)
-  await _carregarDiasComanda(); SESS=await _novaSessao(); if(!SESS) return;
-  _restoreSess(); _buildDaySegs(); _drawMapa(); _hud(); _st('Novo conjunto — sessão iniciada','#27ae60');
+  // sessão com trabalho: PAUSA o GPS, fecha a anterior e abre nova com o conjunto NOVO
+  const tinhaWatch=GPS.watchId!=null;
+  if(GPS.watchId!=null){ try{navigator.geolocation.clearWatch(GPS.watchId);}catch(e){} GPS.watchId=null; }
+  if(SESS) await _saveGps(true);
+  HDR.maquina_id=nm; HDR.implemento_id=ni;   // garante o conjunto NOVO no insert (carregarDias sobrescreve HDR)
+  SESS=await _novaSessao();
+  if(SESS){ HDR.maquina_id=SESS.maquina_id||''; HDR.implemento_id=SESS.implemento_id||''; _restoreSess(); _buildDaySegs(); _drawMapa(); _hud(); _st('Novo conjunto — sessão iniciada','#27ae60'); }
+  if(tinhaWatch){ try{ GPS.watchId=navigator.geolocation.watchPosition(_onFix,err=>_st('GPS: '+err.message,'#e67e22'),{enableHighAccuracy:true,maximumAge:0,timeout:15000}); }catch(e){} }
 }
 let _gestBound=null;
 function _bindGestures(cv){ if(_gestBound===cv) return; _gestBound=cv;
@@ -411,8 +416,8 @@ function renderTrabalho(){
   setTimeout(()=>{ _setupCanvas(); _drawMapa(); _hud(); },30);
 }
 async function concluirLote(){
-  const today=CUR_DAYS.filter(r=>r.data===DIA);
-  if(!today.length){ _st('Sem sessão hoje — abra a Tela de trabalho.','#e67e22'); return; }
+  const today=CUR_DAYS.filter(r=>r.data===DIA && (r.hora_fim || (Array.isArray(r.trajeto)&&r.trajeto.length) || r.area_ha));
+  if(!today.length){ _st('Sem sessão com trabalho hoje — abra a Tela de trabalho.','#e67e22'); return; }
   if(!confirm('Concluir o lote e enviar a comanda para aprovação?')) return;
   try{
     for(const r of today){ const patch={status:'enviada',atualizado_em:new Date().toISOString()}; if(!r.hora_fim) patch.hora_fim=nowHM(); const {error}=await SB.from('execucao_campo').update(patch).eq('id',r.id); if(error) throw error; }

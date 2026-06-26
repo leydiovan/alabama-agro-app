@@ -2830,13 +2830,15 @@ async function _updNavAprovCampo(){
   const btn=document.getElementById('navAprovCampo'); if(!btn) return;
   if(!IS_ADMIN){ btn.style.display='none'; return; }
   btn.style.display='';
-  try{ const {data}=await SB.from('execucao_campo').select('id').eq('status','enviada'); const n=(data||[]).length; btn.textContent='✅ Aprovações de campo'+(n?(' ('+n+')'):''); }catch(e){}
+  try{ const {data}=await SB.from('execucao_campo').select('id,status,data,area_ha,trajeto').in('status',['enviada','aberto']); const hoje=new Date().toISOString().slice(0,10);
+    const n=(data||[]).filter(r=>r.status==='enviada' || (r.status==='aberto' && String(r.data)<hoje && (r.area_ha||(Array.isArray(r.trajeto)&&r.trajeto.length)))).length;
+    btn.textContent='✅ Aprovações de campo'+(n?(' ('+n+')'):''); }catch(e){}
 }
 async function _loadAprovCampo(){
   APC={comandas:[], maq:{}, imp:{}, fun:{}};
   try{
     const [ex,mq,im,fu]=await Promise.all([
-      SB.from('execucao_campo').select('*').eq('status','enviada').order('data',{ascending:true}),
+      SB.from('execucao_campo').select('*').in('status',['enviada','aberto']).order('data',{ascending:true}),
       SB.from('maquinas').select('id,nome'),
       SB.from('implementos').select('id,nome'),
       SB.from('funcionarios').select('id,nome')
@@ -2844,8 +2846,10 @@ async function _loadAprovCampo(){
     (mq.data||[]).forEach(m=>APC.maq[m.id]=m.nome);
     (im.data||[]).forEach(m=>APC.imp[m.id]=m.nome);
     (fu.data||[]).forEach(m=>APC.fun[m.id]=m.nome);
+    const hoje=new Date().toISOString().slice(0,10);
     const byc={};
-    (ex.data||[]).forEach(r=>{ const k=r.comanda_codigo+'|'+(r.safra||''); const g=byc[k]||(byc[k]={codigo:r.comanda_codigo, safra:r.safra||'', rows:[]}); g.rows.push(r); });
+    // 'enviada' = pronto p/ aprovar; 'aberto' só se for de dia passado com trabalho (sessão abandonada — não some)
+    (ex.data||[]).filter(r=>r.status==='enviada' || (r.status==='aberto' && String(r.data)<hoje && (r.area_ha||(Array.isArray(r.trajeto)&&r.trajeto.length)))).forEach(r=>{ const k=r.comanda_codigo+'|'+(r.safra||''); const g=byc[k]||(byc[k]={codigo:r.comanda_codigo, safra:r.safra||'', rows:[]}); g.rows.push(r); });
     APC.comandas=Object.values(byc).sort((a,b)=>String(a.codigo).localeCompare(String(b.codigo)));
   }catch(e){ console.warn('loadAprovCampo',e); APC.comandas=[]; }
 }
