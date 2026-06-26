@@ -2830,8 +2830,9 @@ async function _updNavAprovCampo(){
   const btn=document.getElementById('navAprovCampo'); if(!btn) return;
   if(!IS_ADMIN){ btn.style.display='none'; return; }
   btn.style.display='';
-  try{ const {data}=await SB.from('execucao_campo').select('id,status,data,area_ha,trajeto').in('status',['enviada','aberto']); const hoje=new Date().toISOString().slice(0,10);
-    const n=(data||[]).filter(r=>r.status==='enviada' || (r.status==='aberto' && String(r.data)<hoje && (r.area_ha||(Array.isArray(r.trajeto)&&r.trajeto.length)))).length;
+  try{ const {data}=await SB.from('execucao_campo').select('id,status,data,area_ha,trajeto,horimetro_ini,horimetro_fim,diesel_litros').in('status',['enviada','aberto']); const hoje=new Date().toISOString().slice(0,10);
+    const tt=r=>((Array.isArray(r.trajeto)&&r.trajeto.length>1)||r.area_ha||r.horimetro_ini!=null||r.horimetro_fim!=null||r.diesel_litros!=null);
+    const n=(data||[]).filter(r=>tt(r) && (r.status==='enviada' || (r.status==='aberto' && String(r.data)<hoje))).length;
     btn.textContent='✅ Aprovações de campo'+(n?(' ('+n+')'):''); }catch(e){}
 }
 async function _loadAprovCampo(){
@@ -2847,9 +2848,10 @@ async function _loadAprovCampo(){
     (im.data||[]).forEach(m=>APC.imp[m.id]=m.nome);
     (fu.data||[]).forEach(m=>APC.fun[m.id]=m.nome);
     const hoje=new Date().toISOString().slice(0,10);
+    const _temTrab=r=>((Array.isArray(r.trajeto)&&r.trajeto.length>1)||r.area_ha||r.horimetro_ini!=null||r.horimetro_fim!=null||r.diesel_litros!=null);
     const byc={};
-    // 'enviada' = pronto p/ aprovar; 'aberto' só se for de dia passado com trabalho (sessão abandonada — não some)
-    (ex.data||[]).filter(r=>r.status==='enviada' || (r.status==='aberto' && String(r.data)<hoje && (r.area_ha||(Array.isArray(r.trajeto)&&r.trajeto.length)))).forEach(r=>{ const k=r.comanda_codigo+'|'+(r.safra||''); const g=byc[k]||(byc[k]={codigo:r.comanda_codigo, safra:r.safra||'', rows:[]}); g.rows.push(r); });
+    // só sessões COM trabalho; 'enviada' = pronto p/ aprovar; 'aberto' só de dia passado (sessão abandonada — não some)
+    (ex.data||[]).filter(r=>_temTrab(r) && (r.status==='enviada' || (r.status==='aberto' && String(r.data)<hoje))).forEach(r=>{ const k=r.comanda_codigo+'|'+(r.safra||''); const g=byc[k]||(byc[k]={codigo:r.comanda_codigo, safra:r.safra||'', rows:[]}); g.rows.push(r); });
     APC.comandas=Object.values(byc).sort((a,b)=>String(a.codigo).localeCompare(String(b.codigo)));
   }catch(e){ console.warn('loadAprovCampo',e); APC.comandas=[]; }
 }

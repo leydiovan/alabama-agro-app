@@ -207,7 +207,7 @@ async function abrirComanda(cod){
 /* ---- menu da comanda: dois ícones ---- */
 function renderExecMenu(){
   const c=CUR; const area=areaLote(c.lote_nome);
-  const today=CUR_DAYS.filter(r=>r.data===DIA);
+  const today=CUR_DAYS.filter(r=>r.data===DIA && ((Array.isArray(r.trajeto)&&r.trajeto.length>1) || r.area_ha || r.horimetro_ini!=null || r.horimetro_fim!=null || r.diesel_litros!=null));
   const concl=CUR_DAYS.some(r=>r.concluiu_lote)||c.status==='executada';
   const sess = today.length ? today.map(r=>`
     <div class="card" style="margin-bottom:10px;padding:12px 13px">
@@ -352,8 +352,8 @@ async function _gpsLeave(){
   if(GPS.watchId!=null){ try{navigator.geolocation.clearWatch(GPS.watchId);}catch(e){} GPS.watchId=null; }
   try{ if(GPS.wake){ await GPS.wake.release(); GPS.wake=null; } }catch(e){}
   GPS.speed=0;
-  // só fecha (enviada) a sessão que teve trabalho; vazia fica 'aberta' p/ retomar (operador não pode apagar — RLS)
-  if(SESS && GPS.pts.length) await _saveGps(true);
+  // só fecha (enviada) a sessão que teve trabalho de verdade (>=2 pontos); vazia fica 'aberta' p/ retomar
+  if(SESS && GPS.pts.length>=2) await _saveGps(true);
   SESS=null; await _carregarDiasComanda();
 }
 async function _trocarConjunto(){
