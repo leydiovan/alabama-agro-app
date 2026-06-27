@@ -575,10 +575,12 @@ function _aplicarConjunto(){   // aplica o HDR atual à sessão; se já tem trab
 function _conjOK(){ return !!(HDR.maquina_id && HDR.implemento_id && +HDR.largura_m>0); }
 function _remConj(){ try{ return JSON.parse(localStorage.getItem('conj_'+(OPER&&OPER.id))||'null'); }catch(e){ return null; } }
 function _saveConj(){ try{ if(OPER&&OPER.id) localStorage.setItem('conj_'+OPER.id, JSON.stringify({maquina_id:HDR.maquina_id||'', implemento_id:HDR.implemento_id||'', largura_m:+HDR.largura_m||0})); }catch(e){} }
-function _initHDR(){   // ordem de prioridade p/ o conjunto vigente
-  const mine=CUR_DAYS.find(r=>String(r.funcionario_id)===String(OPER.id));   // CUR_DAYS já vem ordenado por data desc -> minha sessão mais recente
-  const s=(SESS&&(SESS.maquina_id!=null||SESS.implemento_id!=null))?SESS:(mine||_remConj()||{});
-  HDR={ maquina_id:(s.maquina_id!=null?s.maquina_id:'')||'', implemento_id:(s.implemento_id!=null?s.implemento_id:'')||'', largura_m:(+s.largura_m>0?+s.largura_m:(_implLarg(s.implemento_id)||0)) };
+function _setHDRde(s){ s=s||{}; HDR={ maquina_id:s.maquina_id!=null?s.maquina_id:'', implemento_id:s.implemento_id!=null?s.implemento_id:'', largura_m:(+s.largura_m>0?+s.largura_m:(_implLarg(s.implemento_id)||0)) }; }
+function _initHDR(){   // ordem de prioridade p/ o conjunto vigente (perdura — só zera de propósito)
+  if(SESS && SESS.maquina_id!=null){ _setHDRde(SESS); return; }              // 1. sessão aberta de hoje (retomada)
+  if(_conjOK()) return;                                                       // 2. já escolhido nesta sessão do app -> NÃO mexe (perdura ao sair/entrar)
+  const mine=CUR_DAYS.find(r=>String(r.funcionario_id)===String(OPER.id) && r.maquina_id!=null);   // 3. minha sessão COMPLETA mais recente desta comanda (ignora sessões antigas sem conjunto)
+  _setHDRde(mine||_remConj()||{});                                           // 4. última escolha salva no aparelho (sobrevive a fechar/reabrir o app)
 }
 function _pedirConjunto(){
   const old=$('conjov'); if(old) old.remove();
