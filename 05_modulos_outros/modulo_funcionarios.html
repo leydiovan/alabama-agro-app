@@ -402,7 +402,7 @@ function relHTML(){
     <div class="hint">Folha de <b>hora extra</b> + diárias. Registrados: o salário é à parte — aqui é só HE + faltas. "Marcar pago" quita o mês daquele funcionário (sai do "Em aberto").</div></div>`;
 }
 async function marcarPago(fid){ const f=S.funcs.find(x=>x.id===fid), o=REL[fid]; if(!f||!o) return;
-  try{ await SB.from('rh_pagamentos').upsert({funcionario_id:fid,mes:MES,valor:_totFunc(f,o),pago_em:new Date().toISOString().slice(0,10)},{onConflict:'funcionario_id,mes'}); REL_PAG=await _loadPagamentos(MES); _st('✅ Pagamento registrado','#27ae60'); route(); }catch(e){ _st('❌ '+e.message,'#c0392b'); } }
+  try{ await SB.from('rh_pagamentos').upsert({funcionario_id:fid,mes:MES,valor:_totFunc(f,o),pago_em:(()=>{const d=new Date();return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');})()},{onConflict:'funcionario_id,mes'}); REL_PAG=await _loadPagamentos(MES); _st('✅ Pagamento registrado','#27ae60'); route(); }catch(e){ _st('❌ '+e.message,'#c0392b'); } }
 async function desmarcarPago(fid){ try{ await SB.from('rh_pagamentos').delete().eq('funcionario_id',fid).eq('mes',MES); REL_PAG=await _loadPagamentos(MES); route(); }catch(e){ _st('❌ '+e.message,'#c0392b'); } }
 function bindRel(){
   if(REL_MES!==MES){ _relRefresh(); return; }

@@ -138,7 +138,7 @@ let _uid=0; const U=p=>(p||'id')+(_uid++);
 const nf=n=>(+n).toLocaleString('pt-BR',{maximumFractionDigits:3});
 const brl=n=>(+n).toLocaleString('pt-BR',{style:'currency',currency:'BRL'});
 const TODAY=new Date(); TODAY.setHours(0,0,0,0);
-const isoToday=TODAY.toISOString().slice(0,10);
+const isoToday=TODAY.getFullYear()+'-'+String(TODAY.getMonth()+1).padStart(2,'0')+'-'+String(TODAY.getDate()).padStart(2,'0');   // data LOCAL (não UTC)
 const diasAte=d=>{ if(!d) return null; const t=new Date(d+'T00:00:00'); return Math.round((t-TODAY)/86400000); };
 const fmtDate=d=>{ if(!d) return '—'; const [y,m,dd]=d.split('-'); return dd+'/'+m+'/'+y; };
 const esc=s=>String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');

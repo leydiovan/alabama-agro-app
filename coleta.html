@@ -86,7 +86,7 @@ async function entrar(){
   if(!CFG.jornada) CFG.jornada={"1":[["07:00","12:00"],["13:30","18:00"]],"2":[["07:00","12:00"],["13:30","18:00"]],"3":[["07:00","12:00"],["13:30","18:00"]],"4":[["07:00","12:00"],["13:30","18:00"]],"5":[["07:00","12:00"],["13:30","18:00"]],"6":[["07:00","12:00"]],"0":[]};
   try{ const {data:f}=await SB.from('funcionarios').select('id,nome,tipo,ativo').order('nome'); FUNCS=(f||[]).filter(x=>x.ativo!==false); }catch(e){ FUNCS=[]; }
   try{ const {data:u}=await SB.auth.getUser(); USER_EMAIL=(u&&u.user&&u.user.email)||''; }catch(e){}
-  STEP='data'; DATA=new Date().toISOString().slice(0,10); render();
+  STEP='data'; DATA=(()=>{const d=new Date();return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');})(); render();
 }
 async function login(){
   const em=$('e').value.trim(), pw=$('s').value;
@@ -206,7 +206,7 @@ function renderEnviado(){
     <div class="muted" style="font-size:13px;margin-top:8px">Enviado para <b>aprovação</b> do administrador. Este aparelho não acessa o histórico.</div>
     <button class="btn g" id="nova" style="max-width:280px;margin:24px auto 0">Nova coleta</button>
     <button class="lk" id="sair2" style="margin:14px auto 0">sair</button></div>`;
-  $('nova').onclick=()=>{ STEP='data'; DATA=new Date().toISOString().slice(0,10); FERIADO=false; render(); };
+  $('nova').onclick=()=>{ STEP='data'; DATA=(()=>{const d=new Date();return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');})(); FERIADO=false; render(); };
   $('sair2').onclick=async()=>{ await SB.auth.signOut(); location.reload(); };
 }
 window.addEventListener('load',boot);
