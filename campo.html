@@ -551,26 +551,25 @@ async function _gpsLeave(){
   SESS=null; await _carregarDiasComanda();
   if(navigator.onLine) _syncAll();   // empurra a fila ao sair da tela de trabalho
 }
-async function _trocarConjunto(){
-  const nm=$('h_maq')?$('h_maq').value:'', ni=$('h_imp')?$('h_imp').value:''; HDR.maquina_id=nm; HDR.implemento_id=ni;
-  const lf=$('h_larg'); let lv=lf?num(lf.value):null; if((lv==null||lv<=0) && _implLarg(ni)>0){ lv=_implLarg(ni); if(lf) lf.value=lv; }   // largura vazia -> sugere a do cadastro do implemento (editável)
-  HDR.largura_m=lv>0?lv:0; _saveConj();   // lembra a escolha (perdura entre entradas)
-  if(SESS && String(SESS.maquina_id||'')===String(nm) && String(SESS.implemento_id||'')===String(ni)){ _VELC=null; _recalcCells(); _drawMapa(); _hud(); return; }
-  if(!GPS.pts.length){   // nada pintado ainda: só troca o conjunto (lazy cria a sessão no 1º ponto com o conjunto novo)
-    if(SESS){ SESS.maquina_id=nm?+nm:null; SESS.implemento_id=ni?+ni:null; SESS.largura_m=_widthM()||0; SESS.atualizado_em=new Date().toISOString(); SESS.dirty=true; SESS._v=(SESS._v||0)+1; try{ await _idbPut('sessions',SESS); }catch(e){} await _syncSession(SESS); _updPend(); }
-    _recalcCells(); _drawMapa(); _hud(); return;
+function _conjResumo(){ const t=HDR.maquina_id?_maqNome(HDR.maquina_id):'—'; const im=HDR.implemento_id?(_impNome(HDR.implemento_id)||'—'):'—'; const lg=+HDR.largura_m>0?(' · '+String(HDR.largura_m).replace('.',',')+' m'):''; return '<b>🚜 '+esc(t)+'</b><span class="muted"> · '+esc(im)+lg+'</span>'; }
+function _updConjSum(){ const e=$('conj_sum'); if(e) e.innerHTML=_conjResumo(); }
+function _aplicarConjunto(){   // aplica o HDR atual à sessão; se já tem trabalho pintado, fecha a anterior e a nova nasce no 1º ponto
+  _saveConj(); _updConjSum();
+  const nm=HDR.maquina_id, ni=HDR.implemento_id;
+  if(SESS && String(SESS.maquina_id||'')===String(nm) && String(SESS.implemento_id||'')===String(ni) && +(SESS.largura_m||0)===+(HDR.largura_m||0)){ _VELC=null; _recalcCells(); _drawMapa(); _hud(); return; }
+  if(!GPS.pts.length){   // nada pintado ainda: lazy cria a sessão no 1º ponto com o conjunto novo
+    if(SESS){ SESS.maquina_id=nm?+nm:null; SESS.implemento_id=ni?+ni:null; SESS.largura_m=_widthM()||0; SESS.atualizado_em=new Date().toISOString(); SESS.dirty=true; SESS._v=(SESS._v||0)+1; try{ _idbPut('sessions',SESS); }catch(e){} if(navigator.onLine) _syncSession(SESS); _updPend(); }
+    _VELC=null; _recalcCells(); _drawMapa(); _hud(); return;
   }
   // sessão com trabalho: PAUSA o GPS, fecha a anterior; a nova nasce no 1º ponto com o conjunto NOVO
   const tinhaWatch=GPS.watchId!=null;
   if(GPS.watchId!=null){ try{navigator.geolocation.clearWatch(GPS.watchId);}catch(e){} GPS.watchId=null; }
-  if(SESS) await _saveGps(true);
-  SESS=null; GPS.pts=[]; GPS.cells=new Set(); GPS.areaHa=0;   // a anterior vai p/ DAYSEGS; o desenho ativo zera
-  await _carregarDiasComanda(); _buildDaySegs(); _drawMapa(); _hud(); _st('Conjunto trocado — nova sessão começa ao mover','#27ae60');
-  if(tinhaWatch){ try{ GPS.watchId=navigator.geolocation.watchPosition(_onFix,err=>_st('GPS: '+err.message,'#e67e22'),{enableHighAccuracy:true,maximumAge:0,timeout:15000}); }catch(e){} }
-}
-function _setLargura(){ const lf=$('h_larg'); const v=lf?num(lf.value):0; HDR.largura_m=(v&&v>0)?v:0; _saveConj();   // largura editada no tablet -> recalcula cobertura/área e grava na sessão
-  if(SESS){ SESS.largura_m=_widthM()||0; SESS.atualizado_em=new Date().toISOString(); SESS.dirty=true; SESS._v=(SESS._v||0)+1; try{ _idbPut('sessions',SESS); }catch(e){} if(navigator.onLine) _syncSession(SESS); _updPend(); }
-  _VELC=null; _recalcCells(); _drawMapa(); _hud();
+  (async()=>{
+    if(SESS) await _saveGps(true);
+    SESS=null; GPS.pts=[]; GPS.cells=new Set(); GPS.areaHa=0;   // a anterior vai p/ DAYSEGS; o desenho ativo zera
+    await _carregarDiasComanda(); _buildDaySegs(); _VELC=null; _drawMapa(); _hud(); _st('Conjunto trocado — nova sessão começa ao mover','#27ae60');
+    if(tinhaWatch){ try{ GPS.watchId=navigator.geolocation.watchPosition(_onFix,err=>_st('GPS: '+err.message,'#e67e22'),{enableHighAccuracy:true,maximumAge:0,timeout:15000}); }catch(e){} }
+  })();
 }
 /* ===== conjunto (trator/implemento/largura): perdura entre entradas; obrigatório na 1ª vez ===== */
 function _conjOK(){ return !!(HDR.maquina_id && HDR.implemento_id && +HDR.largura_m>0); }
@@ -589,7 +588,7 @@ function _pedirConjunto(){
   ov.style.cssText='position:fixed;inset:0;z-index:1200;background:#0d1117ee;display:flex;align-items:center;justify-content:center;padding:18px';
   ov.innerHTML=`<div class="card" style="width:100%;max-width:440px;margin:0">
     <div style="font-size:19px;font-weight:900;margin-bottom:4px">🚜 Conjunto de trabalho</div>
-    <div class="hint" style="margin:0 0 12px">Escolha o trator, o implemento e a largura de faixa. Fica salvo — só muda se você trocar lá em cima.</div>
+    <div class="hint" style="margin:0 0 12px">Escolha o trator, o implemento e a largura de faixa. Fica salvo — só muda quando você tocar em 🔄 Trocar conjunto.</div>
     <label>Trator / máquina</label><select id="cj_maq">${maqOpt}</select>
     <div style="height:10px"></div>
     <label>Implemento</label><select id="cj_imp">${impOpt}</select>
@@ -604,10 +603,8 @@ function _pedirConjunto(){
   $('cj_maq').onchange=upd; $('cj_larg').oninput=upd; upd();
   $('cj_back').onclick=async()=>{ ov.remove(); await _gpsLeave(); EXVIEW='menu'; render(); };
   $('cj_ok').onclick=()=>{ const m=$('cj_maq').value, i=$('cj_imp').value, l=num($('cj_larg').value)||0; if(!(m&&i&&l>0)) return;
-    HDR.maquina_id=m; HDR.implemento_id=i; HDR.largura_m=l; _saveConj();
-    if(SESS){ SESS.maquina_id=+m; SESS.implemento_id=+i; SESS.largura_m=l; SESS.atualizado_em=new Date().toISOString(); SESS.dirty=true; SESS._v=(SESS._v||0)+1; try{ _idbPut('sessions',SESS); }catch(e){} if(navigator.onLine) _syncSession(SESS); _updPend(); }
-    if($('h_maq'))$('h_maq').value=m; if($('h_imp'))$('h_imp').value=i; if($('h_larg'))$('h_larg').value=l;
-    ov.remove(); _VELC=null; _recalcCells(); _drawMapa(); _hud();
+    HDR.maquina_id=m; HDR.implemento_id=i; HDR.largura_m=l;
+    ov.remove(); _aplicarConjunto();   // aplica (fecha sessão antiga se já tinha trabalho) + salva + redesenha
   };
 }
 let _gestBound=null;
@@ -624,17 +621,14 @@ function _bindGestures(cv){ if(_gestBound===cv) return; _gestBound=cv;
 }
 function renderTrabalho(){
   const c=CUR; const manual=!GPS.paintAuto;
-  const maqOpt=`<option value="">— trator/máquina —</option>`+MAQS.map(m=>`<option value="${m.id}" ${String(HDR.maquina_id)===String(m.id)?'selected':''}>${esc(m.nome)}</option>`).join('');
-  const impOpt=`<option value="">— implemento —</option>`+IMPS.map(m=>`<option value="${m.id}" ${String(HDR.implemento_id)===String(m.id)?'selected':''}>${esc(m.nome)}${m.largura_trabalho?(' · '+m.largura_trabalho+'m'):''}</option>`).join('');
   $('app').innerHTML=`<div style="position:fixed;inset:0;display:flex;flex-direction:column;background:#0a0f18">
     <div style="flex:0 0 auto;display:flex;gap:8px;align-items:center;padding:8px 10px;background:#0d1117">
       <button class="btn s" id="voltar" style="width:auto;margin:0;padding:8px 14px">◀</button>
       <div style="flex:1;min-width:0;overflow:hidden;white-space:nowrap;text-overflow:ellipsis"><b>${esc(c.codigo)}</b> <span class="muted" style="font-size:13px">${esc(c.lote_nome||'')}</span></div>
     </div>
-    <div style="flex:0 0 auto;display:flex;gap:6px;padding:6px 10px;background:#0d1117">
-      <select id="h_maq" style="flex:1;min-width:0;font-size:14px;padding:9px">${maqOpt}</select>
-      <select id="h_imp" style="flex:1;min-width:0;font-size:14px;padding:9px">${impOpt}</select>
-      <input id="h_larg" type="number" inputmode="decimal" step="0.1" min="0" value="${HDR.largura_m||''}" title="Largura de trabalho (m)" placeholder="larg m" style="flex:0 0 86px;width:86px;font-size:14px;padding:9px;text-align:center">
+    <div style="flex:0 0 auto;display:flex;gap:8px;align-items:center;padding:6px 10px;background:#0d1117">
+      <div id="conj_sum" style="flex:1;min-width:0;font-size:14px;line-height:1.2;overflow:hidden;white-space:nowrap;text-overflow:ellipsis">${_conjResumo()}</div>
+      <button class="btn s" id="btn_conj" style="width:auto;margin:0;padding:9px 14px;white-space:nowrap">🔄 Trocar conjunto</button>
     </div>
     <div style="flex:1;position:relative;min-height:0">
       <canvas id="cv" style="width:100%;height:100%;display:block;touch-action:none"></canvas>
@@ -651,9 +645,7 @@ function renderTrabalho(){
     </div>
   </div>`;
   if($('voltar'))$('voltar').onclick=async()=>{ await _gpsLeave(); EXVIEW='menu'; render(); };
-  if($('h_maq'))$('h_maq').onchange=_trocarConjunto;
-  if($('h_imp'))$('h_imp').onchange=_trocarConjunto;
-  if($('h_larg')){ $('h_larg').onchange=_setLargura; $('h_larg').oninput=()=>{ const lf=$('h_larg'); const v=lf?num(lf.value):0; HDR.largura_m=(v&&v>0)?v:0; _VELC=null; _recalcCells(); _drawMapa(); _hud(); }; }
+  if($('btn_conj'))$('btn_conj').onclick=()=>_pedirConjunto();
   if($('btn_follow'))$('btn_follow').onclick=()=>{ VIEW.follow=!VIEW.follow; $('btn_follow').textContent=VIEW.follow?'🎯 Seguindo':'✋ Livre'; _drawMapa(); };
   if($('btn_cmode'))$('btn_cmode').onclick=()=>{ VIEW.mode=(VIEW.mode==='vel')?'cob':'vel'; $('btn_cmode').textContent=(VIEW.mode==='vel')?'🌡 Velocidade':'🎨 Cobertura'; const lg=$('vleg'); if(lg) lg.style.display=(VIEW.mode==='vel')?'flex':'none'; const cg=$('cleg'); if(cg) cg.style.display=(VIEW.mode==='vel')?'none':'flex'; _drawMapa(); };
   if($('btn_pmode'))$('btn_pmode').onclick=()=>{ GPS.paintAuto=!GPS.paintAuto; if(GPS.paintAuto) GPS.painting=false; render(); };
