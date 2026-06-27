@@ -259,8 +259,6 @@ async function _carregarDiasComanda(){
   CUR_DAYS=local.concat(base.filter(r=>!lsv[String(r.id)])).sort((a,b)=>String(b.data||'').localeCompare(String(a.data||'')));
   if(server===null) _st('⚠️ Offline — usando dados do aparelho','#e67e22');
   CUR_AREA=_unionAreaHa(CUR_DAYS);
-  const ult=CUR_DAYS[0];
-  HDR={ maquina_id:(ult&&ult.maquina_id)||'', implemento_id:(ult&&ult.implemento_id)||'', largura_m:(ult&&+ult.largura_m>0?+ult.largura_m:0) };
 }
 let _abrindoCmd=false;
 async function abrirComanda(cod){
@@ -450,7 +448,7 @@ function _onFix(pos){ const cur=pos.coords; GPS.acc=cur.accuracy;
     GPS.head=Math.atan2(E-last.E,No-last.N);
     if(_paintOn()) _markCells(last.E,last.N,E,No);
   } else if(cur.speed!=null&&cur.speed>=0) GPS.speed=cur.speed*3.6;
-  if(!SESS) SESS=_novaSessaoObj();   // sessão nasce no 1º ponto (não cria zerada ao só entrar/sair)
+  if(!SESS){ if(!_conjOK()){ GPS._lt=t; _hud(); _scheduleDraw(); return; } SESS=_novaSessaoObj(); }   // sessão só nasce com conjunto escolhido (não grava sem trator/implemento/largura)
   GPS._lt=t; GPS.pts.push({E,N:No,lat:cur.latitude,lon:cur.longitude,t,v:GPS.speed||0});
   _hud(); _scheduleDraw();
   if(GPS.watchId!=null){ if(GPS.pts.length%40===0) _saveGps(false); else if(GPS.pts.length%5===0) _touchSess(); }   // local a cada 5 fixes, sync a cada 40
@@ -538,8 +536,7 @@ async function _gpsEnter(){
   let found=CUR_DAYS.find(r=>r.data===DIA && String(r.funcionario_id)===String(OPER.id) && r.status!=='aprovada' && !r.hora_fim) || null;
   if(found){ const wasLocal=!!found.lid; SESS=await _ensureLocal(found); if(!wasLocal) await _carregarDiasComanda(); }
   else { SESS=null; }
-  HDR.maquina_id=(SESS&&SESS.maquina_id!=null?SESS.maquina_id:HDR.maquina_id)||''; HDR.implemento_id=(SESS&&SESS.implemento_id!=null?SESS.implemento_id:HDR.implemento_id)||'';
-  HDR.largura_m=(SESS&&+SESS.largura_m>0)?+SESS.largura_m:(+HDR.largura_m>0?+HDR.largura_m:_implLarg(HDR.implemento_id)||0);
+  _initHDR();   // conjunto perdura: sessão aberta de hoje > minha última sessão da comanda > última escolha salva (localStorage)
   _restoreSess(); _buildDaySegs();
   GPS.paintAuto=true; GPS.painting=false; VIEW={follow:true,zoom:1,cx:null,cy:null};
   try{ if(navigator.wakeLock) GPS.wake=await navigator.wakeLock.request('screen'); }catch(e){}
@@ -557,8 +554,8 @@ async function _gpsLeave(){
 async function _trocarConjunto(){
   const nm=$('h_maq')?$('h_maq').value:'', ni=$('h_imp')?$('h_imp').value:''; HDR.maquina_id=nm; HDR.implemento_id=ni;
   const lf=$('h_larg'); let lv=lf?num(lf.value):null; if((lv==null||lv<=0) && _implLarg(ni)>0){ lv=_implLarg(ni); if(lf) lf.value=lv; }   // largura vazia -> sugere a do cadastro do implemento (editável)
-  HDR.largura_m=lv>0?lv:0;
-  if(SESS && String(SESS.maquina_id||'')===String(nm) && String(SESS.implemento_id||'')===String(ni)){ _recalcCells(); _drawMapa(); _hud(); return; }
+  HDR.largura_m=lv>0?lv:0; _saveConj();   // lembra a escolha (perdura entre entradas)
+  if(SESS && String(SESS.maquina_id||'')===String(nm) && String(SESS.implemento_id||'')===String(ni)){ _VELC=null; _recalcCells(); _drawMapa(); _hud(); return; }
   if(!GPS.pts.length){   // nada pintado ainda: só troca o conjunto (lazy cria a sessão no 1º ponto com o conjunto novo)
     if(SESS){ SESS.maquina_id=nm?+nm:null; SESS.implemento_id=ni?+ni:null; SESS.largura_m=_widthM()||0; SESS.atualizado_em=new Date().toISOString(); SESS.dirty=true; SESS._v=(SESS._v||0)+1; try{ await _idbPut('sessions',SESS); }catch(e){} await _syncSession(SESS); _updPend(); }
     _recalcCells(); _drawMapa(); _hud(); return;
@@ -571,9 +568,47 @@ async function _trocarConjunto(){
   await _carregarDiasComanda(); _buildDaySegs(); _drawMapa(); _hud(); _st('Conjunto trocado — nova sessão começa ao mover','#27ae60');
   if(tinhaWatch){ try{ GPS.watchId=navigator.geolocation.watchPosition(_onFix,err=>_st('GPS: '+err.message,'#e67e22'),{enableHighAccuracy:true,maximumAge:0,timeout:15000}); }catch(e){} }
 }
-function _setLargura(){ const lf=$('h_larg'); const v=lf?num(lf.value):0; HDR.largura_m=(v&&v>0)?v:0;   // largura editada no tablet -> recalcula cobertura/área e grava na sessão
+function _setLargura(){ const lf=$('h_larg'); const v=lf?num(lf.value):0; HDR.largura_m=(v&&v>0)?v:0; _saveConj();   // largura editada no tablet -> recalcula cobertura/área e grava na sessão
   if(SESS){ SESS.largura_m=_widthM()||0; SESS.atualizado_em=new Date().toISOString(); SESS.dirty=true; SESS._v=(SESS._v||0)+1; try{ _idbPut('sessions',SESS); }catch(e){} if(navigator.onLine) _syncSession(SESS); _updPend(); }
   _VELC=null; _recalcCells(); _drawMapa(); _hud();
+}
+/* ===== conjunto (trator/implemento/largura): perdura entre entradas; obrigatório na 1ª vez ===== */
+function _conjOK(){ return !!(HDR.maquina_id && HDR.implemento_id && +HDR.largura_m>0); }
+function _remConj(){ try{ return JSON.parse(localStorage.getItem('conj_'+(OPER&&OPER.id))||'null'); }catch(e){ return null; } }
+function _saveConj(){ try{ if(OPER&&OPER.id) localStorage.setItem('conj_'+OPER.id, JSON.stringify({maquina_id:HDR.maquina_id||'', implemento_id:HDR.implemento_id||'', largura_m:+HDR.largura_m||0})); }catch(e){} }
+function _initHDR(){   // ordem de prioridade p/ o conjunto vigente
+  const mine=CUR_DAYS.find(r=>String(r.funcionario_id)===String(OPER.id));   // CUR_DAYS já vem ordenado por data desc -> minha sessão mais recente
+  const s=(SESS&&(SESS.maquina_id!=null||SESS.implemento_id!=null))?SESS:(mine||_remConj()||{});
+  HDR={ maquina_id:(s.maquina_id!=null?s.maquina_id:'')||'', implemento_id:(s.implemento_id!=null?s.implemento_id:'')||'', largura_m:(+s.largura_m>0?+s.largura_m:(_implLarg(s.implemento_id)||0)) };
+}
+function _pedirConjunto(){
+  const old=$('conjov'); if(old) old.remove();
+  const maqOpt=`<option value="">— escolha o trator —</option>`+MAQS.map(m=>`<option value="${m.id}" ${String(HDR.maquina_id)===String(m.id)?'selected':''}>${esc(m.nome)}</option>`).join('');
+  const impOpt=`<option value="">— escolha o implemento —</option>`+IMPS.map(m=>`<option value="${m.id}" ${String(HDR.implemento_id)===String(m.id)?'selected':''}>${esc(m.nome)}${m.largura_trabalho?(' · '+m.largura_trabalho+'m'):''}</option>`).join('');
+  const ov=document.createElement('div'); ov.id='conjov';
+  ov.style.cssText='position:fixed;inset:0;z-index:1200;background:#0d1117ee;display:flex;align-items:center;justify-content:center;padding:18px';
+  ov.innerHTML=`<div class="card" style="width:100%;max-width:440px;margin:0">
+    <div style="font-size:19px;font-weight:900;margin-bottom:4px">🚜 Conjunto de trabalho</div>
+    <div class="hint" style="margin:0 0 12px">Escolha o trator, o implemento e a largura de faixa. Fica salvo — só muda se você trocar lá em cima.</div>
+    <label>Trator / máquina</label><select id="cj_maq">${maqOpt}</select>
+    <div style="height:10px"></div>
+    <label>Implemento</label><select id="cj_imp">${impOpt}</select>
+    <div style="height:10px"></div>
+    <label>Largura de faixa (m)</label><input id="cj_larg" type="number" inputmode="decimal" step="0.1" min="0" value="${HDR.largura_m||''}" placeholder="ex.: 6.5">
+    <button class="btn g" id="cj_ok" style="margin-top:16px">Confirmar e trabalhar</button>
+    <button class="btn s" id="cj_back" style="margin-top:8px">Voltar às comandas</button>
+  </div>`;
+  document.body.appendChild(ov);
+  const upd=()=>{ const m=$('cj_maq').value, i=$('cj_imp').value, l=num($('cj_larg').value); $('cj_ok').disabled=!(m&&i&&l>0); };
+  $('cj_imp').onchange=()=>{ const i=$('cj_imp').value, lf=$('cj_larg'); if((!num(lf.value)||num(lf.value)<=0) && _implLarg(i)>0) lf.value=_implLarg(i); upd(); };
+  $('cj_maq').onchange=upd; $('cj_larg').oninput=upd; upd();
+  $('cj_back').onclick=async()=>{ ov.remove(); await _gpsLeave(); EXVIEW='menu'; render(); };
+  $('cj_ok').onclick=()=>{ const m=$('cj_maq').value, i=$('cj_imp').value, l=num($('cj_larg').value)||0; if(!(m&&i&&l>0)) return;
+    HDR.maquina_id=m; HDR.implemento_id=i; HDR.largura_m=l; _saveConj();
+    if(SESS){ SESS.maquina_id=+m; SESS.implemento_id=+i; SESS.largura_m=l; SESS.atualizado_em=new Date().toISOString(); SESS.dirty=true; SESS._v=(SESS._v||0)+1; try{ _idbPut('sessions',SESS); }catch(e){} if(navigator.onLine) _syncSession(SESS); _updPend(); }
+    if($('h_maq'))$('h_maq').value=m; if($('h_imp'))$('h_imp').value=i; if($('h_larg'))$('h_larg').value=l;
+    ov.remove(); _VELC=null; _recalcCells(); _drawMapa(); _hud();
+  };
 }
 let _gestBound=null;
 function _bindGestures(cv){ if(_gestBound===cv) return; _gestBound=cv;
@@ -623,7 +658,7 @@ function renderTrabalho(){
   if($('btn_cmode'))$('btn_cmode').onclick=()=>{ VIEW.mode=(VIEW.mode==='vel')?'cob':'vel'; $('btn_cmode').textContent=(VIEW.mode==='vel')?'🌡 Velocidade':'🎨 Cobertura'; const lg=$('vleg'); if(lg) lg.style.display=(VIEW.mode==='vel')?'flex':'none'; const cg=$('cleg'); if(cg) cg.style.display=(VIEW.mode==='vel')?'none':'flex'; _drawMapa(); };
   if($('btn_pmode'))$('btn_pmode').onclick=()=>{ GPS.paintAuto=!GPS.paintAuto; if(GPS.paintAuto) GPS.painting=false; render(); };
   if($('btn_paint'))$('btn_paint').onclick=()=>{ GPS.painting=!GPS.painting; render(); };
-  setTimeout(()=>{ _setupCanvas(); _drawMapa(); _hud(); },30);
+  setTimeout(()=>{ _setupCanvas(); _drawMapa(); _hud(); if(!_conjOK()) _pedirConjunto(); },30);   // 1ª vez (ou conjunto incompleto): janela obrigatória de escolha
 }
 async function concluirLote(){
   const today=CUR_DAYS.filter(r=>r.data===DIA && String(r.funcionario_id)===String(OPER.id) && (r.hora_fim || (Array.isArray(r.trajeto)&&r.trajeto.length) || r.area_ha));   // só as MINHAS de hoje
