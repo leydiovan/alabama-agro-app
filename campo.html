@@ -142,7 +142,7 @@ async function entrar(){
   DIA=hoje();
   try{ const {data:sd}=await SB.auth.getSession(); USER_EMAIL=(sd&&sd.session&&sd.session.user&&sd.session.user.email)||''; }catch(e){}   // getSession = local (não bate na rede)
   try{ if(!navigator.onLine) throw 0; const {data:f,error}=await _q(SB.from('funcionarios').select('id,nome,tipo,ativo').order('nome')); if(error) throw error; FUNCS=(f||[]).filter(x=>x.ativo!==false); _cacheSet('funcs',FUNCS); }catch(e){ FUNCS=_cacheGet('funcs',[]); }
-  try{ if(!navigator.onLine) throw 0; const {data:m,error}=await _q(SB.from('maquinas').select('id,nome,categoria,id_frota,consumo_ref,marca,modelo').order('nome')); if(error) throw error; MAQS=m||[]; _cacheSet('maqs',MAQS); }catch(e){ MAQS=_cacheGet('maqs',[]); }
+  try{ if(!navigator.onLine) throw 0; const {data:m,error}=await _q(SB.from('maquinas').select('id,nome,categoria,id_frota,consumo_ref,marca,modelo,faixa_m').order('nome')); if(error) throw error; MAQS=m||[]; _cacheSet('maqs',MAQS); }catch(e){ MAQS=_cacheGet('maqs',[]); }
   try{ if(!navigator.onLine) throw 0; const {data:i,error}=await _q(SB.from('implementos').select('id,nome,categoria,id_frota,largura_trabalho').order('nome')); if(error) throw error; IMPS=i||[]; _cacheSet('imps',IMPS); }catch(e){ IMPS=_cacheGet('imps',[]); }
   try{ if(!navigator.onLine) throw 0; const {data:l,error}=await _q(SB.from('lotes').select('nome,area,geom').order('nome')); if(error) throw error; LOTES=l||[]; _cacheSet('lotes',LOTES); }catch(e){ LOTES=_cacheGet('lotes',[]); }
   await carregarSafra();
@@ -182,10 +182,13 @@ async function carregarDia(){
 /* ---------- comandas do operador ---------- */
 function comandasDoOperador(){
   const base=COMANDAS.filter(c=>c.status!=='executada');   // aprovada/finalizada pelo admin some do tablet
-  const desig=base.filter(c=>(c.operadores||[]).map(Number).includes(OPER.id));
+  const desig=base.filter(c=>(c.operadores||[]).map(Number).includes(OPER.id) || (c.operadores_calda||[]).map(Number).includes(OPER.id));   // pulverização: operador da calda também vê a comanda
   if(desig.length || !VERTODAS) return desig;
   return base.slice();
 }
+function _ehPulvTerr(c){ c=c||CUR; return !!(c && c.perfil==='PULV' && /Terrestre/i.test(c.tipo_ativ||'')); }
+function _papelOper(){ if(!_ehPulvTerr()) return null; const pid=String(OPER&&OPER.id); const isP=(CUR.operadores||[]).map(String).includes(pid); const isC=(CUR.operadores_calda||[]).map(String).includes(pid); return isP?'pulverizador':(isC?'calda':'pulverizador'); }
+function _maqFaixa(id){ const m=MAQS.find(x=>String(x.id)===String(id)); return m&&m.faixa_m?+m.faixa_m:0; }
 
 /* ===================== RENDER ===================== */
 function render(){
@@ -488,7 +491,7 @@ function _restoreSess(){ GPS.pts=[]; GPS.cells=new Set(); GPS.areaHa=0; GPS.spee
 /* ===== fila offline (outbox): sessões/abastecimentos locais 1º, sincroniza qdo tiver rede ===== */
 let PEND=0; const _SYNCING=new Set();   // lids em sincronização (evita 2 inserts -> sessão duplicada)
 function _lid(){ return 'L'+Date.now().toString(36)+Math.random().toString(36).slice(2,7); }
-function _sessReg(s){ return { comanda_codigo:s.comanda_codigo, safra:s.safra, funcionario_id:s.funcionario_id, lote_nome:s.lote_nome, data:s.data, maquina_id:s.maquina_id, implemento_id:s.implemento_id, largura_m:s.largura_m||0, hora_inicio:s.hora_inicio, hora_fim:s.hora_fim||null, status:s.status, trajeto:s.trajeto||[], area_ha:s.area_ha||0, concluiu_lote:!!s.concluiu_lote, enviado_por:s.enviado_por||null, atualizado_em:s.atualizado_em||new Date().toISOString() }; }
+function _sessReg(s){ return { comanda_codigo:s.comanda_codigo, safra:s.safra, funcionario_id:s.funcionario_id, lote_nome:s.lote_nome, data:s.data, maquina_id:s.maquina_id, implemento_id:s.implemento_id, largura_m:s.largura_m||0, papel:s.papel||null, tanques:s.tanques||[], hora_inicio:s.hora_inicio, hora_fim:s.hora_fim||null, status:s.status, trajeto:s.trajeto||[], area_ha:s.area_ha||0, concluiu_lote:!!s.concluiu_lote, enviado_por:s.enviado_por||null, atualizado_em:s.atualizado_em||new Date().toISOString() }; }
 function _abastReg(a){ return { comanda_codigo:a.comanda_codigo, safra:a.safra, funcionario_id:a.funcionario_id, maquina_id:a.maquina_id, lote_nome:a.lote_nome, litros:a.litros, quando:a.quando, enviado_por:a.enviado_por||null }; }
 function _regTemTrabalho(s){ const t=s&&s.trajeto; if(!Array.isArray(t)||t.length<2) return false; if((+s.area_ha||0)>=0.01) return true;   // trabalho REAL a partir do registro (vale p/ a fila/IDB)
   let d=0; for(let i=1;i<t.length;i++){ const a=t[i-1],b=t[i]; if(a&&b&&a[0]!=null&&b[0]!=null){ const u=latLngToUTM(a[0],a[1],23),w=latLngToUTM(b[0],b[1],23); d+=Math.hypot(w[0]-u[0],w[1]-u[1]); if(d>=25) return true; } } return false; }
@@ -524,7 +527,7 @@ async function _saveGps(final){ if(!SESS) return;
   SESS.dirty=true; SESS._v=(SESS._v||0)+1; try{ await _idbPut('sessions',SESS); }catch(e){}   // local primeiro (sobrevive offline)
   await _syncSession(SESS); _updPend();
 }
-function _novaSessaoObj(){ const lid=_lid(); return { lid, id:lid, serverId:null, dirty:true, _v:1, comanda_codigo:CUR.codigo, safra:SAFRA, funcionario_id:OPER.id, lote_nome:CUR.lote_nome||null, data:DIA, maquina_id:HDR.maquina_id?+HDR.maquina_id:null, implemento_id:HDR.implemento_id?+HDR.implemento_id:null, largura_m:_widthM()||0, hora_inicio:nowHM(), hora_fim:null, status:'aberto', trajeto:[], area_ha:0, concluiu_lote:false, enviado_por:USER_EMAIL||null, atualizado_em:new Date().toISOString() }; }
+function _novaSessaoObj(){ const lid=_lid(); return { lid, id:lid, serverId:null, dirty:true, _v:1, comanda_codigo:CUR.codigo, safra:SAFRA, funcionario_id:OPER.id, lote_nome:CUR.lote_nome||null, data:DIA, maquina_id:HDR.maquina_id?+HDR.maquina_id:null, implemento_id:HDR.implemento_id?+HDR.implemento_id:null, largura_m:_widthM()||0, papel:_papelOper(), tanques:[], hora_inicio:nowHM(), hora_fim:null, status:'aberto', trajeto:[], area_ha:0, concluiu_lote:false, enviado_por:USER_EMAIL||null, atualizado_em:new Date().toISOString() }; }
 async function _novaSessao(){            // (mantida p/ compat; o fluxo normal cria preguiçoso no 1º ponto)
   const s=_novaSessaoObj();
   try{ await _idbPut('sessions',s); }catch(e){}
@@ -558,7 +561,9 @@ async function _gpsLeave(){
   SESS=null; await _carregarDiasComanda();
   if(navigator.onLine) _syncAll();   // empurra a fila ao sair da tela de trabalho
 }
-function _conjResumo(){ const t=HDR.maquina_id?_maqNome(HDR.maquina_id):'—'; const im=HDR.implemento_id?(_impNome(HDR.implemento_id)||'—'):'—'; const lg=+HDR.largura_m>0?(' · '+String(HDR.largura_m).replace('.',',')+' m'):''; return '<b>🚜 '+esc(t)+'</b><span class="muted"> · '+esc(im)+lg+'</span>'; }
+function _conjResumo(){ const t=HDR.maquina_id?_maqNome(HDR.maquina_id):'—';
+  if(_ehPulvTerr()){ const lg=+HDR.largura_m>0?(' · faixa '+String(HDR.largura_m).replace('.',',')+' m'):''; return '<b>🛰 '+esc(t)+'</b><span class="muted">'+lg+'</span>'; }
+  const im=HDR.implemento_id?(_impNome(HDR.implemento_id)||'—'):'—'; const lg=+HDR.largura_m>0?(' · '+String(HDR.largura_m).replace('.',',')+' m'):''; return '<b>🚜 '+esc(t)+'</b><span class="muted"> · '+esc(im)+lg+'</span>'; }
 function _updConjSum(){ const e=$('conj_sum'); if(e) e.innerHTML=_conjResumo(); }
 function _aplicarConjunto(){   // aplica o HDR atual à sessão; se já tem trabalho pintado, fecha a anterior e a nova nasce no 1º ponto
   HDROP=_donoHDR();   // o operador atual acabou de escolher nesta comanda -> o HDR é dele+desta comanda
@@ -580,19 +585,46 @@ function _aplicarConjunto(){   // aplica o HDR atual à sessão; se já tem trab
   })();
 }
 /* ===== conjunto (trator/implemento/largura): perdura entre entradas; obrigatório na 1ª vez ===== */
-function _conjOK(){ return !!(HDR.maquina_id && HDR.implemento_id && +HDR.largura_m>0); }
+function _conjOK(){ return _ehPulvTerr() ? !!(HDR.maquina_id && +HDR.largura_m>0) : !!(HDR.maquina_id && HDR.implemento_id && +HDR.largura_m>0); }
 function _donoHDR(){ return (OPER&&OPER.id)+'|'+(CUR&&CUR.codigo); }   // o conjunto perdura por OPERADOR + COMANDA (não vaza entre comandas)
 function _remConj(){ try{ return JSON.parse(localStorage.getItem('conj_'+_donoHDR())||'null'); }catch(e){ return null; } }
 function _saveConj(){ try{ if(OPER&&OPER.id&&CUR&&CUR.codigo) localStorage.setItem('conj_'+_donoHDR(), JSON.stringify({maquina_id:HDR.maquina_id||'', implemento_id:HDR.implemento_id||'', largura_m:+HDR.largura_m||0})); }catch(e){} }
-function _setHDRde(s){ s=s||{}; HDR={ maquina_id:s.maquina_id!=null?s.maquina_id:'', implemento_id:s.implemento_id!=null?s.implemento_id:'', largura_m:(+s.largura_m>0?+s.largura_m:(_implLarg(s.implemento_id)||0)) }; HDROP=HDR.maquina_id?_donoHDR():null; }   // marca o dono (operador+comanda) do HDR
+function _setHDRde(s){ s=s||{}; const maq=s.maquina_id!=null?s.maquina_id:'';
+  if(_ehPulvTerr()){ HDR={ maquina_id:maq||'', implemento_id:'', largura_m:(_maqFaixa(maq)|| (+s.largura_m||0)) }; }   // pulv: faixa vem da máquina (cadastro)
+  else { HDR={ maquina_id:maq||'', implemento_id:s.implemento_id!=null?s.implemento_id:'', largura_m:(+s.largura_m>0?+s.largura_m:(_implLarg(s.implemento_id)||0)) }; }
+  HDROP=HDR.maquina_id?_donoHDR():null; }   // marca o dono (operador+comanda) do HDR
 function _initHDR(){   // ordem de prioridade p/ o conjunto vigente do OPERADOR+COMANDA atuais (perdura — só zera de propósito)
   if(SESS && SESS.maquina_id!=null){ _setHDRde(SESS); return; }              // 1. sessão aberta de hoje (retomada)
   if(_conjOK() && HDROP===_donoHDR()) return;                                // 2. já escolhido por ESTE operador NESTA comanda -> NÃO mexe (não vaza de outro operador nem de outra comanda)
   const mine=CUR_DAYS.find(r=>String(r.funcionario_id)===String(OPER.id) && r.maquina_id!=null);   // 3. minha sessão COMPLETA mais recente DESTA comanda (CUR_DAYS é da comanda atual)
   _setHDRde(mine||_remConj()||{});                                           // 4. última escolha salva p/ ESTE operador+comanda (localStorage); senão vazio -> modal obrigatório
 }
+function _pedirPulverizador(){
+  const old=$('conjov'); if(old) old.remove();
+  const pulvs=MAQS.filter(m=>/pulveriz/i.test(m.categoria||'')); const lst=pulvs.length?pulvs:MAQS;
+  const maqOpt=`<option value="">— escolha o pulverizador —</option>`+lst.map(m=>`<option value="${m.id}" ${String(HDR.maquina_id)===String(m.id)?'selected':''}>${esc(m.nome)}${m.faixa_m?(' · faixa '+m.faixa_m+'m'):''}</option>`).join('');
+  const ov=document.createElement('div'); ov.id='conjov';
+  ov.style.cssText='position:fixed;inset:0;z-index:1200;background:#0d1117ee;display:flex;align-items:center;justify-content:center;padding:18px';
+  ov.innerHTML=`<div class="card" style="width:100%;max-width:440px;margin:0">
+    <div style="font-size:19px;font-weight:900;margin-bottom:4px">🛰 Pulverizador</div>
+    <div class="hint" style="margin:0 0 12px">Escolha a máquina — a faixa efetiva vem do cadastro. Fica salvo; só muda em 🔄 Trocar máquina.</div>
+    <label>Máquina (pulverizador)</label><select id="cj_maq">${maqOpt}</select>
+    <div style="height:10px"></div>
+    <label>Faixa efetiva (m)</label><input id="cj_larg" type="number" inputmode="decimal" step="0.1" min="0" value="${HDR.largura_m||''}" placeholder="vem do cadastro da máquina">
+    <div class="hint" id="cj_fh" style="margin:6px 0 0"></div>
+    <button class="btn g" id="cj_ok" style="margin-top:16px">Confirmar e trabalhar</button>
+    <button class="btn s" id="cj_back" style="margin-top:8px">Voltar às comandas</button>
+  </div>`;
+  document.body.appendChild(ov);
+  const upd=()=>{ const m=$('cj_maq').value, l=num($('cj_larg').value); $('cj_ok').disabled=!(m&&l>0); const h=$('cj_fh'); if(h) h.textContent=(m&&!(l>0))?'⚠ Sem faixa no cadastro desta máquina — informe a faixa (ou cadastre).':''; };
+  $('cj_maq').onchange=()=>{ const f=_maqFaixa($('cj_maq').value); if(f>0) $('cj_larg').value=f; upd(); };
+  $('cj_larg').oninput=upd; upd();
+  $('cj_back').onclick=async()=>{ ov.remove(); await _gpsLeave(); EXVIEW='menu'; render(); };
+  $('cj_ok').onclick=()=>{ const m=$('cj_maq').value, l=num($('cj_larg').value)||0; if(!(m&&l>0)) return; HDR.maquina_id=m; HDR.implemento_id=''; HDR.largura_m=l; ov.remove(); _aplicarConjunto(); };
+}
 function _pedirConjunto(){
   const old=$('conjov'); if(old) old.remove();
+  if(_ehPulvTerr()) return _pedirPulverizador();
   const maqOpt=`<option value="">— escolha o trator —</option>`+MAQS.map(m=>`<option value="${m.id}" ${String(HDR.maquina_id)===String(m.id)?'selected':''}>${esc(m.nome)}</option>`).join('');
   const impOpt=`<option value="">— escolha o implemento —</option>`+IMPS.map(m=>`<option value="${m.id}" ${String(HDR.implemento_id)===String(m.id)?'selected':''}>${esc(m.nome)}${m.largura_trabalho?(' · '+m.largura_trabalho+'m'):''}</option>`).join('');
   const ov=document.createElement('div'); ov.id='conjov';
@@ -618,6 +650,38 @@ function _pedirConjunto(){
     ov.remove(); _aplicarConjunto();   // aplica (fecha sessão antiga se já tinha trabalho) + salva + redesenha
   };
 }
+/* ===== ciclo de TANQUES (pulverizador) — em SESS.tanques [{seq,ini,fim,litros,cheio,vazao}] ===== */
+function _tanquesArr(){ return (SESS&&Array.isArray(SESS.tanques))?SESS.tanques:[]; }
+function _tanqueAberto(){ const a=_tanquesArr(); for(let i=a.length-1;i>=0;i--){ if(a[i] && a[i].fim==null) return a[i]; } return null; }
+function _persistTanques(){ if(!SESS) return; SESS.atualizado_em=new Date().toISOString(); SESS.dirty=true; SESS._v=(SESS._v||0)+1; try{ _idbPut('sessions',SESS); }catch(e){} if(navigator.onLine) _syncSession(SESS); _updPend(); }
+function _abrirTanque(litros,cheio,vazao){ if(!SESS) SESS=_novaSessaoObj(); if(!Array.isArray(SESS.tanques)) SESS.tanques=[]; SESS.tanques.push({seq:SESS.tanques.length+1, ini:Date.now(), fim:null, litros:+litros||0, cheio:!!cheio, vazao:+vazao||0}); _persistTanques(); render(); }
+function _iniciarTanque(){
+  const old=$('tqov'); if(old) old.remove();
+  const cap=+(CUR.capacidade)||0, vz=+(CUR.taxa)||0;
+  const ov=document.createElement('div'); ov.id='tqov';
+  ov.style.cssText='position:fixed;inset:0;z-index:1300;background:#0d1117ee;display:flex;align-items:center;justify-content:center;padding:18px';
+  ov.innerHTML=`<div class="card" style="width:100%;max-width:420px;margin:0">
+    <div style="font-size:19px;font-weight:900;margin-bottom:4px">⛽ Iniciar tanque ${_tanquesArr().length+1}</div>
+    <div class="hint" style="margin:0 0 12px">Tanque cheio usa a capacidade da comanda${cap?(' ('+cap+' L)'):''}. No último, se não for cheio, informe os litros.</div>
+    <div class="fl" style="margin:0 0 10px"><input type="checkbox" id="tq_cheio" checked><label for="tq_cheio">Tanque cheio${cap?(' — '+cap+' L'):''}</label></div>
+    <div id="tq_parc" style="display:none"><label>Litros do tanque</label><input id="tq_litros" type="number" inputmode="decimal" step="1" min="0" placeholder="ex.: 1500"><div style="height:10px"></div></div>
+    <label>Vazão (L/ha)</label><input id="tq_vazao" type="number" inputmode="decimal" step="0.1" min="0" value="${vz||''}" placeholder="ex.: 100">
+    <button class="btn g" id="tq_ok" style="margin-top:16px">Iniciar</button>
+    <button class="btn s" id="tq_cancel" style="margin-top:8px">Cancelar</button>
+  </div>`;
+  document.body.appendChild(ov);
+  const sync=()=>{ $('tq_parc').style.display=$('tq_cheio').checked?'none':'block'; };
+  $('tq_cheio').onchange=sync; sync();
+  $('tq_cancel').onclick=()=>ov.remove();
+  $('tq_ok').onclick=()=>{ const cheio=$('tq_cheio').checked; const litros=cheio?cap:(num($('tq_litros').value)||0); const vazao=num($('tq_vazao').value)||0;
+    if(!cheio && litros<=0){ _st('Informe os litros do tanque.','#e67e22'); return; }
+    ov.remove(); _abrirTanque(litros,cheio,vazao); };
+}
+function _finalizarTanque(){
+  const t=_tanqueAberto(); if(!t) return;
+  if(!confirm('Finalizar o tanque '+t.seq+'?')) return;   // confirma p/ não fechar sem querer
+  t.fim=Date.now(); _persistTanques(); render();
+}
 let _gestBound=null;
 function _bindGestures(cv){ if(_gestBound===cv) return; _gestBound=cv;
   let mode=null,startD=1,startZoom=1,lx=0,ly=0,tx=0,ty=0,moved=0,tapTS=0;
@@ -632,6 +696,11 @@ function _bindGestures(cv){ if(_gestBound===cv) return; _gestBound=cv;
 }
 function renderTrabalho(){
   const c=CUR; const manual=!GPS.paintAuto;
+  if(_ehPulvTerr() && _papelOper()==='calda'){   // Fase 3: tela da calda ainda não pronta
+    $('app').innerHTML=`<div class="center" style="margin-top:46px"><div class="big">🧪</div><h1 style="font-size:22px;margin:10px 0">Calda / pré-mistura</h1><div class="muted" style="max-width:340px;margin:0 auto">A tela da calda (preparar → calda pronta → abastecer) chega na próxima atualização.</div><button class="btn g huge" id="volta" style="max-width:320px;margin:22px auto 0">Voltar às comandas</button></div>`;
+    if($('volta'))$('volta').onclick=async()=>{ await _gpsLeave(); EXVIEW='menu'; render(); };
+    return;
+  }
   $('app').innerHTML=`<div style="position:fixed;inset:0;display:flex;flex-direction:column;background:#0a0f18">
     <div style="flex:0 0 auto;display:flex;gap:8px;align-items:center;padding:8px 10px;background:#0d1117">
       <button class="btn s" id="voltar" style="width:auto;margin:0;padding:8px 14px">◀</button>
@@ -639,7 +708,7 @@ function renderTrabalho(){
     </div>
     <div style="flex:0 0 auto;display:flex;gap:8px;align-items:center;padding:6px 10px;background:#0d1117">
       <div id="conj_sum" style="flex:1;min-width:0;font-size:14px;line-height:1.2;overflow:hidden;white-space:nowrap;text-overflow:ellipsis">${_conjResumo()}</div>
-      <button class="btn s" id="btn_conj" style="width:auto;margin:0;padding:9px 14px;white-space:nowrap">🔄 Trocar conjunto</button>
+      <button class="btn s" id="btn_conj" style="width:auto;margin:0;padding:9px 14px;white-space:nowrap">🔄 ${_ehPulvTerr()?'Trocar máquina':'Trocar conjunto'}</button>
     </div>
     <div style="flex:1;position:relative;min-height:0">
       <canvas id="cv" style="width:100%;height:100%;display:block;touch-action:none"></canvas>
@@ -654,9 +723,11 @@ function renderTrabalho(){
       <div id="cleg" style="display:${(VIEW.mode==='vel')?'none':'flex'};position:absolute;left:10px;bottom:10px;gap:10px;align-items:center;background:#0d1117cc;border-radius:8px;padding:6px 9px;font-size:11px;color:#fff"><span style="color:#ffd24a">▮ eu hoje</span><span style="color:#58a6ff">▮ eu (out. dias)</span><span style="color:#bc8cff">▮ outro operador</span></div>
       ${_polyUTM()?'':'<div style="position:absolute;bottom:46px;left:10px;background:#3a1d00;color:#ffc107;border-radius:8px;padding:6px 10px;font-size:12px">Talhão sem poligonal</div>'}
     </div>
+    ${(_ehPulvTerr()&&_papelOper()==='pulverizador')?`<div style="flex:0 0 auto;padding:8px 10px;background:#0d1117">${_tanqueAberto()?`<button class="btn k huge" id="btn_tanque" style="margin:0">■ Finalizar tanque ${_tanqueAberto().seq}</button>`:`<button class="btn g huge" id="btn_tanque" style="margin:0">▶ Iniciar tanque ${_tanquesArr().length+1}</button>`}</div>`:''}
   </div>`;
   if($('voltar'))$('voltar').onclick=async()=>{ await _gpsLeave(); EXVIEW='menu'; render(); };
   if($('btn_conj'))$('btn_conj').onclick=()=>_pedirConjunto();
+  if($('btn_tanque'))$('btn_tanque').onclick=()=>{ const ta=_tanqueAberto(); if(ta) _finalizarTanque(); else _iniciarTanque(); };
   if($('btn_follow'))$('btn_follow').onclick=()=>{ VIEW.follow=!VIEW.follow; $('btn_follow').textContent=VIEW.follow?'🎯 Seguindo':'✋ Livre'; _drawMapa(); };
   if($('btn_cmode'))$('btn_cmode').onclick=()=>{ VIEW.mode=(VIEW.mode==='vel')?'cob':'vel'; $('btn_cmode').textContent=(VIEW.mode==='vel')?'🌡 Velocidade':'🎨 Cobertura'; const lg=$('vleg'); if(lg) lg.style.display=(VIEW.mode==='vel')?'flex':'none'; const cg=$('cleg'); if(cg) cg.style.display=(VIEW.mode==='vel')?'none':'flex'; _drawMapa(); };
   if($('btn_pmode'))$('btn_pmode').onclick=()=>{ GPS.paintAuto=!GPS.paintAuto; if(GPS.paintAuto) GPS.painting=false; render(); };
