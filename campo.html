@@ -511,7 +511,10 @@ async function _syncAll(){ if(!navigator.onLine||!SB) return; const act=SESS&&SE
   }catch(e){} await _updPend();
 }
 function _touchSess(){ if(!SESS) return; SESS.trajeto=GPS.pts.map(p=>[+p.lat.toFixed(6),+p.lon.toFixed(6),p.t||0,+(p.v||0).toFixed(1)]); SESS.area_ha=+GPS.areaHa.toFixed(2); SESS.atualizado_em=new Date().toISOString(); SESS.dirty=true; SESS._v=(SESS._v||0)+1; _idbPut('sessions',SESS); }   // só local (a cada poucos fixes) — sobrevive a crash
+function _distTotalM(){ let d=0; for(let i=1;i<GPS.pts.length;i++) d+=Math.hypot(GPS.pts[i].E-GPS.pts[i-1].E, GPS.pts[i].N-GPS.pts[i-1].N); return d; }
+function _sessTemTrabalho(){ return GPS.pts.length>=2 && ((+GPS.areaHa||0)>=0.01 || _distTotalM()>=25); }   // trabalho REAL: >=2 pontos E (área>=0,01 ha OU andou >=25 m) — corta entra/sai e oscilação do GPS
 async function _saveGps(final){ if(!SESS) return;
+  if(final && !_sessTemTrabalho()){ if(!SESS.serverId){ try{ await _idbDel('sessions',SESS.lid); }catch(e){} } return; }   // sem trabalho real -> não grava nem envia (nada de movimentação fantasma)
   SESS.trajeto=GPS.pts.map(p=>[+p.lat.toFixed(6),+p.lon.toFixed(6),p.t||0,+(p.v||0).toFixed(1)]);
   SESS.area_ha=+GPS.areaHa.toFixed(2); SESS.atualizado_em=new Date().toISOString();
   if(final){ SESS.hora_fim=nowHM(); SESS.status='enviada'; }
@@ -547,8 +550,8 @@ async function _gpsLeave(){
   if(GPS.watchId!=null){ try{navigator.geolocation.clearWatch(GPS.watchId);}catch(e){} GPS.watchId=null; }
   try{ if(GPS.wake){ await GPS.wake.release(); GPS.wake=null; } }catch(e){}
   GPS.speed=0;
-  if(SESS && GPS.pts.length>=2) await _saveGps(true);                                  // teve trabalho -> fecha (enviada)
-  else if(SESS && SESS.lid){ try{ await _idbDel('sessions',SESS.lid); }catch(e){} }    // vazia (0-1 ponto) -> descarta, nada de movimentação zerada
+  if(SESS && _sessTemTrabalho()) await _saveGps(true);                                          // teve trabalho REAL -> fecha (enviada)
+  else if(SESS && SESS.lid && !SESS.serverId){ try{ await _idbDel('sessions',SESS.lid); }catch(e){} }   // vazia/minúscula e ainda não enviada -> descarta, nada de movimentação fantasma
   SESS=null; await _carregarDiasComanda();
   if(navigator.onLine) _syncAll();   // empurra a fila ao sair da tela de trabalho
 }
