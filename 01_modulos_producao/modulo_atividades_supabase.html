@@ -1269,6 +1269,14 @@ function _buildConjuntos(rows, totDiesel){
     return { trator:_maqLabel(o.maq)||'—', implemento:_impLabel(o.imp)||'—', operador:Object.keys(o.opers).map(id=>APC.fun[id]||('#'+id)).join(', ')||'—', inicio:o.d0?fmtData(o.d0):'', fim:o.d1?fmtData(o.d1):'', horas:+(o.horas||0).toFixed(4), area:o.area, diesel:+(d||0).toFixed(1) }; });
 }
 function _totConj(conjuntos){ return { area:+(conjuntos.reduce((s,o)=>s+(+o.area||0),0)).toFixed(2), horas:+(conjuntos.reduce((s,o)=>s+(+o.horas||0),0)).toFixed(4), diesel:+(conjuntos.reduce((s,o)=>s+(+o.diesel||0),0)).toFixed(1) }; }
+function _ajustarArea(conjuntos, modo, areaPlan){   // modo 'comanda' -> escala a área dos conjuntos p/ somar a área planejada (rateio proporcional à área medida; fallback horas; fallback igual). 'campo' = medido (sem ajuste)
+  if(modo!=='comanda' || !(+areaPlan>0) || !conjuntos.length) return conjuntos;
+  const sA=conjuntos.reduce((s,o)=>s+(+o.area||0),0), sH=conjuntos.reduce((s,o)=>s+(+o.horas||0),0), n=conjuntos.length;
+  const out=conjuntos.map(o=>{ let f; if(sA>0) f=(+o.area||0)/sA; else if(sH>0) f=(+o.horas||0)/sH; else f=1/n; return Object.assign({}, o, {area:+(areaPlan*f).toFixed(2)}); });
+  const dif=+(areaPlan - out.reduce((s,o)=>s+o.area,0)).toFixed(2);   // fecha o total exato (joga o resíduo de arredondamento na maior linha)
+  if(dif!==0){ let mi=0; for(let i=1;i<out.length;i++) if(out[i].area>out[mi].area) mi=i; out[mi].area=+(out[mi].area+dif).toFixed(2); }
+  return out;
+}
 /* monta a tabela AO VIVO do banco (execucao_campo) pela ID da comanda — não depende de re-aprovar */
 async function _carregarConjLive(codigo, safra, elId){
   const el=document.getElementById(elId); if(!el) return;
@@ -1280,7 +1288,9 @@ async function _carregarConjLive(codigo, safra, elId){
   }catch(e){ if(document.getElementById(elId)) el.innerHTML='<div class="hint">Erro ao buscar os dados do campo.</div>'; return; }
   if(!document.getElementById(elId)) return;
   if(!rows.length){ el.innerHTML='<div class="hint">Nenhum dado de campo registrado nesta comanda.</div>'; return; }
-  const conjuntos=_buildConjuntos(rows, totDiesel);
+  const _cc=(S.comandas||[]).find(x=>String(x.codigo)===String(codigo)); const _camp=(_cc&&_cc.geralRetorno&&_cc.geralRetorno.campo)||{};
+  const _modoArea=_camp.area_modo||'campo'; const _areaPlan=(+_camp.area_planejada>0)?+_camp.area_planejada:(_cc?areaEfetivaC(_cc):0);
+  const conjuntos=_ajustarArea(_buildConjuntos(rows, totDiesel), _modoArea, _areaPlan);   // reflete o modo de área escolhido na aprovação
   const tot=_totConj(conjuntos);                                  // total = soma das linhas (consistente)
   const comMaq=rows.filter(r=>r.maquina_id!=null);                // sessões reais (com trator); esconde fantasma sem máquina
   const opers=[...new Set(comMaq.map(r=>APC.fun[r.funcionario_id]).filter(Boolean))].join(', ');
@@ -3011,6 +3021,7 @@ function _apcUTM(lat,lon,zona){
 }
 function _apcLoteRing(nome){ const l=(S.lotes||[]).find(x=>x.nome===nome); const g=l&&l.geom; return (g&&Array.isArray(g.ring)&&g.ring.length>2)?g.ring:null; }
 let APCMAP={}, _APCEXTRA={};   // estado do mapa por comanda: {zoom, ox, oy, sel, mode, _prep}; _APCEXTRA = grupos fora da fila (visualizador)
+let APCAREA={};   // modo da área por comanda na aprovação: 'campo' (medido GPS, padrão) | 'comanda' (área planejada rateada)
 function _apcState(key){ return APCMAP[key]||(APCMAP[key]={zoom:1,ox:0,oy:0,sel:null,mode:'cob'}); }
 function _apcVelColor(v){ if(v==null||isNaN(v)) return 'rgba(170,170,170,.6)'; const c=Math.max(0,Math.min(15,+v)); const h=240-(c/15)*240; return 'hsla('+h.toFixed(0)+',85%,50%,.75)'; }
 function _apcPrep(g){
@@ -3095,6 +3106,10 @@ function renderAprovCampo(){
     const c=(g.safra===SAFRA)?S.comandas.find(x=>x.codigo===g.codigo):null; const r0=g.rows[0];
     const tipo=c?c.tipoAtiv:''; const lote=c?c.loteNome:(r0?r0.lote_nome:''); const tot=_apcResumo(g);
     const mkey=g.codigo+'|'+(g.safra||''); const mst=_apcState(mkey);
+    const areaPlan=c?areaEfetivaC(c):(areaDe(r0&&r0.lote_nome)||0);   // área planejada (lote total ou parcial em ha)
+    const areaMed=_totConj(_buildConjuntos(g.rows,0)).area;            // área medida (união GPS)
+    const amodo=APCAREA[mkey]||'campo';                                // padrão: medida no campo
+    const areaEf=(amodo==='comanda'&&areaPlan>0)?areaPlan:areaMed;
     const linhas=g.rows.map(r=>{
       const h=_apcDuracaoH(r);
       return `<tr data-apcsel="${r.id}" data-apckey="${_apcEsc(mkey)}" style="cursor:pointer${String(mst.sel)===String(r.id)?';background:#16324a':''}" title="Clique p/ destacar no mapa">
@@ -3111,10 +3126,15 @@ function renderAprovCampo(){
       <div style="flex:1 1 440px;min-width:300px;display:flex;flex-direction:column">
         <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">
           <div><h2 style="margin:0">${_apcEsc(g.codigo)}${tipo?(' · '+_apcEsc(tipo)):''}</h2>
-            <div class="sub" style="margin:2px 0 0">Lote ${_apcEsc(lote||'—')} · safra ${_apcEsc(g.safra||'—')} · ${tot.dias} dia(s) · ${tot.area?(_apcFmt(tot.area)+' ha'):'—'} · ${tot.horas?(_fmtDur(tot.horas)+' trabalho'):'—'} · ${tot.diesel?(_apcFmt(tot.diesel)+' L diesel'):'—'}${tot.concl?' · <b style="color:#2ea043">conclui o lote</b>':''}</div></div>
+            <div class="sub" style="margin:2px 0 0">Lote ${_apcEsc(lote||'—')} · safra ${_apcEsc(g.safra||'—')} · ${tot.dias} dia(s) · ${areaEf?(_apcFmt(areaEf)+' ha'+(amodo==='comanda'?' (planejada)':'')):'—'} · ${tot.horas?(_fmtDur(tot.horas)+' trabalho'):'—'} · ${tot.diesel?(_apcFmt(tot.diesel)+' L diesel'):'—'}${tot.concl?' · <b style="color:#2ea043">conclui o lote</b>':''}</div></div>
           <div style="display:flex;gap:6px;flex-wrap:wrap"><button class="btn" data-apcver="${_apcEsc(g.codigo)}|${_apcEsc(g.safra||'')}">👁 Ver comanda</button><button class="btn success" data-apcok="${_apcEsc(g.codigo)}|${_apcEsc(g.safra||'')}">✓ Aprovar comanda</button></div>
         </div>
         ${_apcOperStatus(g, c)}
+        <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin:8px 2px 0">
+          <span class="sub">Área a registrar:</span>
+          <button class="btn sm ${amodo==='campo'?'success':''}" data-apcarea="${_apcEsc(mkey)}|campo">📍 Medida no campo: ${_apcFmt(areaMed)} ha</button>
+          <button class="btn sm ${amodo==='comanda'?'success':''}" data-apcarea="${_apcEsc(mkey)}|comanda" ${areaPlan>0?'':'disabled'} title="${areaPlan>0?'Rateia as pinturas p/ fechar a área planejada':'Sem área planejada cadastrada'}">📋 Planejada: ${areaPlan>0?_apcFmt(areaPlan)+' ha':'—'}</button>
+        </div>
         <table class="tbl" style="margin-top:8px"><thead><tr><th>Data</th><th>Operador</th><th>Máquina</th><th>Atividade</th><th style="text-align:right">Área</th><th></th></tr></thead><tbody>${linhas}</tbody></table>
         ${abast}
       </div>
@@ -3138,6 +3158,7 @@ function bindAprovCampo(){
   if(!IS_ADMIN) return;
   if(APC===null){ (async()=>{ await _loadAprovCampo(); render(); })(); return; }
   $$('[data-apcok]').forEach(b=>b.onclick=()=>aprovarComandaCampo(b.dataset.apcok));
+  $$('[data-apcarea]').forEach(b=>b.onclick=()=>{ const sp=String(b.dataset.apcarea).split('|'); APCAREA[sp[0]+'|'+(sp[1]||'')]=sp[2]; render(); });   // troca modo de área (campo/comanda) e re-renderiza
   $$('[data-apcdel]').forEach(b=>b.onclick=()=>descartarExecCampo(b.dataset.apcdel));
   $$('[data-apcver]').forEach(b=>b.onclick=()=>{ const sp=String(b.dataset.apcver).split('|'); _apcVerComanda(sp[0],sp[1]||''); });
   _apcBindMap(document,true);
@@ -3191,13 +3212,17 @@ async function aprovarComandaCampo(key){
     allRows.sort((a,b)=>String((a.data||'')+(a.hora_inicio||'')).localeCompare(String((b.data||'')+(b.hora_inicio||''))));
     const totDiesel=(g.abast||[]).reduce((s,a)=>s+(+a.litros||0),0);
     // lista por CONJUNTO (trator+implemento); totais derivados das linhas (ignora sessões-fantasma sem máquina)
-    const conjuntos=_buildConjuntos(allRows, totDiesel);
+    const conjMed=_buildConjuntos(allRows, totDiesel);   // medido (área união GPS; diesel rateado pela área medida)
+    const areaMedTot=_totConj(conjMed).area;
+    const modoArea=APCAREA[codigo+'|'+safra]||'campo';
+    const areaPlan=c?areaEfetivaC(c):(areaDe((allRows[0]||{}).lote_nome)||0);
+    const conjuntos=_ajustarArea(conjMed, modoArea, areaPlan);   // 'comanda' -> ratea p/ a área planejada; 'campo' -> medido
     const tot=_totConj(conjuntos);
     const comMaq=allRows.filter(r=>r.maquina_id!=null);
     const datas=comMaq.map(r=>r.data).filter(Boolean).sort(); const ultimaData=datas.slice(-1)[0]||null;
     const totArea=tot.area, horas=tot.horas;
     const ndias=new Set(datas).size;
-    const diario=comMaq.map(r=>{ const a=+r.area_ha||0; const hi=r.hora_inicio||'', hf=r.hora_fim||''; const dies=totArea>0?(totDiesel*a/totArea):(comMaq.length?totDiesel/comMaq.length:0);
+    const diario=comMaq.map(r=>{ const a=+r.area_ha||0; const hi=r.hora_inicio||'', hf=r.hora_fim||''; const dies=areaMedTot>0?(totDiesel*a/areaMedTot):(comMaq.length?totDiesel/comMaq.length:0);
       return { 'Data':r.data, 'Hora inicial':hi, 'Hora final':hf, 'Hora início':hi, 'Hora fim':hf, 'Início':hi, 'Fim':hf, 'Área':(a?_apcFmt(a):''), 'Diesel':(dies?+dies.toFixed(1):'') }; });
     const maqs=[...new Set(comMaq.map(r=>_maqLabel(r.maquina_id)+(r.implemento_id?(' + '+_impLabel(r.implemento_id)):'')).filter(x=>x.trim()))].join('; ');
     const trator=[...new Set(comMaq.map(r=>_maqLabel(r.maquina_id)).filter(Boolean))].join('; ');
@@ -3208,7 +3233,7 @@ async function aprovarComandaCampo(key){
       'Data de início':datas[0]?fmtData(datas[0]):'', 'Data de fim':ultimaData?fmtData(ultimaData):'',
       'Horas trabalhadas':horas?_fmtDur(horas):'', 'Diesel total':totDiesel?(_apcFmt(totDiesel)+' L'):'', 'Área':totArea?(_apcFmt(totArea)+' ha'):'',
       'Maquinário e implemento':maqs, 'Operador':opers,
-      campo:{ dias:ndias, area_ha:+totArea.toFixed(2), diesel_l:+totDiesel.toFixed(2), horas_trabalho:+horas.toFixed(1), operadores:opers.split(', ').filter(Boolean), conjuntos:conjuntos, abastecimentos:(g.abast||[]).map(a=>({litros:+a.litros, quando:a.quando, maquina:_maqLabel(a.maquina_id)||null})), aprovado_em:new Date().toISOString() }
+      campo:{ dias:ndias, area_ha:+totArea.toFixed(2), area_modo:modoArea, area_planejada:+(+areaPlan||0).toFixed(2), area_medida:+(+areaMedTot||0).toFixed(2), diesel_l:+totDiesel.toFixed(2), horas_trabalho:+horas.toFixed(1), operadores:opers.split(', ').filter(Boolean), conjuntos:conjuntos, abastecimentos:(g.abast||[]).map(a=>({litros:+a.litros, quando:a.quando, maquina:_maqLabel(a.maquina_id)||null})), aprovado_em:new Date().toISOString() }
     });
     const upd={ status:'executada', data_execucao:ultimaData, diario:diario, geral_retorno:geral };
     const {data:updRows,error}=await SB.from('comandas').update(upd).eq('codigo',codigo).eq('safra',safra).select('codigo');
