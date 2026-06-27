@@ -996,8 +996,8 @@ function _regParaBanco(ent, r){
   switch(ent){
     case 'lotes': return {cod:r.cod??null, nome:r.nome, area:num(r.area)||0, base:!!r.base, partes:r.partes||[], geom:r.geom||null, disposicao:r.disposicao||'colados'};
     case 'produtos': return {codigo:r.codigo??null, nome:r.nome, comp:r.compRaw||r.comp||null, formulacao:r.formCod||r.formulacao||null, tipo:r.tipo||null, classe:r.classe||null, unidade:r.unidade||null, preco:num(r.precoRef)||num(r.preco)||0, estoque:num(r.estoque)||0, estoque_min:num(r.estoqueMin), comp_texto:r.compTexto||null, ativos:r.ativos||[], garantias:r.garantias||[], comanda:r.comanda||null, semente_tipo:r.sementeTipo||null, fabricante:r.fabricante||null, validade:r.validade||null};
-    case 'maquinas': return {id_frota:r.idFrota||r.id_frota||null, nome:r.nome||null, categoria:r.categoria||null, marca:r.marca||null, modelo:r.modelo||null, ano:r.ano||null, consumo_ref:num(r.consumoRef), faixa_m:num(r.faixaM!=null?r.faixaM:r.faixa_m)};
-    case 'implementos': return {id_frota:r.idFrota||r.id_frota||null, nome:r.nome||null, categoria:r.categoria||null, marca:r.marca||null, modelo:r.modelo||null, largura_trabalho:num(r.larguraTrab!=null?r.larguraTrab:r.largura_trabalho)};
+    case 'maquinas': return {id:(r.id!=null?r.id:undefined), id_frota:r.idFrota||r.id_frota||null, nome:r.nome||null, categoria:r.categoria||null, marca:r.marca||null, modelo:r.modelo||null, chassi:r.chassi||null, cor:r.cor||null, ano:r.ano||null, estado:r.estado||null, consumo_ref:num(r.consumoRef), faixa_m:num(r.faixaM!=null?r.faixaM:r.faixa_m)};
+    case 'implementos': return {id:(r.id!=null?r.id:undefined), id_frota:r.idFrota||r.id_frota||null, nome:r.nome||null, categoria:r.categoria||null, marca:r.marca||null, modelo:r.modelo||null, chassi:r.chassi||null, cor:r.cor||null, ano:r.ano||null, estado:r.estado||null, largura_trabalho:num(r.larguraTrab!=null?r.larguraTrab:r.largura_trabalho)};
     case 'tiposAtiv': return {nome:r.nome, perfil:r.perfil||null, diario:r.diario||null, contador:r.contador||0, img:r.img||null};
     case 'colaboradores': return {nome:r.nome, funcao:r.funcao||null, vinculo:r.vinculo||null, periodo:r.periodo||null};
     case 'fornecedores': return {nome:r.nome, razao_social:r.razao_social||null, cnpj:r.cnpj||null, contato:r.contato||null, fone:r.fone||null};
@@ -1016,7 +1016,8 @@ const _ENT_TAB={lotes:'lotes',produtos:'produtos',maquinas:'maquinas',implemento
 async function salvarAbaSB(ent, silencioso){
   if(!SB){ _statusSB('⚠️ Sem conexão','#e67e22'); return; }
   const tab=_ENT_TAB[ent]; if(!tab){ _statusSB('Entidade desconhecida','#c0392b'); return; }
-  const arr=S[ent]||[];
+  let arr=S[ent]||[];
+  if(['maquinas','implementos','produtos','lotes','tiposAtiv','colaboradores','fornecedores'].includes(ent)) arr=arr.filter(r=>r && String(r.nome||'').trim());   // não reinsere linhas-lixo sem nome (senão o INSERT falha e a tabela fica vazia)
   if(!silencioso && !confirm('Salvar a aba "'+ent+'" no banco?\nIsto substitui o conteúdo dessa tabela pelo que está na tela ('+arr.length+' registros).')) return;
   try{
     _statusSB('⏳ Salvando '+ent+'…','#2c3e50');
