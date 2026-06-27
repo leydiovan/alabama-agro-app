@@ -490,7 +490,10 @@ let PEND=0; const _SYNCING=new Set();   // lids em sincronização (evita 2 inse
 function _lid(){ return 'L'+Date.now().toString(36)+Math.random().toString(36).slice(2,7); }
 function _sessReg(s){ return { comanda_codigo:s.comanda_codigo, safra:s.safra, funcionario_id:s.funcionario_id, lote_nome:s.lote_nome, data:s.data, maquina_id:s.maquina_id, implemento_id:s.implemento_id, largura_m:s.largura_m||0, hora_inicio:s.hora_inicio, hora_fim:s.hora_fim||null, status:s.status, trajeto:s.trajeto||[], area_ha:s.area_ha||0, concluiu_lote:!!s.concluiu_lote, enviado_por:s.enviado_por||null, atualizado_em:s.atualizado_em||new Date().toISOString() }; }
 function _abastReg(a){ return { comanda_codigo:a.comanda_codigo, safra:a.safra, funcionario_id:a.funcionario_id, maquina_id:a.maquina_id, lote_nome:a.lote_nome, litros:a.litros, quando:a.quando, enviado_por:a.enviado_por||null }; }
+function _regTemTrabalho(s){ const t=s&&s.trajeto; if(!Array.isArray(t)||t.length<2) return false; if((+s.area_ha||0)>=0.01) return true;   // trabalho REAL a partir do registro (vale p/ a fila/IDB)
+  let d=0; for(let i=1;i<t.length;i++){ const a=t[i-1],b=t[i]; if(a&&b&&a[0]!=null&&b[0]!=null){ const u=latLngToUTM(a[0],a[1],23),w=latLngToUTM(b[0],b[1],23); d+=Math.hypot(w[0]-u[0],w[1]-u[1]); if(d>=25) return true; } } return false; }
 async function _syncSession(s){ if(!s||_SYNCING.has(s.lid)) return false; if(!navigator.onLine||!SB) return false;
+  if(!s.serverId && !_regTemTrabalho(s)) return false;   // NÃO cria no servidor sessão sem trabalho real (fecha o furo do autosave/visibilitychange/_syncAll -> nada de 'aberto' fantasma)
   _SYNCING.add(s.lid); const v=s._v||0;
   try{ if(!s.serverId){ const {data,error}=await SB.from('execucao_campo').insert(_sessReg(s)).select('id').single(); if(error) throw error; s.serverId=data.id; } else { const {error}=await SB.from('execucao_campo').update(_sessReg(s)).eq('id',s.serverId); if(error) throw error; } if((s._v||0)===v) s.dirty=false; await _idbPut('sessions',s); return true; }
   catch(e){ s.dirty=true; try{ await _idbPut('sessions',s); }catch(_){} return false; }
@@ -551,14 +554,14 @@ async function _gpsLeave(){
   try{ if(GPS.wake){ await GPS.wake.release(); GPS.wake=null; } }catch(e){}
   GPS.speed=0;
   if(SESS && _sessTemTrabalho()) await _saveGps(true);                                          // teve trabalho REAL -> fecha (enviada)
-  else if(SESS && SESS.lid && !SESS.serverId){ try{ await _idbDel('sessions',SESS.lid); }catch(e){} }   // vazia/minúscula e ainda não enviada -> descarta, nada de movimentação fantasma
+  else if(SESS && SESS.lid){ if(!SESS.serverId){ try{ await _idbDel('sessions',SESS.lid); }catch(e){} } if(GPS.pts.length>=2) _st('Trabalho muito curto — não registrado','#e67e22'); }   // minúscula -> descarta (e avisa) p/ não virar movimentação fantasma
   SESS=null; await _carregarDiasComanda();
   if(navigator.onLine) _syncAll();   // empurra a fila ao sair da tela de trabalho
 }
 function _conjResumo(){ const t=HDR.maquina_id?_maqNome(HDR.maquina_id):'—'; const im=HDR.implemento_id?(_impNome(HDR.implemento_id)||'—'):'—'; const lg=+HDR.largura_m>0?(' · '+String(HDR.largura_m).replace('.',',')+' m'):''; return '<b>🚜 '+esc(t)+'</b><span class="muted"> · '+esc(im)+lg+'</span>'; }
 function _updConjSum(){ const e=$('conj_sum'); if(e) e.innerHTML=_conjResumo(); }
 function _aplicarConjunto(){   // aplica o HDR atual à sessão; se já tem trabalho pintado, fecha a anterior e a nova nasce no 1º ponto
-  HDROP=OPER&&OPER.id;   // o operador atual acabou de escolher -> o HDR é dele
+  HDROP=_donoHDR();   // o operador atual acabou de escolher nesta comanda -> o HDR é dele+desta comanda
   _saveConj(); _updConjSum();
   const nm=HDR.maquina_id, ni=HDR.implemento_id;
   if(SESS && String(SESS.maquina_id||'')===String(nm) && String(SESS.implemento_id||'')===String(ni) && +(SESS.largura_m||0)===+(HDR.largura_m||0)){ _VELC=null; _recalcCells(); _drawMapa(); _hud(); return; }
@@ -578,14 +581,15 @@ function _aplicarConjunto(){   // aplica o HDR atual à sessão; se já tem trab
 }
 /* ===== conjunto (trator/implemento/largura): perdura entre entradas; obrigatório na 1ª vez ===== */
 function _conjOK(){ return !!(HDR.maquina_id && HDR.implemento_id && +HDR.largura_m>0); }
-function _remConj(){ try{ return JSON.parse(localStorage.getItem('conj_'+(OPER&&OPER.id))||'null'); }catch(e){ return null; } }
-function _saveConj(){ try{ if(OPER&&OPER.id) localStorage.setItem('conj_'+OPER.id, JSON.stringify({maquina_id:HDR.maquina_id||'', implemento_id:HDR.implemento_id||'', largura_m:+HDR.largura_m||0})); }catch(e){} }
-function _setHDRde(s){ s=s||{}; HDR={ maquina_id:s.maquina_id!=null?s.maquina_id:'', implemento_id:s.implemento_id!=null?s.implemento_id:'', largura_m:(+s.largura_m>0?+s.largura_m:(_implLarg(s.implemento_id)||0)) }; HDROP=HDR.maquina_id?(OPER&&OPER.id):null; }   // marca o dono do HDR
-function _initHDR(){   // ordem de prioridade p/ o conjunto vigente do OPERADOR ATUAL (perdura — só zera de propósito)
+function _donoHDR(){ return (OPER&&OPER.id)+'|'+(CUR&&CUR.codigo); }   // o conjunto perdura por OPERADOR + COMANDA (não vaza entre comandas)
+function _remConj(){ try{ return JSON.parse(localStorage.getItem('conj_'+_donoHDR())||'null'); }catch(e){ return null; } }
+function _saveConj(){ try{ if(OPER&&OPER.id&&CUR&&CUR.codigo) localStorage.setItem('conj_'+_donoHDR(), JSON.stringify({maquina_id:HDR.maquina_id||'', implemento_id:HDR.implemento_id||'', largura_m:+HDR.largura_m||0})); }catch(e){} }
+function _setHDRde(s){ s=s||{}; HDR={ maquina_id:s.maquina_id!=null?s.maquina_id:'', implemento_id:s.implemento_id!=null?s.implemento_id:'', largura_m:(+s.largura_m>0?+s.largura_m:(_implLarg(s.implemento_id)||0)) }; HDROP=HDR.maquina_id?_donoHDR():null; }   // marca o dono (operador+comanda) do HDR
+function _initHDR(){   // ordem de prioridade p/ o conjunto vigente do OPERADOR+COMANDA atuais (perdura — só zera de propósito)
   if(SESS && SESS.maquina_id!=null){ _setHDRde(SESS); return; }              // 1. sessão aberta de hoje (retomada)
-  if(_conjOK() && String(HDROP)===String(OPER&&OPER.id)) return;             // 2. já escolhido por ESTE operador nesta sessão do app -> NÃO mexe (não vaza de outro operador)
-  const mine=CUR_DAYS.find(r=>String(r.funcionario_id)===String(OPER.id) && r.maquina_id!=null);   // 3. minha sessão COMPLETA mais recente desta comanda (ignora sessões antigas sem conjunto)
-  _setHDRde(mine||_remConj()||{});                                           // 4. última escolha salva NO APARELHO POR OPERADOR (localStorage conj_<id>); senão vazio -> modal obrigatório
+  if(_conjOK() && HDROP===_donoHDR()) return;                                // 2. já escolhido por ESTE operador NESTA comanda -> NÃO mexe (não vaza de outro operador nem de outra comanda)
+  const mine=CUR_DAYS.find(r=>String(r.funcionario_id)===String(OPER.id) && r.maquina_id!=null);   // 3. minha sessão COMPLETA mais recente DESTA comanda (CUR_DAYS é da comanda atual)
+  _setHDRde(mine||_remConj()||{});                                           // 4. última escolha salva p/ ESTE operador+comanda (localStorage); senão vazio -> modal obrigatório
 }
 function _pedirConjunto(){
   const old=$('conjov'); if(old) old.remove();
