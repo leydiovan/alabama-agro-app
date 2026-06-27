@@ -684,7 +684,7 @@ function maquinasHTML(){
     +'<td><span class="x" data-eidx="'+idx+'">✎</span><span class="x xr" data-didx="'+idx+'">✕</span></td></tr>').join('');
   return '<div class="cadwrap" style="margin-bottom:18px"><div class="cadhead"><h2>'+(e?'Editar máquina':'Nova máquina / veículo')+'</h2></div><div class="fcol">'
     +fichaForm('m',e,MAQ_CATS,'TRA-001')
-    +'<label>Consumo ref. (L/h) <input type="number" id="mCons" step="any" value="'+(e&&e.consumoRef?e.consumoRef:'')+'" placeholder="opcional"></label>'
+    +'<div class="two"><label>Consumo ref. (L/h) <input type="number" id="mCons" step="any" value="'+(e&&e.consumoRef?e.consumoRef:'')+'" placeholder="opcional"></label><label>Faixa efetiva (m) <input type="number" id="mFaixa" step="any" value="'+(e&&(e.faixaM!=null?e.faixaM:e.faixa_m)!=null&&(e.faixaM!=null?e.faixaM:e.faixa_m)!==''?(e.faixaM!=null?e.faixaM:e.faixa_m):'')+'" placeholder="autopropelido de aplicação, ex.: 27.30"></label></div>'
     +'<div class="formactions"><button class="btn success sm" id="mSalvar">'+(e?'Salvar':'Adicionar')+'</button>'+(e?'<button class="btn ghost sm" id="mCancel">Cancelar</button>':'')+'<span class="fmsg" id="mMsg"></span></div>'
     +'</div></div>'
     +'<div class="toolbar"><span class="lbl">Categoria</span>'+filtroCats(S.maquinas,MFILT,'mf')+'</div>'
@@ -693,7 +693,7 @@ function maquinasHTML(){
 }
 function bindMaquinas(){
   $('mSalvar').onclick=()=>{const m=$('mMsg');m.className='fmsg err';const f=readFicha('m');if(!f.nome){m.textContent='Informe a descrição.';return;}
-    f.cor=(EDIT_IDX!=null?S.maquinas[EDIT_IDX].cor:'')||'';f.consumoRef=parseFloat($('mCons').value)||null;
+    f.cor=(EDIT_IDX!=null?S.maquinas[EDIT_IDX].cor:'')||'';f.consumoRef=parseFloat($('mCons').value)||null;f.faixaM=parseFloat($('mFaixa').value)||null;
     if(EDIT_IDX!=null){Object.assign(S.maquinas[EDIT_IDX],f);EDIT_IDX=null;}else S.maquinas.push(f);salvarAbaSB('maquinas',true);route();};
   if($('mCancel'))$('mCancel').onclick=()=>{EDIT_IDX=null;route();};
   document.querySelectorAll('[data-eidx]').forEach(b=>b.onclick=()=>{EDIT_IDX=+b.dataset.eidx;window.scrollTo(0,0);route();});
@@ -996,7 +996,7 @@ function _regParaBanco(ent, r){
   switch(ent){
     case 'lotes': return {cod:r.cod??null, nome:r.nome, area:num(r.area)||0, base:!!r.base, partes:r.partes||[], geom:r.geom||null, disposicao:r.disposicao||'colados'};
     case 'produtos': return {codigo:r.codigo??null, nome:r.nome, comp:r.compRaw||r.comp||null, formulacao:r.formCod||r.formulacao||null, tipo:r.tipo||null, classe:r.classe||null, unidade:r.unidade||null, preco:num(r.precoRef)||num(r.preco)||0, estoque:num(r.estoque)||0, estoque_min:num(r.estoqueMin), comp_texto:r.compTexto||null, ativos:r.ativos||[], garantias:r.garantias||[], comanda:r.comanda||null, semente_tipo:r.sementeTipo||null, fabricante:r.fabricante||null, validade:r.validade||null};
-    case 'maquinas': return {id_frota:r.idFrota||r.id_frota||null, nome:r.nome||null, categoria:r.categoria||null, marca:r.marca||null, modelo:r.modelo||null, ano:r.ano||null, consumo_ref:num(r.consumoRef)};
+    case 'maquinas': return {id_frota:r.idFrota||r.id_frota||null, nome:r.nome||null, categoria:r.categoria||null, marca:r.marca||null, modelo:r.modelo||null, ano:r.ano||null, consumo_ref:num(r.consumoRef), faixa_m:num(r.faixaM!=null?r.faixaM:r.faixa_m)};
     case 'implementos': return {id_frota:r.idFrota||r.id_frota||null, nome:r.nome||null, categoria:r.categoria||null, marca:r.marca||null, modelo:r.modelo||null, largura_trabalho:num(r.larguraTrab!=null?r.larguraTrab:r.largura_trabalho)};
     case 'tiposAtiv': return {nome:r.nome, perfil:r.perfil||null, diario:r.diario||null, contador:r.contador||0, img:r.img||null};
     case 'colaboradores': return {nome:r.nome, funcao:r.funcao||null, vinculo:r.vinculo||null, periodo:r.periodo||null};
@@ -1224,7 +1224,7 @@ function _statusSB(txt,cor){ let el=document.getElementById('sbStatus'); if(!el)
 const _MAPA_CAD=[
   {col:'lotes', tab:'lotes', toApp:r=>({cod:r.cod,nome:r.nome,area:r.area,base:!!r.base,partes:r.partes||[],geom:r.geom||null,disposicao:r.disposicao||'colados'})},
   {col:'produtos', tab:'produtos', toApp:r=>({id:r.id,codigo:r.codigo,nome:r.nome,tipo:r.tipo,classe:r.classe,unidade:r.unidade,perfil:perfilDe(r.tipo),precoRef:r.preco,estoque:r.estoque,estoqueMin:r.estoque_min,formCod:r.formulacao||'',compRaw:r.comp||'',compTexto:r.comp_texto||'',ativos:r.ativos||[],garantias:r.garantias||[],comanda:r.comanda||'',sementeTipo:r.semente_tipo||'',fabricante:r.fabricante||'',validade:r.validade||null})},
-  {col:'maquinas', tab:'maquinas', toApp:r=>r},
+  {col:'maquinas', tab:'maquinas', toApp:r=>Object.assign({},r,{idFrota:r.id_frota!=null?r.id_frota:r.idFrota, faixaM:(r.faixa_m!=null?r.faixa_m:r.faixaM)})},
   {col:'implementos', tab:'implementos', toApp:r=>Object.assign({},r,{idFrota:r.id_frota,larguraTrab:r.largura_trabalho})},
   {col:'colaboradores', tab:'colaboradores', toApp:r=>r},
   {col:'fornecedores', tab:'fornecedores', toApp:r=>r},

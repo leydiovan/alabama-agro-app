@@ -507,6 +507,10 @@ function renderNova(){
 
     <div class="sec">Operadores designados <span class="hint">(aparece no tablet de campo de cada um)</span></div>
     <div id="nv_opwrap" class="note" style="font-size:13px;display:flex;flex-wrap:wrap;gap:8px 18px;align-items:center">${_operadoresCheckboxes()}</div>
+    <div id="nv_caldabloco" style="display:none">
+      <div class="sec">Operadores da calda / pré-mistura <span class="hint">(pulverização terrestre — preparam a calda e abastecem)</span></div>
+      <div id="nv_caldawrap" class="note" style="font-size:13px;display:flex;flex-wrap:wrap;gap:8px 18px;align-items:center">${_operadoresCheckboxesCalda()}</div>
+    </div>
 
     <div class="sec">Observações</div>
     <div class="row">
@@ -718,6 +722,7 @@ function _aplicaQtdTotalArredondada(nVoos){
 function ajustaFormPorTipo(){
   setTimeout(()=>{ try{atualizaIndicadores();}catch(e){} },0);
   const tipo=$('#nv_tipo')?.value||'';
+  { const _pulvTerr=(TIPO_PERFIL[tipo]==='PULV') && /Terrestre/i.test(tipo); const cb=$('#nv_caldabloco'); if(cb) cb.style.display=_pulvTerr?'block':'none'; }   // pulverização terrestre: 2º grupo de operadores (calda)
   const grad=/Gradagem/i.test(tipo);
   const adubSol=/Aduba|S[oó]lidos/i.test(tipo);
   const rowpulv=$('#nv_rowpulv'), blocoprod=$('#nv_blocoprod'), campos=$('#nv_campostipo');
@@ -909,6 +914,14 @@ function _operadoresCheckboxes(){
   return fs.map(f=>`<label style="display:inline-flex;align-items:center;gap:6px;cursor:pointer"><input type="checkbox" class="nv_oper" value="${f.id}" ${sel.has(f.id)?'checked':''}> ${esc(f.nome)}</label>`).join('');
 }
 function _lerOperadores(){ return Array.from(document.querySelectorAll('.nv_oper:checked')).map(c=>+c.value); }
+function _operadoresCheckboxesCalda(){
+  const ed=_editCodigo?S.comandas.find(x=>x.codigo===_editCodigo):null;
+  const sel=new Set(((ed&&ed.operadoresCalda)||[]).map(Number));
+  const fs=(S.funcionarios||[]).filter(f=>f.ativo!==false);
+  if(!fs.length) return '<span class="hint">—</span>';
+  return fs.map(f=>`<label style="display:inline-flex;align-items:center;gap:6px;cursor:pointer"><input type="checkbox" class="nv_oper_calda" value="${f.id}" ${sel.has(f.id)?'checked':''}> ${esc(f.nome)}</label>`).join('');
+}
+function _lerOperadoresCalda(){ return Array.from(document.querySelectorAll('.nv_oper_calda:checked')).map(c=>+c.value); }
 function salvarNova(){
   const tipo=$('#nv_tipo').value, lote=$('#nv_lote').value;
   const msg=$('#nv_msg');
@@ -920,7 +933,7 @@ function salvarNova(){
     if(!orig){msg.className='fmsg err';msg.textContent='Comanda não encontrada.';return;}
     const perfil=TIPO_PERFIL[tipo];
     const upd=Object.assign({},orig,{
-      tipoAtiv:tipo,perfil,loteNome:lote,operadores:_lerOperadores(),
+      tipoAtiv:tipo,perfil,loteNome:lote,operadores:_lerOperadores(),operadoresCalda:_lerOperadoresCalda(),
       dataExecucao:($('#nv_exec')?$('#nv_exec').value:''),
       taxa:$('#nv_taxa').value,faixa:$('#nv_faixa').value,capacidade:$('#nv_cap').value,
       produtos:novaProd.filter(p=>p.nome).map(p=>({...p,comp:''})),
@@ -3279,7 +3292,7 @@ function _comandaParaBanco(c){
   function num(v){ if(v===''||v==null) return null; const s=String(v).indexOf(',')>=0?String(v).replace(/\./g,'').replace(',','.'):String(v); const n=parseFloat(s); return isNaN(n)?null:n; }
   return {
     codigo:c.codigo, seq_geral:c.seqGeral, seq_tipo:c.seqTipo, status:c.status, safra:SAFRA,
-    tipo_ativ:c.tipoAtiv, perfil:c.perfil, lote_nome:c.loteNome, operadores:c.operadores||[],
+    tipo_ativ:c.tipoAtiv, perfil:c.perfil, lote_nome:c.loteNome, operadores:c.operadores||[], operadores_calda:c.operadoresCalda||[],
     data_emissao:c.dataEmissao||null, data_execucao:c.dataExecucao||null,
     faixa:num(c.faixa), taxa:num(c.taxa), capacidade:num(c.capacidade),
     produtos:c.produtos||[], prod_texto:c.prodTexto||'',
@@ -3394,7 +3407,7 @@ function _comandaDoBanco(r){
   const dt=r.dados_tipo||{};
   return {
     codigo:r.codigo, seqGeral:r.seq_geral, seqTipo:r.seq_tipo, status:r.status,
-    tipoAtiv:r.tipo_ativ, perfil:r.perfil, loteNome:r.lote_nome, operadores:r.operadores||[],
+    tipoAtiv:r.tipo_ativ, perfil:r.perfil, loteNome:r.lote_nome, operadores:r.operadores||[], operadoresCalda:r.operadores_calda||[],
     dataEmissao:r.data_emissao, dataExecucao:r.data_execucao,
     faixa:r.faixa, taxa:r.taxa, capacidade:r.capacidade,
     produtos:r.produtos||[], prodTexto:r.prod_texto||'',
