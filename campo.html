@@ -373,6 +373,46 @@ function latLngToUTM(lat,lon,zona){
   if(lat<0) No+=10000000;
   return [E,No];
 }
+function _utmToLatLng(E,N,zona){   // inversa de latLngToUTM (WGS84, hemisfério sul)
+  const a=6378137.0,f=1/298.257223563,e2=f*(2-f),ep2=e2/(1-e2),k0=0.9996;
+  const e1=(1-Math.sqrt(1-e2))/(1+Math.sqrt(1-e2));
+  const x=E-500000, y=N-10000000, M=y/k0;
+  const mu=M/(a*(1-e2/4-3*e2*e2/64-5*e2*e2*e2/256));
+  const phi1=mu+(3*e1/2-27*e1*e1*e1/32)*Math.sin(2*mu)+(21*e1*e1/16-55*e1*e1*e1*e1/32)*Math.sin(4*mu)+(151*e1*e1*e1/96)*Math.sin(6*mu)+(1097*e1*e1*e1*e1/512)*Math.sin(8*mu);
+  const N1=a/Math.sqrt(1-e2*Math.sin(phi1)**2), T1=Math.tan(phi1)**2, C1=ep2*Math.cos(phi1)**2;
+  const R1=a*(1-e2)/Math.pow(1-e2*Math.sin(phi1)**2,1.5), D=x/(N1*k0);
+  const lat=phi1-(N1*Math.tan(phi1)/R1)*(D*D/2-(5+3*T1+10*C1-4*C1*C1-9*ep2)*D**4/24+(61+90*T1+298*C1+45*T1*T1-252*ep2-3*C1*C1)*D**6/720);
+  const lon0=(zona*6-183)*Math.PI/180;
+  const lon=lon0+(D-(1+2*T1+C1)*D**3/6+(5-2*C1+28*T1-3*C1*C1+8*ep2+24*T1*T1)*D**5/120)/Math.cos(phi1);
+  return [lat*180/Math.PI, lon*180/Math.PI];
+}
+/* ===== simulador de GPS (teste) — gatilho: campo.html?sim=1 ===== */
+let SIM={on:false, rota:null, seg:0, pos:null, timer:null, vel:6};
+function _simOK(){ try{ const s=location.search||''; if(s.indexOf('sim=1')>=0) localStorage.setItem('campo_sim','1'); if(s.indexOf('sim=0')>=0) localStorage.removeItem('campo_sim'); return localStorage.getItem('campo_sim')==='1'; }catch(e){ return false; } }
+function _simRota(){ const poly=_polyUTM(); if(!poly) return null;
+  let minE=Infinity,maxE=-Infinity,minN=Infinity,maxN=-Infinity; poly.forEach(p=>{ if(p[0]<minE)minE=p[0]; if(p[0]>maxE)maxE=p[0]; if(p[1]<minN)minN=p[1]; if(p[1]>maxN)maxN=p[1]; });
+  const passo=Math.max(_widthM()||12,8), m=passo*0.5, wp=[]; let dir=1;
+  for(let y=minN+m; y<=maxN-0.1; y+=passo){ wp.push({E:dir>0?minE+m:maxE-m,N:y}); wp.push({E:dir>0?maxE-m:minE+m,N:y}); dir*=-1; }
+  return wp.length>=2?wp:null;
+}
+function _simStop(){ if(SIM.timer){clearInterval(SIM.timer);SIM.timer=null;} SIM.on=false; }
+function _simToggle(){
+  if(SIM.on){ _simStop(); _st('⏸ Simulação pausada','#8b949e'); render(); return; }
+  if(!_polyUTM()){ _st('Talhão sem polígono — não dá pra simular','#e67e22'); return; }
+  if(_papelOper()!=='calda' && !_conjOK()){ _st('Escolha a máquina antes de simular','#e67e22'); return; }
+  if(GPS._wd){clearInterval(GPS._wd);GPS._wd=null;} if(GPS.watchId!=null){try{navigator.geolocation.clearWatch(GPS.watchId);}catch(e){} GPS.watchId=null;}   // pausa o GPS real
+  if(!SIM.rota){ SIM.rota=_simRota(); SIM.seg=0; SIM.pos=SIM.rota?{E:SIM.rota[0].E,N:SIM.rota[0].N}:null; }
+  if(!SIM.rota){ _st('Não consegui traçar a rota','#e67e22'); return; }
+  SIM.on=true; SIM.timer=setInterval(_simTick,300); _st('▶ Simulando GPS…','#27ae60'); render();
+}
+function _simTick(){
+  if(!SIM.rota || SIM.seg>=SIM.rota.length-1){ _simStop(); _st('✅ Simulação concluída','#27ae60'); render(); return; }
+  let rem=Math.max(_widthM()||12,8)*0.55;
+  while(rem>0 && SIM.seg<SIM.rota.length-1){ const tgt=SIM.rota[SIM.seg+1], dx=tgt.E-SIM.pos.E, dy=tgt.N-SIM.pos.N, d=Math.hypot(dx,dy);
+    if(d<=rem){ SIM.pos={E:tgt.E,N:tgt.N}; SIM.seg++; rem-=d; } else { SIM.pos={E:SIM.pos.E+dx/d*rem,N:SIM.pos.N+dy/d*rem}; rem=0; } }
+  const ll=_utmToLatLng(SIM.pos.E,SIM.pos.N,23);
+  _onFix({coords:{latitude:ll[0],longitude:ll[1],accuracy:4,speed:(SIM.vel/3.6)}, timestamp:Date.now()});
+}
 function _polyUTM(){ const l=LOTES.find(x=>x.nome===CUR.lote_nome); const g=l&&l.geom; return (g&&Array.isArray(g.ring)&&g.ring.length>2)?g.ring:null; }
 function _widthM(){ return +HDR.largura_m>0 ? +HDR.largura_m : _implLarg(HDR.implemento_id); }   // largura da SESSÃO (operador); cadastro do implemento só como reserva
 function _otherDaysArea(){ return CUR_DAYS.filter(r=>!SESS||String(r.id)!==String(SESS.id)).reduce((s,r)=>s+(+r.area_ha||0),0); }
@@ -567,6 +607,7 @@ async function _gpsEnter(){
   _startWatch(); _gpsWatchdog();
 }
 async function _gpsLeave(){
+  _simStop();
   if(GPS._wd){ clearInterval(GPS._wd); GPS._wd=null; }
   if(GPS.watchId!=null){ try{navigator.geolocation.clearWatch(GPS.watchId);}catch(e){} GPS.watchId=null; }
   try{ if(GPS.wake){ await GPS.wake.release(); GPS.wake=null; } }catch(e){}
@@ -751,6 +792,7 @@ function _renderCaldaTela(){
       <canvas id="cv" style="width:100%;height:100%;display:block;touch-action:none"></canvas>
       <div id="hud" style="position:absolute;top:8px;left:8px;right:8px;display:flex;gap:6px;flex-wrap:wrap"></div>
       <button class="btn s" id="btn_follow" style="position:absolute;right:10px;bottom:10px;width:auto;margin:0;padding:10px 14px">${VIEW.follow?'🎯 Seguindo':'✋ Livre'}</button>
+      ${_simOK()?`<button class="btn ${SIM.on?'k':'s'}" id="btn_sim" style="position:absolute;right:10px;bottom:62px;width:auto;margin:0;padding:10px 14px">${SIM.on?'⏸ Sim':'🧪 Simular'}</button>`:''}
     </div>
     <div style="flex:0 0 auto;padding:8px 10px;background:#0d1117">
       <div class="muted" style="font-size:12px;margin:0 2px 6px">${_caldaResumo()}</div>
@@ -759,6 +801,7 @@ function _renderCaldaTela(){
   </div>`;
   if($('voltar'))$('voltar').onclick=async()=>{ await _gpsLeave(); EXVIEW='menu'; render(); };
   if($('btn_follow'))$('btn_follow').onclick=()=>{ VIEW.follow=!VIEW.follow; $('btn_follow').textContent=VIEW.follow?'🎯 Seguindo':'✋ Livre'; _drawMapa(); };
+  if($('btn_sim'))$('btn_sim').onclick=_simToggle;
   if($('btn_calda'))$('btn_calda').onclick=()=>_acaoCalda($('btn_calda').dataset.act);
   setTimeout(()=>{ _setupCanvas(); _drawMapa(); _hud(); },30);
 }
@@ -793,6 +836,7 @@ function renderTrabalho(){
         <button class="btn s" id="btn_follow" style="width:auto;margin:0;padding:10px 14px">${VIEW.follow?'🎯 Seguindo':'✋ Livre'}</button>
         <button class="btn s" id="btn_cmode" style="width:auto;margin:0;padding:10px 14px">${VIEW.mode==='vel'?'🌡 Velocidade':(VIEW.mode==='tq'?'🪣 Por tanque':'🎨 Cobertura')}</button>
         <button class="btn s" id="btn_pmode" style="width:auto;margin:0;padding:10px 14px">${manual?'✋ Manual':'🅰 Auto'}</button>
+        ${_simOK()?`<button class="btn ${SIM.on?'k':'s'}" id="btn_sim" style="width:auto;margin:0;padding:10px 14px">${SIM.on?'⏸ Sim':'🧪 Simular'}</button>`:''}
         ${manual?`<button class="btn ${GPS.painting?'k':'b'}" id="btn_paint" style="width:auto;margin:0;padding:10px 16px">${GPS.painting?'● Pintando':'▶ Pintar'}</button>`:''}
       </div>
       <div id="vleg" style="display:${(VIEW.mode==='vel')?'flex':'none'};position:absolute;left:10px;bottom:10px;gap:8px;align-items:center;background:#0d1117cc;border-radius:8px;padding:6px 9px;font-size:11px;color:#fff">Vel: <span style="color:#3aa0ff">baixa</span><span style="width:54px;height:8px;border-radius:4px;background:linear-gradient(90deg,hsl(240,85%,50%),hsl(120,85%,50%),hsl(0,85%,50%))"></span><span style="color:#ff5b5b">alta</span></div>
@@ -807,6 +851,7 @@ function renderTrabalho(){
   if($('btn_follow'))$('btn_follow').onclick=()=>{ VIEW.follow=!VIEW.follow; $('btn_follow').textContent=VIEW.follow?'🎯 Seguindo':'✋ Livre'; _drawMapa(); };
   if($('btn_cmode'))$('btn_cmode').onclick=()=>{ const seq=(_ehPulvTerr()&&_papelOper()==='pulverizador')?['cob','vel','tq']:['cob','vel']; VIEW.mode=seq[(seq.indexOf(VIEW.mode||'cob')+1)%seq.length]; $('btn_cmode').textContent=VIEW.mode==='vel'?'🌡 Velocidade':(VIEW.mode==='tq'?'🪣 Por tanque':'🎨 Cobertura'); const lg=$('vleg'); if(lg) lg.style.display=(VIEW.mode==='vel')?'flex':'none'; const cg=$('cleg'); if(cg) cg.style.display=(VIEW.mode==='cob')?'flex':'none'; _drawMapa(); };
   if($('btn_pmode'))$('btn_pmode').onclick=()=>{ GPS.paintAuto=!GPS.paintAuto; if(GPS.paintAuto) GPS.painting=false; render(); };
+  if($('btn_sim'))$('btn_sim').onclick=_simToggle;
   if($('btn_paint'))$('btn_paint').onclick=()=>{ GPS.painting=!GPS.painting; render(); };
   setTimeout(()=>{ _setupCanvas(); _drawMapa(); _hud(); if(!_conjOK()) _pedirConjunto(); },30);   // 1ª vez (ou conjunto incompleto): janela obrigatória de escolha
 }

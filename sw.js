@@ -3,7 +3,7 @@
      => abre INSTANTÂNEO do cache (não trava em rede ruim) e atualiza em 2º plano.
      (efeito: depois de publicar, a versão nova entra no PRÓXIMO open online)
    - Supabase (dados/auth): sempre rede, nunca cacheado. */
-const CACHE = 'alabama-campo-v17';
+const CACHE = 'alabama-campo-v18';
 const SHELL = [
   './',
   'index.html',
