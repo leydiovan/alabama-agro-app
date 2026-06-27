@@ -452,8 +452,8 @@ function _onFix(pos){ const cur=pos.coords; GPS.acc=cur.accuracy;
     GPS.head=Math.atan2(E-last.E,No-last.N);
     if(_paintOn()) _markCells(last.E,last.N,E,No);
   } else if(cur.speed!=null&&cur.speed>=0) GPS.speed=cur.speed*3.6;
-  if(!SESS){ if(!_conjOK()){ GPS._lt=t; _hud(); _scheduleDraw(); return; } SESS=_novaSessaoObj(); }   // sessão só nasce com conjunto escolhido (não grava sem trator/implemento/largura)
-  GPS._lt=t; GPS.pts.push({E,N:No,lat:cur.latitude,lon:cur.longitude,t,v:GPS.speed||0});
+  if(!SESS){ if(_papelOper()==='calda'){ SESS=_novaSessaoObj(); } else if(!_conjOK()){ GPS._lt=t; _hud(); _scheduleDraw(); return; } else { SESS=_novaSessaoObj(); } }   // calda nasce direto (telemetria); demais só com conjunto escolhido
+  GPS._lt=t; GPS.pts.push({E,N:No,lat:cur.latitude,lon:cur.longitude,t,v:GPS.speed||0,tq:_tqSeqAberto()});
   _hud(); _scheduleDraw();
   if(GPS.watchId!=null){ if(GPS.pts.length%40===0) _saveGps(false); else if(GPS.pts.length%5===0) _touchSess(); }   // local a cada 5 fixes, sync a cada 40
 }
@@ -485,7 +485,7 @@ function _mapTap(clientX,clientY){
 }
 function _restoreSess(){ GPS.pts=[]; GPS.cells=new Set(); GPS.areaHa=0; GPS.speed=0;
   if(!SESS||!Array.isArray(SESS.trajeto)) return;
-  SESS.trajeto.forEach(p=>{ const lat=p[0],lon=p[1]; if(lat==null) return; const u=latLngToUTM(lat,lon,23); if(GPS.pts.length){ const l=GPS.pts[GPS.pts.length-1]; _markCells(l.E,l.N,u[0],u[1]); } GPS.pts.push({E:u[0],N:u[1],lat,lon,t:p[2]||0,v:p[3]||0}); });
+  SESS.trajeto.forEach(p=>{ const lat=p[0],lon=p[1]; if(lat==null) return; const u=latLngToUTM(lat,lon,23); if(GPS.pts.length){ const l=GPS.pts[GPS.pts.length-1]; _markCells(l.E,l.N,u[0],u[1]); } GPS.pts.push({E:u[0],N:u[1],lat,lon,t:p[2]||0,v:p[3]||0,tq:p[4]||0}); });
   if((!GPS.cells.size||_widthM()<=0) && SESS.area_ha!=null) GPS.areaHa=+SESS.area_ha;
 }
 /* ===== fila offline (outbox): sessões/abastecimentos locais 1º, sincroniza qdo tiver rede ===== */
@@ -493,7 +493,7 @@ let PEND=0; const _SYNCING=new Set();   // lids em sincronização (evita 2 inse
 function _lid(){ return 'L'+Date.now().toString(36)+Math.random().toString(36).slice(2,7); }
 function _sessReg(s){ return { comanda_codigo:s.comanda_codigo, safra:s.safra, funcionario_id:s.funcionario_id, lote_nome:s.lote_nome, data:s.data, maquina_id:s.maquina_id, implemento_id:s.implemento_id, largura_m:s.largura_m||0, papel:s.papel||null, tanques:s.tanques||[], hora_inicio:s.hora_inicio, hora_fim:s.hora_fim||null, status:s.status, trajeto:s.trajeto||[], area_ha:s.area_ha||0, concluiu_lote:!!s.concluiu_lote, enviado_por:s.enviado_por||null, atualizado_em:s.atualizado_em||new Date().toISOString() }; }
 function _abastReg(a){ return { comanda_codigo:a.comanda_codigo, safra:a.safra, funcionario_id:a.funcionario_id, maquina_id:a.maquina_id, lote_nome:a.lote_nome, litros:a.litros, quando:a.quando, enviado_por:a.enviado_por||null }; }
-function _regTemTrabalho(s){ const t=s&&s.trajeto; if(!Array.isArray(t)||t.length<2) return false; if((+s.area_ha||0)>=0.01) return true;   // trabalho REAL a partir do registro (vale p/ a fila/IDB)
+function _regTemTrabalho(s){ if(s&&Array.isArray(s.tanques)&&s.tanques.length>0) return true; const t=s&&s.trajeto; if(!Array.isArray(t)||t.length<2) return false; if((+s.area_ha||0)>=0.01) return true;   // trabalho REAL a partir do registro (vale p/ a fila/IDB)
   let d=0; for(let i=1;i<t.length;i++){ const a=t[i-1],b=t[i]; if(a&&b&&a[0]!=null&&b[0]!=null){ const u=latLngToUTM(a[0],a[1],23),w=latLngToUTM(b[0],b[1],23); d+=Math.hypot(w[0]-u[0],w[1]-u[1]); if(d>=25) return true; } } return false; }
 async function _syncSession(s){ if(!s||_SYNCING.has(s.lid)) return false; if(!navigator.onLine||!SB) return false;
   if(!s.serverId && !_regTemTrabalho(s)) return false;   // NÃO cria no servidor sessão sem trabalho real (fecha o furo do autosave/visibilitychange/_syncAll -> nada de 'aberto' fantasma)
@@ -516,12 +516,12 @@ async function _syncAll(){ if(!navigator.onLine||!SB) return; const act=SESS&&SE
     const hj=hoje(); const so=await _idbAll('sessions'); for(const s of so){ if(!s.dirty && s.serverId && String(s.data)<hj && !_SYNCING.has(s.lid) && s.lid!==act) await _idbDel('sessions',s.lid); }   // poda: sessões antigas já no servidor (cache cobre offline)
   }catch(e){} await _updPend();
 }
-function _touchSess(){ if(!SESS) return; SESS.trajeto=GPS.pts.map(p=>[+p.lat.toFixed(6),+p.lon.toFixed(6),p.t||0,+(p.v||0).toFixed(1)]); SESS.area_ha=+GPS.areaHa.toFixed(2); SESS.atualizado_em=new Date().toISOString(); SESS.dirty=true; SESS._v=(SESS._v||0)+1; _idbPut('sessions',SESS); }   // só local (a cada poucos fixes) — sobrevive a crash
+function _touchSess(){ if(!SESS) return; SESS.trajeto=GPS.pts.map(p=>[+p.lat.toFixed(6),+p.lon.toFixed(6),p.t||0,+(p.v||0).toFixed(1),p.tq||0]); SESS.area_ha=+GPS.areaHa.toFixed(2); SESS.atualizado_em=new Date().toISOString(); SESS.dirty=true; SESS._v=(SESS._v||0)+1; _idbPut('sessions',SESS); }   // só local (a cada poucos fixes) — sobrevive a crash
 function _distTotalM(){ let d=0; for(let i=1;i<GPS.pts.length;i++) d+=Math.hypot(GPS.pts[i].E-GPS.pts[i-1].E, GPS.pts[i].N-GPS.pts[i-1].N); return d; }
-function _sessTemTrabalho(){ return GPS.pts.length>=2 && ((+GPS.areaHa||0)>=0.01 || _distTotalM()>=25); }   // trabalho REAL: >=2 pontos E (área>=0,01 ha OU andou >=25 m) — corta entra/sai e oscilação do GPS
+function _sessTemTrabalho(){ if(_tanquesArr().length>0) return true; return GPS.pts.length>=2 && ((+GPS.areaHa||0)>=0.01 || _distTotalM()>=25); }   // sessão com tanques/caldas sempre conta   // trabalho REAL: >=2 pontos E (área>=0,01 ha OU andou >=25 m) — corta entra/sai e oscilação do GPS
 async function _saveGps(final){ if(!SESS) return;
   if(final && !_sessTemTrabalho()){ if(!SESS.serverId){ try{ await _idbDel('sessions',SESS.lid); }catch(e){} } return; }   // sem trabalho real -> não grava nem envia (nada de movimentação fantasma)
-  SESS.trajeto=GPS.pts.map(p=>[+p.lat.toFixed(6),+p.lon.toFixed(6),p.t||0,+(p.v||0).toFixed(1)]);
+  SESS.trajeto=GPS.pts.map(p=>[+p.lat.toFixed(6),+p.lon.toFixed(6),p.t||0,+(p.v||0).toFixed(1),p.tq||0]);
   SESS.area_ha=+GPS.areaHa.toFixed(2); SESS.atualizado_em=new Date().toISOString();
   if(final){ SESS.hora_fim=nowHM(); SESS.status='enviada'; }
   SESS.dirty=true; SESS._v=(SESS._v||0)+1; try{ await _idbPut('sessions',SESS); }catch(e){}   // local primeiro (sobrevive offline)
@@ -653,6 +653,7 @@ function _pedirConjunto(){
 /* ===== ciclo de TANQUES (pulverizador) — em SESS.tanques [{seq,ini,fim,litros,cheio,vazao}] ===== */
 function _tanquesArr(){ return (SESS&&Array.isArray(SESS.tanques))?SESS.tanques:[]; }
 function _tanqueAberto(){ const a=_tanquesArr(); for(let i=a.length-1;i>=0;i--){ if(a[i] && a[i].fim==null) return a[i]; } return null; }
+function _tqSeqAberto(){ if(_papelOper()!=='pulverizador') return 0; const t=_tanqueAberto(); return t?t.seq:0; }   // carimba o ponto com o tanque vigente (0 = sem tanque)
 function _persistTanques(){ if(!SESS) return; SESS.atualizado_em=new Date().toISOString(); SESS.dirty=true; SESS._v=(SESS._v||0)+1; try{ _idbPut('sessions',SESS); }catch(e){} if(navigator.onLine) _syncSession(SESS); _updPend(); }
 function _abrirTanque(litros,cheio,vazao){ if(!SESS) SESS=_novaSessaoObj(); if(!Array.isArray(SESS.tanques)) SESS.tanques=[]; SESS.tanques.push({seq:SESS.tanques.length+1, ini:Date.now(), fim:null, litros:+litros||0, cheio:!!cheio, vazao:+vazao||0}); _persistTanques(); render(); }
 function _iniciarTanque(){
@@ -682,6 +683,70 @@ function _finalizarTanque(){
   if(!confirm('Finalizar o tanque '+t.seq+'?')) return;   // confirma p/ não fechar sem querer
   t.fim=Date.now(); _persistTanques(); render();
 }
+/* ===== ciclo da CALDA / pré-mistura (papel calda) — SESS.tanques [{seq,ini,pronto,abastIni,fim,litros,cheio,doses}] ===== */
+function _caldaResumo(){ const feitas=_tanquesArr().filter(x=>x.fim!=null).length; const ab=_tanqueAberto(); return 'Caldas concluídas: <b>'+feitas+'</b>'+(ab?(' · em andamento (calda '+ab.seq+')'):''); }
+function _btnCaldaHTML(){ const ca=_tanqueAberto(); const n=_tanquesArr().length;
+  if(!ca) return `<button class="btn g huge" id="btn_calda" data-act="iniciar" style="margin:0">▶ Iniciar calda ${n+1}</button>`;
+  if(ca.pronto==null) return `<button class="btn b huge" id="btn_calda" data-act="pronta" style="margin:0">✓ Calda ${ca.seq} pronta</button>`;
+  if(ca.abastIni==null) return `<button class="btn g huge" id="btn_calda" data-act="abastini" style="margin:0">▶ Abastecer (calda ${ca.seq})</button>`;
+  return `<button class="btn k huge" id="btn_calda" data-act="abastecido" style="margin:0">✓ Abastecido (calda ${ca.seq})</button>`;
+}
+function _acaoCalda(act){
+  if(act==='iniciar') return _iniciarCalda();
+  const ca=_tanqueAberto(); if(!ca) return;
+  if(act==='pronta'){ ca.pronto=Date.now(); }
+  else if(act==='abastini'){ ca.abastIni=Date.now(); }
+  else if(act==='abastecido'){ if(!confirm('Confirmar abastecido? (fecha a calda '+ca.seq+')')) return; ca.fim=Date.now(); }
+  _persistTanques(); render();
+}
+function _iniciarCalda(){
+  const old=$('cdov'); if(old) old.remove();
+  const cap=+(CUR.capacidade)||0; const prods=(CUR.produtos||[]);
+  const lista = prods.length ? prods.map(p=>`<div style="display:flex;justify-content:space-between;gap:8px;border-bottom:1px solid var(--line);padding:6px 0;font-size:14px"><span>${esc(p.nome||'')}</span><b class="gold">${esc(p.qtdCarga!=null&&p.qtdCarga!==''?(p.qtdCarga+' /tanque'):(p.dose?(p.dose+' /ha'):''))}</b></div>`).join('') : '<div class="muted" style="font-size:13px">Sem produtos previstos na comanda.</div>';
+  const ov=document.createElement('div'); ov.id='cdov';
+  ov.style.cssText='position:fixed;inset:0;z-index:1300;background:#0d1117ee;display:flex;align-items:center;justify-content:center;padding:18px';
+  ov.innerHTML=`<div class="card" style="width:100%;max-width:440px;margin:0;max-height:90vh;overflow:auto">
+    <div style="font-size:19px;font-weight:900;margin-bottom:4px">🧪 Iniciar calda ${_tanquesArr().length+1}</div>
+    <div class="hint" style="margin:0 0 10px">Confira as doses por tanque e a litragem.</div>
+    <div class="sec">Produtos por tanque</div>${lista}
+    <div class="fl" style="margin:12px 0 8px"><input type="checkbox" id="cd_cheio" checked><label for="cd_cheio">Tanque cheio${cap?(' — '+cap+' L'):''}</label></div>
+    <div id="cd_parc" style="display:none"><label>Litros</label><input id="cd_litros" type="number" inputmode="decimal" step="1" min="0" placeholder="ex.: 1500"><div style="height:10px"></div></div>
+    <button class="btn g" id="cd_ok" style="margin-top:6px">Confirmar e iniciar</button>
+    <button class="btn s" id="cd_cancel" style="margin-top:8px">Cancelar</button>
+  </div>`;
+  document.body.appendChild(ov);
+  const sync=()=>{ $('cd_parc').style.display=$('cd_cheio').checked?'none':'block'; };
+  $('cd_cheio').onchange=sync; sync();
+  $('cd_cancel').onclick=()=>ov.remove();
+  $('cd_ok').onclick=()=>{ const cheio=$('cd_cheio').checked; const litros=cheio?cap:(num($('cd_litros').value)||0);
+    if(!cheio && litros<=0){ _st('Informe os litros.','#e67e22'); return; }
+    if(!SESS) SESS=_novaSessaoObj(); if(!Array.isArray(SESS.tanques)) SESS.tanques=[];
+    SESS.tanques.push({seq:SESS.tanques.length+1, ini:Date.now(), pronto:null, abastIni:null, fim:null, litros:+litros||0, cheio:!!cheio, doses:prods.map(p=>({nome:p.nome,qtdCarga:p.qtdCarga,dose:p.dose}))});
+    _persistTanques(); ov.remove(); render();
+  };
+}
+function _renderCaldaTela(){
+  const c=CUR;
+  $('app').innerHTML=`<div style="position:fixed;inset:0;display:flex;flex-direction:column;background:#0a0f18">
+    <div style="flex:0 0 auto;display:flex;gap:8px;align-items:center;padding:8px 10px;background:#0d1117">
+      <button class="btn s" id="voltar" style="width:auto;margin:0;padding:8px 14px">◀</button>
+      <div style="flex:1;min-width:0;overflow:hidden;white-space:nowrap;text-overflow:ellipsis">🧪 <b>${esc(c.codigo)}</b> <span class="muted" style="font-size:13px">calda · ${esc(c.lote_nome||'')}</span></div>
+    </div>
+    <div style="flex:1;position:relative;min-height:0">
+      <canvas id="cv" style="width:100%;height:100%;display:block;touch-action:none"></canvas>
+      <div id="hud" style="position:absolute;top:8px;left:8px;right:8px;display:flex;gap:6px;flex-wrap:wrap"></div>
+      <button class="btn s" id="btn_follow" style="position:absolute;right:10px;bottom:10px;width:auto;margin:0;padding:10px 14px">${VIEW.follow?'🎯 Seguindo':'✋ Livre'}</button>
+    </div>
+    <div style="flex:0 0 auto;padding:8px 10px;background:#0d1117">
+      <div class="muted" style="font-size:12px;margin:0 2px 6px">${_caldaResumo()}</div>
+      ${_btnCaldaHTML()}
+    </div>
+  </div>`;
+  if($('voltar'))$('voltar').onclick=async()=>{ await _gpsLeave(); EXVIEW='menu'; render(); };
+  if($('btn_follow'))$('btn_follow').onclick=()=>{ VIEW.follow=!VIEW.follow; $('btn_follow').textContent=VIEW.follow?'🎯 Seguindo':'✋ Livre'; _drawMapa(); };
+  if($('btn_calda'))$('btn_calda').onclick=()=>_acaoCalda($('btn_calda').dataset.act);
+  setTimeout(()=>{ _setupCanvas(); _drawMapa(); _hud(); },30);
+}
 let _gestBound=null;
 function _bindGestures(cv){ if(_gestBound===cv) return; _gestBound=cv;
   let mode=null,startD=1,startZoom=1,lx=0,ly=0,tx=0,ty=0,moved=0,tapTS=0;
@@ -696,11 +761,7 @@ function _bindGestures(cv){ if(_gestBound===cv) return; _gestBound=cv;
 }
 function renderTrabalho(){
   const c=CUR; const manual=!GPS.paintAuto;
-  if(_ehPulvTerr() && _papelOper()==='calda'){   // Fase 3: tela da calda ainda não pronta
-    $('app').innerHTML=`<div class="center" style="margin-top:46px"><div class="big">🧪</div><h1 style="font-size:22px;margin:10px 0">Calda / pré-mistura</h1><div class="muted" style="max-width:340px;margin:0 auto">A tela da calda (preparar → calda pronta → abastecer) chega na próxima atualização.</div><button class="btn g huge" id="volta" style="max-width:320px;margin:22px auto 0">Voltar às comandas</button></div>`;
-    if($('volta'))$('volta').onclick=async()=>{ await _gpsLeave(); EXVIEW='menu'; render(); };
-    return;
-  }
+  if(_ehPulvTerr() && _papelOper()==='calda') return _renderCaldaTela();
   $('app').innerHTML=`<div style="position:fixed;inset:0;display:flex;flex-direction:column;background:#0a0f18">
     <div style="flex:0 0 auto;display:flex;gap:8px;align-items:center;padding:8px 10px;background:#0d1117">
       <button class="btn s" id="voltar" style="width:auto;margin:0;padding:8px 14px">◀</button>
