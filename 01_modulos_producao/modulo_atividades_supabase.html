@@ -1240,11 +1240,11 @@ function _conjTabela(g){
   const chip=(l,v)=>'<div style="flex:1;min-width:120px;background:var(--bg3);border:1px solid var(--border);border-radius:10px;padding:8px 11px"><div style="font-size:11px;color:var(--muted2)">'+l+'</div><div style="font-size:17px;font-weight:800">'+v+'</div></div>';
   let h='<div style="display:flex;flex-wrap:wrap;gap:8px;margin:2px 0 12px">'
     +chip('Diesel total', tD?fmtBR(tD)+' L':'—')+chip('Diesel/ha', dha?fmtBR(+dha.toFixed(1))+' L/ha':'—')
-    +chip('ha/h', hah?fmtBR(+hah.toFixed(2))+' ha/h':'—')+chip('Tempo total', tH?hh(tH)+' h':'—')+'</div>';
+    +chip('ha/h', hah?fmtBR(+hah.toFixed(2))+' ha/h':'—')+chip('Tempo total', _fmtDur(tH))+'</div>';
   h+='<div class="sec">Conjuntos / máquinas usadas</div><table class="ptbl"><thead><tr><th>Trator</th><th>Implemento</th><th>Operador</th><th>Início</th><th>Fim</th><th>Horas</th><th>Área</th><th>Diesel</th><th>Diesel/ha</th><th>ha/h</th></tr></thead><tbody>';
   conj.forEach(o=>{ const dh=o.area>0?o.diesel/o.area:0, ph=o.horas>0?o.area/o.horas:0;
-    h+='<tr><td>'+esc(o.trator||'—')+'</td><td>'+esc(o.implemento||'—')+'</td><td>'+esc(o.operador||'—')+'</td><td>'+esc(o.inicio||'')+'</td><td>'+esc(o.fim||'')+'</td><td>'+(o.horas?hh(o.horas)+' h':'')+'</td><td>'+(o.area?fmtArea(o.area)+' ha':'')+'</td><td>'+(o.diesel?fmtBR(o.diesel)+' L':'')+'</td><td>'+(dh?fmtBR(+dh.toFixed(1)):'—')+'</td><td>'+(ph?fmtBR(+ph.toFixed(2)):'—')+'</td></tr>'; });
-  h+='</tbody><tfoot><tr style="font-weight:800;background:var(--bg3)"><td colspan="5">Totais — '+(cp.dias||0)+' dia(s)</td><td>'+(tH?hh(tH)+' h':'')+'</td><td>'+(tA?fmtArea(tA)+' ha':'')+'</td><td>'+(tD?fmtBR(tD)+' L':'')+'</td><td>'+(dha?fmtBR(+dha.toFixed(1)):'')+'</td><td>'+(hah?fmtBR(+hah.toFixed(2)):'')+'</td></tr></tfoot></table>';
+    h+='<tr><td>'+esc(o.trator||'—')+'</td><td>'+esc(o.implemento||'—')+'</td><td>'+esc(o.operador||'—')+'</td><td>'+esc(o.inicio||'')+'</td><td>'+esc(o.fim||'')+'</td><td>'+_fmtDur(o.horas)+'</td><td>'+(o.area?fmtArea(o.area)+' ha':'')+'</td><td>'+(o.diesel?fmtBR(o.diesel)+' L':'')+'</td><td>'+(dh?fmtBR(+dh.toFixed(1)):'—')+'</td><td>'+(ph?fmtBR(+ph.toFixed(2)):'—')+'</td></tr>'; });
+  h+='</tbody><tfoot><tr style="font-weight:800;background:var(--bg3)"><td colspan="5">Totais — '+(cp.dias||0)+' dia(s)</td><td>'+_fmtDur(tH)+'</td><td>'+(tA?fmtArea(tA)+' ha':'')+'</td><td>'+(tD?fmtBR(tD)+' L':'')+'</td><td>'+(dha?fmtBR(+dha.toFixed(1)):'')+'</td><td>'+(hah?fmtBR(+hah.toFixed(2)):'')+'</td></tr></tfoot></table>';
   return h;
 }
 async function _ensureMaqMaps(){
@@ -1261,14 +1261,14 @@ function _apcInPoly(E,N,ring){ if(!ring) return false; let inside=false; for(let
 function _apcSegDist(px,py,aE,aN,bE,bN){ const dx=bE-aE,dy=bN-aN,L2=dx*dx+dy*dy; let t=L2?((px-aE)*dx+(py-aN)*dy)/L2:0; t=t<0?0:(t>1?1:t); return Math.hypot(px-(aE+dx*t),py-(aN+dy*t)); }
 function _conjCells(rows, ring, set){ const C=2; (rows||[]).forEach(r=>{ if(!Array.isArray(r.trajeto)||r.trajeto.length<2) return; const hw=(+r.largura_m>0?+r.largura_m:((APC&&APC.impLarg&&APC.impLarg[r.implemento_id])||0))/2; if(hw<=0) return; const pts=r.trajeto.filter(p=>p&&p[0]!=null).map(p=>{const u=_apcUTM(p[0],p[1],23);return [u[0],u[1]];}); for(let i=1;i<pts.length;i++){ const a=pts[i-1],b=pts[i]; const i0=Math.floor((Math.min(a[0],b[0])-hw)/C),i1=Math.floor((Math.max(a[0],b[0])+hw)/C),j0=Math.floor((Math.min(a[1],b[1])-hw)/C),j1=Math.floor((Math.max(a[1],b[1])+hw)/C); for(let x=i0;x<=i1;x++)for(let y=j0;y<=j1;y++){ const k=x+'_'+y; if(set.has(k))continue; const cE=(x+0.5)*C,cN=(y+0.5)*C; if(_apcSegDist(cE,cN,a[0],a[1],b[0],b[1])<=hw && (!ring||_apcInPoly(cE,cN,ring))) set.add(k); } } }); }   // união de células 2m (igual o tablet)
 function _buildConjuntos(rows, totDiesel){
-  const cj={}; rows.forEach(r=>{ const k=(r.maquina_id||'-')+'|'+(r.implemento_id||'-'); const o=cj[k]||(cj[k]={maq:r.maquina_id,imp:r.implemento_id,rows:[],somaArea:0,horas:0,d0:null,d1:null,opers:{},lote:null}); o.rows.push(r); o.somaArea+=(+r.area_ha||0); const hh=_apcHoras(r.hora_inicio,r.hora_fim); if(hh) o.horas+=hh; if(r.funcionario_id!=null) o.opers[r.funcionario_id]=1; if(!o.lote&&r.lote_nome) o.lote=r.lote_nome; if(r.data){ if(!o.d0||r.data<o.d0) o.d0=r.data; if(!o.d1||r.data>o.d1) o.d1=r.data; } });
+  const cj={}; rows.forEach(r=>{ const k=(r.maquina_id||'-')+'|'+(r.implemento_id||'-'); const o=cj[k]||(cj[k]={maq:r.maquina_id,imp:r.implemento_id,rows:[],somaArea:0,horas:0,d0:null,d1:null,opers:{},lote:null}); o.rows.push(r); o.somaArea+=(+r.area_ha||0); const hh=_apcDuracaoH(r); if(hh) o.horas+=hh; if(r.funcionario_id!=null) o.opers[r.funcionario_id]=1; if(!o.lote&&r.lote_nome) o.lote=r.lote_nome; if(r.data){ if(!o.d0||r.data<o.d0) o.d0=r.data; if(!o.d1||r.data>o.d1) o.d1=r.data; } });
   Object.values(cj).forEach(o=>{ const set=new Set(); _conjCells(o.rows, _apcLoteRing(o.lote||''), set); o.area = set.size>0 ? +(set.size*4/10000).toFixed(2) : +o.somaArea.toFixed(2); });   // área = UNIÃO das células das sessões do conjunto (NÃO soma sobreposição); fallback: soma area_ha se a sessão não tem trajeto
   const validos=Object.values(cj).filter(o=>o.maq!=null && (o.area>0||o.horas>0));   // só conjuntos REAIS (com trator e com trabalho) — ignora sessões-fantasma sem máquina
   const tA=validos.reduce((s,o)=>s+o.area,0), tH=validos.reduce((s,o)=>s+o.horas,0);   // rateia o diesel SÓ entre os válidos -> a soma das linhas fecha com o total
   return validos.map(o=>{ let d; if(tA>0) d=totDiesel*o.area/tA; else if(tH>0) d=totDiesel*o.horas/tH; else d=totDiesel/validos.length;
-    return { trator:_maqLabel(o.maq)||'—', implemento:_impLabel(o.imp)||'—', operador:Object.keys(o.opers).map(id=>APC.fun[id]||('#'+id)).join(', ')||'—', inicio:o.d0?fmtData(o.d0):'', fim:o.d1?fmtData(o.d1):'', horas:o.horas?+o.horas.toFixed(1):0, area:o.area, diesel:+(d||0).toFixed(1) }; });
+    return { trator:_maqLabel(o.maq)||'—', implemento:_impLabel(o.imp)||'—', operador:Object.keys(o.opers).map(id=>APC.fun[id]||('#'+id)).join(', ')||'—', inicio:o.d0?fmtData(o.d0):'', fim:o.d1?fmtData(o.d1):'', horas:+(o.horas||0).toFixed(4), area:o.area, diesel:+(d||0).toFixed(1) }; });
 }
-function _totConj(conjuntos){ return { area:+(conjuntos.reduce((s,o)=>s+(+o.area||0),0)).toFixed(2), horas:+(conjuntos.reduce((s,o)=>s+(+o.horas||0),0)).toFixed(1), diesel:+(conjuntos.reduce((s,o)=>s+(+o.diesel||0),0)).toFixed(1) }; }
+function _totConj(conjuntos){ return { area:+(conjuntos.reduce((s,o)=>s+(+o.area||0),0)).toFixed(2), horas:+(conjuntos.reduce((s,o)=>s+(+o.horas||0),0)).toFixed(4), diesel:+(conjuntos.reduce((s,o)=>s+(+o.diesel||0),0)).toFixed(1) }; }
 /* monta a tabela AO VIVO do banco (execucao_campo) pela ID da comanda — não depende de re-aprovar */
 async function _carregarConjLive(codigo, safra, elId){
   const el=document.getElementById(elId); if(!el) return;
@@ -1286,8 +1286,8 @@ async function _carregarConjLive(codigo, safra, elId){
   const opers=[...new Set(comMaq.map(r=>APC.fun[r.funcionario_id]).filter(Boolean))].join(', ');
   const g={'Operador':opers, campo:{ conjuntos, dias:new Set(comMaq.map(r=>r.data).filter(Boolean)).size, horas_trabalho:tot.horas, diesel_l:+totDiesel.toFixed(2), area_ha:tot.area }};
   const lista=comMaq.slice().sort((a,b)=>String((a.data||'')+(a.hora_inicio||'')).localeCompare(String((b.data||'')+(b.hora_inicio||'')))).map(r=>{
-    const h=_apcHoras(r.hora_inicio,r.hora_fim);
-    return '<tr><td>'+esc(r.data?fmtData(r.data):'')+'</td><td>'+esc(APC.fun[r.funcionario_id]||('#'+r.funcionario_id))+'</td><td>'+esc(_maqLabel(r.maquina_id)||'—')+'</td><td>'+esc((r.hora_inicio||'—')+'–'+(r.hora_fim||'—'))+(h?(' ('+h.toFixed(1).replace('.',',')+'h)'):'')+'</td><td style="text-align:right">'+(r.area_ha!=null?fmtArea(r.area_ha)+' ha':'—')+'</td></tr>';
+    const h=_apcDuracaoH(r);
+    return '<tr><td>'+esc(r.data?fmtData(r.data):'')+'</td><td>'+esc(APC.fun[r.funcionario_id]||('#'+r.funcionario_id))+'</td><td>'+esc(_maqLabel(r.maquina_id)||'—')+'</td><td>'+esc((r.hora_inicio||'—')+'–'+(r.hora_fim||'—'))+(h?(' ('+_fmtDur(h)+')'):'')+'</td><td style="text-align:right">'+(r.area_ha!=null?fmtArea(r.area_ha)+' ha':'—')+'</td></tr>';
   }).join('');
   el.innerHTML=_conjTabela(g)
     +'<div class="sec">Movimentações (sessões)</div><table class="ptbl"><thead><tr><th>Data</th><th>Operador</th><th>Trator</th><th>Horário</th><th style="text-align:right">Área</th></tr></thead><tbody>'+lista+'</tbody></table>';
@@ -2949,6 +2949,12 @@ render();
 function _apcEsc(s){ return String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
 function _apcT2m(s){ const m=String(s||'').match(/^(\d{1,2}):(\d{2})$/); return m?(+m[1])*60+(+m[2]):null; }
 function _apcHoras(a,b){ const x=_apcT2m(a),y=_apcT2m(b); return (x==null||y==null||y<=x)?null:(y-x)/60; }
+function _apcDuracaoH(r){   // duração REAL pelos timestamps dos pontos (precisão de segundos); fallback HH:MM
+  const t=r&&r.trajeto;
+  if(Array.isArray(t)&&t.length>=2){ let lo=Infinity,hi=-Infinity; for(const p of t){ const ts=p&&+p[2]; if(ts>0){ if(ts<lo)lo=ts; if(ts>hi)hi=ts; } } if(hi>lo) return (hi-lo)/3600000; }
+  return _apcHoras(r&&r.hora_inicio, r&&r.hora_fim)||0;
+}
+function _fmtDur(h){ h=+h||0; if(h<=0) return '—'; const s=Math.round(h*3600); if(s<60) return s+' s'; const m=h*60; if(m<60) return (m<10?String(+m.toFixed(1)).replace('.',','):String(Math.round(m)))+' min'; return String(+h.toFixed(1)).replace('.',',')+' h'; }
 function _apcNum(v){ return (v==null||v==='')?0:(+v||0); }
 function _apcFmt(v){ return _apcNum(v).toLocaleString('pt-BR',{maximumFractionDigits:2}); }
 async function _updNavAprovCampo(){
@@ -2985,7 +2991,7 @@ async function _loadAprovCampo(){
 }
 function _apcResumo(g){
   const rows=g.rows||[]; let area=0,horas=0,concl=false; const dd=new Set();
-  rows.forEach(r=>{ area+=_apcNum(r.area_ha); const h=_apcHoras(r.hora_inicio,r.hora_fim); if(h) horas+=h; if(r.data) dd.add(r.data); if(r.concluiu_lote) concl=true; });
+  rows.forEach(r=>{ area+=_apcNum(r.area_ha); const h=_apcDuracaoH(r); if(h) horas+=h; if(r.data) dd.add(r.data); if(r.concluiu_lote) concl=true; });
   const diesel=(g.abast||[]).reduce((s,a)=>s+_apcNum(a.litros),0);
   return {area,diesel,horas,dias:dd.size,concl};
 }
@@ -3090,12 +3096,12 @@ function renderAprovCampo(){
     const tipo=c?c.tipoAtiv:''; const lote=c?c.loteNome:(r0?r0.lote_nome:''); const tot=_apcResumo(g);
     const mkey=g.codigo+'|'+(g.safra||''); const mst=_apcState(mkey);
     const linhas=g.rows.map(r=>{
-      const h=_apcHoras(r.hora_inicio,r.hora_fim);
+      const h=_apcDuracaoH(r);
       return `<tr data-apcsel="${r.id}" data-apckey="${_apcEsc(mkey)}" style="cursor:pointer${String(mst.sel)===String(r.id)?';background:#16324a':''}" title="Clique p/ destacar no mapa">
         <td>${_apcEsc((r.data||'').split('-').reverse().join('/'))}</td>
         <td>${_apcEsc(APC.fun[r.funcionario_id]||('#'+r.funcionario_id))}</td>
         <td>${_apcEsc(_maqLabel(r.maquina_id)||'—')}${r.implemento_id?(' + '+_apcEsc(_impLabel(r.implemento_id))):''}</td>
-        <td>${_apcEsc(r.hora_inicio||'—')}–${_apcEsc(r.hora_fim||'—')}${h?(' ('+h.toFixed(1)+'h)'):''}</td>
+        <td>${_apcEsc(r.hora_inicio||'—')}–${_apcEsc(r.hora_fim||'—')}${h?(' ('+_fmtDur(h)+')'):''}</td>
         <td style="text-align:right">${r.area_ha!=null?_apcFmt(r.area_ha)+' ha':'—'}</td>
         <td style="white-space:nowrap">${r.concluiu_lote?'<b style="color:#2ea043">lote ✓</b> ':''}<button class="btn sm" data-apcdel="${r.id}" title="Descartar este">✕</button></td>
       </tr>`;
@@ -3105,7 +3111,7 @@ function renderAprovCampo(){
       <div style="flex:1 1 440px;min-width:300px;display:flex;flex-direction:column">
         <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">
           <div><h2 style="margin:0">${_apcEsc(g.codigo)}${tipo?(' · '+_apcEsc(tipo)):''}</h2>
-            <div class="sub" style="margin:2px 0 0">Lote ${_apcEsc(lote||'—')} · safra ${_apcEsc(g.safra||'—')} · ${tot.dias} dia(s) · ${tot.area?(_apcFmt(tot.area)+' ha'):'—'} · ${tot.horas?(tot.horas.toFixed(1)+' h trabalho'):'—'} · ${tot.diesel?(_apcFmt(tot.diesel)+' L diesel'):'—'}${tot.concl?' · <b style="color:#2ea043">conclui o lote</b>':''}</div></div>
+            <div class="sub" style="margin:2px 0 0">Lote ${_apcEsc(lote||'—')} · safra ${_apcEsc(g.safra||'—')} · ${tot.dias} dia(s) · ${tot.area?(_apcFmt(tot.area)+' ha'):'—'} · ${tot.horas?(_fmtDur(tot.horas)+' trabalho'):'—'} · ${tot.diesel?(_apcFmt(tot.diesel)+' L diesel'):'—'}${tot.concl?' · <b style="color:#2ea043">conclui o lote</b>':''}</div></div>
           <div style="display:flex;gap:6px;flex-wrap:wrap"><button class="btn" data-apcver="${_apcEsc(g.codigo)}|${_apcEsc(g.safra||'')}">👁 Ver comanda</button><button class="btn success" data-apcok="${_apcEsc(g.codigo)}|${_apcEsc(g.safra||'')}">✓ Aprovar comanda</button></div>
         </div>
         ${_apcOperStatus(g, c)}
@@ -3200,7 +3206,7 @@ async function aprovarComandaCampo(key){
     const geral=Object.assign({}, (c&&c.geralRetorno)||{}, {
       'Trator':trator, 'Implemento':implem,
       'Data de início':datas[0]?fmtData(datas[0]):'', 'Data de fim':ultimaData?fmtData(ultimaData):'',
-      'Horas trabalhadas':horas?(horas.toFixed(1).replace('.',',')+' h'):'', 'Diesel total':totDiesel?(_apcFmt(totDiesel)+' L'):'', 'Área':totArea?(_apcFmt(totArea)+' ha'):'',
+      'Horas trabalhadas':horas?_fmtDur(horas):'', 'Diesel total':totDiesel?(_apcFmt(totDiesel)+' L'):'', 'Área':totArea?(_apcFmt(totArea)+' ha'):'',
       'Maquinário e implemento':maqs, 'Operador':opers,
       campo:{ dias:ndias, area_ha:+totArea.toFixed(2), diesel_l:+totDiesel.toFixed(2), horas_trabalho:+horas.toFixed(1), operadores:opers.split(', ').filter(Boolean), conjuntos:conjuntos, abastecimentos:(g.abast||[]).map(a=>({litros:+a.litros, quando:a.quando, maquina:_maqLabel(a.maquina_id)||null})), aprovado_em:new Date().toISOString() }
     });
