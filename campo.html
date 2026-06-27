@@ -294,7 +294,7 @@ async function _lancarAbast(){
 }
 function renderExecMenu(){
   const c=CUR; const area=areaLote(c.lote_nome);
-  const concl=CUR_DAYS.some(r=>r.concluiu_lote)||c.status==='executada';
+  const concl=CUR_DAYS.some(r=>String(r.funcionario_id)===String(OPER.id) && r.concluiu_lote)||c.status==='executada';   // só EU concluí (ou o admin executou) — concluir de um operador NÃO bloqueia os outros
   const areaCum=CUR_AREA;
   const dias=[...new Set(CUR_DAYS.filter(r=>(Array.isArray(r.trajeto)&&r.trajeto.length>1)||r.area_ha).map(r=>r.data))].length;
   const hTrab=CUR_DAYS.reduce((s,r)=>{ const h=horasEntre(r.hora_inicio,r.hora_fim); return s+(h||0); },0);
