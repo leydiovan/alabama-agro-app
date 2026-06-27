@@ -396,6 +396,7 @@ function _simRota(){ const poly=_polyUTM(); if(!poly) return null;
   return wp.length>=2?wp:null;
 }
 function _simStop(){ if(SIM.timer){clearInterval(SIM.timer);SIM.timer=null;} SIM.on=false; }
+function _simVelCiclar(){ const opts=[6,12,25,50]; SIM.vel=opts[(opts.indexOf(SIM.vel)+1)%opts.length]||12; render(); }   // controle de velocidade da simulação
 function _simToggle(){
   if(SIM.on){ _simStop(); _st('⏸ Simulação pausada','#8b949e'); render(); return; }
   if(!_polyUTM()){ _st('Talhão sem polígono — não dá pra simular','#e67e22'); return; }
@@ -407,7 +408,7 @@ function _simToggle(){
 }
 function _simTick(){
   if(!SIM.rota || SIM.seg>=SIM.rota.length-1){ _simStop(); _st('✅ Simulação concluída','#27ae60'); render(); return; }
-  let rem=Math.max(_widthM()||12,8)*0.55;
+  let rem=(SIM.vel/3.6)*5;   // metros por tick (~5 s simulados); controlado pela velocidade
   while(rem>0 && SIM.seg<SIM.rota.length-1){ const tgt=SIM.rota[SIM.seg+1], dx=tgt.E-SIM.pos.E, dy=tgt.N-SIM.pos.N, d=Math.hypot(dx,dy);
     if(d<=rem){ SIM.pos={E:tgt.E,N:tgt.N}; SIM.seg++; rem-=d; } else { SIM.pos={E:SIM.pos.E+dx/d*rem,N:SIM.pos.N+dy/d*rem}; rem=0; } }
   const ll=_utmToLatLng(SIM.pos.E,SIM.pos.N,23);
@@ -439,7 +440,7 @@ function _buildDayCells(){ _DAYCELLS=new Set(); const poly=_polyUTM(); (DAYSEGS|
 function _coverAreaHa(){ let n=_DAYCELLS.size; GPS.cells.forEach(k=>{ if(!_DAYCELLS.has(k)) n++; }); return n*CELL*CELL/10000; }   // UNIÃO ao vivo (não soma sobreposição)
 function _unionAreaHa(rows){ const set=new Set(),poly=_polyUTM(); (rows||[]).forEach(r=>_addCells(_rowPts(r),_rowLarg(r)/2,poly,set)); return set.size*CELL*CELL/10000; }
 function _velColor(v){ if(v==null||isNaN(v)) return 'rgba(170,170,170,.5)'; const c=Math.max(0,Math.min(15,+v)); const h=240-(c/15)*240; return 'hsla('+h.toFixed(0)+',85%,50%,.65)'; }
-function _velSig(){ return GPS.pts.length+'|'+(DAYSEGS||[]).length+'|'+(DAYSEGS||[]).reduce((a,s)=>a+s.pts.length,0)+'|'+DIA; }
+function _velSig(){ return Math.floor(GPS.pts.length/6)+'|'+(DAYSEGS||[]).length+'|'+DIA; }   // grosseiro: reconstrói as células a cada ~6 pontos (não a cada ponto) -> bem mais leve
 function _markCellsMap(aE,aN,bE,bN,v,poly,hw,map){ if(hw<=0) return; const i0=Math.floor((Math.min(aE,bE)-hw)/CELL),i1=Math.floor((Math.max(aE,bE)+hw)/CELL),j0=Math.floor((Math.min(aN,bN)-hw)/CELL),j1=Math.floor((Math.max(aN,bN)+hw)/CELL); for(let i=i0;i<=i1;i++)for(let j=j0;j<=j1;j++){ const k=i+'_'+j; if(map.has(k)) continue; const cE=(i+0.5)*CELL,cN=(j+0.5)*CELL; if(_segDist(cE,cN,aE,aN,bE,bN)<=hw && (!poly||_inPoly(cE,cN,poly))) map.set(k, v||0); } }   // 1º a pintar vence (não substitui)
 function _buildVelCells(){ const map=new Map(); const poly=_polyUTM();
   const segs=(DAYSEGS||[]).slice().reverse();   // mais antigos primeiro (cronologia: quem passou antes vale)
@@ -793,6 +794,7 @@ function _renderCaldaTela(){
       <div id="hud" style="position:absolute;top:8px;left:8px;right:8px;display:flex;gap:6px;flex-wrap:wrap"></div>
       <button class="btn s" id="btn_follow" style="position:absolute;right:10px;bottom:10px;width:auto;margin:0;padding:10px 14px">${VIEW.follow?'🎯 Seguindo':'✋ Livre'}</button>
       ${_simOK()?`<button class="btn ${SIM.on?'k':'s'}" id="btn_sim" style="position:absolute;right:10px;bottom:62px;width:auto;margin:0;padding:10px 14px">${SIM.on?'⏸ Sim':'🧪 Simular'}</button>`:''}
+      ${(_simOK()&&SIM.on)?`<button class="btn s" id="btn_simvel" style="position:absolute;right:10px;bottom:114px;width:auto;margin:0;padding:10px 14px">⏩ ${SIM.vel} km/h</button>`:''}
     </div>
     <div style="flex:0 0 auto;padding:8px 10px;background:#0d1117">
       <div class="muted" style="font-size:12px;margin:0 2px 6px">${_caldaResumo()}</div>
@@ -802,6 +804,7 @@ function _renderCaldaTela(){
   if($('voltar'))$('voltar').onclick=async()=>{ await _gpsLeave(); EXVIEW='menu'; render(); };
   if($('btn_follow'))$('btn_follow').onclick=()=>{ VIEW.follow=!VIEW.follow; $('btn_follow').textContent=VIEW.follow?'🎯 Seguindo':'✋ Livre'; _drawMapa(); };
   if($('btn_sim'))$('btn_sim').onclick=_simToggle;
+  if($('btn_simvel'))$('btn_simvel').onclick=_simVelCiclar;
   if($('btn_calda'))$('btn_calda').onclick=()=>_acaoCalda($('btn_calda').dataset.act);
   setTimeout(()=>{ _setupCanvas(); _drawMapa(); _hud(); },30);
 }
@@ -837,6 +840,7 @@ function renderTrabalho(){
         <button class="btn s" id="btn_cmode" style="width:auto;margin:0;padding:10px 14px">${VIEW.mode==='vel'?'🌡 Velocidade':(VIEW.mode==='tq'?'🪣 Por tanque':'🎨 Cobertura')}</button>
         <button class="btn s" id="btn_pmode" style="width:auto;margin:0;padding:10px 14px">${manual?'✋ Manual':'🅰 Auto'}</button>
         ${_simOK()?`<button class="btn ${SIM.on?'k':'s'}" id="btn_sim" style="width:auto;margin:0;padding:10px 14px">${SIM.on?'⏸ Sim':'🧪 Simular'}</button>`:''}
+        ${(_simOK()&&SIM.on)?`<button class="btn s" id="btn_simvel" style="width:auto;margin:0;padding:10px 14px">⏩ ${SIM.vel} km/h</button>`:''}
         ${manual?`<button class="btn ${GPS.painting?'k':'b'}" id="btn_paint" style="width:auto;margin:0;padding:10px 16px">${GPS.painting?'● Pintando':'▶ Pintar'}</button>`:''}
       </div>
       <div id="vleg" style="display:${(VIEW.mode==='vel')?'flex':'none'};position:absolute;left:10px;bottom:10px;gap:8px;align-items:center;background:#0d1117cc;border-radius:8px;padding:6px 9px;font-size:11px;color:#fff">Vel: <span style="color:#3aa0ff">baixa</span><span style="width:54px;height:8px;border-radius:4px;background:linear-gradient(90deg,hsl(240,85%,50%),hsl(120,85%,50%),hsl(0,85%,50%))"></span><span style="color:#ff5b5b">alta</span></div>
@@ -852,6 +856,7 @@ function renderTrabalho(){
   if($('btn_cmode'))$('btn_cmode').onclick=()=>{ const seq=(_ehPulvTerr()&&_papelOper()==='pulverizador')?['cob','vel','tq']:['cob','vel']; VIEW.mode=seq[(seq.indexOf(VIEW.mode||'cob')+1)%seq.length]; $('btn_cmode').textContent=VIEW.mode==='vel'?'🌡 Velocidade':(VIEW.mode==='tq'?'🪣 Por tanque':'🎨 Cobertura'); const lg=$('vleg'); if(lg) lg.style.display=(VIEW.mode==='vel')?'flex':'none'; const cg=$('cleg'); if(cg) cg.style.display=(VIEW.mode==='cob')?'flex':'none'; _drawMapa(); };
   if($('btn_pmode'))$('btn_pmode').onclick=()=>{ GPS.paintAuto=!GPS.paintAuto; if(GPS.paintAuto) GPS.painting=false; render(); };
   if($('btn_sim'))$('btn_sim').onclick=_simToggle;
+  if($('btn_simvel'))$('btn_simvel').onclick=_simVelCiclar;
   if($('btn_paint'))$('btn_paint').onclick=()=>{ GPS.painting=!GPS.painting; render(); };
   setTimeout(()=>{ _setupCanvas(); _drawMapa(); _hud(); if(!_conjOK()) _pedirConjunto(); },30);   // 1ª vez (ou conjunto incompleto): janela obrigatória de escolha
 }
