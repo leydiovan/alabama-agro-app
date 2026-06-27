@@ -383,7 +383,7 @@ function relHTML(){
     if(!o.extra&&!o.falta&&!o.dias) return '';
     const he$=m2dec(o.extra)*valorHE(f), dia$=f.tipo==='diarista'?o.dias*valorDiaria(f):0, tot=he$+dia$;
     tGeral+=tot; const pago=REL_PAG[f.id]; if(pago) tPago+=tot; else tAberto+=tot;
-    const pagoCel=pago?`<span style="color:var(--ok)">✓ pago</span> <input type="date" value="${esc(pago.pago_em||'')}" data-paydt="${f.id}" title="Data do pagamento — clique para alterar" style="background:var(--bg2);border:1px solid var(--line);border-radius:6px;color:var(--text);font-size:12px;padding:3px 6px;color-scheme:dark"> <button class="btn sm ghost" data-unpay="${f.id}">desfazer</button>`:`<button class="btn sm gold" data-pay="${f.id}">marcar pago</button>`;
+    const pagoCel=pago?`<span style="color:var(--ok)">✓ pago · <input type="date" value="${esc(pago.pago_em||'')}" data-paydt="${f.id}" title="Data do pagamento — clique para alterar" style="border:0;background:transparent;color:var(--ok);font:inherit;padding:0;cursor:pointer;color-scheme:dark;width:auto"></span> <button class="btn sm ghost" data-unpay="${f.id}">desfazer</button>`:`<button class="btn sm gold" data-pay="${f.id}">marcar pago</button>`;
     return `<tr><td><b>${esc(f.nome)}</b></td><td><span class="sub">${TIPO_NOME[f.tipo]}</span></td>
       <td class="num">${o.dias}</td><td class="num he">${m2hm(o.extra)}</td><td class="num">${brl(he$)}</td>
       <td class="num">${dia$?brl(dia$):'—'}</td><td class="num">${o.falta||'—'}</td><td class="num">${m2hm(o.faltaJ)}</td>
