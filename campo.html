@@ -102,7 +102,7 @@ let VERTODAS=false;         // fallback: mostrar todas as comandas (sem designa�
 
 /* ---------- helpers ---------- */
 function nowHM(){ const d=new Date(); return String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0'); }
-function hoje(){ return new Date().toISOString().slice(0,10); }
+function hoje(){ const d=new Date(); return d.getFullYear()+'-'+_dt2(d.getMonth()+1)+'-'+_dt2(d.getDate()); }   // data LOCAL (não UTC) — senão à noite no Brasil vira o dia seguinte
 function _dlabel(ds){ const d=new Date(ds+'T12:00:00'); return ['Dom','Seg','Ter','Qua','Qui','Sex','Sáb'][d.getDay()]+' '+ds.split('-').reverse().join('/'); }
 function t2m(s){ if(!s) return null; const m=String(s).match(/^(\d{1,2}):(\d{2})$/); return m?(+m[1])*60+(+m[2]):null; }
 function horasEntre(a,b){ const x=t2m(a),y=t2m(b); if(x==null||y==null||y<=x) return null; return (y-x)/60; }

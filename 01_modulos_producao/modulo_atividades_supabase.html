@@ -468,7 +468,7 @@ function renderNova(){
       <div class="fcol"><label>Lote / Agrupamento</label>
         <select id="nv_lote" onchange="atualizaIndicadores()"><option value="">— selecione —</option>${lotesOpt}</select></div>
       <div class="fcol" style="max-width:160px"><label>Data de emissão</label>
-        <input type="date" id="nv_data" value="${new Date().toISOString().slice(0,10)}"></div>
+        <input type="date" id="nv_data" value="${_hojeLocal()}"></div>
       <div class="fcol" style="max-width:160px"><label>Executar em</label>
         <input type="date" id="nv_exec"></div>
     </div>
@@ -1214,7 +1214,7 @@ function confirmarRetorno(cod){
   c.geralRetorno=Object.assign({}, c._geralTmp||{});
   // data de execução: primeira data preenchida na lista, senão hoje
   const comData=c.diario.find(d=>d['Data']||d['data']);
-  c.dataExecucao=(comData&&(comData['Data']||comData['data']))||new Date().toISOString().slice(0,10);
+  c.dataExecucao=(comData&&(comData['Data']||comData['data']))||_hojeLocal();
   c.status='executada';
   delete c._diarioTmp; delete c._geralTmp; delete c._editandoRetorno; diarioTmp=[];
   atualizarComandaSB(c);  /* grava retorno no Supabase */
@@ -2958,6 +2958,7 @@ render();
 
 /* ===================== APROVAÇÕES DE CAMPO (execução vinda do tablet) ===================== */
 function _apcEsc(s){ return String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+function _hojeLocal(){ const d=new Date(); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }   // data LOCAL (não UTC)
 function _apcT2m(s){ const m=String(s||'').match(/^(\d{1,2}):(\d{2})$/); return m?(+m[1])*60+(+m[2]):null; }
 function _apcHoras(a,b){ const x=_apcT2m(a),y=_apcT2m(b); return (x==null||y==null||y<=x)?null:(y-x)/60; }
 function _apcDuracaoH(r){   // duração REAL pelos timestamps dos pontos (precisão de segundos); fallback HH:MM
@@ -2972,7 +2973,7 @@ async function _updNavAprovCampo(){
   const btn=document.getElementById('navAprovCampo'); if(!btn) return;
   if(!IS_ADMIN){ btn.style.display='none'; return; }
   btn.style.display='';
-  try{ const {data}=await SB.from('execucao_campo').select('id,status,data,area_ha,trajeto,horimetro_ini,horimetro_fim,diesel_litros').in('status',['enviada','aberto']); const hoje=new Date().toISOString().slice(0,10);
+  try{ const {data}=await SB.from('execucao_campo').select('id,status,data,area_ha,trajeto,horimetro_ini,horimetro_fim,diesel_litros').in('status',['enviada','aberto']); const hoje=_hojeLocal();
     const tt=r=>((Array.isArray(r.trajeto)&&r.trajeto.length>1)||r.area_ha||r.horimetro_ini!=null||r.horimetro_fim!=null||r.diesel_litros!=null);
     const n=(data||[]).filter(r=>tt(r) && (r.status==='enviada' || (r.status==='aberto' && String(r.data)<hoje))).length;
     btn.textContent='✅ Aprovações de campo'+(n?(' ('+n+')'):''); }catch(e){}
@@ -2991,7 +2992,7 @@ async function _loadAprovCampo(){
     (im.data||[]).forEach(m=>{ APC.imp[m.id]=m.nome; APC.impFrota[m.id]=m.id_frota||''; APC.impModelo[m.id]=m.modelo||''; APC.impLarg[m.id]=m.largura_trabalho?+m.largura_trabalho:0; });
     (fu.data||[]).forEach(m=>APC.fun[m.id]=m.nome);
     const abByKey={}; (ab.data||[]).forEach(a=>{ const k=a.comanda_codigo+'|'+(a.safra||''); (abByKey[k]||(abByKey[k]=[])).push(a); });
-    const hoje=new Date().toISOString().slice(0,10);
+    const hoje=_hojeLocal();
     const _temTrab=r=>((Array.isArray(r.trajeto)&&r.trajeto.length>1)||r.area_ha||r.horimetro_ini!=null||r.horimetro_fim!=null||r.diesel_litros!=null);
     const byc={};
     // só sessões COM trabalho; 'enviada' = pronto p/ aprovar; 'aberto' só de dia passado (sessão abandonada — não some)
