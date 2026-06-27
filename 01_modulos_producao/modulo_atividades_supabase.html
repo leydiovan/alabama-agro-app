@@ -1096,6 +1096,7 @@ function abrirFicha(codigo,seq){
       <div class="kgrid">
         <div class="kv"><div class="k">Lote / Agrup.</div><div class="v">${esc(c.loteNome||'—')}</div></div>
         <div class="kv"><div class="k">Área</div><div class="v">${fmtArea(areaDe(c.loteNome))} ha</div></div>
+        ${(c.status==='executada' && c.geralRetorno && c.geralRetorno.campo && c.geralRetorno.campo.area_ha!=null)?`<div class="kv"><div class="k">Área executada</div><div class="v">${fmtArea(c.geralRetorno.campo.area_ha)} ha <small style="color:var(--muted2)">(${c.geralRetorno.campo.area_modo==='comanda'?'planejada':'medida no campo'})</small></div></div>`:''}
         ${(c.perfil==='MAQUINA')?'':`<div class="kv"><div class="k">Vazão</div><div class="v">${esc(c.taxa??'—')}</div></div>
         <div class="kv"><div class="k">Faixa</div><div class="v">${esc(c.faixa??'—')} m</div></div>
         <div class="kv"><div class="k">Capacidade</div><div class="v">${esc(c.capacidade??'—')}</div></div>`}
