@@ -3068,6 +3068,19 @@ function _apcVerComanda(codigo,safra){
   document.body.appendChild(ov);
   ov.querySelector('#apcclose').onclick=()=>ov.remove();
 }
+function _apcOperStatus(g, c){   // chips por operador: ✅ concluiu · ⏳ trabalhando · ⚪ designado sem envio
+  const desig=(c&&Array.isArray(c.operadores))?c.operadores.map(Number):[];
+  const ids=[...new Set(desig.concat((g.rows||[]).map(r=>+r.funcionario_id)))].filter(x=>x!=null && !isNaN(x));
+  if(!ids.length) return '';
+  const chips=ids.map(id=>{
+    const rows=(g.rows||[]).filter(r=>String(r.funcionario_id)===String(id));
+    const concl=rows.some(r=>r.concluiu_lote), trab=rows.length>0;
+    let ic,cor,bg; if(concl){ic='✅';cor='#2ea043';bg='rgba(46,160,67,.12)';} else if(trab){ic='⏳';cor='#d29922';bg='rgba(210,153,34,.12)';} else {ic='⚪';cor='#8b949e';bg='rgba(139,148,158,.10)';}
+    return '<span style="display:inline-flex;align-items:center;gap:4px;border:1px solid '+cor+'55;background:'+bg+';color:'+cor+';border-radius:20px;padding:2px 9px;font-size:12px;font-weight:600">'+ic+' '+_apcEsc(APC.fun[id]||('#'+id))+'</span>';
+  }).join('');
+  const faltam=ids.filter(id=>!(g.rows||[]).some(r=>String(r.funcionario_id)===String(id) && r.concluiu_lote)).length;
+  return '<div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin:8px 2px 0">'+chips+'<span class="sub">'+(faltam===0?'· todos concluíram o lote':('· '+faltam+' ainda não concluí(ram)'))+'</span></div>';
+}
 function renderAprovCampo(){
   if(!IS_ADMIN) return '<div class="wrap"><p class="note">🔒 Apenas administrador.</p></div>';
   if(APC===null) return '<div class="wrap"><p class="note">⏳ Carregando execuções enviadas…</p></div>';
@@ -3095,6 +3108,7 @@ function renderAprovCampo(){
             <div class="sub" style="margin:2px 0 0">Lote ${_apcEsc(lote||'—')} · safra ${_apcEsc(g.safra||'—')} · ${tot.dias} dia(s) · ${tot.area?(_apcFmt(tot.area)+' ha'):'—'} · ${tot.horas?(tot.horas.toFixed(1)+' h trabalho'):'—'} · ${tot.diesel?(_apcFmt(tot.diesel)+' L diesel'):'—'}${tot.concl?' · <b style="color:#2ea043">conclui o lote</b>':''}</div></div>
           <div style="display:flex;gap:6px;flex-wrap:wrap"><button class="btn" data-apcver="${_apcEsc(g.codigo)}|${_apcEsc(g.safra||'')}">👁 Ver comanda</button><button class="btn success" data-apcok="${_apcEsc(g.codigo)}|${_apcEsc(g.safra||'')}">✓ Aprovar comanda</button></div>
         </div>
+        ${_apcOperStatus(g, c)}
         <table class="tbl" style="margin-top:8px"><thead><tr><th>Data</th><th>Operador</th><th>Máquina</th><th>Atividade</th><th style="text-align:right">Área</th><th></th></tr></thead><tbody>${linhas}</tbody></table>
         ${abast}
       </div>
