@@ -247,6 +247,7 @@ function _bindSairBar(){ if($('sair2'))$('sair2').onclick=async()=>{ if(SB) awai
 let CUR_DAYS=[];                 // execuções (1 card por dia) da comanda aberta
 let CUR_AREA=0;                  // área de união (ha) da comanda — calculada ao carregar, não por render
 let HDR={maquina_id:'',implemento_id:'',largura_m:0};   // máquina/implemento/largura escolhidos no cabeçalho
+let HDROP=null;   // de QUEM é o HDR em memória (não vaza conjunto entre operadores no mesmo app)
 let EXVIEW='menu';              // dentro da comanda: 'menu' (ícones) | 'trabalho' (apontamento)
 async function _carregarDiasComanda(){
   const _ck='days_'+CUR.codigo+'_'+OPER.id;
@@ -554,6 +555,7 @@ async function _gpsLeave(){
 function _conjResumo(){ const t=HDR.maquina_id?_maqNome(HDR.maquina_id):'—'; const im=HDR.implemento_id?(_impNome(HDR.implemento_id)||'—'):'—'; const lg=+HDR.largura_m>0?(' · '+String(HDR.largura_m).replace('.',',')+' m'):''; return '<b>🚜 '+esc(t)+'</b><span class="muted"> · '+esc(im)+lg+'</span>'; }
 function _updConjSum(){ const e=$('conj_sum'); if(e) e.innerHTML=_conjResumo(); }
 function _aplicarConjunto(){   // aplica o HDR atual à sessão; se já tem trabalho pintado, fecha a anterior e a nova nasce no 1º ponto
+  HDROP=OPER&&OPER.id;   // o operador atual acabou de escolher -> o HDR é dele
   _saveConj(); _updConjSum();
   const nm=HDR.maquina_id, ni=HDR.implemento_id;
   if(SESS && String(SESS.maquina_id||'')===String(nm) && String(SESS.implemento_id||'')===String(ni) && +(SESS.largura_m||0)===+(HDR.largura_m||0)){ _VELC=null; _recalcCells(); _drawMapa(); _hud(); return; }
@@ -575,12 +577,12 @@ function _aplicarConjunto(){   // aplica o HDR atual à sessão; se já tem trab
 function _conjOK(){ return !!(HDR.maquina_id && HDR.implemento_id && +HDR.largura_m>0); }
 function _remConj(){ try{ return JSON.parse(localStorage.getItem('conj_'+(OPER&&OPER.id))||'null'); }catch(e){ return null; } }
 function _saveConj(){ try{ if(OPER&&OPER.id) localStorage.setItem('conj_'+OPER.id, JSON.stringify({maquina_id:HDR.maquina_id||'', implemento_id:HDR.implemento_id||'', largura_m:+HDR.largura_m||0})); }catch(e){} }
-function _setHDRde(s){ s=s||{}; HDR={ maquina_id:s.maquina_id!=null?s.maquina_id:'', implemento_id:s.implemento_id!=null?s.implemento_id:'', largura_m:(+s.largura_m>0?+s.largura_m:(_implLarg(s.implemento_id)||0)) }; }
-function _initHDR(){   // ordem de prioridade p/ o conjunto vigente (perdura — só zera de propósito)
+function _setHDRde(s){ s=s||{}; HDR={ maquina_id:s.maquina_id!=null?s.maquina_id:'', implemento_id:s.implemento_id!=null?s.implemento_id:'', largura_m:(+s.largura_m>0?+s.largura_m:(_implLarg(s.implemento_id)||0)) }; HDROP=HDR.maquina_id?(OPER&&OPER.id):null; }   // marca o dono do HDR
+function _initHDR(){   // ordem de prioridade p/ o conjunto vigente do OPERADOR ATUAL (perdura — só zera de propósito)
   if(SESS && SESS.maquina_id!=null){ _setHDRde(SESS); return; }              // 1. sessão aberta de hoje (retomada)
-  if(_conjOK()) return;                                                       // 2. já escolhido nesta sessão do app -> NÃO mexe (perdura ao sair/entrar)
+  if(_conjOK() && String(HDROP)===String(OPER&&OPER.id)) return;             // 2. já escolhido por ESTE operador nesta sessão do app -> NÃO mexe (não vaza de outro operador)
   const mine=CUR_DAYS.find(r=>String(r.funcionario_id)===String(OPER.id) && r.maquina_id!=null);   // 3. minha sessão COMPLETA mais recente desta comanda (ignora sessões antigas sem conjunto)
-  _setHDRde(mine||_remConj()||{});                                           // 4. última escolha salva no aparelho (sobrevive a fechar/reabrir o app)
+  _setHDRde(mine||_remConj()||{});                                           // 4. última escolha salva NO APARELHO POR OPERADOR (localStorage conj_<id>); senão vazio -> modal obrigatório
 }
 function _pedirConjunto(){
   const old=$('conjov'); if(old) old.remove();
