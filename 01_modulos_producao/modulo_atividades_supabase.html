@@ -3003,7 +3003,7 @@ function _apcState(key){ return APCMAP[key]||(APCMAP[key]={zoom:1,ox:0,oy:0,sel:
 function _apcVelColor(v){ if(v==null||isNaN(v)) return 'rgba(170,170,170,.6)'; const c=Math.max(0,Math.min(15,+v)); const h=240-(c/15)*240; return 'hsla('+h.toFixed(0)+',85%,50%,.75)'; }
 function _apcPrep(g){
   const ring=_apcLoteRing(g.rows[0]?g.rows[0].lote_nome:'');
-  const segs=g.rows.filter(r=>Array.isArray(r.trajeto)&&r.trajeto.length>1).map(r=>({ id:String(r.id), pts:r.trajeto.filter(p=>p&&p[0]!=null).map(p=>{const u=_apcUTM(p[0],p[1],23);return {E:u[0],N:u[1],v:(p[3]!=null?+p[3]:null)};}), larg:(APC&&APC.impLarg&&APC.impLarg[r.implemento_id])||0 }));
+  const segs=g.rows.filter(r=>Array.isArray(r.trajeto)&&r.trajeto.length>1).map(r=>({ id:String(r.id), pts:r.trajeto.filter(p=>p&&p[0]!=null).map(p=>{const u=_apcUTM(p[0],p[1],23);return {E:u[0],N:u[1],v:(p[3]!=null?+p[3]:null)};}), larg:(+r.largura_m>0?+r.largura_m:((APC&&APC.impLarg&&APC.impLarg[r.implemento_id])||0)) }));
   let minE=Infinity,maxE=-Infinity,minN=Infinity,maxN=-Infinity; const acc=(E,N)=>{ if(E<minE)minE=E; if(E>maxE)maxE=E; if(N<minN)minN=N; if(N>maxN)maxN=N; };
   if(ring) ring.forEach(p=>acc(p[0],p[1])); segs.forEach(s=>s.pts.forEach(p=>acc(p.E,p.N)));
   return {ring,segs,minE,minN,maxE,maxN,ok:isFinite(minE)};
