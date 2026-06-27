@@ -406,6 +406,13 @@ function _buildVelCells(){ const map=new Map(); const poly=_polyUTM();
   segs.forEach(s=>{ const hw=(s.larg||0)/2; for(let i=1;i<s.pts.length;i++) _markCellsMap(s.pts[i-1].E,s.pts[i-1].N,s.pts[i].E,s.pts[i].N,s.pts[i].v,poly,hw,map); });
   const hw=_widthM()/2; for(let i=1;i<GPS.pts.length;i++) _markCellsMap(GPS.pts[i-1].E,GPS.pts[i-1].N,GPS.pts[i].E,GPS.pts[i].N,GPS.pts[i].v,poly,hw,map);   // sessão ativa (mais nova) por último
   return map; }
+let _TQC=null;
+function _tqColor(seq){ seq=+seq||0; if(seq<=0) return 'rgba(150,150,150,.5)'; const pal=['#ffc107','#27ae60','#388bfd','#e3a008','#bc8cff','#ff6b6b','#2dd4bf','#f472b6','#a3e635','#fb923c']; return pal[(seq-1)%pal.length]; }
+function _buildTqCells(){ const map=new Map(); const poly=_polyUTM();
+  const segs=(DAYSEGS||[]).slice().reverse();
+  segs.forEach(s=>{ const hw=(s.larg||0)/2; for(let i=1;i<s.pts.length;i++) _markCellsMap(s.pts[i-1].E,s.pts[i-1].N,s.pts[i].E,s.pts[i].N,(s.pts[i].tq||0),poly,hw,map); });
+  const hw=_widthM()/2; for(let i=1;i<GPS.pts.length;i++) _markCellsMap(GPS.pts[i-1].E,GPS.pts[i-1].N,GPS.pts[i].E,GPS.pts[i].N,(GPS.pts[i].tq||0),poly,hw,map);
+  return map; }
 function _drawMapa(){ const cv=_CV||$('cv'); if(!cv) return; if(!_CW){ _setupCanvas(); } const ctx=cv.getContext('2d');
   if(VIEW.follow && GPS.pts.length){ const l=GPS.pts[GPS.pts.length-1]; VIEW.cx=l.E; VIEW.cy=l.N; }
   ctx.clearRect(0,0,_CW,_CH); if(VIEW.cx==null) return;
@@ -419,6 +426,10 @@ function _drawMapa(){ const cv=_CV||$('cv'); if(!cv) return; if(!_CW){ _setupCan
     const sig=_velSig(); if(!_VELC||_VELC.sig!==sig) _VELC={sig, map:_buildVelCells()};   // mesma faixa da cobertura, pintada por km/h
     const w=CELL*_sc()+0.7;
     _VELC.map.forEach((v,key)=>{ const u=key.split('_'); const cE=(+u[0]+0.5)*CELL, cN=(+u[1]+0.5)*CELL; ctx.fillStyle=_velColor(v); ctx.fillRect(_px(cE-CELL/2),_py(cN+CELL/2),w,w); });
+  } else if(_mode==='tq'){
+    const sig=_velSig(); if(!_TQC||_TQC.sig!==sig) _TQC={sig, map:_buildTqCells()};   // cada tanque uma cor (0 = sem tanque, cinza)
+    const w=CELL*_sc()+0.7;
+    _TQC.map.forEach((v,key)=>{ const u=key.split('_'); const cE=(+u[0]+0.5)*CELL, cN=(+u[1]+0.5)*CELL; ctx.fillStyle=_tqColor(v); ctx.fillRect(_px(cE-CELL/2),_py(cN+CELL/2),w,w); });
   } else {
     ctx.strokeStyle='rgba(180,120,255,.55)'; (DAYSEGS||[]).filter(s=>!s.mine).forEach(s=>_drawLine(s.pts,s.larg));          // OUTRO operador (roxo)
     ctx.strokeStyle='rgba(88,166,255,.45)'; (DAYSEGS||[]).filter(s=>s.mine&&!s.today).forEach(s=>_drawLine(s.pts,s.larg)); // eu, outros dias (azul)
@@ -440,7 +451,7 @@ function _markCells(aE,aN,bE,bN){ const hw=_widthM()/2; if(hw<=0) return; const 
   GPS.areaHa=GPS.cells.size*CELL*CELL/10000;
 }
 function _paintOn(){ return GPS.paintAuto ? GPS.inField : GPS.painting; }
-function _onFix(pos){ const cur=pos.coords; GPS.acc=cur.accuracy;
+function _onFix(pos){ const cur=pos.coords; GPS.acc=cur.accuracy; GPS._lastFixTs=Date.now();
   if(cur.accuracy!=null&&cur.accuracy>25){ _hud(); return; }
   const u=latLngToUTM(cur.latitude,cur.longitude,23); const E=u[0],No=u[1]; const t=pos.timestamp||0; const poly=_polyUTM();
   GPS.inField = poly?_inPoly(E,No,poly):true;
@@ -460,7 +471,7 @@ function _onFix(pos){ const cur=pos.coords; GPS.acc=cur.accuracy;
 function _recalcCells(){ GPS.cells=new Set(); GPS.areaHa=0; for(let i=1;i<GPS.pts.length;i++) _markCells(GPS.pts[i-1].E,GPS.pts[i-1].N,GPS.pts[i].E,GPS.pts[i].N); }
 function _implLarg(id){ const m=IMPS.find(x=>String(x.id)===String(id)); return m&&m.largura_trabalho?+m.largura_trabalho:0; }
 function _rowLarg(r){ return (r&&+r.largura_m>0)?+r.largura_m:_implLarg(r&&r.implemento_id); }   // largura real da sessão (fallback: cadastro do implemento p/ linhas antigas)
-function _rowPts(row){ const out=[]; if(Array.isArray(row.trajeto)) row.trajeto.forEach(p=>{ if(p[0]==null) return; const u=latLngToUTM(p[0],p[1],23); out.push({E:u[0],N:u[1],v:p[3]}); }); return out; }
+function _rowPts(row){ const out=[]; if(Array.isArray(row.trajeto)) row.trajeto.forEach(p=>{ if(p[0]==null) return; const u=latLngToUTM(p[0],p[1],23); out.push({E:u[0],N:u[1],v:p[3],tq:p[4]||0}); }); return out; }
 function _maqNome(id){ const m=MAQS.find(x=>String(x.id)===String(id)); if(!m) return '(sem máquina)'; const modelo=((m.marca?m.marca+' ':'')+(m.modelo||'')).trim(); return (m.id_frota?m.id_frota+' — ':'')+(modelo||m.nome); }
 function _impNome(id){ const m=IMPS.find(x=>String(x.id)===String(id)); return m?m.nome:''; }
 function _funNome(id){ const f=(FUNCS||[]).find(x=>String(x.id)===String(id)); return f?f.nome:('#'+id); }
@@ -539,6 +550,9 @@ async function _saveManualSess(sid,campo,valor){ const r=CUR_DAYS.find(x=>String
   const patch={atualizado_em:new Date().toISOString()}; patch[campo]=num(valor);
   try{ const {error}=await SB.from('execucao_campo').update(patch).eq('id',sid); if(error) throw error; Object.assign(r,patch); }catch(e){ _st('❌ '+e.message,'#c0392b'); }
 }
+function _startWatch(){ try{ if(GPS.watchId!=null){ navigator.geolocation.clearWatch(GPS.watchId); } }catch(e){}
+  try{ GPS.watchId=navigator.geolocation.watchPosition(_onFix,err=>_st('GPS: '+err.message,'#e67e22'),{enableHighAccuracy:true,maximumAge:0,timeout:15000}); GPS._lastFixTs=Date.now(); }catch(e){ _st('❌ '+e.message,'#c0392b'); } }
+function _gpsWatchdog(){ if(GPS._wd) return; GPS._wd=setInterval(()=>{ if(GPS.watchId==null) return; if(Date.now()-(GPS._lastFixTs||0) > 20000){ _startWatch(); _st('🔄 GPS reiniciado','#e67e22'); } }, 10000); }   // GPS congelou (sem fix há 20s) -> reinicia sozinho
 async function _gpsEnter(){
   if(!navigator.geolocation){ _st('Sem GPS neste aparelho.','#c0392b'); return; }
   await _carregarDiasComanda();
@@ -550,13 +564,14 @@ async function _gpsEnter(){
   _restoreSess(); _buildDaySegs();
   GPS.paintAuto=true; GPS.painting=false; VIEW={follow:true,zoom:1,cx:null,cy:null};
   try{ if(navigator.wakeLock) GPS.wake=await navigator.wakeLock.request('screen'); }catch(e){}
-  try{ GPS.watchId=navigator.geolocation.watchPosition(_onFix,err=>_st('GPS: '+err.message,'#e67e22'),{enableHighAccuracy:true,maximumAge:0,timeout:15000}); }catch(e){ _st('❌ '+e.message,'#c0392b'); }
+  _startWatch(); _gpsWatchdog();
 }
 async function _gpsLeave(){
+  if(GPS._wd){ clearInterval(GPS._wd); GPS._wd=null; }
   if(GPS.watchId!=null){ try{navigator.geolocation.clearWatch(GPS.watchId);}catch(e){} GPS.watchId=null; }
   try{ if(GPS.wake){ await GPS.wake.release(); GPS.wake=null; } }catch(e){}
   GPS.speed=0;
-  if(SESS && _sessTemTrabalho()) await _saveGps(true);                                          // teve trabalho REAL -> fecha (enviada)
+  if(SESS && _sessTemTrabalho()) await _saveGps(false);                                          // mantém ABERTA -> ao voltar retoma de onde parou (tanques/área continuam)
   else if(SESS && SESS.lid){ if(!SESS.serverId){ try{ await _idbDel('sessions',SESS.lid); }catch(e){} } if(GPS.pts.length>=2) _st('Trabalho muito curto — não registrado','#e67e22'); }   // minúscula -> descarta (e avisa) p/ não virar movimentação fantasma
   SESS=null; await _carregarDiasComanda();
   if(navigator.onLine) _syncAll();   // empurra a fila ao sair da tela de trabalho
@@ -776,7 +791,7 @@ function renderTrabalho(){
       <div id="hud" style="position:absolute;top:8px;left:8px;right:8px;display:flex;gap:6px;flex-wrap:wrap"></div>
       <div style="position:absolute;right:10px;bottom:10px;display:flex;flex-direction:column;gap:8px;align-items:flex-end">
         <button class="btn s" id="btn_follow" style="width:auto;margin:0;padding:10px 14px">${VIEW.follow?'🎯 Seguindo':'✋ Livre'}</button>
-        <button class="btn s" id="btn_cmode" style="width:auto;margin:0;padding:10px 14px">${(VIEW.mode==='vel')?'🌡 Velocidade':'🎨 Cobertura'}</button>
+        <button class="btn s" id="btn_cmode" style="width:auto;margin:0;padding:10px 14px">${VIEW.mode==='vel'?'🌡 Velocidade':(VIEW.mode==='tq'?'🪣 Por tanque':'🎨 Cobertura')}</button>
         <button class="btn s" id="btn_pmode" style="width:auto;margin:0;padding:10px 14px">${manual?'✋ Manual':'🅰 Auto'}</button>
         ${manual?`<button class="btn ${GPS.painting?'k':'b'}" id="btn_paint" style="width:auto;margin:0;padding:10px 16px">${GPS.painting?'● Pintando':'▶ Pintar'}</button>`:''}
       </div>
@@ -790,7 +805,7 @@ function renderTrabalho(){
   if($('btn_conj'))$('btn_conj').onclick=()=>_pedirConjunto();
   if($('btn_tanque'))$('btn_tanque').onclick=()=>{ const ta=_tanqueAberto(); if(ta) _finalizarTanque(); else _iniciarTanque(); };
   if($('btn_follow'))$('btn_follow').onclick=()=>{ VIEW.follow=!VIEW.follow; $('btn_follow').textContent=VIEW.follow?'🎯 Seguindo':'✋ Livre'; _drawMapa(); };
-  if($('btn_cmode'))$('btn_cmode').onclick=()=>{ VIEW.mode=(VIEW.mode==='vel')?'cob':'vel'; $('btn_cmode').textContent=(VIEW.mode==='vel')?'🌡 Velocidade':'🎨 Cobertura'; const lg=$('vleg'); if(lg) lg.style.display=(VIEW.mode==='vel')?'flex':'none'; const cg=$('cleg'); if(cg) cg.style.display=(VIEW.mode==='vel')?'none':'flex'; _drawMapa(); };
+  if($('btn_cmode'))$('btn_cmode').onclick=()=>{ const seq=(_ehPulvTerr()&&_papelOper()==='pulverizador')?['cob','vel','tq']:['cob','vel']; VIEW.mode=seq[(seq.indexOf(VIEW.mode||'cob')+1)%seq.length]; $('btn_cmode').textContent=VIEW.mode==='vel'?'🌡 Velocidade':(VIEW.mode==='tq'?'🪣 Por tanque':'🎨 Cobertura'); const lg=$('vleg'); if(lg) lg.style.display=(VIEW.mode==='vel')?'flex':'none'; const cg=$('cleg'); if(cg) cg.style.display=(VIEW.mode==='cob')?'flex':'none'; _drawMapa(); };
   if($('btn_pmode'))$('btn_pmode').onclick=()=>{ GPS.paintAuto=!GPS.paintAuto; if(GPS.paintAuto) GPS.painting=false; render(); };
   if($('btn_paint'))$('btn_paint').onclick=()=>{ GPS.painting=!GPS.painting; render(); };
   setTimeout(()=>{ _setupCanvas(); _drawMapa(); _hud(); if(!_conjOK()) _pedirConjunto(); },30);   // 1ª vez (ou conjunto incompleto): janela obrigatória de escolha
