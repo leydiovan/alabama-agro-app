@@ -383,7 +383,7 @@ function relHTML(){
     if(!o.extra&&!o.falta&&!o.dias) return '';
     const he$=m2dec(o.extra)*valorHE(f), dia$=f.tipo==='diarista'?o.dias*valorDiaria(f):0, tot=he$+dia$;
     tGeral+=tot; const pago=REL_PAG[f.id]; if(pago) tPago+=tot; else tAberto+=tot;
-    const pagoCel=pago?`<span style="color:var(--ok)">✓ pago${pago.pago_em?' · '+esc(String(pago.pago_em).split('-').reverse().join('/')):''}</span> <button class="btn sm ghost" data-unpay="${f.id}">desfazer</button>`:`<button class="btn sm gold" data-pay="${f.id}">marcar pago</button>`;
+    const pagoCel=pago?`<span style="color:var(--ok)">✓ pago</span> <input type="date" value="${esc(pago.pago_em||'')}" data-paydt="${f.id}" title="Data do pagamento — clique para alterar" style="background:var(--bg2);border:1px solid var(--line);border-radius:6px;color:var(--text);font-size:12px;padding:3px 6px;color-scheme:dark"> <button class="btn sm ghost" data-unpay="${f.id}">desfazer</button>`:`<button class="btn sm gold" data-pay="${f.id}">marcar pago</button>`;
     return `<tr><td><b>${esc(f.nome)}</b></td><td><span class="sub">${TIPO_NOME[f.tipo]}</span></td>
       <td class="num">${o.dias}</td><td class="num he">${m2hm(o.extra)}</td><td class="num">${brl(he$)}</td>
       <td class="num">${dia$?brl(dia$):'—'}</td><td class="num">${o.falta||'—'}</td><td class="num">${m2hm(o.faltaJ)}</td>
@@ -404,6 +404,7 @@ function relHTML(){
 async function marcarPago(fid){ const f=S.funcs.find(x=>x.id===fid), o=REL[fid]; if(!f||!o) return;
   try{ await SB.from('rh_pagamentos').upsert({funcionario_id:fid,mes:MES,valor:_totFunc(f,o),pago_em:(()=>{const d=new Date();return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');})()},{onConflict:'funcionario_id,mes'}); REL_PAG=await _loadPagamentos(MES); _st('✅ Pagamento registrado','#27ae60'); route(); }catch(e){ _st('❌ '+e.message,'#c0392b'); } }
 async function desmarcarPago(fid){ try{ await SB.from('rh_pagamentos').delete().eq('funcionario_id',fid).eq('mes',MES); REL_PAG=await _loadPagamentos(MES); route(); }catch(e){ _st('❌ '+e.message,'#c0392b'); } }
+async function atualizarDataPago(fid,dt){ if(!dt) return; try{ await SB.from('rh_pagamentos').update({pago_em:dt}).eq('funcionario_id',fid).eq('mes',MES); if(REL_PAG[fid]) REL_PAG[fid].pago_em=dt; _st('✅ Data do pagamento alterada para '+dt.split('-').reverse().join('/'),'#27ae60'); }catch(e){ _st('❌ '+e.message,'#c0392b'); } }
 function bindRel(){
   if(REL_MES!==MES){ _relRefresh(); return; }
   const ms=$('r_mes'); if(ms) ms.onchange=async()=>{ MES=ms.value||_mesAtual(); await _relRefresh(); };
@@ -413,6 +414,7 @@ function bindRel(){
   const pb=$('r_print'); if(pb) pb.onclick=()=>window.print();
   document.querySelectorAll('[data-pay]').forEach(b=>b.onclick=()=>marcarPago(+b.dataset.pay));
   document.querySelectorAll('[data-unpay]').forEach(b=>b.onclick=()=>desmarcarPago(+b.dataset.unpay));
+  document.querySelectorAll('[data-paydt]').forEach(b=>b.onchange=()=>atualizarDataPago(+b.dataset.paydt, b.value));
 }
 
 /* ===================== ABA EM ABERTO ===================== */
