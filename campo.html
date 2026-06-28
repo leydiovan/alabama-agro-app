@@ -389,14 +389,64 @@ function _utmToLatLng(E,N,zona){   // inversa de latLngToUTM (WGS84, hemisfério
 /* ===== simulador de GPS (teste) — gatilho: campo.html?sim=1 ===== */
 let SIM={on:false, rota:null, seg:0, pos:null, timer:null, vel:6};
 function _simOK(){ try{ const s=location.search||''; if(s.indexOf('sim=1')>=0) localStorage.setItem('campo_sim','1'); if(s.indexOf('sim=0')>=0) localStorage.removeItem('campo_sim'); return localStorage.getItem('campo_sim')==='1'; }catch(e){ return false; } }
-function _simRota(){ const poly=_polyUTM(); if(!poly) return null;
+/* offset da poligonal p/ DENTRO (miter) em 'dist' metros; retorna novo ring [[E,N]] ou null */
+function _polyOffsetIn(ring, dist){
+  let pts=ring.map(p=>[+p[0],+p[1]]);
+  if(pts.length>1 && pts[0][0]===pts[pts.length-1][0] && pts[0][1]===pts[pts.length-1][1]) pts=pts.slice(0,-1);
+  const n=pts.length; if(n<3) return null;
+  let A=0; for(let i=0;i<n;i++){ const j=(i+1)%n; A+=pts[i][0]*pts[j][1]-pts[j][0]*pts[i][1]; }
+  const s=(A>0?1:-1);   // sentido p/ achar a normal interna
+  const eb=[], ed=[];
+  for(let i=0;i<n;i++){ const j=(i+1)%n; let dx=pts[j][0]-pts[i][0], dy=pts[j][1]-pts[i][1]; const L=Math.hypot(dx,dy)||1; dx/=L; dy/=L; const nx=s*(-dy), ny=s*dx; eb.push([pts[i][0]+nx*dist, pts[i][1]+ny*dist]); ed.push([dx,dy]); }
+  const out=[];
+  for(let i=0;i<n;i++){ const k=(i-1+n)%n; const P1=eb[k],D1=ed[k],P2=eb[i],D2=ed[i]; const cr=D1[0]*D2[1]-D1[1]*D2[0]; let V; if(Math.abs(cr)<1e-9){ V=[P2[0],P2[1]]; } else { const t=((P2[0]-P1[0])*D2[1]-(P2[1]-P1[1])*D2[0])/cr; V=[P1[0]+D1[0]*t, P1[1]+D1[1]*t]; } out.push(V); }
+  let A2=0; for(let i=0;i<n;i++){ const j=(i+1)%n; A2+=out[i][0]*out[j][1]-out[j][0]*out[i][1]; }
+  if((A2>0?1:-1)!==s || Math.abs(A2)<1) return null;                  // inverteu / colapsou
+  for(let i=0;i<n;i++){ if(!_inPoly(out[i][0],out[i][1],pts)) return null; }   // algum vértice saiu do lote
+  return out;
+}
+function _simRotaBBox(poly, W){   // fallback simples (vai-e-vem no bbox) quando o offset não dá
   let minE=Infinity,maxE=-Infinity,minN=Infinity,maxN=-Infinity; poly.forEach(p=>{ if(p[0]<minE)minE=p[0]; if(p[0]>maxE)maxE=p[0]; if(p[1]<minN)minN=p[1]; if(p[1]>maxN)maxN=p[1]; });
-  const passo=Math.max(_widthM()||12,8), m=passo*0.5, wp=[]; let dir=1;
+  const passo=Math.max(W,8), m=passo*0.5, wp=[]; let dir=1;
   for(let y=minN+m; y<=maxN-0.1; y+=passo){ wp.push({E:dir>0?minE+m:maxE-m,N:y}); wp.push({E:dir>0?maxE-m:minE+m,N:y}); dir*=-1; }
+  if(wp.length>=2) return wp;
+  const per=poly.map(p=>({E:p[0],N:p[1]})); if(per.length>=2){ per.push({E:poly[0][0],N:poly[0][1]}); return per; }   // lote menor que a faixa: anda pelo perímetro
+  return null;
+}
+/* anda pelo contorno (offset) do parâmetro pA ao pB pela volta mais curta — as manobras de cabeceira são EM CIMA do offset */
+function _ringWalkInto(wp, off, cum, total, pA, pB, push){
+  const n=off.length, fwd=((pB-pA)%total+total)%total, bwd=total-fwd, arr=[];
+  if(fwd<=bwd){ for(let i=0;i<n;i++){ const rel=((cum[i]-pA)%total+total)%total; if(rel>0.05 && rel<fwd-0.05) arr.push([rel, off[i]]); } }
+  else { for(let i=0;i<n;i++){ const rel=((pA-cum[i])%total+total)%total; if(rel>0.05 && rel<bwd-0.05) arr.push([rel, off[i]]); } }
+  arr.sort((a,b)=>a[0]-b[0]); arr.forEach(e=>push(e[1][0], e[1][1]));
+}
+/* rota do simulador: 1º tiro = contorno offsetado p/ dentro (½ largura); depois faixas paralelas à maior lateral, com as voltas em cima do contorno */
+function _simRota(){ const poly=_polyUTM(); if(!poly) return null;
+  const W=Math.max(_widthM()||12, 4), hw=W/2;
+  const off=_polyOffsetIn(poly, hw); if(!off) return _simRotaBBox(poly, W);
+  const n=off.length;
+  const cum=[0]; let total=0; for(let i=0;i<n;i++){ const j=(i+1)%n; total+=Math.hypot(off[j][0]-off[i][0], off[j][1]-off[i][1]); cum.push(total); }   // perímetro parametrizado (cum[i]=param do vértice i)
+  let bi=0,bL=-1; for(let i=0;i<n;i++){ const j=(i+1)%n; const L=Math.hypot(off[j][0]-off[i][0], off[j][1]-off[i][1]); if(L>bL){bL=L;bi=i;} }   // maior lateral
+  let ux=off[(bi+1)%n][0]-off[bi][0], uy=off[(bi+1)%n][1]-off[bi][1]; const uL=Math.hypot(ux,uy)||1; ux/=uL; uy/=uL; const vx=-uy, vy=ux;
+  const projU=p=>p[0]*ux+p[1]*uy, projV=p=>p[0]*vx+p[1]*vy;
+  let vmin=Infinity,vmax=-Infinity; off.forEach(p=>{ const v=projV(p); if(v<vmin)vmin=v; if(v>vmax)vmax=v; });
+  const faixas=[]; let dir=1;
+  for(let lev=vmin+W; lev<vmax-hw*0.5; lev+=W){
+    const xs=[];
+    for(let i=0;i<n;i++){ const j=(i+1)%n; const a=projV(off[i]), b=projV(off[j]); if((a-lev>0)!==(b-lev>0)){ const t=(lev-a)/((b-a)||1e-9); const E=off[i][0]+t*(off[j][0]-off[i][0]), N=off[i][1]+t*(off[j][1]-off[i][1]); xs.push({E,N,u:projU([E,N]), pr:cum[i]+t*(cum[i+1]-cum[i])}); } }
+    if(xs.length<2) continue;
+    xs.sort((p,q)=>p.u-q.u); let S=xs[0], F=xs[xs.length-1];
+    if(dir<0){ const tmp=S; S=F; F=tmp; } dir*=-1;
+    faixas.push({S,F});
+  }
+  const wp=[]; const push=(E,N)=>{ const last=wp[wp.length-1]; if(!last || Math.hypot(last.E-E,last.N-N)>0.01) wp.push({E,N}); };
+  for(let i=0;i<=n;i++){ const p=off[i%n]; push(p[0],p[1]); }   // 1º tiro: contorno completo, volta ao início (param 0)
+  let curPr=0;
+  faixas.forEach(fx=>{ _ringWalkInto(wp, off, cum, total, curPr, fx.S.pr, push); push(fx.S.E, fx.S.N); push(fx.F.E, fx.F.N); curPr=fx.F.pr; });   // entra/sai pelo contorno
   return wp.length>=2?wp:null;
 }
 function _simStop(){ if(SIM.timer){clearInterval(SIM.timer);SIM.timer=null;} SIM.on=false; }
-function _simVelCiclar(){ const opts=[6,12,25,50]; SIM.vel=opts[(opts.indexOf(SIM.vel)+1)%opts.length]||12; render(); }   // controle de velocidade da simulação
+function _simVelCiclar(){ const opts=[6,12,25,50,100]; SIM.vel=opts[(opts.indexOf(SIM.vel)+1)%opts.length]||12; render(); }   // controle de velocidade da simulação
 function _simToggle(){
   if(SIM.on){ _simStop(); _st('⏸ Simulação pausada','#8b949e'); render(); return; }
   if(!_polyUTM()){ _st('Talhão sem polígono — não dá pra simular','#e67e22'); return; }
