@@ -33,7 +33,7 @@ input[type=time],input[type=number]{font-variant-numeric:tabular-nums}
 .dhead{display:flex;justify-content:space-between;align-items:center;gap:12px}
 .cbtn{width:auto;margin:0;min-height:56px;padding:14px 22px;font-size:17px}
 .btn.g{background:var(--gold);color:#1a1100}.btn.k{background:var(--ok);color:#fff}.btn.s{background:var(--bg3);color:var(--text);border:1px solid var(--line)}
-.btn.b{background:var(--blue);color:#fff}.btn.danger{background:transparent;border:1px solid var(--err);color:var(--err)}
+.btn.b{background:var(--blue);color:#fff}.btn.r{background:var(--err);color:#fff}.btn.danger{background:transparent;border:1px solid var(--err);color:var(--err)}
 .btn.sm{padding:9px 12px;font-size:14px;width:auto;display:inline-block;margin:0}
 .btn:disabled{opacity:.5}
 .bar{position:fixed;left:0;right:0;bottom:0;background:var(--bg2);border-top:1px solid var(--line);padding:10px 12px;display:flex;gap:10px;z-index:9}
@@ -388,6 +388,7 @@ function _utmToLatLng(E,N,zona){   // inversa de latLngToUTM (WGS84, hemisfério
 }
 /* ===== simulador de GPS (teste) — gatilho: campo.html?sim=1 ===== */
 let SIM={on:false, rota:null, seg:0, pos:null, timer:null, vel:6, t:0};
+let _FIMIV=null;   // tick (1s) que faz a contagem e libera os botões de finalizar após 1 min
 function _simOK(){ try{ const s=location.search||''; if(s.indexOf('sim=1')>=0) localStorage.setItem('campo_sim','1'); if(s.indexOf('sim=0')>=0) localStorage.removeItem('campo_sim'); return localStorage.getItem('campo_sim')==='1'; }catch(e){ return false; } }
 function _polyNorm(ring){ let p=ring.map(q=>[+q[0],+q[1]]); if(p.length>1 && p[0][0]===p[p.length-1][0] && p[0][1]===p[p.length-1][1]) p=p.slice(0,-1); return p; }   // tira o ponto de fechamento duplicado
 /* offset da poligonal p/ DENTRO em 'dist' m por BISSETRIZ com limite (robusto p/ cantos côncavos); null se degenerar */
@@ -811,11 +812,15 @@ function _finalizarTanque(){
 }
 /* ===== ciclo da CALDA / pré-mistura (papel calda) — SESS.tanques [{seq,ini,pronto,abastIni,fim,litros,cheio,doses}] ===== */
 function _caldaResumo(){ const feitas=_tanquesArr().filter(x=>x.fim!=null).length; const ab=_tanqueAberto(); return 'Caldas concluídas: <b>'+feitas+'</b>'+(ab?(' · em andamento (calda '+ab.seq+')'):''); }
+/* botão de CONCLUSÃO (VERMELHO): fica cinza+inativo por 1 min após o início da etapa (com contador), depois vermelho+ativo */
+function _btnFim(id, act, label, ini){ const f=ini?(60000-(Date.now()-ini)):0; const trav=f>0; return `<button class="btn ${trav?'s':'r'} huge" id="${id}" data-act="${act}" data-lbl="${esc(label)}" data-ini="${ini||0}"${trav?' disabled':''} style="margin:0${trav?';opacity:.6':''}">${trav?(esc(label)+' · '+Math.ceil(f/1000)+'s'):esc(label)}</button>`; }
+function _tickFimBtns(){ try{ document.querySelectorAll('button[data-ini]').forEach(b=>{ const ini=+b.dataset.ini||0; if(!ini) return; const lbl=b.dataset.lbl||''; const f=60000-(Date.now()-ini); if(f>0){ b.disabled=true; b.className='btn s huge'; b.style.opacity='.6'; b.textContent=lbl+' · '+Math.ceil(f/1000)+'s'; } else { b.disabled=false; b.className='btn r huge'; b.style.opacity=''; b.textContent=lbl; } }); }catch(e){} }   // libera o botão de finalizar quando passa 1 min
+function _btnTanqueHTML(){ const ab=_tanqueAberto(); if(ab) return _btnFim('btn_tanque','fim','■ Finalizar tanque '+ab.seq, ab.ini); return `<button class="btn k huge" id="btn_tanque" style="margin:0">▶ Iniciar tanque ${_tanquesArr().length+1}</button>`; }
 function _btnCaldaHTML(){ const ca=_tanqueAberto(); const n=_tanquesArr().length;
-  if(!ca) return `<button class="btn g huge" id="btn_calda" data-act="iniciar" style="margin:0">▶ Iniciar calda ${n+1}</button>`;
-  if(ca.pronto==null) return `<button class="btn b huge" id="btn_calda" data-act="pronta" style="margin:0">✓ Calda ${ca.seq} pronta</button>`;
-  if(ca.abastIni==null) return `<button class="btn g huge" id="btn_calda" data-act="abastini" style="margin:0">▶ Abastecer (calda ${ca.seq})</button>`;
-  return `<button class="btn k huge" id="btn_calda" data-act="abastecido" style="margin:0">✓ Abastecido (calda ${ca.seq})</button>`;
+  if(!ca) return `<button class="btn k huge" id="btn_calda" data-act="iniciar" style="margin:0">▶ Iniciar calda ${n+1}</button>`;
+  if(ca.pronto==null) return _btnFim('btn_calda','pronta','✓ Calda '+ca.seq+' pronta', ca.ini);
+  if(ca.abastIni==null) return `<button class="btn k huge" id="btn_calda" data-act="abastini" style="margin:0">▶ Abastecer (calda ${ca.seq})</button>`;
+  return _btnFim('btn_calda','abastecido','✓ Abastecido (calda '+ca.seq+')', ca.abastIni);
 }
 function _acaoCalda(act){
   if(act==='iniciar') return _iniciarCalda();
@@ -874,7 +879,8 @@ function _renderCaldaTela(){
   if($('btn_follow'))$('btn_follow').onclick=()=>{ VIEW.follow=!VIEW.follow; $('btn_follow').textContent=VIEW.follow?'🎯 Seguindo':'✋ Livre'; _drawMapa(); };
   if($('btn_sim'))$('btn_sim').onclick=_simToggle;
   if($('btn_simvel'))$('btn_simvel').onclick=_simVelCiclar;
-  if($('btn_calda'))$('btn_calda').onclick=()=>_acaoCalda($('btn_calda').dataset.act);
+  if($('btn_calda'))$('btn_calda').onclick=()=>{ if($('btn_calda').disabled) return; _acaoCalda($('btn_calda').dataset.act); };
+  if(!_FIMIV)_FIMIV=setInterval(_tickFimBtns,1000);
   setTimeout(()=>{ _setupCanvas(); _drawMapa(); _hud(); },30);
 }
 let _gestBound=null;
@@ -916,11 +922,12 @@ function renderTrabalho(){
       <div id="cleg" style="display:${(VIEW.mode==='vel')?'none':'flex'};position:absolute;left:10px;bottom:10px;gap:10px;align-items:center;background:#0d1117cc;border-radius:8px;padding:6px 9px;font-size:11px;color:#fff"><span style="color:#ffd24a">▮ eu hoje</span><span style="color:#58a6ff">▮ eu (out. dias)</span><span style="color:#bc8cff">▮ outro operador</span></div>
       ${_polyUTM()?'':'<div style="position:absolute;bottom:46px;left:10px;background:#3a1d00;color:#ffc107;border-radius:8px;padding:6px 10px;font-size:12px">Talhão sem poligonal</div>'}
     </div>
-    ${(_ehPulvTerr()&&_papelOper()==='pulverizador')?`<div style="flex:0 0 auto;padding:8px 10px;background:#0d1117">${_tanqueAberto()?`<button class="btn k huge" id="btn_tanque" style="margin:0">■ Finalizar tanque ${_tanqueAberto().seq}</button>`:`<button class="btn g huge" id="btn_tanque" style="margin:0">▶ Iniciar tanque ${_tanquesArr().length+1}</button>`}</div>`:''}
+    ${(_ehPulvTerr()&&_papelOper()==='pulverizador')?`<div style="flex:0 0 auto;padding:8px 10px;background:#0d1117">${_btnTanqueHTML()}</div>`:''}
   </div>`;
   if($('voltar'))$('voltar').onclick=async()=>{ await _gpsLeave(); EXVIEW='menu'; render(); };
   if($('btn_conj'))$('btn_conj').onclick=()=>_pedirConjunto();
-  if($('btn_tanque'))$('btn_tanque').onclick=()=>{ const ta=_tanqueAberto(); if(ta) _finalizarTanque(); else _iniciarTanque(); };
+  if($('btn_tanque'))$('btn_tanque').onclick=()=>{ if($('btn_tanque').disabled) return; const ta=_tanqueAberto(); if(ta) _finalizarTanque(); else _iniciarTanque(); };
+  if(!_FIMIV)_FIMIV=setInterval(_tickFimBtns,1000);
   if($('btn_follow'))$('btn_follow').onclick=()=>{ VIEW.follow=!VIEW.follow; $('btn_follow').textContent=VIEW.follow?'🎯 Seguindo':'✋ Livre'; _drawMapa(); };
   if($('btn_cmode'))$('btn_cmode').onclick=()=>{ const seq=(_ehPulvTerr()&&_papelOper()==='pulverizador')?['cob','vel','tq']:['cob','vel']; VIEW.mode=seq[(seq.indexOf(VIEW.mode||'cob')+1)%seq.length]; $('btn_cmode').textContent=VIEW.mode==='vel'?'🌡 Velocidade':(VIEW.mode==='tq'?'🪣 Por tanque':'🎨 Cobertura'); const lg=$('vleg'); if(lg) lg.style.display=(VIEW.mode==='vel')?'flex':'none'; const cg=$('cleg'); if(cg) cg.style.display=(VIEW.mode==='cob')?'flex':'none'; _drawMapa(); };
   if($('btn_pmode'))$('btn_pmode').onclick=()=>{ GPS.paintAuto=!GPS.paintAuto; if(GPS.paintAuto) GPS.painting=false; render(); };
