@@ -970,7 +970,7 @@ function salvarNova(){
   const perfil=TIPO_PERFIL[tipo];
   const c={
     codigo:prev.code,seqGeral:prev.g,seqTipo:prev.t,status:'lancada',
-    tipoAtiv:tipo,perfil,loteNome:lote,operadores:_lerOperadores(),
+    tipoAtiv:tipo,perfil,loteNome:lote,operadores:_lerOperadores(),operadoresCalda:_lerOperadoresCalda(),
     dataEmissao:$('#nv_data').value,dataExecucao:($('#nv_exec')?$('#nv_exec').value:''),
     taxa:$('#nv_taxa').value,faixa:$('#nv_faixa').value,capacidade:$('#nv_cap').value,
     produtos:novaProd.filter(p=>p.nome).map(p=>({...p,comp:''})),
