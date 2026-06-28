@@ -1316,7 +1316,7 @@ function _apcTanquesTabelaHTML(linhas, dieselPulv, areaBase){
   return h;
 }
 /* separa o diesel da comanda: pulverizador (abastec. categoria Pulverizador), caminhão da calda (demais abastec.) e motobomba (campo à parte na sessão da calda) */
-function _apcDieselSplit(g){ let pulv=0, caminhao=0, motob=0; (g.abast||[]).forEach(a=>{ const cat=String((APC.maqCat&&APC.maqCat[a.maquina_id])||'').toLowerCase(); const l=+a.litros||0; if(cat.indexOf('pulver')>=0) pulv+=l; else caminhao+=l; }); (g.rows||[]).forEach(r=>{ if(r.papel==='calda') motob+=(+r.diesel_motobomba||0); }); return {pulv:+pulv.toFixed(1), caminhao:+caminhao.toFixed(1), motob:+motob.toFixed(1), total:+(pulv+caminhao+motob).toFixed(1)}; }
+function _apcDieselSplit(g){ let pulv=0, caminhao=0, motob=0; (g.abast||[]).forEach(a=>{ const cat=String((APC.maqCat&&APC.maqCat[a.maquina_id])||'').toLowerCase(); const l=+a.litros||0; if(cat.indexOf('pulver')>=0) pulv+=l; else if(cat.indexOf('bomba')>=0) motob+=l; else caminhao+=l; }); return {pulv:+pulv.toFixed(1), caminhao:+caminhao.toFixed(1), motob:+motob.toFixed(1), total:+(pulv+caminhao+motob).toFixed(1)}; }   // tudo por ABASTECIMENTO: categoria 'Pulverizador' -> pulv; categoria com 'bomba' (Motobomba) -> motobomba; demais -> caminhão
 /* distância (m) percorrida no trajeto entre os instantes t0 e t1 (ms) — p/ o deslocamento da calda */
 function _apcDistTraj(traj, t0, t1){ if(!Array.isArray(traj)||!(t1>t0)) return 0; let d=0, prev=null; for(const p of traj){ if(!p||p[0]==null) continue; const t=+p[2]||0; if(t<t0||t>t1){ prev=null; continue; } if(prev){ const u1=_apcUTM(prev[0],prev[1],23), u2=_apcUTM(p[0],p[1],23); d+=Math.hypot(u2[0]-u1[0],u2[1]-u1[1]); } prev=p; } return d; }
 /* tabela da PRÉ-MISTURA / CALDA PRONTA: por tanque os tempos (preparo/deslocamento/abastecimento) + distância; consumo do caminhão e da motobomba (média ÷ área da aprovação) */
@@ -3106,16 +3106,16 @@ async function _updNavAprovCampo(){
     btn.textContent='✅ Aprovações de campo'+(n?(' ('+n+')'):''); }catch(e){}
 }
 async function _loadAprovCampo(){
-  APC={comandas:[], maq:{}, maqFrota:{}, maqMarca:{}, maqModelo:{}, imp:{}, impFrota:{}, impModelo:{}, impLarg:{}, fun:{}, abast:{}}; APCMAP={};
+  APC={comandas:[], maq:{}, maqFrota:{}, maqMarca:{}, maqModelo:{}, maqCat:{}, imp:{}, impFrota:{}, impModelo:{}, impLarg:{}, fun:{}, abast:{}}; APCMAP={};
   try{
     const [ex,mq,im,fu,ab]=await Promise.all([
       SB.from('execucao_campo').select('*').in('status',['enviada','aberto']).order('data',{ascending:true}),
-      SB.from('maquinas').select('id,nome,id_frota,marca,modelo'),
+      SB.from('maquinas').select('id,nome,id_frota,marca,modelo,categoria'),
       SB.from('implementos').select('id,nome,largura_trabalho,id_frota,modelo'),
       SB.from('funcionarios').select('id,nome'),
       SB.from('abastecimentos').select('*').order('quando',{ascending:true})
     ]);
-    (mq.data||[]).forEach(m=>{ APC.maq[m.id]=m.nome; APC.maqFrota[m.id]=m.id_frota||''; APC.maqMarca[m.id]=m.marca||''; APC.maqModelo[m.id]=m.modelo||''; });
+    (mq.data||[]).forEach(m=>{ APC.maq[m.id]=m.nome; APC.maqFrota[m.id]=m.id_frota||''; APC.maqMarca[m.id]=m.marca||''; APC.maqModelo[m.id]=m.modelo||''; APC.maqCat[m.id]=m.categoria||''; });
     (im.data||[]).forEach(m=>{ APC.imp[m.id]=m.nome; APC.impFrota[m.id]=m.id_frota||''; APC.impModelo[m.id]=m.modelo||''; APC.impLarg[m.id]=m.largura_trabalho?+m.largura_trabalho:0; });
     (fu.data||[]).forEach(m=>APC.fun[m.id]=m.nome);
     const abByKey={}; (ab.data||[]).forEach(a=>{ const k=a.comanda_codigo+'|'+(a.safra||''); (abByKey[k]||(abByKey[k]=[])).push(a); });
@@ -3155,7 +3155,7 @@ function _apcState(key){ return APCMAP[key]||(APCMAP[key]={zoom:1,ox:0,oy:0,sel:
 function _apcVelColor(v){ if(v==null||isNaN(v)) return 'rgba(170,170,170,.6)'; const c=Math.max(0,Math.min(15,+v)); const h=240-(c/15)*240; return 'hsla('+h.toFixed(0)+',85%,50%,.75)'; }
 function _apcPrep(g){
   const ring=_apcLoteRing(g.rows[0]?g.rows[0].lote_nome:'');
-  const segs=g.rows.filter(r=>Array.isArray(r.trajeto)&&r.trajeto.length>1).map(r=>({ id:String(r.id), pts:r.trajeto.filter(p=>p&&p[0]!=null).map(p=>{const u=_apcUTM(p[0],p[1],23);return {E:u[0],N:u[1],v:(p[3]!=null?+p[3]:null)};}), larg:(+r.largura_m>0?+r.largura_m:((APC&&APC.impLarg&&APC.impLarg[r.implemento_id])||0)) }));
+  const segs=g.rows.filter(r=>Array.isArray(r.trajeto)&&r.trajeto.length>1).map(r=>({ id:String(r.id), papel:r.papel, pts:r.trajeto.filter(p=>p&&p[0]!=null).map(p=>{const u=_apcUTM(p[0],p[1],23);return {E:u[0],N:u[1],v:(p[3]!=null?+p[3]:null)};}), larg:(+r.largura_m>0?+r.largura_m:((APC&&APC.impLarg&&APC.impLarg[r.implemento_id])||0)) }));
   let minE=Infinity,maxE=-Infinity,minN=Infinity,maxN=-Infinity; const acc=(E,N)=>{ if(E<minE)minE=E; if(E>maxE)maxE=E; if(N<minN)minN=N; if(N>maxN)maxN=N; };
   if(ring) ring.forEach(p=>acc(p[0],p[1])); segs.forEach(s=>s.pts.forEach(p=>acc(p.E,p.N)));
   return {ring,segs,rows:g.rows,minE,minN,maxE,maxN,ok:isFinite(minE)};
@@ -3170,10 +3170,11 @@ function _apcDrawMapa(cv,g){
   st._sc0=sc0; st._pad=pad; st._W=W; st._H=H;   // p/ zoom centrado no cursor
   const px=E=>pad+(E-P.minE)*sc+st.ox, py=N=>H-pad-(N-P.minN)*sc+st.oy;
   if(P.ring){ ctx.beginPath(); P.ring.forEach((p,i)=>{const X=px(p[0]),Y=py(p[1]); i?ctx.lineTo(X,Y):ctx.moveTo(X,Y);}); ctx.closePath(); ctx.fillStyle='rgba(60,90,40,.18)'; ctx.fill(); ctx.lineWidth=1.5; ctx.strokeStyle='#7ee787'; ctx.stroke(); }
+  P.segs.filter(s=>s.papel==='calda' && s.pts.length>1).forEach(s=>{ ctx.strokeStyle=(st.sel&&st.sel!==s.id)?'rgba(56,160,255,.25)':'rgba(56,160,255,.9)'; ctx.lineWidth=2.5; ctx.setLineDash([7,5]); ctx.beginPath(); s.pts.forEach((p,i)=>{const X=px(p.E),Y=py(p.N); i?ctx.lineTo(X,Y):ctx.moveTo(X,Y);}); ctx.stroke(); ctx.setLineDash([]); });   // rota da CALDA (telemetria; anda fora do talhão -> desenhada SEM clip, tracejada azul)
   ctx.save(); if(P.ring){ ctx.beginPath(); P.ring.forEach((p,i)=>{const X=px(p[0]),Y=py(p[1]); i?ctx.lineTo(X,Y):ctx.moveTo(X,Y);}); ctx.closePath(); ctx.clip(); }
   ctx.lineJoin='round'; ctx.lineCap='round';
   if(st.mode==='tq'){ if(!st._tqmap){ st._tqmap=new Map(); st._tqC=_apcCellsByTq(P.rows, P.ring, st._tqmap); } const C=st._tqC||2, w=C*sc+0.7; st._tqmap.forEach((tq,k)=>{ const u=k.split('_'); const cE=(+u[0]+0.5)*C, cN=(+u[1]+0.5)*C; ctx.fillStyle=_apcTqColor(tq); ctx.fillRect(px(cE-C/2), py(cN+C/2), w, w); }); ctx.restore(); return; }   // Fase 4: cobertura colorida por tanque (célula adaptativa)
-  P.segs.forEach(s=>{ if(s.pts.length<2) return; const dim=st.sel&&st.sel!==s.id; const lw=Math.max(2,(s.larg||0)*sc);
+  P.segs.forEach(s=>{ if(s.papel==='calda') return; if(s.pts.length<2) return; const dim=st.sel&&st.sel!==s.id; const lw=Math.max(2,(s.larg||0)*sc);   // calda já foi desenhada (telemetria, fora do clip)
     if(st.mode==='vel'){ for(let i=1;i<s.pts.length;i++){ ctx.strokeStyle=dim?'rgba(120,120,120,.15)':_apcVelColor(s.pts[i].v); ctx.lineWidth=lw; ctx.beginPath(); ctx.moveTo(px(s.pts[i-1].E),py(s.pts[i-1].N)); ctx.lineTo(px(s.pts[i].E),py(s.pts[i].N)); ctx.stroke(); } }
     else { ctx.strokeStyle=dim?'rgba(255,193,7,.12)':(st.sel===s.id?'rgba(56,160,255,.9)':'rgba(255,193,7,.6)'); ctx.lineWidth=lw; ctx.beginPath(); s.pts.forEach((p,i)=>{const X=px(p.E),Y=py(p.N); i?ctx.lineTo(X,Y):ctx.moveTo(X,Y);}); ctx.stroke(); }
   });

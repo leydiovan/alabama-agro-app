@@ -527,7 +527,8 @@ function _drawMapa(){ const cv=_CV||$('cv'); if(!cv) return; if(!_CW){ _setupCan
   ctx.clearRect(0,0,_CW,_CH); if(VIEW.cx==null) return;
   const poly=_polyUTM();
   if(poly){ _pathPoly(ctx,poly); ctx.fillStyle='rgba(60,90,40,.18)'; ctx.fill(); ctx.lineWidth=2; ctx.strokeStyle='#7ee787'; ctx.stroke(); }
-  ctx.save(); if(poly){ _pathPoly(ctx,poly); ctx.clip(); }   // pinta SÓ dentro do talhão
+  const _calda=_papelOper()==='calda';
+  ctx.save(); if(poly && !_calda){ _pathPoly(ctx,poly); ctx.clip(); }   // calda anda FORA do lote -> não clipa (mostra a rota toda); pulverizador: pinta só dentro do talhão
   ctx.lineJoin='round'; ctx.lineCap='round';
   const _mode=VIEW.mode||'cob';
   const _drawLine=(pts,larg)=>{ if(!pts||!pts.length) return; ctx.lineWidth=Math.max(3,(larg||0)*_sc()); ctx.beginPath(); pts.forEach((p,i)=>{ const X=_px(p.E),Y=_py(p.N); i?ctx.lineTo(X,Y):ctx.moveTo(X,Y); }); ctx.stroke(); };
@@ -866,7 +867,6 @@ function _renderCaldaTela(){
     </div>
     <div style="flex:0 0 auto;padding:8px 10px;background:#0d1117">
       <div class="muted" style="font-size:12px;margin:0 2px 6px">${_caldaResumo()}</div>
-      <div style="display:flex;gap:8px;align-items:center;margin:0 2px 8px"><span class="muted" style="font-size:12px;flex:1">⛽ Diesel da motobomba (pré-mistura)</span><input type="number" step="any" inputmode="decimal" id="calda_dmb" value="${(SESS&&SESS.diesel_motobomba!=null)?SESS.diesel_motobomba:''}" placeholder="litros" style="width:120px;padding:9px 10px;border-radius:8px;border:1px solid #30363d;background:#0d1117;color:#e6edf3;font-size:15px;text-align:right"></div>
       ${_btnCaldaHTML()}
     </div>
   </div>`;
@@ -875,7 +875,6 @@ function _renderCaldaTela(){
   if($('btn_sim'))$('btn_sim').onclick=_simToggle;
   if($('btn_simvel'))$('btn_simvel').onclick=_simVelCiclar;
   if($('btn_calda'))$('btn_calda').onclick=()=>_acaoCalda($('btn_calda').dataset.act);
-  if($('calda_dmb'))$('calda_dmb').onchange=function(){ if(!SESS) SESS=_novaSessaoObj(); SESS.diesel_motobomba=(this.value===''?null:(+this.value||0)); try{_persistTanques();}catch(e){} _st('Diesel da motobomba salvo','#27ae60'); };
   setTimeout(()=>{ _setupCanvas(); _drawMapa(); _hud(); },30);
 }
 let _gestBound=null;
