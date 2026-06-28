@@ -1053,7 +1053,7 @@ function abrirFicha(codigo,seq){
     : '';
 
   // retorno / diário
-  const _ehMaqExec = c.status==='executada' && c.perfil==='MAQUINA';
+  const _ehMaqExec = c.status==='executada' && (c.perfil==='MAQUINA' || (c.perfil==='PULV' && /Terrestre/i.test(c.tipoAtiv)));   // pulverização TERRESTRE também tem GPS/tanques/diesel -> usa a tabela ao vivo (conjuntos + por tanque)
   const retBlock = _ehMaqExec ? '<div id="conjlive"><div class="hint">⏳ Carregando dados do campo…</div></div>'
     : ((c.status==='lancada'||c._editandoRetorno) ? retornoForm(c) : (c.status==='executada'? retornoView(c) : '<div class="hint">Comanda cancelada — sem retorno.</div>'));
 
