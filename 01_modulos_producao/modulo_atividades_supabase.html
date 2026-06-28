@@ -2988,7 +2988,7 @@ async function _updNavAprovCampo(){
   btn.style.display='';
   try{ const {data}=await SB.from('execucao_campo').select('id,status,data,area_ha,trajeto,horimetro_ini,horimetro_fim,diesel_litros').in('status',['enviada','aberto']); const hoje=_hojeLocal();
     const tt=r=>((Array.isArray(r.trajeto)&&r.trajeto.length>1)||r.area_ha||r.horimetro_ini!=null||r.horimetro_fim!=null||r.diesel_litros!=null);
-    const n=(data||[]).filter(r=>tt(r) && (r.status==='enviada' || (r.status==='aberto' && String(r.data)<hoje))).length;
+    const n=(data||[]).filter(r=>tt(r) && (r.status==='enviada' || r.status==='aberto')).length;
     btn.textContent='✅ Aprovações de campo'+(n?(' ('+n+')'):''); }catch(e){}
 }
 async function _loadAprovCampo(){
@@ -3008,8 +3008,8 @@ async function _loadAprovCampo(){
     const hoje=_hojeLocal();
     const _temTrab=r=>((Array.isArray(r.trajeto)&&r.trajeto.length>1)||r.area_ha||r.horimetro_ini!=null||r.horimetro_fim!=null||r.diesel_litros!=null);
     const byc={};
-    // só sessões COM trabalho; 'enviada' = pronto p/ aprovar; 'aberto' só de dia passado (sessão abandonada — não some)
-    (ex.data||[]).filter(r=>_temTrab(r) && (r.status==='enviada' || (r.status==='aberto' && String(r.data)<hoje))).forEach(r=>{ const k=r.comanda_codigo+'|'+(r.safra||''); const g=byc[k]||(byc[k]={codigo:r.comanda_codigo, safra:r.safra||'', rows:[], abast:[]}); g.rows.push(r); });
+    // sessões COM trabalho: 'enviada' = concluída (pronta p/ aprovar); 'aberto' = em andamento (aparece com selo, não aprovar antes de concluir)
+    (ex.data||[]).filter(r=>_temTrab(r) && (r.status==='enviada' || r.status==='aberto')).forEach(r=>{ const k=r.comanda_codigo+'|'+(r.safra||''); const g=byc[k]||(byc[k]={codigo:r.comanda_codigo, safra:r.safra||'', rows:[], abast:[]}); g.rows.push(r); });
     Object.values(byc).forEach(g=>{ g.abast=abByKey[g.codigo+'|'+(g.safra||'')]||[]; });
     APC.comandas=Object.values(byc).sort((a,b)=>String(a.codigo).localeCompare(String(b.codigo)));
   }catch(e){ console.warn('loadAprovCampo',e); APC.comandas=[]; }
@@ -3125,6 +3125,7 @@ function renderAprovCampo(){
     const areaMed=_totConj(_buildConjuntos(g.rows,0)).area;            // área medida (união GPS)
     const amodo=APCAREA[mkey]||'campo';                                // padrão: medida no campo
     const areaEf=(amodo==='comanda'&&areaPlan>0)?areaPlan:areaMed;
+    const emAnd=g.rows.some(r=>r.status==='aberto');   // alguma sessão ainda em andamento (não concluída)
     const linhas=g.rows.map(r=>{
       const h=_apcDuracaoH(r);
       return `<tr data-apcsel="${r.id}" data-apckey="${_apcEsc(mkey)}" style="cursor:pointer${String(mst.sel)===String(r.id)?';background:#16324a':''}" title="Clique p/ destacar no mapa">
@@ -3140,7 +3141,7 @@ function renderAprovCampo(){
     return `<div class="wrap" style="margin-bottom:16px;max-width:none;display:flex;gap:18px;align-items:stretch;flex-wrap:wrap">
       <div style="flex:1 1 440px;min-width:300px;display:flex;flex-direction:column">
         <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">
-          <div><h2 style="margin:0">${_apcEsc(g.codigo)}${tipo?(' · '+_apcEsc(tipo)):''}</h2>
+          <div><h2 style="margin:0">${_apcEsc(g.codigo)}${tipo?(' · '+_apcEsc(tipo)):''}${emAnd?' <span style="font-size:12px;font-weight:700;color:#d29922;border:1px solid #d2992255;background:rgba(210,153,34,.12);border-radius:20px;padding:2px 8px;vertical-align:middle">⏳ em andamento</span>':''}</h2>
             <div class="sub" style="margin:2px 0 0">Lote ${_apcEsc(lote||'—')} · safra ${_apcEsc(g.safra||'—')} · ${tot.dias} dia(s) · ${areaEf?(_apcFmt(areaEf)+' ha'+(amodo==='comanda'?' (planejada)':'')):'—'} · ${tot.horas?(_fmtDur(tot.horas)+' trabalho'):'—'} · ${tot.diesel?(_apcFmt(tot.diesel)+' L diesel'):'—'}${tot.concl?' · <b style="color:#2ea043">conclui o lote</b>':''}</div></div>
           <div style="display:flex;gap:6px;flex-wrap:wrap"><button class="btn" data-apcver="${_apcEsc(g.codigo)}|${_apcEsc(g.safra||'')}">👁 Ver comanda</button><button class="btn success" data-apcok="${_apcEsc(g.codigo)}|${_apcEsc(g.safra||'')}">✓ Aprovar comanda</button></div>
         </div>
@@ -3218,7 +3219,9 @@ async function _verMapaComanda(codigo,safra){
 async function aprovarComandaCampo(key){
   const sp=String(key).split('|'); const codigo=sp[0], safra=sp[1]||'';
   const g=APC.comandas.find(x=>String(x.codigo)===codigo && (x.safra||'')===safra); if(!g) return;
-  if(!confirm('Aprovar a comanda '+codigo+'?\n\nOs dados do campo entram na comanda (diário + retorno) e ela fica EXECUTADA. Se precisar refazer, use "Cancelar finalização" na ficha.')) return;
+  const _emAnd=(g.rows||[]).some(r=>r.status==='aberto');
+  const _aviso=_emAnd?'\n\n⚠️ ATENÇÃO: há operador(es) que ainda NÃO concluíram o lote (EM ANDAMENTO). Aprovar agora fecha tudo e pode cortar trabalho que ainda está sendo feito.':'';
+  if(!confirm('Aprovar a comanda '+codigo+'?'+_aviso+'\n\nOs dados do campo entram na comanda (diário + retorno) e ela fica EXECUTADA. Se precisar refazer, use "Cancelar finalização" na ficha.')) return;
   const c=(safra===SAFRA)?S.comandas.find(x=>x.codigo===codigo):null;
   try{
     // consolida TODAS as sessões COM trabalho da comanda (inclusive já aprovadas) — reaprovação é cumulativa
