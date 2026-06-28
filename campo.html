@@ -826,12 +826,12 @@ function _btnFim(id, act, label, ini){ const f=ini?(60000-(Date.now()-ini)):0; c
 function _tickFimBtns(){ try{ document.querySelectorAll('button[data-ini]').forEach(b=>{ const ini=+b.dataset.ini||0; if(!ini) return; const lbl=b.dataset.lbl||''; const f=60000-(Date.now()-ini); if(f>0){ b.disabled=true; b.className='btn s huge'; b.style.opacity='.6'; b.textContent=lbl+' · '+Math.ceil(f/1000)+'s'; } else { b.disabled=false; b.className='btn r huge'; b.style.opacity=''; b.textContent=lbl; } }); }catch(e){} }   // libera o botão de finalizar quando passa 1 min
 function _btnTanqueHTML(){ const ab=_tanqueAberto(); const T=_termCarga(); if(ab) return _btnFim('btn_tanque','fim','■ Finalizar '+T+' '+ab.seq, ab.ini); return `<button class="btn k huge" id="btn_tanque" style="margin:0">▶ Iniciar ${T} ${_tanquesArr().length+1}</button>`; }
 function _btnCaldaHTML(){ const ca=_tanqueAberto(); const n=_tanquesArr().length;
-  if(_ehCarreg()){   // CARREGAMENTO da adubação: direto do monte (1 marco) ou com caminhão (carregar caminhão -> levar -> carregar adubadeira)
+  if(_ehCarreg()){   // CARREGAMENTO da adubação: direto do monte (1 marco) ou com caminhão (carregar caminhão -> levar -> carregar distribuidor)
     if(!ca) return `<button class="btn k huge" id="btn_calda" data-act="iniciar" style="margin:0">▶ Iniciar carga ${n+1}</button>`;
-    if(ca.modo==='direto') return _btnFim('btn_calda','abastecido','✓ Adubadeira carregada (carga '+ca.seq+')', ca.ini);
+    if(ca.modo==='direto') return _btnFim('btn_calda','abastecido','✓ Distribuidor carregado (carga '+ca.seq+')', ca.ini);
     if(ca.pronto==null) return _btnFim('btn_calda','pronta','✓ Caminhão carregado (carga '+ca.seq+')', ca.ini);
-    if(ca.abastIni==null) return `<button class="btn k huge" id="btn_calda" data-act="abastini" style="margin:0">▶ Carregar adubadeira (carga ${ca.seq})</button>`;
-    return _btnFim('btn_calda','abastecido','✓ Adubadeira carregada (carga '+ca.seq+')', ca.abastIni);
+    if(ca.abastIni==null) return `<button class="btn k huge" id="btn_calda" data-act="abastini" style="margin:0">▶ Carregar distribuidor (carga ${ca.seq})</button>`;
+    return _btnFim('btn_calda','abastecido','✓ Distribuidor carregado (carga '+ca.seq+')', ca.abastIni);
   }
   if(!ca) return `<button class="btn k huge" id="btn_calda" data-act="iniciar" style="margin:0">▶ Iniciar calda ${n+1}</button>`;
   if(ca.pronto==null) return _btnFim('btn_calda','pronta','✓ Calda '+ca.seq+' pronta', ca.ini);
@@ -843,7 +843,7 @@ function _acaoCalda(act){
   const ca=_tanqueAberto(); if(!ca) return;
   if(act==='pronta'){ ca.pronto=Date.now(); }
   else if(act==='abastini'){ ca.abastIni=Date.now(); }
-  else if(act==='abastecido'){ const msg=_ehCarreg()?('Confirmar adubadeira carregada? (fecha a carga '+ca.seq+')'):('Confirmar abastecido? (fecha a calda '+ca.seq+')'); if(!confirm(msg)) return; ca.fim=Date.now(); }
+  else if(act==='abastecido'){ const msg=_ehCarreg()?('Confirmar distribuidor carregado? (fecha a carga '+ca.seq+')'):('Confirmar abastecido? (fecha a calda '+ca.seq+')'); if(!confirm(msg)) return; ca.fim=Date.now(); }
   _persistTanques(); render();
 }
 function _iniciarCalda(){
@@ -880,8 +880,8 @@ function _iniciarCarregamento(){   // adubação: escolhe o modo da carga (diret
   ov.innerHTML=`<div class="card" style="width:100%;max-width:430px;margin:0">
     <div style="font-size:19px;font-weight:900;margin-bottom:4px">🚜 Iniciar carga ${n}</div>
     <div class="hint" style="margin:0 0 12px">Como vai ser esta carga?</div>
-    <button class="btn k huge" id="cd_direto" style="margin:0 0 10px">🏔 Direto do monte<div style="font-size:12px;font-weight:400;opacity:.85">só o tempo de carregar a adubadeira</div></button>
-    <button class="btn k huge" id="cd_caminhao" style="margin:0">🚛 Com caminhão<div style="font-size:12px;font-weight:400;opacity:.85">carregar caminhão → levar → carregar adubadeira</div></button>
+    <button class="btn k huge" id="cd_direto" style="margin:0 0 10px">🏔 Direto do monte<div style="font-size:12px;font-weight:400;opacity:.85">só o tempo de carregar o distribuidor</div></button>
+    <button class="btn k huge" id="cd_caminhao" style="margin:0">🚛 Com caminhão<div style="font-size:12px;font-weight:400;opacity:.85">carregar caminhão → levar → carregar distribuidor</div></button>
     <button class="btn s" id="cd_cancel" style="margin-top:12px">Cancelar</button>
   </div>`;
   document.body.appendChild(ov);

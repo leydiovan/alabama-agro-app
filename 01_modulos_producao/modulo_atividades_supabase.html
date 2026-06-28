@@ -722,7 +722,7 @@ function _aplicaQtdTotalArredondada(nVoos){
 function ajustaFormPorTipo(){
   setTimeout(()=>{ try{atualizaIndicadores();}catch(e){} },0);
   const tipo=$('#nv_tipo')?.value||'';
-  { const _pt=(TIPO_PERFIL[tipo]==='PULV') && /Terrestre/i.test(tipo); const _sol=TIPO_PERFIL[tipo]==='SOLIDO'; const cb=$('#nv_caldabloco'); if(cb) cb.style.display=(_pt||_sol)?'block':'none'; const tl=$('#nv_caldatit'); if(tl) tl.innerHTML=_sol?'Operadores do carregamento <span class="hint">(adubação — abastecem a adubadeira)</span>':'Operadores da calda / pré-mistura <span class="hint">(pulverização terrestre — preparam a calda e abastecem)</span>'; }   // 2º grupo de operadores: calda (pulv terrestre) ou carregamento (adubação)
+  { const _pt=(TIPO_PERFIL[tipo]==='PULV') && /Terrestre/i.test(tipo); const _sol=TIPO_PERFIL[tipo]==='SOLIDO'; const cb=$('#nv_caldabloco'); if(cb) cb.style.display=(_pt||_sol)?'block':'none'; const tl=$('#nv_caldatit'); if(tl) tl.innerHTML=_sol?'Operadores do carregamento <span class="hint">(adubação — abastecem o distribuidor)</span>':'Operadores da calda / pré-mistura <span class="hint">(pulverização terrestre — preparam a calda e abastecem)</span>'; }   // 2º grupo de operadores: calda (pulv terrestre) ou carregamento (adubação)
   const grad=/Gradagem/i.test(tipo);
   const adubSol=/Aduba|S[oó]lidos/i.test(tipo);
   const rowpulv=$('#nv_rowpulv'), blocoprod=$('#nv_blocoprod'), campos=$('#nv_campostipo');
@@ -1311,7 +1311,7 @@ function _apcTanquesTabelaHTML(linhas, dieselPulv, areaBase, ehAdub){
   const tA=linhas.reduce((s,o)=>s+(+o.area||0),0), tH=linhas.reduce((s,o)=>s+(+o.horas||0),0), tL=linhas.reduce((s,o)=>s+(+o.litros||0),0);
   const aRef=(+areaBase>0)?+areaBase:tA; const dP=+dieselPulv||0;
   const dh=aRef>0?dP/aRef:0, ph=tH>0?tA/tH:0, vz=(aRef>0&&tL>0)?tL/aRef:0;
-  const TC=ehAdub?'Carga':'Tanque', U=ehAdub?'kg':'L', dLbl=ehAdub?'Diesel do trator (aplicação)':'Diesel do pulverizador';
+  const TC=ehAdub?'Carga':'Tanque', U=ehAdub?'kg':'L', dLbl=ehAdub?'Diesel do distribuidor (aplicação)':'Diesel do pulverizador';
   let h='<div class="sec">Por '+TC.toLowerCase()+' (aplicação)</div><table class="ptbl"><thead><tr><th></th><th>'+TC+'</th><th>Início</th><th>Fim</th><th>Tempo</th><th>Área</th><th>Vazão real</th><th>ha/h</th></tr></thead><tbody>';
   linhas.forEach(o=>{ const dot='<span style="display:inline-block;width:12px;height:12px;border-radius:3px;vertical-align:middle;background:'+_apcTqColor(o.seq)+'"></span>'; const nome=o.seq>0?(TC+' '+String(o.seq).padStart(2,'0')):('Sem '+TC.toLowerCase()); h+='<tr><td>'+dot+'</td><td>'+esc(nome)+'</td><td>'+_apcDT(o.ini)+'</td><td>'+_apcDT(o.fim)+'</td><td>'+_fmtDur(o.horas)+'</td><td>'+(o.area?fmtArea(o.area)+' ha':'—')+'</td><td>'+(o.vazaoReal?fmtBR(o.vazaoReal)+' '+U+'/ha':'—')+'</td><td>'+(o.haH?fmtBR(o.haH):'—')+'</td></tr>'; });
   h+='</tbody><tfoot>';
@@ -1321,7 +1321,7 @@ function _apcTanquesTabelaHTML(linhas, dieselPulv, areaBase, ehAdub){
   return h;
 }
 /* separa o diesel da comanda: pulverizador (abastec. categoria Pulverizador), caminhão da calda (demais abastec.) e motobomba (campo à parte na sessão da calda) */
-function _apcDieselSplit(g){ const maqAplica=new Set(((g.rows)||[]).filter(r=>_apcEhAplica(r.papel)&&r.maquina_id!=null).map(r=>String(r.maquina_id))); let pulv=0, caminhao=0, motob=0; (g.abast||[]).forEach(a=>{ const cat=String((APC.maqCat&&APC.maqCat[a.maquina_id])||'').toLowerCase(); const l=+a.litros||0; if(maqAplica.has(String(a.maquina_id))||cat.indexOf('pulver')>=0) pulv+=l; else if(cat.indexOf('bomba')>=0) motob+=l; else caminhao+=l; }); return {pulv:+pulv.toFixed(1), caminhao:+caminhao.toFixed(1), motob:+motob.toFixed(1), total:+(pulv+caminhao+motob).toFixed(1)}; }   // diesel do APLICADOR = máquina que ele usou (trator/adubadeira ou autopropelido) OU categoria 'Pulverizador'; 'bomba'->motobomba; demais->caminhão/apoio
+function _apcDieselSplit(g){ const maqAplica=new Set(((g.rows)||[]).filter(r=>_apcEhAplica(r.papel)&&r.maquina_id!=null).map(r=>String(r.maquina_id))); let pulv=0, caminhao=0, motob=0; (g.abast||[]).forEach(a=>{ const cat=String((APC.maqCat&&APC.maqCat[a.maquina_id])||'').toLowerCase(); const l=+a.litros||0; if(maqAplica.has(String(a.maquina_id))||cat.indexOf('pulver')>=0) pulv+=l; else if(cat.indexOf('bomba')>=0) motob+=l; else caminhao+=l; }); return {pulv:+pulv.toFixed(1), caminhao:+caminhao.toFixed(1), motob:+motob.toFixed(1), total:+(pulv+caminhao+motob).toFixed(1)}; }   // diesel do APLICADOR = máquina que ele usou (trator+distribuidor ou autopropelido) OU categoria 'Pulverizador'; 'bomba'->motobomba; demais->caminhão/apoio
 /* distância (m) percorrida no trajeto entre os instantes t0 e t1 (ms) — p/ o deslocamento da calda */
 function _apcDistTraj(traj, t0, t1){ if(!Array.isArray(traj)||!(t1>t0)) return 0; let d=0, prev=null; for(const p of traj){ if(!p||p[0]==null) continue; const t=+p[2]||0; if(t<t0||t>t1){ prev=null; continue; } if(prev){ const u1=_apcUTM(prev[0],prev[1],23), u2=_apcUTM(p[0],p[1],23); d+=Math.hypot(u2[0]-u1[0],u2[1]-u1[1]); } prev=p; } return d; }
 /* tabela da PRÉ-MISTURA / CALDA PRONTA: por tanque os tempos (preparo/deslocamento/abastecimento) + distância; consumo do caminhão e da motobomba (média ÷ área da aprovação) */
@@ -1329,12 +1329,12 @@ function _apcCaldaLinhas(rows){ const out=[]; (rows||[]).filter(r=>_apcEhApoio(r
     const prep = direto?0:((t.pronto&&t.ini)?(t.pronto-t.ini)/3600000:0);              // carga do caminhão (ou preparo da calda)
     const deslocT = direto?0:((t.abastIni&&t.pronto)?(t.abastIni-t.pronto)/3600000:0);
     const deslocD = direto?0:((t.abastIni&&t.pronto)?_apcDistTraj(r.trajeto,t.pronto,t.abastIni):0);
-    const abT = direto?((t.fim&&t.ini)?(t.fim-t.ini)/3600000:0):((t.fim&&t.abastIni)?(t.fim-t.abastIni)/3600000:0);   // carga da adubadeira (ou abastecimento)
+    const abT = direto?((t.fim&&t.ini)?(t.fim-t.ini)/3600000:0):((t.fim&&t.abastIni)?(t.fim-t.abastIni)/3600000:0);   // carga do distribuidor (ou abastecimento)
     out.push({ seq:t.seq, oper, modo:t.modo||'', preparo:prep, deslocT, deslocD, abastT:abT }); }); }); return out; }   // dados do apoio (calda/carregamento) por carga
 function _apcCaldaTabelaHTML(rows, dCaminhao, dMotob, areaBase){
   const L=_apcCaldaLinhas(rows); if(!L.length) return '';
   const adub=_apcEhAdubRows(rows);
-  const sec=adub?'Carregamento':'Pré-mistura / calda pronta', TC=adub?'Carga':'Tanque', c3=adub?'Carga caminhão':'Preparo', c6=adub?'Carga adubadeira':'Abastecimento';
+  const sec=adub?'Carregamento':'Pré-mistura / calda pronta', TC=adub?'Carga':'Tanque', c3=adub?'Carga caminhão':'Preparo', c6=adub?'Carga distribuidor':'Abastecimento';
   const head=adub?('<tr><th>'+TC+'</th><th>Operador</th><th>Modo</th><th>'+c3+'</th><th>Deslocamento</th><th>Distância</th><th>'+c6+'</th></tr>')
                  :('<tr><th>'+TC+'</th><th>Operador</th><th>'+c3+'</th><th>Deslocamento</th><th>Distância</th><th>'+c6+'</th></tr>');
   const body=L.map(o=>{ const modo=o.modo==='direto'?'🏔 monte':(o.modo==='caminhao'?'🚛 caminhão':'—'); return '<tr><td>'+esc(TC+' '+String(o.seq).padStart(2,'0'))+'</td><td>'+esc(o.oper)+'</td>'+(adub?('<td>'+modo+'</td>'):'')+'<td>'+_fmtDur(o.preparo)+'</td><td>'+_fmtDur(o.deslocT)+'</td><td>'+(o.deslocD?fmtBR(+o.deslocD.toFixed(0))+' m':'—')+'</td><td>'+_fmtDur(o.abastT)+'</td></tr>'; }).join('');
@@ -1388,7 +1388,7 @@ async function _apcCampoBlocoImpressao(codigo, safra){
   let h='<div class="pf-diafull" style="margin-top:14px"><div class="pf-sech">RESULTADOS DE CAMPO</div><table style="width:100%;border-collapse:collapse"><tbody><tr>'+
     '<td style="'+cell+'"><b>Área:</b> '+(area?fmtArea(area)+' ha':'—')+'</td><td style="'+cell+'"><b>Diesel total:</b> '+(split.total?fmtBR(split.total)+' L':'—')+'</td><td style="'+cell+'"><b>Diesel/ha:</b> '+(dhG?fmtBR(+dhG.toFixed(1))+' L/ha':'—')+'</td><td style="'+cell+'"><b>Tempo aplic.:</b> '+_fmtDur(tH)+'</td></tr></tbody></table></div>';
   const tqRows=linhasTq.map(o=>[ (o.seq>0?TC+' '+String(o.seq).padStart(2,'0'):'Sem '+TC.toLowerCase()), _apcDT(o.ini), _apcDT(o.fim), _fmtDur(o.horas), (o.area?fmtArea(o.area)+' ha':'—'), (o.vazaoReal?fmtBR(o.vazaoReal)+' '+U+'/ha':'—'), (o.haH?fmtBR(o.haH):'—') ]);
-  const tqFoot='<tr style="font-weight:bold;background:#f3f3f3"><td colspan="3" style="'+cell+'">Totais</td><td style="'+cell+'">'+_fmtDur(tH)+'</td><td style="'+cell+'">'+(tA?fmtArea(+tA.toFixed(2))+' ha':'—')+'</td><td style="'+cell+'">'+(vz?fmtBR(+vz.toFixed(1))+' '+U+'/ha':'—')+'</td><td style="'+cell+'">'+(ph?fmtBR(+ph.toFixed(2)):'—')+'</td></tr><tr style="background:#f3f3f3"><td colspan="3" style="'+cell+'">'+(ehAdub?'Diesel do trator':'Diesel do pulverizador')+'</td><td colspan="4" style="'+cell+'">'+(split.pulv?fmtBR(+split.pulv.toFixed(1))+' L · '+fmtBR(+dhP.toFixed(1))+' L/ha':'—')+'</td></tr>';
+  const tqFoot='<tr style="font-weight:bold;background:#f3f3f3"><td colspan="3" style="'+cell+'">Totais</td><td style="'+cell+'">'+_fmtDur(tH)+'</td><td style="'+cell+'">'+(tA?fmtArea(+tA.toFixed(2))+' ha':'—')+'</td><td style="'+cell+'">'+(vz?fmtBR(+vz.toFixed(1))+' '+U+'/ha':'—')+'</td><td style="'+cell+'">'+(ph?fmtBR(+ph.toFixed(2)):'—')+'</td></tr><tr style="background:#f3f3f3"><td colspan="3" style="'+cell+'">'+(ehAdub?'Diesel do distribuidor':'Diesel do pulverizador')+'</td><td colspan="4" style="'+cell+'">'+(split.pulv?fmtBR(+split.pulv.toFixed(1))+' L · '+fmtBR(+dhP.toFixed(1))+' L/ha':'—')+'</td></tr>';
   h+=_apcPrintTbl('POR '+TC.toUpperCase()+' (APLICAÇÃO)', [TC,'Início','Fim','Tempo','Área','Vazão real','ha/h'], tqRows, tqFoot);
   const caldaL=_apcCaldaLinhas(rows);
   if(caldaL.length){
@@ -1396,7 +1396,7 @@ async function _apcCampoBlocoImpressao(codigo, safra){
     const cFoot=ehAdub
       ? '<tr style="background:#f3f3f3"><td colspan="7" style="'+cell+'">Diesel do carregamento (caminhão/munk): '+(split.caminhao?fmtBR(+split.caminhao.toFixed(1))+' L · '+fmtBR(+mc.toFixed(1))+' L/ha':'—')+'</td></tr>'
       : '<tr style="background:#f3f3f3"><td colspan="3" style="'+cell+'">Diesel caminhão: '+(split.caminhao?fmtBR(+split.caminhao.toFixed(1))+' L · '+fmtBR(+mc.toFixed(1))+' L/ha':'—')+'</td><td colspan="3" style="'+cell+'">Diesel motobomba: '+(split.motob?fmtBR(+split.motob.toFixed(1))+' L · '+fmtBR(+mm.toFixed(1))+' L/ha':'—')+'</td></tr>';
-    const cHead=ehAdub?[TC,'Operador','Modo','Carga caminhão','Deslocamento','Distância','Carga adubadeira']:[TC,'Operador','Preparo','Deslocamento','Distância','Abastecimento'];
+    const cHead=ehAdub?[TC,'Operador','Modo','Carga caminhão','Deslocamento','Distância','Carga distribuidor']:[TC,'Operador','Preparo','Deslocamento','Distância','Abastecimento'];
     h+=_apcPrintTbl(ehAdub?'CARREGAMENTO':'PRÉ-MISTURA / CALDA PRONTA', cHead, cRows, cFoot);
   }
   return h;
