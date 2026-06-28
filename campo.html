@@ -387,7 +387,7 @@ function _utmToLatLng(E,N,zona){   // inversa de latLngToUTM (WGS84, hemisfério
   return [lat*180/Math.PI, lon*180/Math.PI];
 }
 /* ===== simulador de GPS (teste) — gatilho: campo.html?sim=1 ===== */
-let SIM={on:false, rota:null, seg:0, pos:null, timer:null, vel:6};
+let SIM={on:false, rota:null, seg:0, pos:null, timer:null, vel:6, t:0};
 function _simOK(){ try{ const s=location.search||''; if(s.indexOf('sim=1')>=0) localStorage.setItem('campo_sim','1'); if(s.indexOf('sim=0')>=0) localStorage.removeItem('campo_sim'); return localStorage.getItem('campo_sim')==='1'; }catch(e){ return false; } }
 function _polyNorm(ring){ let p=ring.map(q=>[+q[0],+q[1]]); if(p.length>1 && p[0][0]===p[p.length-1][0] && p[0][1]===p[p.length-1][1]) p=p.slice(0,-1); return p; }   // tira o ponto de fechamento duplicado
 /* offset da poligonal p/ DENTRO em 'dist' m por BISSETRIZ com limite (robusto p/ cantos côncavos); null se degenerar */
@@ -460,17 +460,27 @@ function _simToggle(){
   if(!_polyUTM()){ _st('Talhão sem polígono — não dá pra simular','#e67e22'); return; }
   if(_papelOper()!=='calda' && !_conjOK()){ _st('Escolha a máquina antes de simular','#e67e22'); return; }
   if(GPS._wd){clearInterval(GPS._wd);GPS._wd=null;} if(GPS.watchId!=null){try{navigator.geolocation.clearWatch(GPS.watchId);}catch(e){} GPS.watchId=null;}   // pausa o GPS real
-  if(!SIM.rota){ SIM.rota=_simRota(); SIM.seg=0; SIM.pos=SIM.rota?{E:SIM.rota[0].E,N:SIM.rota[0].N}:null; }
+  if(!SIM.rota){ SIM.rota=_simRota(); SIM.seg=0; SIM.pos=SIM.rota?{E:SIM.rota[0].E,N:SIM.rota[0].N}:null; SIM.t=Date.now(); }
   if(!SIM.rota){ _st('Não consegui traçar a rota','#e67e22'); return; }
+  if(!SIM.t) SIM.t=Date.now();
   SIM.on=true; SIM.timer=setInterval(_simTick,300); _st('▶ Simulando GPS…','#27ae60'); render();
 }
 function _simTick(){
   if(!SIM.rota || SIM.seg>=SIM.rota.length-1){ _simStop(); _st('✅ Simulação concluída','#27ae60'); render(); return; }
-  let rem=(SIM.vel/3.6)*5;   // metros por tick (~5 s simulados); controlado pela velocidade
-  while(rem>0 && SIM.seg<SIM.rota.length-1){ const tgt=SIM.rota[SIM.seg+1], dx=tgt.E-SIM.pos.E, dy=tgt.N-SIM.pos.N, d=Math.hypot(dx,dy);
-    if(d<=rem){ SIM.pos={E:tgt.E,N:tgt.N}; SIM.seg++; rem-=d; } else { SIM.pos={E:SIM.pos.E+dx/d*rem,N:SIM.pos.N+dy/d*rem}; rem=0; } }
-  const ll=_utmToLatLng(SIM.pos.E,SIM.pos.N,23);
-  _onFix({coords:{latitude:ll[0],longitude:ll[1],accuracy:4,speed:(SIM.vel/3.6)}, timestamp:Date.now()});
+  const totalRem=(SIM.vel/3.6)*5;        // metros neste tick (5 s simulados); a velocidade só muda quantos fixes saem por tick
+  let rem=totalRem;
+  while(rem>0.01 && SIM.seg<SIM.rota.length-1){
+    const a=SIM.rota[SIM.seg], b=SIM.rota[SIM.seg+1];
+    const segLen=Math.hypot(b.E-a.E, b.N-a.N);                 // tamanho do trecho atual
+    const dVtx=Math.hypot(b.E-SIM.pos.E, b.N-SIM.pos.N)||0;    // resta até o próximo vértice
+    const passo = segLen<70 ? 6 : dVtx;                        // trecho curto (volta/canto) -> fixes a cada 6 m (sem brecha); reta longa -> vai direto ao vértice
+    let adv=Math.min(passo, dVtx, rem);
+    if(adv>=dVtx-1e-6){ SIM.pos={E:b.E,N:b.N}; SIM.seg++; adv=dVtx; } else { const d=dVtx||1; SIM.pos={E:SIM.pos.E+(b.E-SIM.pos.E)/d*adv, N:SIM.pos.N+(b.N-SIM.pos.N)/d*adv}; }
+    rem-=adv; SIM.t += (totalRem>0 ? 5000*(adv/totalRem) : 0);   // relógio simulado: tempo proporcional ao avanço -> mantém a velocidade real
+    const ll=_utmToLatLng(SIM.pos.E,SIM.pos.N,23);
+    _onFix({coords:{latitude:ll[0],longitude:ll[1],accuracy:4,speed:(SIM.vel/3.6)}, timestamp:Math.round(SIM.t)});
+    if(adv<1e-6) break;   // rota acabou / sem avanço
+  }
 }
 function _polyUTM(){ const l=LOTES.find(x=>x.nome===CUR.lote_nome); const g=l&&l.geom; return (g&&Array.isArray(g.ring)&&g.ring.length>2)?g.ring:null; }
 function _widthM(){ return +HDR.largura_m>0 ? +HDR.largura_m : _implLarg(HDR.implemento_id); }   // largura da SESSÃO (operador); cadastro do implemento só como reserva
