@@ -723,13 +723,15 @@ function _aplicarConjunto(){   // aplica o HDR atual à sessão; se já tem trab
 /* ===== conjunto (trator/implemento/largura): perdura entre entradas; obrigatório na 1ª vez ===== */
 function _maqAutop(id){ return +_maqFaixa(id)>0; }   // autopropelida: tem faixa própria no cadastro -> aplica sozinha, dispensa implemento
 function _semImpl(maq){ return _ehPulvTerr() || _maqAutop(maq!=null?maq:HDR.maquina_id); }   // dispensa implemento: pulv terrestre OU máquina autopropelida (ex.: adubadeira/distribuidora autopropelida)
+function _faixaComanda(){ if(!CUR||CUR.faixa==null||CUR.faixa==='') return 0; const n=parseFloat(String(CUR.faixa).replace(',','.')); return isFinite(n)&&n>0?n:0; }   // faixa PLANEJADA da comanda (sugerida no tablet; editável na hora)
+function _larguraSugerida(maq,imp){ const fc=_faixaComanda(); if(fc>0) return fc; return _semImpl(maq)?_maqFaixa(maq):_implLarg(imp); }   // largura sugerida: a COMANDA manda; senão cadastro (faixa da máquina autopropelida/pulv, ou largura do implemento de arrasto)
 function _conjOK(){ return _semImpl() ? !!(HDR.maquina_id && +HDR.largura_m>0) : !!(HDR.maquina_id && HDR.implemento_id && +HDR.largura_m>0); }
 function _donoHDR(){ return (OPER&&OPER.id)+'|'+(CUR&&CUR.codigo); }   // o conjunto perdura por OPERADOR + COMANDA (não vaza entre comandas)
 function _remConj(){ try{ return JSON.parse(localStorage.getItem('conj_'+_donoHDR())||'null'); }catch(e){ return null; } }
 function _saveConj(){ try{ if(OPER&&OPER.id&&CUR&&CUR.codigo) localStorage.setItem('conj_'+_donoHDR(), JSON.stringify({maquina_id:HDR.maquina_id||'', implemento_id:HDR.implemento_id||'', largura_m:+HDR.largura_m||0})); }catch(e){} }
 function _setHDRde(s){ s=s||{}; const maq=s.maquina_id!=null?s.maquina_id:'';
-  if(_semImpl(maq)){ HDR={ maquina_id:maq||'', implemento_id:'', largura_m:(_maqFaixa(maq)|| (+s.largura_m||0)) }; }   // pulv ou autopropelido: faixa vem da máquina (cadastro), sem implemento
-  else { HDR={ maquina_id:maq||'', implemento_id:s.implemento_id!=null?s.implemento_id:'', largura_m:(+s.largura_m>0?+s.largura_m:(_implLarg(s.implemento_id)||0)) }; }
+  if(_semImpl(maq)){ HDR={ maquina_id:maq||'', implemento_id:'', largura_m:(+s.largura_m>0?+s.largura_m:_larguraSugerida(maq,'')) }; }   // pulv/autopropelido (sem implemento): largura já escolhida > comanda > cadastro da máquina
+  else { HDR={ maquina_id:maq||'', implemento_id:s.implemento_id!=null?s.implemento_id:'', largura_m:(+s.largura_m>0?+s.largura_m:_larguraSugerida(maq,s.implemento_id)) }; }   // trator: largura já escolhida > comanda > largura do implemento
   HDROP=HDR.maquina_id?_donoHDR():null; }   // marca o dono (operador+comanda) do HDR
 function _initHDR(){   // ordem de prioridade p/ o conjunto vigente do OPERADOR+COMANDA atuais (perdura — só zera de propósito)
   if(SESS && SESS.maquina_id!=null){ _setHDRde(SESS); return; }              // 1. sessão aberta de hoje (retomada)
@@ -745,18 +747,19 @@ function _pedirPulverizador(){
   ov.style.cssText='position:fixed;inset:0;z-index:1200;background:#0d1117ee;display:flex;align-items:center;justify-content:center;padding:18px';
   ov.innerHTML=`<div class="card" style="width:100%;max-width:440px;margin:0">
     <div style="font-size:19px;font-weight:900;margin-bottom:4px">🛰 Pulverizador</div>
-    <div class="hint" style="margin:0 0 12px">Escolha a máquina — a faixa efetiva vem do cadastro. Fica salvo; só muda em 🔄 Trocar máquina.</div>
+    <div class="hint" style="margin:0 0 12px">Escolha a máquina — a faixa vem da comanda (ou do cadastro) e pode ser ajustada. Fica salvo; só muda em 🔄 Trocar máquina.</div>
     <label>Máquina (pulverizador)</label><select id="cj_maq">${maqOpt}</select>
     <div style="height:10px"></div>
-    <label>Faixa efetiva (m)</label><input id="cj_larg" type="number" inputmode="decimal" step="0.1" min="0" value="${HDR.largura_m||''}" placeholder="vem do cadastro da máquina">
+    <label>Faixa efetiva (m)</label><input id="cj_larg" type="number" inputmode="decimal" step="0.1" min="0" value="${HDR.largura_m||_faixaComanda()||''}" placeholder="vem da comanda / cadastro">
     <div class="hint" id="cj_fh" style="margin:6px 0 0"></div>
     <button class="btn g" id="cj_ok" style="margin-top:16px">Confirmar e trabalhar</button>
     <button class="btn s" id="cj_back" style="margin-top:8px">Voltar às comandas</button>
   </div>`;
   document.body.appendChild(ov);
-  const upd=()=>{ const m=$('cj_maq').value, l=num($('cj_larg').value); $('cj_ok').disabled=!(m&&l>0); const h=$('cj_fh'); if(h) h.textContent=(m&&!(l>0))?'⚠ Sem faixa no cadastro desta máquina — informe a faixa (ou cadastre).':''; };
-  $('cj_maq').onchange=()=>{ const f=_maqFaixa($('cj_maq').value); if(f>0) $('cj_larg').value=f; upd(); };
-  $('cj_larg').oninput=upd; upd();
+  const upd=()=>{ const m=$('cj_maq').value, l=num($('cj_larg').value); $('cj_ok').disabled=!(m&&l>0); const h=$('cj_fh'); if(h) h.textContent=(m&&!(l>0))?'⚠ Sem faixa (comanda/cadastro) — informe a faixa.':''; };
+  let tocou=+HDR.largura_m>0;   // já há largura definida (salva/retomada) -> não auto-sobrescreve
+  $('cj_maq').onchange=()=>{ if(!tocou){ const f=_larguraSugerida($('cj_maq').value,''); if(f>0) $('cj_larg').value=f; } upd(); };
+  $('cj_larg').oninput=()=>{ tocou=true; upd(); }; upd();
   $('cj_back').onclick=async()=>{ ov.remove(); await _gpsLeave(); EXVIEW='menu'; render(); };
   $('cj_ok').onclick=()=>{ const m=$('cj_maq').value, l=num($('cj_larg').value)||0; if(!(m&&l>0)) return; HDR.maquina_id=m; HDR.implemento_id=''; HDR.largura_m=l; ov.remove(); _aplicarConjunto(); };
 }
@@ -773,19 +776,21 @@ function _pedirConjunto(){
     <label>Máquina (trator ou autopropelido)</label><select id="cj_maq">${maqOpt}</select>
     <div style="height:10px"></div>
     <div id="cj_improw"><label>Implemento</label><select id="cj_imp">${impOpt}</select><div style="height:10px"></div></div>
-    <label>Largura de faixa (m)</label><input id="cj_larg" type="number" inputmode="decimal" step="0.1" min="0" value="${HDR.largura_m||''}" placeholder="ex.: 6.5">
+    <label>Largura de faixa (m)</label><input id="cj_larg" type="number" inputmode="decimal" step="0.1" min="0" value="${HDR.largura_m||_faixaComanda()||''}" placeholder="vem da comanda / cadastro">
     <button class="btn g" id="cj_ok" style="margin-top:16px">Confirmar e trabalhar</button>
     <button class="btn s" id="cj_back" style="margin-top:8px">Voltar às comandas</button>
   </div>`;
   document.body.appendChild(ov);
   const upd=()=>{ const m=$('cj_maq').value, i=$('cj_imp').value, l=num($('cj_larg').value), au=_maqAutop(m); $('cj_ok').disabled=!(m&&l>0&&(au||i)); };
-  const syncMaq=()=>{ const m=$('cj_maq').value, au=_maqAutop(m), row=$('cj_improw'), lf=$('cj_larg'), h=$('cj_hint');
+  let tocou=+HDR.largura_m>0;   // já há largura definida (salva/retomada) -> não auto-sobrescreve
+  const sugere=()=>{ if(tocou) return; const m=$('cj_maq').value, au=_maqAutop(m), s=_larguraSugerida(m, au?'':$('cj_imp').value); if(s>0) $('cj_larg').value=s; };
+  const syncMaq=()=>{ const m=$('cj_maq').value, au=_maqAutop(m), row=$('cj_improw'), h=$('cj_hint');
     if(row) row.style.display=au?'none':'block';
-    if(au){ const f=_maqFaixa(m); if(f>0) lf.value=f; if(h) h.innerHTML='🚜 Autopropelido — aplica sem implemento; a faixa vem do cadastro (pode ajustar).'; }
-    else if(h){ h.innerHTML='🚜 Trator + implemento de arrasto. A largura vem do implemento (pode ajustar).'; }
+    sugere();
+    if(h) h.innerHTML=au?'🚜 Autopropelido — aplica sem implemento; a faixa vem da comanda/cadastro (pode ajustar).':'🚜 Trator + implemento de arrasto. A largura vem da comanda/implemento (pode ajustar).';
     upd(); };
-  $('cj_imp').onchange=()=>{ const i=$('cj_imp').value, lf=$('cj_larg'); if((!num(lf.value)||num(lf.value)<=0) && _implLarg(i)>0) lf.value=_implLarg(i); upd(); };
-  $('cj_maq').onchange=syncMaq; $('cj_larg').oninput=upd; syncMaq();
+  $('cj_imp').onchange=()=>{ sugere(); upd(); };
+  $('cj_maq').onchange=syncMaq; $('cj_larg').oninput=()=>{ tocou=true; upd(); }; syncMaq();
   $('cj_back').onclick=async()=>{ ov.remove(); await _gpsLeave(); EXVIEW='menu'; render(); };
   $('cj_ok').onclick=()=>{ const m=$('cj_maq').value, au=_maqAutop(m), i=au?'':$('cj_imp').value, l=num($('cj_larg').value)||0; if(!(m&&l>0&&(au||i))) return;
     HDR.maquina_id=m; HDR.implemento_id=i; HDR.largura_m=l;
