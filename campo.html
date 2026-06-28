@@ -698,6 +698,7 @@ async function _gpsLeave(){
 }
 function _conjResumo(){ const t=HDR.maquina_id?_maqNome(HDR.maquina_id):'—';
   if(_ehPulvTerr()){ const lg=+HDR.largura_m>0?(' · faixa '+String(HDR.largura_m).replace('.',',')+' m'):''; return '<b>🛰 '+esc(t)+'</b><span class="muted">'+lg+'</span>'; }
+  if(_maqAutop(HDR.maquina_id)){ const lg=+HDR.largura_m>0?(' · faixa '+String(HDR.largura_m).replace('.',',')+' m'):''; return '<b>🚜 '+esc(t)+'</b><span class="muted">'+lg+'</span>'; }   // autopropelido (sem implemento)
   const im=HDR.implemento_id?(_impNome(HDR.implemento_id)||'—'):'—'; const lg=+HDR.largura_m>0?(' · '+String(HDR.largura_m).replace('.',',')+' m'):''; return '<b>🚜 '+esc(t)+'</b><span class="muted"> · '+esc(im)+lg+'</span>'; }
 function _updConjSum(){ const e=$('conj_sum'); if(e) e.innerHTML=_conjResumo(); }
 function _aplicarConjunto(){   // aplica o HDR atual à sessão; se já tem trabalho pintado, fecha a anterior e a nova nasce no 1º ponto
@@ -720,12 +721,14 @@ function _aplicarConjunto(){   // aplica o HDR atual à sessão; se já tem trab
   })();
 }
 /* ===== conjunto (trator/implemento/largura): perdura entre entradas; obrigatório na 1ª vez ===== */
-function _conjOK(){ return _ehPulvTerr() ? !!(HDR.maquina_id && +HDR.largura_m>0) : !!(HDR.maquina_id && HDR.implemento_id && +HDR.largura_m>0); }
+function _maqAutop(id){ return +_maqFaixa(id)>0; }   // autopropelida: tem faixa própria no cadastro -> aplica sozinha, dispensa implemento
+function _semImpl(maq){ return _ehPulvTerr() || _maqAutop(maq!=null?maq:HDR.maquina_id); }   // dispensa implemento: pulv terrestre OU máquina autopropelida (ex.: adubadeira/distribuidora autopropelida)
+function _conjOK(){ return _semImpl() ? !!(HDR.maquina_id && +HDR.largura_m>0) : !!(HDR.maquina_id && HDR.implemento_id && +HDR.largura_m>0); }
 function _donoHDR(){ return (OPER&&OPER.id)+'|'+(CUR&&CUR.codigo); }   // o conjunto perdura por OPERADOR + COMANDA (não vaza entre comandas)
 function _remConj(){ try{ return JSON.parse(localStorage.getItem('conj_'+_donoHDR())||'null'); }catch(e){ return null; } }
 function _saveConj(){ try{ if(OPER&&OPER.id&&CUR&&CUR.codigo) localStorage.setItem('conj_'+_donoHDR(), JSON.stringify({maquina_id:HDR.maquina_id||'', implemento_id:HDR.implemento_id||'', largura_m:+HDR.largura_m||0})); }catch(e){} }
 function _setHDRde(s){ s=s||{}; const maq=s.maquina_id!=null?s.maquina_id:'';
-  if(_ehPulvTerr()){ HDR={ maquina_id:maq||'', implemento_id:'', largura_m:(_maqFaixa(maq)|| (+s.largura_m||0)) }; }   // pulv: faixa vem da máquina (cadastro)
+  if(_semImpl(maq)){ HDR={ maquina_id:maq||'', implemento_id:'', largura_m:(_maqFaixa(maq)|| (+s.largura_m||0)) }; }   // pulv ou autopropelido: faixa vem da máquina (cadastro), sem implemento
   else { HDR={ maquina_id:maq||'', implemento_id:s.implemento_id!=null?s.implemento_id:'', largura_m:(+s.largura_m>0?+s.largura_m:(_implLarg(s.implemento_id)||0)) }; }
   HDROP=HDR.maquina_id?_donoHDR():null; }   // marca o dono (operador+comanda) do HDR
 function _initHDR(){   // ordem de prioridade p/ o conjunto vigente do OPERADOR+COMANDA atuais (perdura — só zera de propósito)
@@ -760,27 +763,31 @@ function _pedirPulverizador(){
 function _pedirConjunto(){
   const old=$('conjov'); if(old) old.remove();
   if(_ehPulvTerr()) return _pedirPulverizador();
-  const maqOpt=`<option value="">— escolha o trator —</option>`+MAQS.map(m=>`<option value="${m.id}" ${String(HDR.maquina_id)===String(m.id)?'selected':''}>${esc(m.nome)}</option>`).join('');
+  const maqOpt=`<option value="">— escolha a máquina —</option>`+MAQS.map(m=>`<option value="${m.id}" ${String(HDR.maquina_id)===String(m.id)?'selected':''}>${esc(m.nome)}${m.faixa_m?(' · faixa '+m.faixa_m+'m'):''}</option>`).join('');
   const impOpt=`<option value="">— escolha o implemento —</option>`+IMPS.map(m=>`<option value="${m.id}" ${String(HDR.implemento_id)===String(m.id)?'selected':''}>${esc(m.nome)}${m.largura_trabalho?(' · '+m.largura_trabalho+'m'):''}</option>`).join('');
   const ov=document.createElement('div'); ov.id='conjov';
   ov.style.cssText='position:fixed;inset:0;z-index:1200;background:#0d1117ee;display:flex;align-items:center;justify-content:center;padding:18px';
   ov.innerHTML=`<div class="card" style="width:100%;max-width:440px;margin:0">
     <div style="font-size:19px;font-weight:900;margin-bottom:4px">🚜 Conjunto de trabalho</div>
-    <div class="hint" style="margin:0 0 12px">Escolha o trator, o implemento e a largura de faixa. Fica salvo — só muda quando você tocar em 🔄 Trocar conjunto.</div>
-    <label>Trator / máquina</label><select id="cj_maq">${maqOpt}</select>
+    <div class="hint" id="cj_hint" style="margin:0 0 12px">Escolha a máquina. Trator + implemento de arrasto, ou autopropelido (aplica sozinho, sem implemento). Fica salvo — só muda em 🔄 Trocar conjunto.</div>
+    <label>Máquina (trator ou autopropelido)</label><select id="cj_maq">${maqOpt}</select>
     <div style="height:10px"></div>
-    <label>Implemento</label><select id="cj_imp">${impOpt}</select>
-    <div style="height:10px"></div>
+    <div id="cj_improw"><label>Implemento</label><select id="cj_imp">${impOpt}</select><div style="height:10px"></div></div>
     <label>Largura de faixa (m)</label><input id="cj_larg" type="number" inputmode="decimal" step="0.1" min="0" value="${HDR.largura_m||''}" placeholder="ex.: 6.5">
     <button class="btn g" id="cj_ok" style="margin-top:16px">Confirmar e trabalhar</button>
     <button class="btn s" id="cj_back" style="margin-top:8px">Voltar às comandas</button>
   </div>`;
   document.body.appendChild(ov);
-  const upd=()=>{ const m=$('cj_maq').value, i=$('cj_imp').value, l=num($('cj_larg').value); $('cj_ok').disabled=!(m&&i&&l>0); };
+  const upd=()=>{ const m=$('cj_maq').value, i=$('cj_imp').value, l=num($('cj_larg').value), au=_maqAutop(m); $('cj_ok').disabled=!(m&&l>0&&(au||i)); };
+  const syncMaq=()=>{ const m=$('cj_maq').value, au=_maqAutop(m), row=$('cj_improw'), lf=$('cj_larg'), h=$('cj_hint');
+    if(row) row.style.display=au?'none':'block';
+    if(au){ const f=_maqFaixa(m); if(f>0) lf.value=f; if(h) h.innerHTML='🚜 Autopropelido — aplica sem implemento; a faixa vem do cadastro (pode ajustar).'; }
+    else if(h){ h.innerHTML='🚜 Trator + implemento de arrasto. A largura vem do implemento (pode ajustar).'; }
+    upd(); };
   $('cj_imp').onchange=()=>{ const i=$('cj_imp').value, lf=$('cj_larg'); if((!num(lf.value)||num(lf.value)<=0) && _implLarg(i)>0) lf.value=_implLarg(i); upd(); };
-  $('cj_maq').onchange=upd; $('cj_larg').oninput=upd; upd();
+  $('cj_maq').onchange=syncMaq; $('cj_larg').oninput=upd; syncMaq();
   $('cj_back').onclick=async()=>{ ov.remove(); await _gpsLeave(); EXVIEW='menu'; render(); };
-  $('cj_ok').onclick=()=>{ const m=$('cj_maq').value, i=$('cj_imp').value, l=num($('cj_larg').value)||0; if(!(m&&i&&l>0)) return;
+  $('cj_ok').onclick=()=>{ const m=$('cj_maq').value, au=_maqAutop(m), i=au?'':$('cj_imp').value, l=num($('cj_larg').value)||0; if(!(m&&l>0&&(au||i))) return;
     HDR.maquina_id=m; HDR.implemento_id=i; HDR.largura_m=l;
     ov.remove(); _aplicarConjunto();   // aplica (fecha sessão antiga se já tinha trabalho) + salva + redesenha
   };
@@ -939,7 +946,7 @@ function renderTrabalho(){
     </div>
     <div style="flex:0 0 auto;display:flex;gap:8px;align-items:center;padding:6px 10px;background:#0d1117">
       <div id="conj_sum" style="flex:1;min-width:0;font-size:14px;line-height:1.2;overflow:hidden;white-space:nowrap;text-overflow:ellipsis">${_conjResumo()}</div>
-      <button class="btn s" id="btn_conj" style="width:auto;margin:0;padding:9px 14px;white-space:nowrap">🔄 ${_ehPulvTerr()?'Trocar máquina':'Trocar conjunto'}</button>
+      <button class="btn s" id="btn_conj" style="width:auto;margin:0;padding:9px 14px;white-space:nowrap">🔄 ${_semImpl()?'Trocar máquina':'Trocar conjunto'}</button>
     </div>
     <div style="flex:1;position:relative;min-height:0">
       <canvas id="cv" style="width:100%;height:100%;display:block;touch-action:none"></canvas>
