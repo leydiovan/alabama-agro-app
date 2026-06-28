@@ -3155,10 +3155,11 @@ function _apcState(key){ return APCMAP[key]||(APCMAP[key]={zoom:1,ox:0,oy:0,sel:
 function _apcVelColor(v){ if(v==null||isNaN(v)) return 'rgba(170,170,170,.6)'; const c=Math.max(0,Math.min(15,+v)); const h=240-(c/15)*240; return 'hsla('+h.toFixed(0)+',85%,50%,.75)'; }
 function _apcPrep(g){
   const ring=_apcLoteRing(g.rows[0]?g.rows[0].lote_nome:'');
-  const segs=g.rows.filter(r=>Array.isArray(r.trajeto)&&r.trajeto.length>1).map(r=>({ id:String(r.id), papel:r.papel, pts:r.trajeto.filter(p=>p&&p[0]!=null).map(p=>{const u=_apcUTM(p[0],p[1],23);return {E:u[0],N:u[1],v:(p[3]!=null?+p[3]:null)};}), larg:(+r.largura_m>0?+r.largura_m:((APC&&APC.impLarg&&APC.impLarg[r.implemento_id])||0)) }));
+  const segs=g.rows.filter(r=>Array.isArray(r.trajeto)&&r.trajeto.length>1).map(r=>({ id:String(r.id), papel:r.papel, pts:r.trajeto.filter(p=>p&&p[0]!=null).map(p=>{const u=_apcUTM(p[0],p[1],23);return {E:u[0],N:u[1],v:(p[3]!=null?+p[3]:null),t:(p[2]!=null?+p[2]:0)};}), larg:(+r.largura_m>0?+r.largura_m:((APC&&APC.impLarg&&APC.impLarg[r.implemento_id])||0)) }));
   let minE=Infinity,maxE=-Infinity,minN=Infinity,maxN=-Infinity; const acc=(E,N)=>{ if(E<minE)minE=E; if(E>maxE)maxE=E; if(N<minN)minN=N; if(N>maxN)maxN=N; };
   if(ring) ring.forEach(p=>acc(p[0],p[1])); segs.forEach(s=>s.pts.forEach(p=>acc(p.E,p.N)));
-  return {ring,segs,rows:g.rows,minE,minN,maxE,maxN,ok:isFinite(minE)};
+  let tMin=Infinity,tMax=-Infinity; segs.forEach(s=>s.pts.forEach(p=>{ if(p.t>0){ if(p.t<tMin)tMin=p.t; if(p.t>tMax)tMax=p.t; } }));   // linha do tempo (reprodução do trajeto)
+  return {ring,segs,rows:g.rows,minE,minN,maxE,maxN,tMin:isFinite(tMin)?tMin:0,tMax:isFinite(tMax)?tMax:0,ok:isFinite(minE)};
 }
 function _apcDrawMapa(cv,g){
   if(!cv||!cv.clientWidth) return;
@@ -3170,6 +3171,11 @@ function _apcDrawMapa(cv,g){
   st._sc0=sc0; st._pad=pad; st._W=W; st._H=H;   // p/ zoom centrado no cursor
   const px=E=>pad+(E-P.minE)*sc+st.ox, py=N=>H-pad-(N-P.minN)*sc+st.oy;
   if(P.ring){ ctx.beginPath(); P.ring.forEach((p,i)=>{const X=px(p[0]),Y=py(p[1]); i?ctx.lineTo(X,Y):ctx.moveTo(X,Y);}); ctx.closePath(); ctx.fillStyle='rgba(60,90,40,.18)'; ctx.fill(); ctx.lineWidth=1.5; ctx.strokeStyle='#7ee787'; ctx.stroke(); }
+  if(st.t!=null && P.tMax>P.tMin && st.t<P.tMax){   // TIMELINE: reproduz o trajeto até o tempo de corte + marcador da posição atual (pulverizador âmbar, calda azul)
+    const tc=st.t; ctx.lineJoin='round'; ctx.lineCap='round';
+    P.segs.forEach(s=>{ if(s.pts.length<2) return; const calda=s.papel==='calda'; ctx.strokeStyle=calda?'rgba(56,160,255,.95)':'rgba(255,193,7,.95)'; ctx.lineWidth=calda?2.5:Math.max(2,(s.larg||0)*sc); if(calda)ctx.setLineDash([7,5]); ctx.beginPath(); let started=false,lastP=null; for(const p of s.pts){ if(p.t>tc) break; const X=px(p.E),Y=py(p.N); started?ctx.lineTo(X,Y):ctx.moveTo(X,Y); started=true; lastP=p; } if(started)ctx.stroke(); ctx.setLineDash([]); if(lastP){ ctx.fillStyle=calda?'#58a6ff':'#ffd33d'; ctx.strokeStyle='#0d1117'; ctx.lineWidth=1.5; ctx.beginPath(); ctx.arc(px(lastP.E),py(lastP.N),5,0,Math.PI*2); ctx.fill(); ctx.stroke(); } });
+    return;
+  }
   P.segs.filter(s=>s.papel==='calda' && s.pts.length>1).forEach(s=>{ ctx.strokeStyle=(st.sel&&st.sel!==s.id)?'rgba(56,160,255,.25)':'rgba(56,160,255,.9)'; ctx.lineWidth=2.5; ctx.setLineDash([7,5]); ctx.beginPath(); s.pts.forEach((p,i)=>{const X=px(p.E),Y=py(p.N); i?ctx.lineTo(X,Y):ctx.moveTo(X,Y);}); ctx.stroke(); ctx.setLineDash([]); });   // rota da CALDA (telemetria; anda fora do talhão -> desenhada SEM clip, tracejada azul)
   ctx.save(); if(P.ring){ ctx.beginPath(); P.ring.forEach((p,i)=>{const X=px(p[0]),Y=py(p[1]); i?ctx.lineTo(X,Y):ctx.moveTo(X,Y);}); ctx.closePath(); ctx.clip(); }
   ctx.lineJoin='round'; ctx.lineCap='round';
@@ -3181,6 +3187,12 @@ function _apcDrawMapa(cv,g){
   ctx.restore();
 }
 function _apcRedraw(key){ try{ const cv=document.querySelector('[data-apcmap="'+(window.CSS&&CSS.escape?CSS.escape(key):key)+'"]'); const g=(APC&&APC.comandas.find(x=>(x.codigo+'|'+(x.safra||''))===key))||_APCEXTRA[key]; if(cv&&g) _apcDrawMapa(cv,g); }catch(e){} }
+/* ---- linha do tempo (reprodução do trajeto) ---- */
+function _apcPlayBtn(key){ try{ document.querySelectorAll('[data-apcplay]').forEach(b=>{ if(b.dataset.apcplay===key) b.textContent=_apcState(key).playing?'⏸':'▶'; }); }catch(e){} }
+function _apcTimeBar(key){ try{ const st=_apcState(key),P=st._prep; document.querySelectorAll('[data-apctime]').forEach(inp=>{ if(inp.dataset.apctime===key){ inp.value=(st.t==null||!P||!(P.tMax>P.tMin))?1000:Math.round((st.t-P.tMin)/(P.tMax-P.tMin)*1000); } }); }catch(e){} }
+function _apcStop(key){ const st=_apcState(key); if(st._timer){ clearInterval(st._timer); st._timer=null; } st.playing=false; _apcPlayBtn(key); }
+function _apcPlay(key){ const st=_apcState(key); if(st.playing){ _apcStop(key); return; } const P=st._prep; if(!P||!(P.tMax>P.tMin)) return; if(st.t==null||st.t>=P.tMax) st.t=P.tMin; st.playing=true; _apcPlayBtn(key); const dur=P.tMax-P.tMin, step=Math.max(1,dur/240);   // percorre tudo em ~12 s
+  st._timer=setInterval(()=>{ st.t+=step; let fim=st.t>=P.tMax; if(fim) st.t=P.tMax; _apcRedraw(key); _apcTimeBar(key); if(fim){ _apcStop(key); st.t=null; _apcRedraw(key); _apcTimeBar(key); } }, 50); }
 function _apcZoomAt(key,f,mx,my){ const s=_apcState(key); const sc0=s._sc0||1,pad=s._pad||12,H=s._H||220; const z0=s.zoom; s.zoom=Math.max(0.5,Math.min(20,s.zoom*f)); const scOld=sc0*z0, scNew=sc0*s.zoom; if(scOld>0){ const Ax=(mx-(pad+s.ox))/scOld; s.ox=mx-Ax*scNew-pad; const Ay=((H-pad)+s.oy-my)/scOld; s.oy=my+Ay*scNew-(H-pad); } _apcRedraw(key); }   // mantém o ponto sob o cursor fixo
 function _apcBindCanvas(cv,key){
   if(cv._apcBound) return; cv._apcBound=true;
@@ -3281,7 +3293,8 @@ function renderAprovCampo(){
           ${mst.sel?`<button class="btn sm" data-apcselc="${_apcEsc(mkey)}">✕ destaque</button>`:''}
         </div>
         <canvas data-apcmap="${_apcEsc(mkey)}" style="width:100%;flex:1;min-height:340px;display:block;background:#0d1117;border-radius:8px;touch-action:none"></canvas>
-        <div class="muted" style="font-size:11px;margin-top:4px">arraste/scroll/pinça p/ zoom · clique numa linha p/ destacar</div>
+        <div style="display:flex;gap:8px;align-items:center;margin-top:6px"><button class="btn sm" data-apcplay="${_apcEsc(mkey)}" style="width:auto;margin:0;min-width:40px">▶</button><input type="range" min="0" max="1000" value="1000" data-apctime="${_apcEsc(mkey)}" style="flex:1" title="linha do tempo da operação"></div>
+        <div class="muted" style="font-size:11px;margin-top:4px">arraste/scroll/pinça p/ zoom · clique numa linha p/ destacar · ▶ reproduz o trajeto no tempo</div>
         ${(temTq&&mst.mode==='tq')?_apcTqLegenda(linhasTq):''}
       </div>
     </div>`;
@@ -3306,7 +3319,9 @@ function _apcBindMap(root,aprov){
   qa('[data-apcmode]').forEach(b=>b.onclick=()=>{ const k=b.dataset.apcmode, st=_apcState(k), hasTq=b.dataset.apctq==='1'; st.mode = st.mode==='cob'?'vel':(st.mode==='vel'?(hasTq?'tq':'cob'):'cob'); if(aprov){ render(); } else { b.textContent='camada: '+(st.mode==='vel'?'velocidade':(st.mode==='tq'?'tanque':'cobertura')); _apcRedraw(k); } });   // cobertura -> velocidade -> tanque (só oferece 'tanque' quando há tanque)
   qa('[data-apcselc]').forEach(b=>b.onclick=()=>{ const k=b.dataset.apcselc; _apcState(k).sel=null; if(aprov) render(); else { mark(k); _apcRedraw(k); } });
   qa('[data-apcsel]').forEach(tr=>tr.onclick=(e)=>{ if(e.target.closest('button')) return; const k=tr.dataset.apckey, id=tr.dataset.apcsel, st=_apcState(k); st.sel=(String(st.sel)===String(id))?null:id; if(aprov) render(); else { mark(k); _apcRedraw(k); } });
-  qa('[data-apcmap]').forEach(cv=>{ const k=cv.dataset.apcmap; const g=(APC&&APC.comandas.find(x=>(x.codigo+'|'+(x.safra||''))===k))||_APCEXTRA[k]; if(g){ _apcBindCanvas(cv,k); try{ _apcDrawMapa(cv,g); }catch(e){ console.warn('apcmap',e); } } });
+  qa('[data-apctime]').forEach(inp=>{ inp.oninput=()=>{ const k=inp.dataset.apctime, st=_apcState(k), P=st._prep; _apcStop(k); if(P&&P.tMax>P.tMin){ const f=+inp.value/1000; st.t=(f>=0.999)?null:(P.tMin+f*(P.tMax-P.tMin)); } else st.t=null; _apcRedraw(k); }; });   // barra do tempo
+  qa('[data-apcplay]').forEach(b=>b.onclick=()=>_apcPlay(b.dataset.apcplay));   // play/pause
+  qa('[data-apcmap]').forEach(cv=>{ const k=cv.dataset.apcmap; const g=(APC&&APC.comandas.find(x=>(x.codigo+'|'+(x.safra||''))===k))||_APCEXTRA[k]; if(g){ _apcBindCanvas(cv,k); try{ _apcDrawMapa(cv,g); }catch(e){ console.warn('apcmap',e); } _apcPlayBtn(k); _apcTimeBar(k); } });
 }
 async function _verMapaComanda(codigo,safra){
   const ov=document.createElement('div'); ov.id='mapaov';
@@ -3332,6 +3347,7 @@ async function _verMapaComanda(codigo,safra){
       <span style="color:#8b949e;font-size:11px">arraste/scroll/pinça p/ zoom · toque numa linha p/ destacar</span>
     </div>
     <canvas data-apcmap="${_apcEsc(key)}" style="width:100%;height:58vh;display:block;background:#0d1117;touch-action:none"></canvas>
+    <div style="display:flex;gap:8px;align-items:center;padding:6px 10px"><button class="btn sm" data-apcplay="${_apcEsc(key)}" style="width:auto;margin:0;min-width:40px">▶</button><input type="range" min="0" max="1000" value="1000" data-apctime="${_apcEsc(key)}" style="flex:1" title="linha do tempo da operação"></div>
     <div style="flex:1;min-height:0;overflow:auto;border-top:1px solid #30363d"><table class="tbl"><thead><tr><th>Data</th><th>Operador</th><th>Máquina</th><th>Início</th><th style="text-align:right">Área</th></tr></thead><tbody>${linhas}</tbody></table></div>
   </div>`;
   _apcBindMap(ov,false);   // canvas já tem 58vh -> desenha/binda na hora (rAF não dispara em 2º plano)
