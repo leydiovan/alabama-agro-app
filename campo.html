@@ -611,7 +611,7 @@ function _restoreSess(){ GPS.pts=[]; GPS.cells=new Set(); GPS.areaHa=0; GPS.spee
 /* ===== fila offline (outbox): sessões/abastecimentos locais 1º, sincroniza qdo tiver rede ===== */
 let PEND=0; const _SYNCING=new Set();   // lids em sincronização (evita 2 inserts -> sessão duplicada)
 function _lid(){ return 'L'+Date.now().toString(36)+Math.random().toString(36).slice(2,7); }
-function _sessReg(s){ return { comanda_codigo:s.comanda_codigo, safra:s.safra, funcionario_id:s.funcionario_id, lote_nome:s.lote_nome, data:s.data, maquina_id:s.maquina_id, implemento_id:s.implemento_id, largura_m:s.largura_m||0, papel:s.papel||null, tanques:s.tanques||[], hora_inicio:s.hora_inicio, hora_fim:s.hora_fim||null, status:s.status, trajeto:s.trajeto||[], area_ha:s.area_ha||0, concluiu_lote:!!s.concluiu_lote, enviado_por:s.enviado_por||null, atualizado_em:s.atualizado_em||new Date().toISOString() }; }
+function _sessReg(s){ return { comanda_codigo:s.comanda_codigo, safra:s.safra, funcionario_id:s.funcionario_id, lote_nome:s.lote_nome, data:s.data, maquina_id:s.maquina_id, implemento_id:s.implemento_id, largura_m:s.largura_m||0, papel:s.papel||null, tanques:s.tanques||[], diesel_motobomba:(s.diesel_motobomba!=null?+s.diesel_motobomba:null), hora_inicio:s.hora_inicio, hora_fim:s.hora_fim||null, status:s.status, trajeto:s.trajeto||[], area_ha:s.area_ha||0, concluiu_lote:!!s.concluiu_lote, enviado_por:s.enviado_por||null, atualizado_em:s.atualizado_em||new Date().toISOString() }; }
 function _abastReg(a){ return { comanda_codigo:a.comanda_codigo, safra:a.safra, funcionario_id:a.funcionario_id, maquina_id:a.maquina_id, lote_nome:a.lote_nome, litros:a.litros, quando:a.quando, enviado_por:a.enviado_por||null }; }
 function _regTemTrabalho(s){ if(s&&Array.isArray(s.tanques)&&s.tanques.length>0) return true; const t=s&&s.trajeto; if(!Array.isArray(t)||t.length<2) return false; if((+s.area_ha||0)>=0.01) return true;   // trabalho REAL a partir do registro (vale p/ a fila/IDB)
   let d=0; for(let i=1;i<t.length;i++){ const a=t[i-1],b=t[i]; if(a&&b&&a[0]!=null&&b[0]!=null){ const u=latLngToUTM(a[0],a[1],23),w=latLngToUTM(b[0],b[1],23); d+=Math.hypot(w[0]-u[0],w[1]-u[1]); if(d>=25) return true; } } return false; }
@@ -647,7 +647,7 @@ async function _saveGps(final){ if(!SESS) return;
   SESS.dirty=true; SESS._v=(SESS._v||0)+1; try{ await _idbPut('sessions',SESS); }catch(e){}   // local primeiro (sobrevive offline)
   await _syncSession(SESS); _updPend();
 }
-function _novaSessaoObj(){ const lid=_lid(); return { lid, id:lid, serverId:null, dirty:true, _v:1, comanda_codigo:CUR.codigo, safra:SAFRA, funcionario_id:OPER.id, lote_nome:CUR.lote_nome||null, data:DIA, maquina_id:HDR.maquina_id?+HDR.maquina_id:null, implemento_id:HDR.implemento_id?+HDR.implemento_id:null, largura_m:_widthM()||0, papel:_papelOper(), tanques:[], hora_inicio:nowHM(), hora_fim:null, status:'aberto', trajeto:[], area_ha:0, concluiu_lote:false, enviado_por:USER_EMAIL||null, atualizado_em:new Date().toISOString() }; }
+function _novaSessaoObj(){ const lid=_lid(); return { lid, id:lid, serverId:null, dirty:true, _v:1, comanda_codigo:CUR.codigo, safra:SAFRA, funcionario_id:OPER.id, lote_nome:CUR.lote_nome||null, data:DIA, maquina_id:HDR.maquina_id?+HDR.maquina_id:null, implemento_id:HDR.implemento_id?+HDR.implemento_id:null, largura_m:_widthM()||0, papel:_papelOper(), tanques:[], diesel_motobomba:null, hora_inicio:nowHM(), hora_fim:null, status:'aberto', trajeto:[], area_ha:0, concluiu_lote:false, enviado_por:USER_EMAIL||null, atualizado_em:new Date().toISOString() }; }
 async function _novaSessao(){            // (mantida p/ compat; o fluxo normal cria preguiçoso no 1º ponto)
   const s=_novaSessaoObj();
   try{ await _idbPut('sessions',s); }catch(e){}
@@ -866,6 +866,7 @@ function _renderCaldaTela(){
     </div>
     <div style="flex:0 0 auto;padding:8px 10px;background:#0d1117">
       <div class="muted" style="font-size:12px;margin:0 2px 6px">${_caldaResumo()}</div>
+      <div style="display:flex;gap:8px;align-items:center;margin:0 2px 8px"><span class="muted" style="font-size:12px;flex:1">⛽ Diesel da motobomba (pré-mistura)</span><input type="number" step="any" inputmode="decimal" id="calda_dmb" value="${(SESS&&SESS.diesel_motobomba!=null)?SESS.diesel_motobomba:''}" placeholder="litros" style="width:120px;padding:9px 10px;border-radius:8px;border:1px solid #30363d;background:#0d1117;color:#e6edf3;font-size:15px;text-align:right"></div>
       ${_btnCaldaHTML()}
     </div>
   </div>`;
@@ -874,6 +875,7 @@ function _renderCaldaTela(){
   if($('btn_sim'))$('btn_sim').onclick=_simToggle;
   if($('btn_simvel'))$('btn_simvel').onclick=_simVelCiclar;
   if($('btn_calda'))$('btn_calda').onclick=()=>_acaoCalda($('btn_calda').dataset.act);
+  if($('calda_dmb'))$('calda_dmb').onchange=function(){ if(!SESS) SESS=_novaSessaoObj(); SESS.diesel_motobomba=(this.value===''?null:(+this.value||0)); try{_persistTanques();}catch(e){} _st('Diesel da motobomba salvo','#27ae60'); };
   setTimeout(()=>{ _setupCanvas(); _drawMapa(); _hud(); },30);
 }
 let _gestBound=null;
