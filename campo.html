@@ -187,7 +187,14 @@ function comandasDoOperador(){
   return base.slice();
 }
 function _ehPulvTerr(c){ c=c||CUR; return !!(c && c.perfil==='PULV' && /Terrestre/i.test(c.tipo_ativ||'')); }
-function _papelOper(){ if(!_ehPulvTerr()) return null; const pid=String(OPER&&OPER.id); const isP=(CUR.operadores||[]).map(String).includes(pid); const isC=(CUR.operadores_calda||[]).map(String).includes(pid); return isP?'pulverizador':(isC?'calda':'pulverizador'); }
+function _ehAdub(c){ c=c||CUR; return !!(c && c.perfil==='SOLIDO'); }   // adubação / aplicação de sólidos (caçambas de adubo)
+function _ehCampo(c){ return _ehPulvTerr(c) || _ehAdub(c); }   // tipos com fluxo de campo (2 papéis + cargas)
+function _papelOper(){ if(!_ehCampo()) return null; const pid=String(OPER&&OPER.id); const isP=(CUR.operadores||[]).map(String).includes(pid); const isC=(CUR.operadores_calda||[]).map(String).includes(pid); const p1=_ehAdub()?'aplicador':'pulverizador', p2=_ehAdub()?'carregamento':'calda'; return isP?p1:(isC?p2:p1); }
+function _papelAplica(){ const p=_papelOper(); return p==='pulverizador'||p==='aplicador'; }   // papel 1: pinta área + ciclo de cargas/tanques
+function _papelApoio(){ const p=_papelOper(); return p==='calda'||p==='carregamento'; }   // papel 2: telemetria (calda/carregamento)
+/* rótulos por tipo de campo */
+function _termCarga(){ return _ehAdub()?'carga':'tanque'; }
+function _termUnid(){ return _ehAdub()?'kg':'litros'; }
 function _maqFaixa(id){ const m=MAQS.find(x=>String(x.id)===String(id)); return m&&m.faixa_m?+m.faixa_m:0; }
 
 /* ===================== RENDER ===================== */
@@ -459,7 +466,7 @@ function _simVelCiclar(){ const opts=[6,12,25,50,100]; SIM.vel=opts[(opts.indexO
 function _simToggle(){
   if(SIM.on){ _simStop(); _st('⏸ Simulação pausada','#8b949e'); render(); return; }
   if(!_polyUTM()){ _st('Talhão sem polígono — não dá pra simular','#e67e22'); return; }
-  if(_papelOper()!=='calda' && !_conjOK()){ _st('Escolha a máquina antes de simular','#e67e22'); return; }
+  if(!_papelApoio() && !_conjOK()){ _st('Escolha a máquina antes de simular','#e67e22'); return; }
   if(GPS._wd){clearInterval(GPS._wd);GPS._wd=null;} if(GPS.watchId!=null){try{navigator.geolocation.clearWatch(GPS.watchId);}catch(e){} GPS.watchId=null;}   // pausa o GPS real
   if(!SIM.rota){ SIM.rota=_simRota(); SIM.seg=0; SIM.pos=SIM.rota?{E:SIM.rota[0].E,N:SIM.rota[0].N}:null; SIM.t=Date.now(); }
   if(!SIM.rota){ _st('Não consegui traçar a rota','#e67e22'); return; }
@@ -528,7 +535,7 @@ function _drawMapa(){ const cv=_CV||$('cv'); if(!cv) return; if(!_CW){ _setupCan
   ctx.clearRect(0,0,_CW,_CH); if(VIEW.cx==null) return;
   const poly=_polyUTM();
   if(poly){ _pathPoly(ctx,poly); ctx.fillStyle='rgba(60,90,40,.18)'; ctx.fill(); ctx.lineWidth=2; ctx.strokeStyle='#7ee787'; ctx.stroke(); }
-  const _calda=_papelOper()==='calda';
+  const _calda=_papelApoio();
   ctx.save(); if(poly && !_calda){ _pathPoly(ctx,poly); ctx.clip(); }   // calda anda FORA do lote -> não clipa (mostra a rota toda); pulverizador: pinta só dentro do talhão
   ctx.lineJoin='round'; ctx.lineCap='round';
   const _mode=VIEW.mode||'cob';
@@ -574,7 +581,7 @@ function _onFix(pos){ const cur=pos.coords; GPS.acc=cur.accuracy; GPS._lastFixTs
     GPS.head=Math.atan2(E-last.E,No-last.N);
     if(_paintOn()) _markCells(last.E,last.N,E,No);
   } else if(cur.speed!=null&&cur.speed>=0) GPS.speed=cur.speed*3.6;
-  if(!SESS){ if(_papelOper()==='calda'){ SESS=_novaSessaoObj(); } else if(!_conjOK()){ GPS._lt=t; _hud(); _scheduleDraw(); return; } else { SESS=_novaSessaoObj(); } }   // calda nasce direto (telemetria); demais só com conjunto escolhido
+  if(!SESS){ if(_papelApoio()){ SESS=_novaSessaoObj(); } else if(!_conjOK()){ GPS._lt=t; _hud(); _scheduleDraw(); return; } else { SESS=_novaSessaoObj(); } }   // apoio (calda/carregamento) nasce direto (telemetria); aplicador só com conjunto escolhido
   GPS._lt=t; GPS.pts.push({E,N:No,lat:cur.latitude,lon:cur.longitude,t,v:GPS.speed||0,tq:_tqSeqAberto()});
   _hud(); _scheduleDraw();
   if(GPS.watchId!=null){ if(GPS.pts.length%40===0) _saveGps(false); else if(GPS.pts.length%5===0) _touchSess(); }   // local a cada 5 fixes, sync a cada 40
@@ -780,20 +787,21 @@ function _pedirConjunto(){
 /* ===== ciclo de TANQUES (pulverizador) — em SESS.tanques [{seq,ini,fim,litros,cheio,vazao}] ===== */
 function _tanquesArr(){ return (SESS&&Array.isArray(SESS.tanques))?SESS.tanques:[]; }
 function _tanqueAberto(){ const a=_tanquesArr(); for(let i=a.length-1;i>=0;i--){ if(a[i] && a[i].fim==null) return a[i]; } return null; }
-function _tqSeqAberto(){ if(_papelOper()!=='pulverizador') return 0; const t=_tanqueAberto(); return t?t.seq:0; }   // carimba o ponto com o tanque vigente (0 = sem tanque)
+function _tqSeqAberto(){ if(!_papelAplica()) return 0; const t=_tanqueAberto(); return t?t.seq:0; }   // carimba o ponto com o tanque vigente (0 = sem tanque)
 function _persistTanques(){ if(!SESS) return; SESS.atualizado_em=new Date().toISOString(); SESS.dirty=true; SESS._v=(SESS._v||0)+1; try{ _idbPut('sessions',SESS); }catch(e){} if(navigator.onLine) _syncSession(SESS); _updPend(); }
 function _abrirTanque(litros,cheio,vazao){ if(!SESS) SESS=_novaSessaoObj(); if(!Array.isArray(SESS.tanques)) SESS.tanques=[]; SESS.tanques.push({seq:SESS.tanques.length+1, ini:Date.now(), fim:null, litros:+litros||0, cheio:!!cheio, vazao:+vazao||0}); _persistTanques(); render(); }
 function _iniciarTanque(){
   const old=$('tqov'); if(old) old.remove();
   const cap=+(CUR.capacidade)||0, vz=+(CUR.taxa)||0;
+  const T=_termCarga(), U=_termUnid(), Tc=T.charAt(0).toUpperCase()+T.slice(1), ch=_ehAdub()?'cheia':'cheio', n=_tanquesArr().length+1;
   const ov=document.createElement('div'); ov.id='tqov';
   ov.style.cssText='position:fixed;inset:0;z-index:1300;background:#0d1117ee;display:flex;align-items:center;justify-content:center;padding:18px';
   ov.innerHTML=`<div class="card" style="width:100%;max-width:420px;margin:0">
-    <div style="font-size:19px;font-weight:900;margin-bottom:4px">⛽ Iniciar tanque ${_tanquesArr().length+1}</div>
-    <div class="hint" style="margin:0 0 12px">Tanque cheio usa a capacidade da comanda${cap?(' ('+cap+' L)'):''}. No último, se não for cheio, informe os litros.</div>
-    <div class="fl" style="margin:0 0 10px"><input type="checkbox" id="tq_cheio" checked><label for="tq_cheio">Tanque cheio${cap?(' — '+cap+' L'):''}</label></div>
-    <div id="tq_parc" style="display:none"><label>Litros do tanque</label><input id="tq_litros" type="number" inputmode="decimal" step="1" min="0" placeholder="ex.: 1500"><div style="height:10px"></div></div>
-    <label>Vazão (L/ha)</label><input id="tq_vazao" type="number" inputmode="decimal" step="0.1" min="0" value="${vz||''}" placeholder="ex.: 100">
+    <div style="font-size:19px;font-weight:900;margin-bottom:4px">⛽ Iniciar ${T} ${n}</div>
+    <div class="hint" style="margin:0 0 12px">${Tc} ${ch} usa a capacidade da comanda${cap?(' ('+cap+' '+U+')'):''}. No último, se não for ${ch}, informe a quantidade.</div>
+    <div class="fl" style="margin:0 0 10px"><input type="checkbox" id="tq_cheio" checked><label for="tq_cheio">${Tc} ${ch}${cap?(' — '+cap+' '+U):''}</label></div>
+    <div id="tq_parc" style="display:none"><label>Quantidade da ${T} (${U})</label><input id="tq_litros" type="number" inputmode="decimal" step="1" min="0" placeholder="ex.: 1500"><div style="height:10px"></div></div>
+    <label>Vazão (${U}/ha)</label><input id="tq_vazao" type="number" inputmode="decimal" step="0.1" min="0" value="${vz||''}" placeholder="ex.: 100">
     <button class="btn g" id="tq_ok" style="margin-top:16px">Iniciar</button>
     <button class="btn s" id="tq_cancel" style="margin-top:8px">Cancelar</button>
   </div>`;
@@ -802,12 +810,12 @@ function _iniciarTanque(){
   $('tq_cheio').onchange=sync; sync();
   $('tq_cancel').onclick=()=>ov.remove();
   $('tq_ok').onclick=()=>{ const cheio=$('tq_cheio').checked; const litros=cheio?cap:(num($('tq_litros').value)||0); const vazao=num($('tq_vazao').value)||0;
-    if(!cheio && litros<=0){ _st('Informe os litros do tanque.','#e67e22'); return; }
+    if(!cheio && litros<=0){ _st('Informe a quantidade da '+T+'.','#e67e22'); return; }
     ov.remove(); _abrirTanque(litros,cheio,vazao); };
 }
 function _finalizarTanque(){
   const t=_tanqueAberto(); if(!t) return;
-  if(!confirm('Finalizar o tanque '+t.seq+'?')) return;   // confirma p/ não fechar sem querer
+  if(!confirm('Finalizar '+_termCarga()+' '+t.seq+'?')) return;   // confirma p/ não fechar sem querer
   t.fim=Date.now(); _persistTanques(); render();
 }
 /* ===== ciclo da CALDA / pré-mistura (papel calda) — SESS.tanques [{seq,ini,pronto,abastIni,fim,litros,cheio,doses}] ===== */
@@ -815,7 +823,7 @@ function _caldaResumo(){ const feitas=_tanquesArr().filter(x=>x.fim!=null).lengt
 /* botão de CONCLUSÃO (VERMELHO): fica cinza+inativo por 1 min após o início da etapa (com contador), depois vermelho+ativo */
 function _btnFim(id, act, label, ini){ const f=ini?(60000-(Date.now()-ini)):0; const trav=f>0; return `<button class="btn ${trav?'s':'r'} huge" id="${id}" data-act="${act}" data-lbl="${esc(label)}" data-ini="${ini||0}"${trav?' disabled':''} style="margin:0${trav?';opacity:.6':''}">${trav?(esc(label)+' · '+Math.ceil(f/1000)+'s'):esc(label)}</button>`; }
 function _tickFimBtns(){ try{ document.querySelectorAll('button[data-ini]').forEach(b=>{ const ini=+b.dataset.ini||0; if(!ini) return; const lbl=b.dataset.lbl||''; const f=60000-(Date.now()-ini); if(f>0){ b.disabled=true; b.className='btn s huge'; b.style.opacity='.6'; b.textContent=lbl+' · '+Math.ceil(f/1000)+'s'; } else { b.disabled=false; b.className='btn r huge'; b.style.opacity=''; b.textContent=lbl; } }); }catch(e){} }   // libera o botão de finalizar quando passa 1 min
-function _btnTanqueHTML(){ const ab=_tanqueAberto(); if(ab) return _btnFim('btn_tanque','fim','■ Finalizar tanque '+ab.seq, ab.ini); return `<button class="btn k huge" id="btn_tanque" style="margin:0">▶ Iniciar tanque ${_tanquesArr().length+1}</button>`; }
+function _btnTanqueHTML(){ const ab=_tanqueAberto(); const T=_termCarga(); if(ab) return _btnFim('btn_tanque','fim','■ Finalizar '+T+' '+ab.seq, ab.ini); return `<button class="btn k huge" id="btn_tanque" style="margin:0">▶ Iniciar ${T} ${_tanquesArr().length+1}</button>`; }
 function _btnCaldaHTML(){ const ca=_tanqueAberto(); const n=_tanquesArr().length;
   if(!ca) return `<button class="btn k huge" id="btn_calda" data-act="iniciar" style="margin:0">▶ Iniciar calda ${n+1}</button>`;
   if(ca.pronto==null) return _btnFim('btn_calda','pronta','✓ Calda '+ca.seq+' pronta', ca.ini);
@@ -897,7 +905,7 @@ function _bindGestures(cv){ if(_gestBound===cv) return; _gestBound=cv;
 }
 function renderTrabalho(){
   const c=CUR; const manual=!GPS.paintAuto;
-  if(_ehPulvTerr() && _papelOper()==='calda') return _renderCaldaTela();
+  if(_ehCampo() && _papelApoio()) return _renderCaldaTela();
   $('app').innerHTML=`<div style="position:fixed;inset:0;display:flex;flex-direction:column;background:#0a0f18">
     <div style="flex:0 0 auto;display:flex;gap:8px;align-items:center;padding:8px 10px;background:#0d1117">
       <button class="btn s" id="voltar" style="width:auto;margin:0;padding:8px 14px">◀</button>
@@ -922,14 +930,14 @@ function renderTrabalho(){
       <div id="cleg" style="display:${(VIEW.mode==='vel')?'none':'flex'};position:absolute;left:10px;bottom:10px;gap:10px;align-items:center;background:#0d1117cc;border-radius:8px;padding:6px 9px;font-size:11px;color:#fff"><span style="color:#ffd24a">▮ eu hoje</span><span style="color:#58a6ff">▮ eu (out. dias)</span><span style="color:#bc8cff">▮ outro operador</span></div>
       ${_polyUTM()?'':'<div style="position:absolute;bottom:46px;left:10px;background:#3a1d00;color:#ffc107;border-radius:8px;padding:6px 10px;font-size:12px">Talhão sem poligonal</div>'}
     </div>
-    ${(_ehPulvTerr()&&_papelOper()==='pulverizador')?`<div style="flex:0 0 auto;padding:8px 10px;background:#0d1117">${_btnTanqueHTML()}</div>`:''}
+    ${(_ehCampo()&&_papelAplica())?`<div style="flex:0 0 auto;padding:8px 10px;background:#0d1117">${_btnTanqueHTML()}</div>`:''}
   </div>`;
   if($('voltar'))$('voltar').onclick=async()=>{ await _gpsLeave(); EXVIEW='menu'; render(); };
   if($('btn_conj'))$('btn_conj').onclick=()=>_pedirConjunto();
   if($('btn_tanque'))$('btn_tanque').onclick=()=>{ if($('btn_tanque').disabled) return; const ta=_tanqueAberto(); if(ta) _finalizarTanque(); else _iniciarTanque(); };
   if(!_FIMIV)_FIMIV=setInterval(_tickFimBtns,1000);
   if($('btn_follow'))$('btn_follow').onclick=()=>{ VIEW.follow=!VIEW.follow; $('btn_follow').textContent=VIEW.follow?'🎯 Seguindo':'✋ Livre'; _drawMapa(); };
-  if($('btn_cmode'))$('btn_cmode').onclick=()=>{ const seq=(_ehPulvTerr()&&_papelOper()==='pulverizador')?['cob','vel','tq']:['cob','vel']; VIEW.mode=seq[(seq.indexOf(VIEW.mode||'cob')+1)%seq.length]; $('btn_cmode').textContent=VIEW.mode==='vel'?'🌡 Velocidade':(VIEW.mode==='tq'?'🪣 Por tanque':'🎨 Cobertura'); const lg=$('vleg'); if(lg) lg.style.display=(VIEW.mode==='vel')?'flex':'none'; const cg=$('cleg'); if(cg) cg.style.display=(VIEW.mode==='cob')?'flex':'none'; _drawMapa(); };
+  if($('btn_cmode'))$('btn_cmode').onclick=()=>{ const seq=(_ehCampo()&&_papelAplica())?['cob','vel','tq']:['cob','vel']; VIEW.mode=seq[(seq.indexOf(VIEW.mode||'cob')+1)%seq.length]; $('btn_cmode').textContent=VIEW.mode==='vel'?'🌡 Velocidade':(VIEW.mode==='tq'?'🪣 Por tanque':'🎨 Cobertura'); const lg=$('vleg'); if(lg) lg.style.display=(VIEW.mode==='vel')?'flex':'none'; const cg=$('cleg'); if(cg) cg.style.display=(VIEW.mode==='cob')?'flex':'none'; _drawMapa(); };
   if($('btn_pmode'))$('btn_pmode').onclick=()=>{ GPS.paintAuto=!GPS.paintAuto; if(GPS.paintAuto) GPS.painting=false; render(); };
   if($('btn_sim'))$('btn_sim').onclick=_simToggle;
   if($('btn_simvel'))$('btn_simvel').onclick=_simVelCiclar;

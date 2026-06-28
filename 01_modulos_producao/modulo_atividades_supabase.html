@@ -508,7 +508,7 @@ function renderNova(){
     <div class="sec">Operadores designados <span class="hint">(aparece no tablet de campo de cada um)</span></div>
     <div id="nv_opwrap" class="note" style="font-size:13px;display:flex;flex-wrap:wrap;gap:8px 18px;align-items:center">${_operadoresCheckboxes()}</div>
     <div id="nv_caldabloco" style="display:none">
-      <div class="sec">Operadores da calda / pré-mistura <span class="hint">(pulverização terrestre — preparam a calda e abastecem)</span></div>
+      <div class="sec" id="nv_caldatit">Operadores da calda / pré-mistura <span class="hint">(pulverização terrestre — preparam a calda e abastecem)</span></div>
       <div id="nv_caldawrap" class="note" style="font-size:13px;display:flex;flex-wrap:wrap;gap:8px 18px;align-items:center">${_operadoresCheckboxesCalda()}</div>
     </div>
 
@@ -722,7 +722,7 @@ function _aplicaQtdTotalArredondada(nVoos){
 function ajustaFormPorTipo(){
   setTimeout(()=>{ try{atualizaIndicadores();}catch(e){} },0);
   const tipo=$('#nv_tipo')?.value||'';
-  { const _pulvTerr=(TIPO_PERFIL[tipo]==='PULV') && /Terrestre/i.test(tipo); const cb=$('#nv_caldabloco'); if(cb) cb.style.display=_pulvTerr?'block':'none'; }   // pulverização terrestre: 2º grupo de operadores (calda)
+  { const _pt=(TIPO_PERFIL[tipo]==='PULV') && /Terrestre/i.test(tipo); const _sol=TIPO_PERFIL[tipo]==='SOLIDO'; const cb=$('#nv_caldabloco'); if(cb) cb.style.display=(_pt||_sol)?'block':'none'; const tl=$('#nv_caldatit'); if(tl) tl.innerHTML=_sol?'Operadores do carregamento <span class="hint">(adubação — abastecem a adubadeira)</span>':'Operadores da calda / pré-mistura <span class="hint">(pulverização terrestre — preparam a calda e abastecem)</span>'; }   // 2º grupo de operadores: calda (pulv terrestre) ou carregamento (adubação)
   const grad=/Gradagem/i.test(tipo);
   const adubSol=/Aduba|S[oó]lidos/i.test(tipo);
   const rowpulv=$('#nv_rowpulv'), blocoprod=$('#nv_blocoprod'), campos=$('#nv_campostipo');
