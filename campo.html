@@ -832,7 +832,7 @@ function _finalizarTanque(){
   t.fim=Date.now(); _persistTanques(); render();
 }
 /* ===== ciclo da CALDA / pré-mistura (papel calda) — SESS.tanques [{seq,ini,pronto,abastIni,fim,litros,cheio,doses}] ===== */
-function _caldaResumo(){ const feitas=_tanquesArr().filter(x=>x.fim!=null).length; const ab=_tanqueAberto(); const T=_ehCarreg()?'Cargas':'Caldas', t=_ehCarreg()?'carga':'calda'; return T+' concluídas: <b>'+feitas+'</b>'+(ab?(' · em andamento ('+t+' '+ab.seq+')'):''); }
+function _caldaResumo(){ const arr=_tanquesArr(); const feitas=arr.filter(x=>x.fim!=null).length; const ab=_tanqueAberto(); const T=_ehCarreg()?'Cargas':'Caldas', t=_ehCarreg()?'carga':'calda'; let extra=''; if(_ehCarreg()){ const kg=arr.reduce((s,x)=>s+(+x.kg||0),0); if(kg>0) extra=' · <b>'+kg.toLocaleString('pt-BR')+' kg</b> ('+(kg/1000).toLocaleString('pt-BR',{maximumFractionDigits:2})+' bag)'; } return T+' concluídas: <b>'+feitas+'</b>'+extra+(ab?(' · em andamento ('+t+' '+ab.seq+')'):''); }
 /* botão de CONCLUSÃO (VERMELHO): fica cinza+inativo por 1 min após o início da etapa (com contador), depois vermelho+ativo */
 function _btnFim(id, act, label, ini){ const f=ini?(60000-(Date.now()-ini)):0; const trav=f>0; return `<button class="btn ${trav?'s':'r'} huge" id="${id}" data-act="${act}" data-lbl="${esc(label)}" data-ini="${ini||0}"${trav?' disabled':''} style="margin:0${trav?';opacity:.6':''}">${trav?(esc(label)+' · '+Math.ceil(f/1000)+'s'):esc(label)}</button>`; }
 function _tickFimBtns(){ try{ document.querySelectorAll('button[data-ini]').forEach(b=>{ const ini=+b.dataset.ini||0; if(!ini) return; const lbl=b.dataset.lbl||''; const f=60000-(Date.now()-ini); if(f>0){ b.disabled=true; b.className='btn s huge'; b.style.opacity='.6'; b.textContent=lbl+' · '+Math.ceil(f/1000)+'s'; } else { b.disabled=false; b.className='btn r huge'; b.style.opacity=''; b.textContent=lbl; } }); }catch(e){} }   // libera o botão de finalizar quando passa 1 min
@@ -855,8 +855,36 @@ function _acaoCalda(act){
   const ca=_tanqueAberto(); if(!ca) return;
   if(act==='pronta'){ ca.pronto=Date.now(); }
   else if(act==='abastini'){ ca.abastIni=Date.now(); }
-  else if(act==='abastecido'){ const msg=_ehCarreg()?('Confirmar distribuidor carregado? (fecha a carga '+ca.seq+')'):('Confirmar abastecido? (fecha a calda '+ca.seq+')'); if(!confirm(msg)) return; ca.fim=Date.now(); }
+  else if(act==='abastecido'){
+    if(_ehCarreg()) return _fecharCarga(ca);   // adubação: informa os big-bags abastecidos no distribuidor (modal); ele persiste/renderiza
+    if(!confirm('Confirmar abastecido? (fecha a calda '+ca.seq+')')) return; ca.fim=Date.now();
+  }
   _persistTanques(); render();
+}
+function _fecharCarga(ca){   // adubação: ao carregar o distribuidor, registra quantos big-bags (1000 kg) -> kg real da carga
+  const old=$('bgov'); if(old) old.remove();
+  const cap=+(CUR&&CUR.capacidade)||0; const defKg=cap>0?cap:1000; const defB=+(defKg/1000).toFixed(2);
+  const ov=document.createElement('div'); ov.id='bgov';
+  ov.style.cssText='position:fixed;inset:0;z-index:1400;background:#0d1117ee;display:flex;align-items:center;justify-content:center;padding:18px';
+  ov.innerHTML=`<div class="card" style="width:100%;max-width:420px;margin:0">
+    <div style="font-size:19px;font-weight:900;margin-bottom:4px">📦 Distribuidor carregado (carga ${ca.seq})</div>
+    <div class="hint" style="margin:0 0 12px">Quantos big-bags (1000 kg) foram abastecidos? Normalmente bag inteiro; se foi parcial, ajuste em kg.</div>
+    <label>Big-bags (1000 kg)</label><input id="bg_bags" type="number" inputmode="decimal" step="0.05" min="0" value="${defB}">
+    <div style="height:10px"></div>
+    <label>Quantidade (kg)</label><input id="bg_kg" type="number" inputmode="numeric" step="50" min="0" value="${defKg}">
+    <div class="hint" id="bg_eq" style="margin:6px 0 0"></div>
+    <button class="btn g" id="bg_ok" style="margin-top:16px">✓ Confirmar carga ${ca.seq}</button>
+    <button class="btn s" id="bg_cancel" style="margin-top:8px">Cancelar</button>
+  </div>`;
+  document.body.appendChild(ov);
+  const fb=$('bg_bags'), fk=$('bg_kg'), eq=$('bg_eq');
+  const showEq=()=>{ const kg=num(fk.value)||0; eq.textContent = kg>0 ? ('= '+kg.toLocaleString('pt-BR')+' kg · '+(kg/1000).toLocaleString('pt-BR',{maximumFractionDigits:2})+' bag') : '⚠ Informe a quantidade abastecida.'; };
+  fb.oninput=()=>{ const b=num(fb.value)||0; fk.value=Math.round(b*1000); showEq(); };
+  fk.oninput=()=>{ const k=num(fk.value)||0; fb.value=+(k/1000).toFixed(2); showEq(); };
+  showEq();
+  $('bg_cancel').onclick=()=>ov.remove();
+  $('bg_ok').onclick=()=>{ const kg=num(fk.value)||0, bags=num(fb.value)||0; if(kg<=0){ _st('Informe a quantidade abastecida.','#e67e22'); return; }
+    ca.kg=kg; ca.bags=bags; ca.fim=Date.now(); ov.remove(); _persistTanques(); render(); };
 }
 function _iniciarCalda(){
   const old=$('cdov'); if(old) old.remove();
