@@ -200,6 +200,7 @@ function funcHTML(){
       <div class="fcol"><label>Admissão</label><input type="date" id="f_adm" value="${e&&e.admissao?e.admissao:''}"></div>
       <div class="fcol"><label>Fim contrato (temp.)</label><input type="date" id="f_fim" value="${e&&e.fim_contrato?e.fim_contrato:''}"></div>
       <div class="fcol"><label>Ativo</label><select id="f_ativo"><option value="1" ${(!e||e.ativo!==false)?'selected':''}>Sim</option><option value="0" ${(e&&e.ativo===false)?'selected':''}>Não</option></select></div>
+      <div class="fcol"><label title="Libera a tela da Melosa no tablet (lançar diesel)">Operador de melosa</label><select id="f_melosa"><option value="0" ${(e&&e.operador_melosa)?'':'selected'}>Não</option><option value="1" ${(e&&e.operador_melosa)?'selected':''}>Sim</option></select></div>
     </div>
     <div class="row" style="margin-top:10px">
       <div class="fcol"><label>Meio de pagamento</label><select id="f_meio">${['','PIX','Em espécie','Transferência','Cheque','Outro'].map(x=>`<option value="${x}" ${(e&&(e.meio_pgto||'')===x)?'selected':''}>${x||'—'}</option>`).join('')}</select></div>
@@ -237,7 +238,7 @@ async function salvarFunc(){
   const tp=$('f_tipo').value;
   const num=id=>{ const v=$(id); return v&&v.value!==''?parseFloat(v.value):null; };
   const reg={ nome, tipo:tp, funcao:$('f_funcao').value.trim()||null, cpf:$('f_cpf').value.trim()||null,
-    admissao:$('f_adm').value||null, fim_contrato:$('f_fim').value||null, ativo:$('f_ativo').value==='1',
+    admissao:$('f_adm').value||null, fim_contrato:$('f_fim').value||null, ativo:$('f_ativo').value==='1', operador_melosa:($('f_melosa')&&$('f_melosa').value==='1')||false,
     meio_pgto:($('f_meio')&&$('f_meio').value)||null, chave_pix:($('f_chave')&&$('f_chave').value.trim())||null, titular:($('f_titular')&&$('f_titular').value.trim())||null,
     salario:tp==='registrado'?num('f_sal'):(tp==='temporario'&&$('f_tmodo')&&$('f_tmodo').value==='mensal'?num('f_tval'):null),
     valor_diaria:tp==='diarista'?num('f_dia'):null,

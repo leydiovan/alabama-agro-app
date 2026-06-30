@@ -141,7 +141,7 @@ async function login(){
 async function entrar(){
   DIA=hoje();
   try{ const {data:sd}=await SB.auth.getSession(); USER_EMAIL=(sd&&sd.session&&sd.session.user&&sd.session.user.email)||''; }catch(e){}   // getSession = local (não bate na rede)
-  try{ if(!navigator.onLine) throw 0; const {data:f,error}=await _q(SB.from('funcionarios').select('id,nome,tipo,ativo').order('nome')); if(error) throw error; FUNCS=(f||[]).filter(x=>x.ativo!==false); _cacheSet('funcs',FUNCS); }catch(e){ FUNCS=_cacheGet('funcs',[]); }
+  try{ if(!navigator.onLine) throw 0; const {data:f,error}=await _q(SB.from('funcionarios').select('id,nome,tipo,ativo,operador_melosa').order('nome')); if(error) throw error; FUNCS=(f||[]).filter(x=>x.ativo!==false); _cacheSet('funcs',FUNCS); }catch(e){ FUNCS=_cacheGet('funcs',[]); }
   try{ if(!navigator.onLine) throw 0; const {data:m,error}=await _q(SB.from('maquinas').select('id,nome,categoria,id_frota,consumo_ref,marca,modelo,faixa_m').order('nome')); if(error) throw error; MAQS=m||[]; _cacheSet('maqs',MAQS); }catch(e){ MAQS=_cacheGet('maqs',[]); }
   try{ if(!navigator.onLine) throw 0; const {data:i,error}=await _q(SB.from('implementos').select('id,nome,categoria,id_frota,largura_trabalho').order('nome')); if(error) throw error; IMPS=i||[]; _cacheSet('imps',IMPS); }catch(e){ IMPS=_cacheGet('imps',[]); }
   try{ if(!navigator.onLine) throw 0; const {data:l,error}=await _q(SB.from('lotes').select('nome,area,geom').order('nome')); if(error) throw error; LOTES=l||[]; _cacheSet('lotes',LOTES); }catch(e){ LOTES=_cacheGet('lotes',[]); }
@@ -203,6 +203,7 @@ function render(){
   if(STEP==='login') return renderLogin();
   if(STEP==='quemsou') return renderQuemSou();
   if(STEP==='home') return renderHome();
+  if(STEP==='melosa') return renderMelosa();
   if(STEP==='exec') return EXVIEW==='trabalho'?renderTrabalho():renderExecMenu();
   if(STEP==='fim') return renderFim();
 }
@@ -243,10 +244,12 @@ function renderHome(){
   $('app').innerHTML=`<div class="top"><h1><span class="l">🚜</span> ${esc(OPER.nome)}</h1>
       <div class="d">${_dlabel(DIA)} · safra ${esc(SAFRA||'—')}</div>
       <div style="margin-top:6px"><span id="pendbadge" style="font-size:12px;padding:3px 9px;border-radius:6px"></span> <button class="lk" id="btnsync">sincronizar</button></div></div>
+    ${OPER.operador_melosa?`<button class="btn g" id="ir_melosa" style="margin-bottom:14px">⛽ Melosa / Abastecimento</button>`:''}
     <div class="sec">Comandas ${desigCount?('designadas a você ('+desigCount+')'):''}</div>
     ${cards||`<div class="card muted">Nenhuma comanda ${desigCount?'':'designada a você '}nesta safra.${desigCount?'':' <a class="lk" id="vt" style="display:inline">ver todas para teste</a>'}</div>`}
     <div class="bar">${_botoesSairBar()}</div>`;
   if($('vt'))$('vt').onclick=()=>{ VERTODAS=true; render(); };
+  if($('ir_melosa'))$('ir_melosa').onclick=async()=>{ MELFORM=false; await _carregarAbastMelosa(); STEP='melosa'; render(); window.scrollTo(0,0); };
   document.querySelectorAll('[data-cod]').forEach(b=>b.onclick=()=>abrirComanda(b.dataset.cod));
   _updPend();
   if($('btnsync'))$('btnsync').onclick=async()=>{ if(!navigator.onLine){ _st('Sem internet agora.','#e67e22'); return; } _st('🔄 Sincronizando…','#3498db'); await _syncAll(); await carregarDia(); _st('✅ Sincronizado','#27ae60'); render(); };
@@ -254,6 +257,69 @@ function renderHome(){
 }
 function _botoesSairBar(){ return `<button class="btn s" id="sair2">Sair</button><button class="btn s" id="troca2">Trocar operador</button>`; }
 function _bindSairBar(){ if($('sair2'))$('sair2').onclick=async()=>{ if(SB) await SB.auth.signOut(); location.reload(); }; if($('troca2'))$('troca2').onclick=()=>{ try{localStorage.removeItem('campo_oper');}catch(e){} OPER=null; STEP='quemsou'; render(); }; }
+
+/* ===== MELOSA — lançamento de DIESEL (identidade própria; vai p/ aprovação no Almoxarifado) ===== */
+let ABMEL=[], MELFORM=false;
+async function _carregarAbastMelosa(){ ABMEL=[]; if(!OPER) return;
+  let server=null; try{ if(!navigator.onLine) throw 0; const {data,error}=await _q(SB.from('abastecimentos').select('*').eq('operador_melosa_id',OPER.id).order('quando',{ascending:false})); if(error) throw error; server=data||[]; }catch(e){ server=null; }
+  const local=(await _idbAll('abast')).filter(a=>String(a.operador_melosa_id)===String(OPER.id));
+  const lsv={}; local.forEach(a=>{ if(a.serverId) lsv[String(a.serverId)]=true; });
+  ABMEL=(server||[]).filter(r=>!lsv[String(r.id)]).concat(local).sort((a,b)=>String(b.quando).localeCompare(String(a.quando)));
+}
+function renderMelosa(){
+  const maqOpt='<option value="">— máquina —</option>'+MAQS.map(m=>`<option value="${m.id}">${esc(m.nome)}</option>`).join('');
+  const funOpt='<option value="">— operador da máquina —</option>'+FUNCS.map(f=>`<option value="${f.id}">${esc(f.nome)}</option>`).join('');
+  const cmdAtivas=COMANDAS.filter(c=>c.status!=='executada'&&c.status!=='cancelada');
+  const cmdOpt='<option value="">— sem vínculo (vai pro pool) —</option>'+cmdAtivas.map(c=>`<option value="${esc(c.codigo)}">${esc(c.codigo)} · ${esc(c.tipo_ativ||'')}${c.lote_nome?(' · '+esc(c.lote_nome)):''}</option>`).join('');
+  const loteOpt='<option value="">— lote —</option>'+(LOTES||[]).map(l=>`<option value="${esc(l.nome)}">${esc(l.nome)}</option>`).join('');
+  const nowDT=nowLocalDT();
+  const form = MELFORM ? `<div class="card" style="border-color:var(--gold)">
+      <label>Máquina abastecida</label><select id="m_maq">${maqOpt}</select>
+      <label style="margin-top:8px">Operador da máquina</label><select id="m_fun">${funOpt}</select>
+      <label style="margin-top:8px">Litros</label><input type="number" step="any" inputmode="decimal" id="m_l" placeholder="ex.: 120">
+      <label style="margin-top:8px">Lote</label><select id="m_lote">${loteOpt}</select>
+      <label style="margin-top:8px">Comanda (opcional)</label><select id="m_cmd">${cmdOpt}</select>
+      <label style="margin-top:8px">Descrição (livre)</label><input type="text" id="m_desc" placeholder="ex.: trator vermelho, gradagem talhão 7">
+      <label style="margin-top:8px">Quando</label><input type="datetime-local" id="m_dt" value="${nowDT}" max="${nowDT}">
+      <div class="two" style="margin-top:10px"><button class="btn k" id="m_save" style="margin:0">Salvar abastecimento</button><button class="btn s" id="m_cancel" style="margin:0">Cancelar</button></div>
+      <div class="hint" style="margin-top:6px">Sem comanda → fica no pool p/ vincular depois na aprovação. A descrição ajuda a identificar.</div>
+    </div>` : '';
+  const lista = ABMEL.length ? ABMEL.map(a=>{
+    const vinc = a.comanda_codigo?('🔗 '+esc(a.comanda_codigo)):'<span class="muted">sem vínculo</span>';
+    const st = a.status==='aprovado'?'<span class="pill on st">aprovado</span>':(a.dirty?'<span class="pill st">⏳ enviar</span>':'<span class="pill go st">pendente</span>');
+    return `<div class="card" style="margin-bottom:8px"><div style="display:flex;justify-content:space-between;gap:8px"><b>${esc(_maqNome(a.maquina_id))}</b><b class="gold">${(+a.litros).toLocaleString('pt-BR')} L</b></div>
+      <div class="meta" style="font-size:13px">${vinc} · ${esc(_funNome(a.funcionario_id))} · ${fmtDT(a.quando)} ${st}</div>${a.descricao?('<div class="muted" style="font-size:12px;margin-top:2px">'+esc(a.descricao)+'</div>'):''}</div>`;
+  }).join('') : '<div class="card muted">Nenhum abastecimento lançado.</div>';
+  $('app').innerHTML=`<div class="top"><h1><span class="l">⛽</span> Melosa</h1>
+      <div class="d">${esc(OPER.nome)} · ${_dlabel(DIA)}</div>
+      <div style="margin-top:6px"><span id="pendbadge" style="font-size:12px;padding:3px 9px;border-radius:6px"></span> <button class="lk" id="btnsync">sincronizar</button></div></div>
+    ${MELFORM?'':'<button class="btn g" id="m_novo" style="margin-bottom:6px">➕ Novo abastecimento</button>'}
+    ${form}
+    <div class="sec">Abastecimentos lançados</div>
+    ${lista}
+    <div class="bar"><button class="btn s" id="m_voltar">◀ Voltar</button></div>`;
+  if($('m_novo'))$('m_novo').onclick=()=>{ MELFORM=true; render(); };
+  if($('m_cancel'))$('m_cancel').onclick=()=>{ MELFORM=false; render(); };
+  if($('m_save'))$('m_save').onclick=_salvarAbastMelosa;
+  if($('m_voltar'))$('m_voltar').onclick=async()=>{ MELFORM=false; STEP='home'; await carregarDia(); render(); };
+  if($('btnsync'))$('btnsync').onclick=async()=>{ if(!navigator.onLine){ _st('Sem internet agora.','#e67e22'); return; } _st('🔄 Sincronizando…','#3498db'); await _syncAll(); await _carregarAbastMelosa(); _st('✅ Sincronizado','#27ae60'); render(); };
+  _updPend();
+}
+async function _salvarAbastMelosa(){
+  const maq=$('m_maq')&&$('m_maq').value; const fun=$('m_fun')&&$('m_fun').value; const l=num($('m_l')&&$('m_l').value);
+  const lote=$('m_lote')&&$('m_lote').value; const cmd=$('m_cmd')&&$('m_cmd').value; const desc=(($('m_desc')&&$('m_desc').value)||'').trim();
+  const dtv=$('m_dt')&&$('m_dt').value;
+  if(!maq){ _st('Escolha a máquina.','#e67e22'); return; }
+  if(!fun){ _st('Escolha o operador da máquina.','#e67e22'); return; }
+  if(!l||l<=0){ _st('Informe os litros.','#e67e22'); return; }
+  if(!dtv){ _st('Informe a data/hora.','#e67e22'); return; }
+  const quando=new Date(dtv), agora=new Date(); if(quando>agora){ _st('A data/hora não pode ser no futuro.','#e67e22'); return; }
+  const reg={ lid:_lid(), serverId:null, dirty:true, comanda_codigo:cmd||null, safra:SAFRA, funcionario_id:+fun, operador_melosa_id:OPER.id, maquina_id:+maq, lote_nome:lote||null, litros:l, quando:quando.toISOString(), descricao:desc||null, tipo_atividade:null, uso_geral:false, status:'pendente', origem:'manual', enviado_por:USER_EMAIL||null };
+  const b=$('m_save'); if(b){ b.disabled=true; b.textContent='Salvando…'; }
+  try{ await _idbPut('abast',reg); }catch(e){}
+  await _syncAbast(reg); MELFORM=false; await _carregarAbastMelosa(); _updPend();
+  _st(reg.dirty?'⛽ Salvo no aparelho (envia ao ter rede)':'⛽ Abastecimento lançado', reg.dirty?'#e67e22':'#27ae60'); render(); window.scrollTo(0,0);
+}
 
 let CUR_DAYS=[];                 // execuções (1 card por dia) da comanda aberta
 let CUR_AREA=0;                  // área de união (ha) da comanda — calculada ao carregar, não por render
@@ -309,16 +375,7 @@ function renderExecMenu(){
   const areaCum=CUR_AREA;
   const dias=[...new Set(CUR_DAYS.filter(r=>(Array.isArray(r.trajeto)&&r.trajeto.length>1)||r.area_ha).map(r=>r.data))].length;
   const hTrab=CUR_DAYS.reduce((s,r)=>{ const h=horasEntre(r.hora_inicio,r.hora_fim); return s+(h||0); },0);
-  const abLista = ABAST.length ? ABAST.map(a=>`<div style="display:flex;justify-content:space-between;gap:8px;border-bottom:1px solid var(--line);padding:7px 0;font-size:14px"><span>${esc(_maqNome(a.maquina_id))}</span><b class="gold">${(+a.litros).toLocaleString('pt-BR')} L</b><span class="muted">${fmtDT(a.quando)}</span></div>`).join('') : '<div class="muted" style="font-size:13px">Nenhum abastecimento ainda.</div>';
-  const prev=ABAST.length?ABAST[ABAST.length-1]:null; const minDT=prev?tsToLocalDT(prev.quando):''; const nowDT=nowLocalDT();
-  const maqOpt=MAQS.map(m=>`<option value="${m.id}" ${String((prev&&prev.maquina_id)||_ultMaq())===String(m.id)?'selected':''}>${esc(m.nome)}</option>`).join('');
-  const form = ABFORM ? `<div class="card" style="border-color:var(--gold)">
-      <label>Litros abastecidos</label><input type="number" step="any" inputmode="decimal" id="ab_l" placeholder="ex.: 120">
-      <label style="margin-top:8px">Quando (data e hora)</label><input type="datetime-local" id="ab_dt" value="${nowDT}" ${minDT?('min="'+minDT+'"'):''} max="${nowDT}">
-      <label style="margin-top:8px">Máquina</label><select id="ab_maq">${maqOpt}</select>
-      <div class="two" style="margin-top:10px"><button class="btn k" id="ab_save" style="margin:0">Salvar</button><button class="btn s" id="ab_cancel" style="margin:0">Cancelar</button></div>
-      <div class="hint" style="margin-top:6px">O consumo conta deste abastecimento até o anterior (ou o início do trabalho).</div>
-    </div>` : '';
+  // ⛽ abastecimento agora é lançado pela MELOSA (fonte única) — ver renderMelosa()
   $('app').innerHTML=`
     <div class="hbar"><div class="cd"><span class="l">📋</span> ${esc(c.codigo)}</div><span class="pill ${concl?'on':'go'}" style="margin-left:auto">${concl?'lote concluído':'em andamento'}</span></div>
     <div class="hsub">${esc(c.tipo_ativ||'—')} · Lote <b>${esc(c.lote_nome||'—')}</b>${area?(' · '+area+' ha'):''}</div>
@@ -330,17 +387,11 @@ function renderExecMenu(){
     <div class="apps">
       <button class="app a1" id="ic_cmd"><div class="ico">📄</div><div class="lb">Comanda</div></button>
       <button class="app a2" id="ic_trab"><div class="ico">🛰️</div><div class="lb">Trabalhar</div></button>
-      ${concl?'':`<button class="app a3" id="ab_novo"><div class="ico">⛽</div><div class="lb">Abastecer</div>${ABAST.length?`<span class="bdg">${ABAST.length}</span>`:''}</button>`}
       ${concl?`<button class="app a4" disabled><div class="ico">✅</div><div class="lb">Concluído</div></button>`:`<button class="app a4" id="concluir"><div class="ico">🏁</div><div class="lb">Concluir lote</div></button>`}
     </div>
-    ${form}
-    ${ABAST.length?`<div class="shdr"><span class="t">⛽ Abastecimentos</span></div><div class="card" style="margin-bottom:12px">${abLista}</div>`:''}
     <div class="bar"><button class="btn s" id="voltar">◀ Voltar às comandas</button></div>`;
   if($('ic_cmd'))$('ic_cmd').onclick=async()=>{ const b=$('ic_cmd'); if(b)b.disabled=true; try{ await abrirComandaDoc(); } finally{ if(b)b.disabled=false; } };
   if($('ic_trab'))$('ic_trab').onclick=async()=>{ const b=$('ic_trab'); if(b){b.disabled=true;b.style.opacity='.6';} await _gpsEnter(); EXVIEW='trabalho'; render(); window.scrollTo(0,0); };
-  if($('ab_novo'))$('ab_novo').onclick=()=>{ ABFORM=true; render(); };
-  if($('ab_cancel'))$('ab_cancel').onclick=()=>{ ABFORM=false; render(); };
-  if($('ab_save'))$('ab_save').onclick=_lancarAbast;
   if($('concluir'))$('concluir').onclick=concluirLote;
   if($('voltar'))$('voltar').onclick=async()=>{ STEP='home'; EXVIEW='menu'; ABFORM=false; await carregarDia(); render(); };
 }
@@ -622,7 +673,7 @@ function _restoreSess(){ GPS.pts=[]; GPS.cells=new Set(); GPS.areaHa=0; GPS.spee
 let PEND=0; const _SYNCING=new Set();   // lids em sincronização (evita 2 inserts -> sessão duplicada)
 function _lid(){ return 'L'+Date.now().toString(36)+Math.random().toString(36).slice(2,7); }
 function _sessReg(s){ return { comanda_codigo:s.comanda_codigo, safra:s.safra, funcionario_id:s.funcionario_id, lote_nome:s.lote_nome, data:s.data, maquina_id:s.maquina_id, implemento_id:s.implemento_id, largura_m:s.largura_m||0, papel:s.papel||null, tanques:s.tanques||[], diesel_motobomba:(s.diesel_motobomba!=null?+s.diesel_motobomba:null), hora_inicio:s.hora_inicio, hora_fim:s.hora_fim||null, status:s.status, trajeto:s.trajeto||[], area_ha:s.area_ha||0, concluiu_lote:!!s.concluiu_lote, enviado_por:s.enviado_por||null, atualizado_em:s.atualizado_em||new Date().toISOString() }; }
-function _abastReg(a){ return { comanda_codigo:a.comanda_codigo, safra:a.safra, funcionario_id:a.funcionario_id, maquina_id:a.maquina_id, lote_nome:a.lote_nome, litros:a.litros, quando:a.quando, enviado_por:a.enviado_por||null }; }
+function _abastReg(a){ return { comanda_codigo:a.comanda_codigo||null, safra:a.safra, funcionario_id:a.funcionario_id, operador_melosa_id:(a.operador_melosa_id!=null?a.operador_melosa_id:null), maquina_id:a.maquina_id, lote_nome:a.lote_nome||null, litros:a.litros, quando:a.quando, descricao:(a.descricao!=null?a.descricao:null), tipo_atividade:(a.tipo_atividade!=null?a.tipo_atividade:null), uso_geral:!!a.uso_geral, status:a.status||'pendente', origem:a.origem||'manual', enviado_por:a.enviado_por||null }; }
 function _regTemTrabalho(s){ if(s&&Array.isArray(s.tanques)&&s.tanques.length>0) return true; const t=s&&s.trajeto; if(!Array.isArray(t)||t.length<2) return false; if((+s.area_ha||0)>=0.01) return true;   // trabalho REAL a partir do registro (vale p/ a fila/IDB)
   let d=0; for(let i=1;i<t.length;i++){ const a=t[i-1],b=t[i]; if(a&&b&&a[0]!=null&&b[0]!=null){ const u=latLngToUTM(a[0],a[1],23),w=latLngToUTM(b[0],b[1],23); d+=Math.hypot(w[0]-u[0],w[1]-u[1]); if(d>=25) return true; } } return false; }
 async function _syncSession(s){ if(!s||_SYNCING.has(s.lid)) return false; if(!navigator.onLine||!SB) return false;
@@ -633,7 +684,7 @@ async function _syncSession(s){ if(!s||_SYNCING.has(s.lid)) return false; if(!na
   finally{ _SYNCING.delete(s.lid); }
 }
 async function _syncAbast(a){ if(!a) return false; if(!navigator.onLine||!SB) return false;
-  try{ if(!a.serverId){ const {data,error}=await SB.from('abastecimentos').insert(_abastReg(a)).select('id').single(); if(error) throw error; a.serverId=data.id; } a.dirty=false; await _idbPut('abast',a); return true; }
+  try{ if(!a.serverId){ const {data,error}=await SB.from('abastecimentos').insert(_abastReg(a)).select('id').single(); if(error) throw error; a.serverId=data.id; } else { const {error}=await SB.from('abastecimentos').update(_abastReg(a)).eq('id',a.serverId); if(error) throw error; } a.dirty=false; await _idbPut('abast',a); return true; }
   catch(e){ a.dirty=true; try{ await _idbPut('abast',a); }catch(_){} return false; }
 }
 async function _ensureLocal(r){ if(!r) return r; if(r.lid) return r; const s=Object.assign({}, r, { lid:_lid(), serverId:r.id, dirty:false }); s.id=s.lid; await _idbPut('sessions',s); return s; }
