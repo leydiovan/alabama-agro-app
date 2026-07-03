@@ -3018,7 +3018,7 @@ function _plcFornHTML(dados, grandTotal){
     const sub=arr.reduce((s,x)=>s+x.total,0), pct=grandTotal>0?(sub/grandTotal*100):0;
     body+=`<tr class="forn-hd"><td colspan="6"><b>🏢 ${esc(fn)}</b> — subtotal <b>${fmtR$(sub)}</b> <span class="sub">(${fmtBR(pct)}% do total · ${arr.length} ${arr.length===1?'produto':'produtos'})</span></td></tr>`;
     arr.forEach(d=>{ const p=grandTotal>0?(d.total/grandTotal*100):0;
-      body+=`<tr><td>${esc(d.nome)}</td><td class="sub">${d.comp}</td><td class="num">${fmtBR(d.qtd)} ${esc(d.un)}</td><td class="num">${fmtR$(d.valor)}</td><td class="num"><b>${fmtR$(d.total)}</b></td><td class="num">${fmtBR(p)}%</td></tr>`;
+      body+=`<tr><td>${esc(d.nome)}${d.plano?`<div class="sub">planej.: ${esc(d.plano)}</div>`:''}</td><td class="sub">${d.comp}</td><td class="num">${fmtBR(d.qtd)} ${esc(d.un)}</td><td class="num">${fmtR$(d.valor)}</td><td class="num"><b>${fmtR$(d.total)}</b></td><td class="num">${fmtBR(p)}%</td></tr>`;
     });
   });
   if(!body) body='<tr><td colspan="6" class="hint">Nada a comprar nesta safra/lote.</td></tr>';
@@ -3093,15 +3093,18 @@ function _planComprasHTML(){
     }
     const arred=_plcArredGet(n);
     const qtdCompra=(arred!=null)?arred:aComprarBuy;   // Arredondar tem prioridade; vazio -> usa A comprar
+    const _subP = efetiva ? (_prodPorNome(efetiva.marca)||_prodPorNome(efetiva.produtoNome)) : null;   // produto SELECIONADO (substituto)
+    const _temSub = !!(_subP && _subP.nome && _subP.nome!==n);
+    const _selNome = _temSub ? _subP.nome : n;   // mostra o selecionado; planejado fica em 2º plano
     const custoEst=qtdCompra*custo; totalComprar+=custoEst;
-    if(qtdCompra>1e-9) dadosForn.push({nome:n, comp:_compResumo(pr), qtd:qtdCompra, un:nec[n].unidade, valor:custo, total:custoEst, forn: efetiva?(efetiva.fornecedor||'—'):'⚠️ sem cotação'});
+    if(qtdCompra>1e-9) dadosForn.push({nome:_selNome, plano:_temSub?n:'', comp:_compResumo(_temSub?_subP:pr), qtd:qtdCompra, un:nec[n].unidade, valor:custo, total:custoEst, forn: efetiva?(efetiva.fornecedor||'—'):'⚠️ sem cotação'});
     const condNote=nec[n].qtdCond>0?`<div class="sub" style="color:var(--gold)">⚠️ ${fmtBR(nec[n].qtdCond)} ${esc(nec[n].unidade)} condicional</div>`:'';
     const _fornCell=f=>{ const fc=cots.filter(c=>(c.fornecedor||'?')===f); if(!fc.length) return '<td></td>'; return '<td class="num">'+fc.map(c=>`${fmtR$(_cotR$(c))}${menor&&c.id===menor.id?' <span style="color:var(--gold)">◀</span>':''}`).join('<br>')+'</td>'; };
     const menorCell=menor?`<b>${fmtR$(_cotR$(menor))}</b> <span class="sub">${esc(menor.fornecedor||'')}</span>`:'—';
     const selCell=cots.length?`<select class="plc-escolha" data-prod="${esc(n)}" onclick="event.stopPropagation()"><option value="">— menor (auto)</option>${cots.map(c=>`<option value="${c.id}" ${chosen&&chosen.id===c.id?'selected':''}>${esc(c.fornecedor||c.marca||'?')} — ${fmtR$(_cotR$(c))}</option>`).join('')}</select>`:'<span class="sub">—</span>';
     const CELL={
-      produto:`<td>${esc(n)}${subsNote}</td>`,
-      composicao:`<td class="sub">${_compResumo(pr)}</td>`,
+      produto: _temSub ? `<td><b>${esc(_selNome)}</b>${subsNote}<div class="sub">planej.: ${esc(n)}</div></td>` : `<td>${esc(n)}${subsNote}</td>`,
+      composicao: _temSub ? `<td class="sub">${_compResumo(_subP)}<div class="sub" style="opacity:.6">plano: ${_compResumo(pr)}</div></td>` : `<td class="sub">${_compResumo(pr)}</td>`,
       necessario:`<td class="num">${fmtBR(necQ)} ${esc(nec[n].unidade)}${condNote}</td>`,
       estoque:`<td class="num">${fmtBR(saldo)}${saldoNote}</td>`,
       comprar:`<td class="num">${aComprar>0?'<b>'+fmtBR(aComprarBuy)+'</b> '+esc(nec[n].unidade)+(ajusteTxt?'<div class="sub" style="color:var(--gold)">⚠️ '+ajusteTxt+'</div>':''):'—'}</td>`,
