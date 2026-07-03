@@ -2961,6 +2961,9 @@ function _planComprasHTML(){
   const nomes=Object.keys(nec).sort((a,b)=>a.localeCompare(b,'pt',{sensitivity:'base',numeric:true}));
   const forns=[...new Set(nomes.flatMap(n=>(S.cotacoes||[]).filter(c=>c.produtoNome===n).map(c=>c.fornecedor||'?')))].sort((a,b)=>a.localeCompare(b,'pt'));
   const ncol=8+forns.length;
+  // larguras: Produto e Composição com o DOBRO (2u) das demais (1u); escala com o nº de fornecedores
+  const _totU=10+forns.length, _cw=u=>`<col style="width:${(u/_totU*100).toFixed(3)}%">`;
+  const colgroup=`<colgroup>${_cw(2)}${_cw(2)}${_cw(1)}${_cw(1)}${_cw(1)}${forns.map(()=>_cw(1)).join('')}${_cw(1)}${_cw(1)}${_cw(1)}</colgroup>`;
   let totalComprar=0;
   const rows=nomes.map((n,ri)=>{
     const pr=_prodPorNome(n); const cod=pr?pr.codigo:null;
@@ -3026,7 +3029,7 @@ function _planComprasHTML(){
       <div class="fcol" style="max-width:240px"><label>Filtrar por lote</label><select id="plc_lote">${lotesOpt}</select></div>
       <div class="fcol" style="max-width:140px"><label>Dólar (R$)</label><input id="plc_dolar" value="${esc(String(S.dolar).replace('.',','))}" placeholder="5,00"></div>
     </div>
-    <div style="overflow-y:auto;overflow-x:hidden;max-height:calc(100vh - 200px)"><table class="ptbl plc-tbl"><thead><tr><th>Produto</th><th>Composição</th><th class="num">Necessário</th><th class="num">Em estoque</th><th class="num">A comprar</th>${forns.map(f=>'<th class="num">'+esc(f)+'</th>').join('')}<th class="num">Menor preço</th><th>Selecionado</th><th class="num">Custo estimado</th></tr></thead>
+    <div style="overflow-y:auto;overflow-x:hidden;max-height:calc(100vh - 200px)"><table class="ptbl plc-tbl">${colgroup}<thead><tr><th>Produto</th><th>Composição</th><th class="num">Necessário</th><th class="num">Em estoque</th><th class="num">A comprar</th>${forns.map(f=>'<th class="num">'+esc(f)+'</th>').join('')}<th class="num">Menor preço</th><th>Selecionado</th><th class="num">Custo estimado</th></tr></thead>
     <tbody>${rows}</tbody>
     <tfoot><tr><td colspan="${ncol-1}" style="text-align:right"><b>Total a comprar</b></td><td class="num"><b>${fmtR$(totalComprar)}</b></td></tr></tfoot></table></div>
     <div class="hint" style="margin-top:8px">Estoque substituível: produtos do <b>mesmo ativo</b> e <b>mesma formulação</b> somam no "Em estoque", convertidos pela <b>concentração</b> (i.a. equivalente). <b>Misturas</b> (mais de um ativo) não entram no estoque — só via cotações. Clique num produto para cotar/comparar. Custo usa a cotação escolhida (ou o custo médio do almox). Não baixa estoque.</div>
