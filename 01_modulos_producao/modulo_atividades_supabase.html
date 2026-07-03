@@ -104,6 +104,9 @@ main{padding:16px 22px 60px;}
 .plc-ctl{background:var(--bg);border:1px solid var(--border2);border-radius:6px;color:var(--text);padding:6px 8px;font-size:12px;font-family:inherit;}
 .wrap.plc-fs{position:fixed;inset:0;z-index:99999;max-width:none!important;margin:0;border-radius:0;padding:12px 16px;overflow:hidden;}
 .plc-tbl tr.forn-hd td{background:var(--bg3);border-top:2px solid var(--border);padding:9px 7px;font-size:12.5px;}
+.plc-arred{color:var(--ok)!important;cursor:text;outline:none;font-weight:600;}
+.plc-arred:empty::before{content:'—';color:var(--muted);font-weight:400;}
+.plc-arred:focus{background:rgba(39,174,96,.14);border-radius:4px;}
 .ptbl td{padding:4px 7px;border-bottom:1px solid rgba(31,51,84,.4);font-size:12px;}
 .ptbl input,.ptbl select{background:var(--bg);border:1px solid var(--border2);border-radius:5px;color:var(--text);padding:5px 7px;font-size:12px;width:100%;font-family:inherit;}
 .ptbl .num{text-align:right;}
@@ -2964,9 +2967,14 @@ function gerarComandaDoPlano(id){
 
 /* ---- Colunas opcionais + controles do topo + tela cheia (Lista de compras) ---- */
 let _plcFS=false, _plcModoForn=false;
-function _plcColsDefs(){ return [{k:'composicao',t:'Composição'},{k:'necessario',t:'Necessário'},{k:'estoque',t:'Em estoque'},{k:'comprar',t:'A comprar'},{k:'fornecedores',t:'Fornecedores'},{k:'menor',t:'Menor preço'},{k:'selecionado',t:'Selecionado'},{k:'custo',t:'Custo estimado'}]; }
+function _plcColsDefs(){ return [{k:'composicao',t:'Composição'},{k:'necessario',t:'Necessário'},{k:'estoque',t:'Em estoque'},{k:'comprar',t:'A comprar'},{k:'arredondar',t:'Arredondar'},{k:'fornecedores',t:'Fornecedores'},{k:'menor',t:'Menor preço'},{k:'selecionado',t:'Selecionado'},{k:'custo',t:'Custo estimado'}]; }
 function _plcColsVis(){ let v={}; try{ v=JSON.parse(localStorage.getItem('plc_cols')||'{}'); }catch(e){} const o={}; _plcColsDefs().forEach(c=>{ o[c.k]=(v[c.k]!==false); }); return o; }
 function _plcColsSet(k,on){ const v=_plcColsVis(); v[k]=!!on; try{ localStorage.setItem('plc_cols',JSON.stringify(v)); }catch(e){} render(); }
+/* "Arredondar" = quantidade real de compra (override manual), por safra no aparelho; tem prioridade sobre "A comprar" */
+function _plcArredKey(){ return 'plc_arred_'+(typeof SAFRA!=='undefined'?SAFRA:''); }
+function _plcArredAll(){ try{ return JSON.parse(localStorage.getItem(_plcArredKey())||'{}')||{}; }catch(e){ return {}; } }
+function _plcArredGet(nome){ const v=_plcArredAll()[nome]; return (typeof v==='number'&&isFinite(v))?v:null; }
+function _plcArredSet(nome,val){ const a=_plcArredAll(); if(val==null) delete a[nome]; else a[nome]=val; try{ localStorage.setItem(_plcArredKey(), JSON.stringify(a)); }catch(e){} render(); }
 function _planComprasControls(){
   const lotesOpt=['<option value="">Todos os lotes</option>'].concat(_ordLotes(S.lotes).map(l=>`<option value="${esc(l.nome)}" ${l.nome===_planLote?'selected':''}>${esc(l.nome)}</option>`)).join('');
   return `<select id="plc_lote" class="plc-ctl" title="Filtrar por lote">${lotesOpt}</select>`
@@ -3034,6 +3042,7 @@ function _planComprasHTML(){
   if(VIS.necessario) cols.push({k:'necessario',u:1,th:'Necessário',num:1});
   if(VIS.estoque) cols.push({k:'estoque',u:1,th:'Em estoque',num:1});
   if(VIS.comprar) cols.push({k:'comprar',u:1,th:'A comprar',num:1});
+  if(VIS.arredondar) cols.push({k:'arredondar',u:1,th:'Arredondar',num:1});
   if(VIS.fornecedores) forns.forEach(f=>cols.push({k:'forn',forn:f,u:1,th:esc(f),num:1}));
   if(VIS.menor) cols.push({k:'menor',u:1,th:'Menor preço',num:1});
   if(VIS.selecionado) cols.push({k:'selecionado',u:1,th:'Selecionado'});
@@ -3082,8 +3091,10 @@ function _planComprasHTML(){
         }
       }
     }
-    const custoEst=aComprarBuy*custo; totalComprar+=custoEst;
-    if(aComprar>1e-9) dadosForn.push({nome:n, comp:_compResumo(pr), qtd:aComprarBuy, un:nec[n].unidade, valor:custo, total:custoEst, forn: efetiva?(efetiva.fornecedor||'—'):'⚠️ sem cotação'});
+    const arred=_plcArredGet(n);
+    const qtdCompra=(arred!=null)?arred:aComprarBuy;   // Arredondar tem prioridade; vazio -> usa A comprar
+    const custoEst=qtdCompra*custo; totalComprar+=custoEst;
+    if(qtdCompra>1e-9) dadosForn.push({nome:n, comp:_compResumo(pr), qtd:qtdCompra, un:nec[n].unidade, valor:custo, total:custoEst, forn: efetiva?(efetiva.fornecedor||'—'):'⚠️ sem cotação'});
     const condNote=nec[n].qtdCond>0?`<div class="sub" style="color:var(--gold)">⚠️ ${fmtBR(nec[n].qtdCond)} ${esc(nec[n].unidade)} condicional</div>`:'';
     const _fornCell=f=>{ const fc=cots.filter(c=>(c.fornecedor||'?')===f); if(!fc.length) return '<td></td>'; return '<td class="num">'+fc.map(c=>`${fmtR$(_cotR$(c))}${menor&&c.id===menor.id?' <span style="color:var(--gold)">◀</span>':''}`).join('<br>')+'</td>'; };
     const menorCell=menor?`<b>${fmtR$(_cotR$(menor))}</b> <span class="sub">${esc(menor.fornecedor||'')}</span>`:'—';
@@ -3094,12 +3105,13 @@ function _planComprasHTML(){
       necessario:`<td class="num">${fmtBR(necQ)} ${esc(nec[n].unidade)}${condNote}</td>`,
       estoque:`<td class="num">${fmtBR(saldo)}${saldoNote}</td>`,
       comprar:`<td class="num">${aComprar>0?'<b>'+fmtBR(aComprarBuy)+'</b> '+esc(nec[n].unidade)+(ajusteTxt?'<div class="sub" style="color:var(--gold)">⚠️ '+ajusteTxt+'</div>':''):'—'}</td>`,
+      arredondar:`<td class="num plc-arred" data-prod="${esc(n)}" contenteditable="true" title="Clique e digite a quantidade real de compra">${arred!=null?fmtBR(arred):''}</td>`,
       menor:`<td class="num">${menorCell}</td>`,
       selecionado:`<td>${selCell}</td>`,
       custo:`<td class="num">${custoEst>0?fmtR$(custoEst):'—'}</td>`
     };
     // cor da linha: cinza = não precisa comprar; vermelho = precisa e sem NENHUMA cotação; normal = ok
-    const _corLinha = (aComprar<=1e-9) ? 'var(--muted)' : (cots.length===0 ? 'var(--err)' : '');
+    const _corLinha = (qtdCompra<=1e-9) ? 'var(--muted)' : (cots.length===0 ? 'var(--err)' : '');
     const tds=cols.map(c=> c.k==='forn' ? _fornCell(c.forn) : CELL[c.k]).join('');
     return `<tr class="plc-row" data-prod="${esc(n)}" style="cursor:pointer${_corLinha?';color:'+_corLinha:''}">${tds}</tr>`;
   }).join('')||`<tr><td colspan="${cols.length}" class="hint">Nada planejado ainda.</td></tr>`;
@@ -3127,6 +3139,11 @@ function _bindPlanCompras(){
   if(!window._plcFsBound){ window._plcFsBound=true; document.addEventListener('fullscreenchange',()=>{ if(!document.fullscreenElement && _plcFS){ _plcFS=false; const w=document.querySelector('#main .wrap'); if(w) w.classList.remove('plc-fs'); const b=document.getElementById('plc_fs'); if(b) b.textContent='⛶ Tela cheia'; _plcNotifyHub(); setTimeout(_plcAjustaAltura,80); } }); }
   $$('#main .plc-row').forEach(r=>r.onclick=()=>{ _cotProd=(_cotProd===r.dataset.prod)?null:r.dataset.prod; _cotEdit=null; render(); });
   $$('#main .plc-escolha').forEach(s=>{ s.onclick=e=>e.stopPropagation(); s.onchange=()=>_planEscolhaFinal(s.dataset.prod,s.value); });
+  $$('#main .plc-arred').forEach(td=>{
+    td.onclick=e=>e.stopPropagation();   // não abre a cotação ao clicar p/ editar
+    td.onkeydown=e=>{ if(e.key==='Enter'){ e.preventDefault(); td.blur(); } };
+    td.onblur=()=>{ const raw=(td.textContent||'').trim(); const v=(raw==='')?null:numUn(raw).n; _plcArredSet(td.dataset.prod, (v!=null&&v>=0)?v:null); };
+  });
   _bindCotPainel();
 }
 
