@@ -2986,10 +2986,12 @@ function _plcAbreColunas(){
   ov.onclick=e=>{ if(e.target===ov) ov.style.display='none'; };
   ov.querySelectorAll('input[data-ck]').forEach(cb=>cb.onchange=()=>_plcColsSet(cb.dataset.ck, cb.checked));
 }
+function _plcNotifyHub(){ try{ if(window.parent && window.parent!==window) window.parent.postMessage({type:'plcFS', on:_plcFS}, '*'); }catch(e){} }
 function _plcToggleFS(){
   _plcFS=!_plcFS;
   const w=document.querySelector('#main .wrap'); if(w) w.classList.toggle('plc-fs',_plcFS);
   try{ if(_plcFS){ if(document.documentElement.requestFullscreen) document.documentElement.requestFullscreen(); } else if(document.fullscreenElement){ document.exitFullscreen(); } }catch(e){}
+  _plcNotifyHub();   // avisa o hub p/ esconder o menu do Alabama Gestão
   const b=document.getElementById('plc_fs'); if(b) b.textContent=_plcFS?'⤢ Sair tela cheia':'⛶ Tela cheia';
   setTimeout(_plcAjustaAltura,80);
 }
@@ -3073,9 +3075,10 @@ function _planComprasHTML(){
       selecionado:`<td>${selCell}</td>`,
       custo:`<td class="num">${custoEst>0?fmtR$(custoEst):'—'}</td>`
     };
-    const semCot=cots.length===0;   // sem NENHUMA cotação -> linha vermelha (texto branco vira vermelho; notas já coloridas ficam)
+    // cor da linha: cinza = não precisa comprar; vermelho = precisa e sem NENHUMA cotação; normal = ok
+    const _corLinha = (aComprar<=1e-9) ? 'var(--muted)' : (cots.length===0 ? 'var(--err)' : '');
     const tds=cols.map(c=> c.k==='forn' ? _fornCell(c.forn) : CELL[c.k]).join('');
-    return `<tr class="plc-row" data-prod="${esc(n)}" style="cursor:pointer${semCot?';color:var(--err)':''}">${tds}</tr>`;
+    return `<tr class="plc-row" data-prod="${esc(n)}" style="cursor:pointer${_corLinha?';color:'+_corLinha:''}">${tds}</tr>`;
   }).join('')||`<tr><td colspan="${cols.length}" class="hint">Nada planejado ainda.</td></tr>`;
   const painel=_cotProd?_cotPainelHTML(_cotProd, nec[_cotProd]):'';
   return `<div class="plc-flex">
@@ -3097,7 +3100,7 @@ function _bindPlanCompras(){
   const d=$('#plc_dolar'); if(d) d.onchange=()=>{ const v=numUn(d.value).n; if(v!=null&&v>0){ S.dolar=v; salvarDolarSB(v); } render(); };
   const bc=$('#plc_cols'); if(bc) bc.onclick=_plcAbreColunas;
   const bf=$('#plc_fs'); if(bf) bf.onclick=_plcToggleFS;
-  if(!window._plcFsBound){ window._plcFsBound=true; document.addEventListener('fullscreenchange',()=>{ if(!document.fullscreenElement && _plcFS){ _plcFS=false; const w=document.querySelector('#main .wrap'); if(w) w.classList.remove('plc-fs'); const b=document.getElementById('plc_fs'); if(b) b.textContent='⛶ Tela cheia'; setTimeout(_plcAjustaAltura,80); } }); }
+  if(!window._plcFsBound){ window._plcFsBound=true; document.addEventListener('fullscreenchange',()=>{ if(!document.fullscreenElement && _plcFS){ _plcFS=false; const w=document.querySelector('#main .wrap'); if(w) w.classList.remove('plc-fs'); const b=document.getElementById('plc_fs'); if(b) b.textContent='⛶ Tela cheia'; _plcNotifyHub(); setTimeout(_plcAjustaAltura,80); } }); }
   $$('#main .plc-row').forEach(r=>r.onclick=()=>{ _cotProd=(_cotProd===r.dataset.prod)?null:r.dataset.prod; _cotEdit=null; render(); });
   $$('#main .plc-escolha').forEach(s=>{ s.onclick=e=>e.stopPropagation(); s.onchange=()=>_planEscolhaFinal(s.dataset.prod,s.value); });
   _bindCotPainel();

@@ -122,6 +122,8 @@ const $ = s=>document.querySelector(s);
 let SB=null;
 const _frames={};   // key -> iframe (lazy, mantidos vivos)
 let _ativo=null;
+// tela cheia de um módulo (ex.: Lista de compras): esconde o menu do hub p/ cobrir tudo
+window.addEventListener('message', e=>{ if(e&&e.data&&e.data.type==='plcFS'){ const tb=document.getElementById('topbar'); if(tb) tb.style.display = e.data.on ? 'none' : 'flex'; } });
 let SAFRA=null;     // safra ativa da sessão
 
 function _session(){ return SB ? SB.auth.getSession().then(r=>r.data&&r.data.session) : Promise.resolve(null); }
