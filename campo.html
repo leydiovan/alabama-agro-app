@@ -13,10 +13,11 @@
 <link rel="apple-touch-icon" href="icon-192.png">
 <link rel="icon" href="icon.svg">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script>if('serviceWorker' in navigator){window.addEventListener('load',function(){navigator.serviceWorker.register('sw.js').then(function(reg){reg.addEventListener('updatefound',function(){var nw=reg.installing;if(!nw)return;nw.addEventListener('statechange',function(){if(nw.state==='installed'&&navigator.serviceWorker.controller){try{if(typeof GPS!=='undefined'&&GPS.watchId!=null){if(typeof _st==='function')_st('Atualização pronta — recarregue ao terminar','#3498db');}else{location.reload();}}catch(e){location.reload();}}});});}).catch(function(){});});}</script>
+<script>if('serviceWorker' in navigator && !window.Capacitor){window.addEventListener('load',function(){navigator.serviceWorker.register('sw.js').then(function(reg){reg.addEventListener('updatefound',function(){var nw=reg.installing;if(!nw)return;nw.addEventListener('statechange',function(){if(nw.state==='installed'&&navigator.serviceWorker.controller){try{if(typeof GPS!=='undefined'&&GPS.watchId!=null){if(typeof _st==='function')_st('Atualização pronta — recarregue ao terminar','#3498db');}else{location.reload();}}catch(e){location.reload();}}});});}).catch(function(){});});}</script>
 <style>
 :root{--bg:#0d1117;--bg2:#161b22;--bg3:#1c2333;--line:#30363d;--text:#e6edf3;--muted:#8b949e;--gold:#ffc107;--ok:#27ae60;--err:#f85149;--blue:#388bfd}
 *{box-sizing:border-box;margin:0;padding:0}
+html{background:var(--bg)}
 body{background:var(--bg);color:var(--text);font:17px system-ui,Segoe UI,Arial,sans-serif;padding:12px 12px 96px;-webkit-text-size-adjust:100%}
 .top{position:sticky;top:0;background:var(--bg);padding:8px 0 10px;border-bottom:1px solid var(--line);margin-bottom:10px;z-index:5}
 .top h1{font-size:18px;display:flex;align-items:center;gap:8px}.top h1 .l{color:var(--gold)}
@@ -126,10 +127,14 @@ function _st(t,c){ let e=$('snack'); if(!e){ e=document.createElement('div'); e.
 
 /* ---------- boot / login ---------- */
 async function boot(){
-  if(!window.supabase){ $('app').innerHTML='<div class="center err" style="margin-top:40px">Sem internet (biblioteca não carregou).</div>'; return; }
-  SB=window.supabase.createClient(SB_URL,SB_KEY);
-  const {data}=await SB.auth.getSession();
-  if(data&&data.session){ entrar(); } else { STEP='login'; render(); }
+  SB = window.supabase ? window.supabase.createClient(SB_URL,SB_KEY) : null;
+  let session=null;
+  if(SB){ try{ const {data}=await SB.auth.getSession(); session=data&&data.session; }catch(e){} }   // getSession = local (não bate na rede)
+  let temOper=false; try{ temOper=!!(+localStorage.getItem('campo_oper')); }catch(e){}
+  if(session){ entrar(); return; }                          // sessão válida (mesmo offline, o refresh-token persiste): entra normal
+  if(!navigator.onLine && temOper){ entrar(); return; }     // CAMPO/offline com operador salvo: NUNCA trava no login — trabalha local, a sincronização espera a rede/login
+  if(!SB){ $('app').innerHTML='<div class="center err" style="margin-top:40px">Sem internet (biblioteca não carregou).</div>'; return; }
+  STEP='login'; render();                                   // online (ou 1ª vez, sem operador): pede login p/ (re)estabelecer a sessão de sincronização
 }
 function _msg(t,c){ const e=$('msg'); if(e){ e.textContent=t; e.style.color=c||'var(--muted)'; } }
 async function login(){
@@ -141,15 +146,13 @@ async function login(){
 async function entrar(){
   DIA=hoje();
   try{ const {data:sd}=await SB.auth.getSession(); USER_EMAIL=(sd&&sd.session&&sd.session.user&&sd.session.user.email)||''; }catch(e){}   // getSession = local (não bate na rede)
-  try{ if(!navigator.onLine) throw 0; const {data:f,error}=await _q(SB.from('funcionarios').select('id,nome,tipo,ativo,operador_melosa').order('nome')); if(error) throw error; FUNCS=(f||[]).filter(x=>x.ativo!==false); _cacheSet('funcs',FUNCS); }catch(e){ FUNCS=_cacheGet('funcs',[]); }
+  try{ if(!navigator.onLine) throw 0; const {data:f,error}=await _q(SB.from('funcionarios').select('id,nome,tipo,ativo,operador_melosa,pin').order('nome')); if(error) throw error; FUNCS=(f||[]).filter(x=>x.ativo!==false); _cacheSet('funcs',FUNCS); }catch(e){ FUNCS=_cacheGet('funcs',[]); }
   try{ if(!navigator.onLine) throw 0; const {data:m,error}=await _q(SB.from('maquinas').select('id,nome,categoria,id_frota,consumo_ref,marca,modelo,faixa_m').order('nome')); if(error) throw error; MAQS=m||[]; _cacheSet('maqs',MAQS); }catch(e){ MAQS=_cacheGet('maqs',[]); }
   try{ if(!navigator.onLine) throw 0; const {data:i,error}=await _q(SB.from('implementos').select('id,nome,categoria,id_frota,largura_trabalho').order('nome')); if(error) throw error; IMPS=i||[]; _cacheSet('imps',IMPS); }catch(e){ IMPS=_cacheGet('imps',[]); }
   try{ if(!navigator.onLine) throw 0; const {data:l,error}=await _q(SB.from('lotes').select('nome,area,geom').order('nome')); if(error) throw error; LOTES=l||[]; _cacheSet('lotes',LOTES); }catch(e){ LOTES=_cacheGet('lotes',[]); }
   await carregarSafra();
-  // operador salvo no aparelho?
-  let oid=null; try{ oid=+localStorage.getItem('campo_oper')||null; }catch(e){}
-  OPER = oid? (FUNCS.find(f=>f.id===oid)||null) : null;
-  if(OPER){ await carregarDia(); STEP='home'; } else { STEP='quemsou'; }
+  // operador entra SEMPRE pela tela de login (nome + PIN); o último fica pré-selecionado
+  OPER=null; STEP='quemsou';
   render();
   _updPend(); if(navigator.onLine) _syncAll().then(async()=>{ if(OPER){ await carregarDia(); if(STEP==='home') render(); } });
 }
@@ -219,13 +222,28 @@ function renderLogin(){
   $('b').onclick=login; $('s').addEventListener('keydown',e=>{if(e.key==='Enter')login();});
 }
 function renderQuemSou(){
-  const opts=FUNCS.map(f=>`<option value="${f.id}">${esc(f.nome)} (${TIPO[f.tipo]||f.tipo})</option>`).join('');
-  $('app').innerHTML=`<div class="top"><h1><span class="l">👤</span> Quem é você?</h1><div class="d">Escolha o operador deste tablet (fica salvo no aparelho)</div></div>
+  let ult=null; try{ ult=+localStorage.getItem('campo_oper')||null; }catch(e){}
+  const opts=FUNCS.map(f=>`<option value="${f.id}"${f.id===ult?' selected':''}>${esc(f.nome)} (${TIPO[f.tipo]||f.tipo})</option>`).join('');
+  $('app').innerHTML=`<div class="top"><h1><span class="l">👤</span> Entrar</h1><div class="d">Escolha seu nome e digite seu PIN</div></div>
     <div class="card"><label>Operador</label><select id="op"><option value="">— escolha —</option>${opts}</select>
-      <button class="btn g" id="ok">Confirmar</button>
-      <div class="hint">Isso identifica de quem são as comandas deste tablet. Você pode trocar depois em "trocar operador".</div></div>
+      <label style="margin-top:10px">PIN (4 dígitos)</label>
+      <input id="pin" type="password" inputmode="numeric" autocomplete="off" maxlength="4" placeholder="••••">
+      <button class="btn g" id="ok">Entrar</button>
+      <div id="pmsg" class="center" style="margin-top:8px;font-size:13px;min-height:16px"></div>
+      <div class="hint">Seu PIN é cadastrado no RH. Operador sem PIN definido entra direto (fase de implantação).</div></div>
     <div style="margin-top:8px">${_botoesSair()}</div>`;
-  $('ok').onclick=async()=>{ const id=+$('op').value; if(!id){ _st('Escolha o operador.','#e67e22'); return; } OPER=FUNCS.find(f=>f.id===id); try{localStorage.setItem('campo_oper',String(id));}catch(e){} await carregarDia(); STEP='home'; render(); };
+  const msg=t=>{ const e=$('pmsg'); if(e){ e.textContent=t||''; e.style.color='var(--err)'; } };
+  const entrarOper=async()=>{
+    const id=+$('op').value; if(!id){ msg('Escolha o operador.'); return; }
+    const f=FUNCS.find(x=>x.id===id); if(!f){ msg('Operador não encontrado.'); return; }
+    const pinCad=(f.pin==null?'':String(f.pin)).trim();
+    const pinDig=(($('pin')&&$('pin').value)||'').trim();
+    if(pinCad){ if(pinDig!==pinCad){ msg('PIN incorreto.'); if($('pin')){$('pin').value='';$('pin').focus();} return; } }   // só exige PIN se houver um cadastrado
+    OPER=f; try{localStorage.setItem('campo_oper',String(id));}catch(e){}
+    await carregarDia(); STEP='home'; render();
+  };
+  $('ok').onclick=entrarOper;
+  if($('pin')) $('pin').addEventListener('keydown',e=>{ if(e.key==='Enter') entrarOper(); });
   _bindSair();
 }
 function renderHome(){
