@@ -93,6 +93,9 @@ main{padding:16px 22px 60px;}
 /* product mini-table */
 .ptbl{width:100%;border-collapse:collapse;margin-top:6px;}
 .ptbl th{font-size:9px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;text-align:left;padding:5px 7px;border-bottom:1px solid var(--border);}
+.plc-tbl{table-layout:fixed;}
+.plc-tbl th,.plc-tbl td{overflow-wrap:anywhere;}
+.plc-tbl thead th{position:sticky;top:0;background:var(--bg2);z-index:2;box-shadow:inset 0 -1px 0 var(--border);}
 .ptbl td{padding:4px 7px;border-bottom:1px solid rgba(31,51,84,.4);font-size:12px;}
 .ptbl input,.ptbl select{background:var(--bg);border:1px solid var(--border2);border-radius:5px;color:var(--text);padding:5px 7px;font-size:12px;width:100%;font-family:inherit;}
 .ptbl .num{text-align:right;}
@@ -2609,6 +2612,24 @@ function _parseAtivosPlan(comp,tipo){
 /* ---- estoque por ingrediente ativo (#9): pool de produtos do mesmo ativo, dose relativa pela concentração ---- */
 function _numConc(a){ if(!a) return null; const n=numUn(String(a.conc==null?'':a.conc)).n; return (n!=null&&n>0)?n:null; }
 function _formProd(p){ return String((p&&(p.formulacao||p.formCod))||'').trim().toLowerCase(); }
+/* resumo da composição (ativos) p/ a coluna da Lista de compras (#1) */
+function _compResumo(pr){ if(!pr) return '—'; const a=pr.ativos||[];
+  if(a.length) return a.map(x=>esc(String(x.nome||''))+((x.conc!=null&&x.conc!=='')?(' '+esc(String(x.conc).replace('.',','))+(x.unidade?(' '+esc(x.unidade)):'')):'')).join(' + ');
+  return esc(String(pr.comp||'—')); }
+/* multiplicador de volume p/ substituto multi-ativo (#3): vai pelo ativo LIMITANTE
+   = MAIOR (conc_planejado / conc_substituto) entre os ativos casados por nome.
+   Assim o ativo menos concentrado no substituto nunca fica abaixo do necessário. */
+function _multiplicadorAtivos(ativosP, ativosQ){
+  if(!Array.isArray(ativosP)||!ativosP.length||!Array.isArray(ativosQ)||!ativosQ.length) return null;
+  let mult=null, lim=null; const det=[];
+  for(const ap of ativosP){
+    const nomeA=String(ap.nome||'').trim().toLowerCase(); if(!nomeA) continue;
+    const aq=ativosQ.find(x=>String(x.nome||'').trim().toLowerCase()===nomeA); if(!aq) continue;
+    const cP=_numConc(ap), cQ=_numConc(aq); if(!(cP>0)||!(cQ>0)) continue;
+    const m=cP/cQ; det.push({nome:ap.nome, m}); if(mult==null||m>mult){ mult=m; lim=ap.nome; }
+  }
+  return mult==null?null:{mult, lim, det};
+}
 function _estoqueEquivAtivo(prodNome){
   // Estoque substituível: apenas produtos de UM único ativo (mesmo ativo do planejado),
   // de MESMA FORMULAÇÃO, podendo ter concentração diferente — convertido para a
@@ -2939,7 +2960,7 @@ function _planComprasHTML(){
   });
   const nomes=Object.keys(nec).sort((a,b)=>a.localeCompare(b,'pt',{sensitivity:'base',numeric:true}));
   const forns=[...new Set(nomes.flatMap(n=>(S.cotacoes||[]).filter(c=>c.produtoNome===n).map(c=>c.fornecedor||'?')))].sort((a,b)=>a.localeCompare(b,'pt'));
-  const ncol=7+forns.length;
+  const ncol=8+forns.length;
   let totalComprar=0;
   const rows=nomes.map((n,ri)=>{
     const pr=_prodPorNome(n); const cod=pr?pr.codigo:null;
@@ -2961,16 +2982,24 @@ function _planComprasHTML(){
     const ativoQ=efetiva?_cotAtivo(efetiva):'';
     let aComprarBuy=aComprar, ajusteTxt='';
     if(efetiva){
-      const aP=(ativoP||'').trim().toLowerCase(), aQ=(ativoQ||'').trim().toLowerCase();
-      const ativoDifere = aP && aQ && aP!==aQ;          // só "difere" se AMBOS conhecidos e distintos
-      if(ativoDifere){                                   // ativo diferente -> fator de conversão manual
-        const fc=+efetiva.fatorConv||null;
-        if(fc>0){ aComprarBuy=aComprar*fc; ajusteTxt='ativo difere ('+esc(ativoQ)+') × fator '+fmtBR(fc); }
-        else { ajusteTxt='ativo difere ('+esc(ativoQ)+') — defina o Fator conv. na cotação'; }
-      } else if(aP && concP>0 && concQ>0 && Math.abs(concP-concQ)>1e-9){   // mesmo ativo, concentração diferente
-        aComprarBuy=aComprar*(concP/concQ); ajusteTxt='ajustado p/ conc. '+fmtBR(concQ)+' (i.a. = '+fmtBR(aComprar)+' @ '+fmtBR(concP)+')';
+      const subP=_prodPorNome(efetiva.marca)||_prodPorNome(efetiva.produtoNome);   // produto cotado no cadastro (ativos completos)
+      const mm=_multiplicadorAtivos(pr&&pr.ativos, subP&&subP.ativos);             // multi-ativo -> pelo ativo LIMITANTE
+      if(mm){
+        aComprarBuy=aComprar*mm.mult;
+        if(Math.abs(mm.mult-1)>1e-9) ajusteTxt=(mm.det.length>1
+          ? 'ajustado pelo ativo limitante ('+esc(mm.lim)+') × '+fmtBR(mm.mult)
+          : 'ajustado p/ concentração × '+fmtBR(mm.mult));
+      } else {
+        const aP=(ativoP||'').trim().toLowerCase(), aQ=(ativoQ||'').trim().toLowerCase();
+        const ativoDifere = aP && aQ && aP!==aQ;          // só "difere" se AMBOS conhecidos e distintos
+        if(ativoDifere){                                   // ativo diferente -> fator de conversão manual
+          const fc=+efetiva.fatorConv||null;
+          if(fc>0){ aComprarBuy=aComprar*fc; ajusteTxt='ativo difere ('+esc(ativoQ)+') × fator '+fmtBR(fc); }
+          else { ajusteTxt='ativo difere ('+esc(ativoQ)+') — defina o Fator conv. na cotação'; }
+        } else if(aP && concP>0 && concQ>0 && Math.abs(concP-concQ)>1e-9){   // mesmo ativo, concentração diferente
+          aComprarBuy=aComprar*(concP/concQ); ajusteTxt='ajustado p/ conc. '+fmtBR(concQ)+' (i.a. = '+fmtBR(aComprar)+' @ '+fmtBR(concP)+')';
+        }
       }
-      // produto sem ativo (aP vazio) ou cotação sem ativo identificado: sem ajuste e sem aviso
     }
     const custoEst=aComprarBuy*custo; totalComprar+=custoEst;
     const condNote=nec[n].qtdCond>0?`<div class="sub" style="color:var(--gold)">⚠️ ${fmtBR(nec[n].qtdCond)} ${esc(nec[n].unidade)} condicional</div>`:'';
@@ -2983,6 +3012,7 @@ function _planComprasHTML(){
     const selCell=cots.length?`<select class="plc-escolha" data-prod="${esc(n)}" onclick="event.stopPropagation()"><option value="">— menor (auto)</option>${cots.map(c=>`<option value="${c.id}" ${chosen&&chosen.id===c.id?'selected':''}>${esc(c.fornecedor||c.marca||'?')} — ${fmtR$(_cotR$(c))}</option>`).join('')}</select>`:'<span class="sub">—</span>';
     return `<tr class="plc-row" data-prod="${esc(n)}" style="cursor:pointer">
       <td>${esc(n)}${subsNote}</td>
+      <td class="sub">${_compResumo(pr)}</td>
       <td class="num">${fmtBR(necQ)} ${esc(nec[n].unidade)}${condNote}</td>
       <td class="num">${fmtBR(saldo)}${saldoNote}</td>
       <td class="num">${aComprar>0?'<b>'+fmtBR(aComprarBuy)+'</b> '+esc(nec[n].unidade)+(ajusteTxt?'<div class="sub" style="color:var(--gold)">⚠️ '+ajusteTxt+'</div>':''):'—'}</td>
@@ -2996,7 +3026,7 @@ function _planComprasHTML(){
       <div class="fcol" style="max-width:240px"><label>Filtrar por lote</label><select id="plc_lote">${lotesOpt}</select></div>
       <div class="fcol" style="max-width:140px"><label>Dólar (R$)</label><input id="plc_dolar" value="${esc(String(S.dolar).replace('.',','))}" placeholder="5,00"></div>
     </div>
-    <div style="overflow-x:auto"><table class="ptbl"><thead><tr><th>Produto</th><th class="num">Necessário</th><th class="num">Em estoque</th><th class="num">A comprar</th>${forns.map(f=>'<th class="num">'+esc(f)+'</th>').join('')}<th class="num">Menor preço</th><th>Selecionado</th><th class="num">Custo estimado</th></tr></thead>
+    <div style="overflow-y:auto;overflow-x:hidden;max-height:calc(100vh - 200px)"><table class="ptbl plc-tbl"><thead><tr><th>Produto</th><th>Composição</th><th class="num">Necessário</th><th class="num">Em estoque</th><th class="num">A comprar</th>${forns.map(f=>'<th class="num">'+esc(f)+'</th>').join('')}<th class="num">Menor preço</th><th>Selecionado</th><th class="num">Custo estimado</th></tr></thead>
     <tbody>${rows}</tbody>
     <tfoot><tr><td colspan="${ncol-1}" style="text-align:right"><b>Total a comprar</b></td><td class="num"><b>${fmtR$(totalComprar)}</b></td></tr></tfoot></table></div>
     <div class="hint" style="margin-top:8px">Estoque substituível: produtos do <b>mesmo ativo</b> e <b>mesma formulação</b> somam no "Em estoque", convertidos pela <b>concentração</b> (i.a. equivalente). <b>Misturas</b> (mais de um ativo) não entram no estoque — só via cotações. Clique num produto para cotar/comparar. Custo usa a cotação escolhida (ou o custo médio do almox). Não baixa estoque.</div>
@@ -3022,43 +3052,56 @@ function _cotPreenche(nome){ const p=_prodPorNome(nome); if(!p) return;
 function _cotPainelHTML(nome, necInfo){
   const cots=(S.cotacoes||[]).filter(c=>c.produtoNome===nome);
   const necQ=necInfo?necInfo.qtd:null;
+  const ed=(_cotEdit!=null)?cots.find(c=>c.id===_cotEdit):null;   // cotação em edição (#2)
   const linhas=cots.map(c=>{
     const r=_cotR$(c); const conc=(+c.concentracao||0); const porAtivo=conc>0?r/conc:null;
     const totalItem=(necQ!=null)?r*necQ:null;
-    return `<tr class="${c.escolhida?'cot-on':''}">
+    return `<tr class="${c.escolhida?'cot-on':''}${_cotEdit===c.id?' cot-edit':''}">
       <td>${esc(c.fornecedor||'—')}</td><td>${esc(c.marca||'—')}</td>
       <td class="num">${conc>0?fmtBR(conc):'—'}</td>
+      <td class="num">${c.fatorConv?fmtBR(c.fatorConv):'—'}</td>
       <td class="num">${fmtBR(c.preco)} ${c.moeda==='USD'?'US$':'R$'}</td>
       <td class="num">${fmtR$(r)}</td>
       <td>${esc(c.prazo||'—')}</td>
       <td class="num">${porAtivo!=null?fmtR$(porAtivo):'—'}</td>
       <td class="num">${totalItem!=null?fmtR$(totalItem):'—'}</td>
-      <td><button class="btn sm ${c.escolhida?'success':''}" onclick="escolherCotacao('${esc(nome)}',${c.id})">${c.escolhida?'✓ escolhida':'escolher'}</button>
+      <td><button class="btn sm" title="editar" onclick="_cotIniciarEdicao(${c.id})">✎</button>
+          <button class="btn sm ${c.escolhida?'success':''}" onclick="escolherCotacao('${esc(nome)}',${c.id})">${c.escolhida?'✓ escolhida':'escolher'}</button>
           <button class="btn sm danger" onclick="excluirCotacao(${c.id})">✕</button></td></tr>`;
-  }).join('')||'<tr><td colspan="9" class="hint">Sem cotações. Adicione abaixo.</td></tr>';
+  }).join('')||'<tr><td colspan="10" class="hint">Sem cotações. Adicione abaixo.</td></tr>';
   return `<div class="cadbox" style="margin-top:14px">
     <div class="chead"><b>Cotações de ${esc(nome)}</b> ${necQ!=null?`<span class="sub">· necessário ${fmtBR(necQ)}</span>`:''} <button class="btn sm" style="float:right" onclick="_cotProd=null;render()">fechar</button></div>
-    <table class="ptbl"><thead><tr><th>Empresa</th><th>Marca</th><th class="num">Concentr.</th><th class="num">Preço</th><th class="num">Preço R$</th><th>Prazo</th><th class="num">R$/unid.ativo</th><th class="num">Custo total</th><th></th></tr></thead><tbody>${linhas}</tbody></table>
-    <div class="sec">Nova cotação</div>
+    <table class="ptbl"><thead><tr><th>Empresa</th><th>Marca</th><th class="num">Concentr.</th><th class="num">Fator</th><th class="num">Preço</th><th class="num">Preço R$</th><th>Prazo</th><th class="num">R$/unid.ativo</th><th class="num">Custo total</th><th></th></tr></thead><tbody>${linhas}</tbody></table>
+    <div class="sec">${ed?'Editar cotação':'Nova cotação'}</div>
     <div class="row" style="flex-wrap:wrap;gap:8px 12px">
-      <div class="fcol"><label>Empresa</label><input id="ct_forn" list="dlCotForn" placeholder="fornecedor"><datalist id="dlCotForn">${(S.fornecedores||[]).map(f=>`<option value="${esc(f.nome||f)}">`).join('')}</datalist></div>
-      <div class="fcol"><label>Marca/produto (do cadastro)</label><input id="ct_marca" list="dlCotProd" placeholder="escolha um produto" oninput="_cotPreenche(this.value)"><datalist id="dlCotProd">${_ordProdNome(S.produtos).map(p=>`<option value="${esc(p.nome)}">`).join('')}</datalist></div>
-      <div class="fcol" style="max-width:120px"><label>Preço</label><input id="ct_preco" placeholder="0,00"></div>
-      <div class="fcol" style="max-width:90px"><label>Moeda</label><select id="ct_moeda"><option value="BRL">R$</option><option value="USD">US$</option></select></div>
-      <div class="fcol" style="max-width:150px"><label>Fator conv. <span class="sub">se ativo difere</span></label><input id="ct_fator" placeholder="ex.: 1,2"></div>
-      <div class="fcol" style="max-width:140px"><label>Prazo</label><input id="ct_prazo" placeholder="ex.: 30 dias"></div>
-      <button class="btn success" id="ct_add">+ adicionar cotação</button>
+      <div class="fcol"><label>Empresa</label><input id="ct_forn" list="dlCotForn" placeholder="fornecedor" value="${ed?esc(ed.fornecedor||''):''}"><datalist id="dlCotForn">${(S.fornecedores||[]).map(f=>`<option value="${esc(f.nome||f)}">`).join('')}</datalist></div>
+      <div class="fcol"><label>Marca/produto (do cadastro)</label><input id="ct_marca" list="dlCotProd" placeholder="escolha um produto" oninput="_cotPreenche(this.value)" value="${ed?esc(ed.marca||''):''}"><datalist id="dlCotProd">${_ordProdNome(S.produtos).map(p=>`<option value="${esc(p.nome)}">`).join('')}</datalist></div>
+      <div class="fcol" style="max-width:120px"><label>Preço</label><input id="ct_preco" placeholder="0,00" value="${ed&&ed.preco?esc(String(ed.preco).replace('.',',')):''}"></div>
+      <div class="fcol" style="max-width:90px"><label>Moeda</label><select id="ct_moeda"><option value="BRL" ${ed&&ed.moeda==='USD'?'':'selected'}>R$</option><option value="USD" ${ed&&ed.moeda==='USD'?'selected':''}>US$</option></select></div>
+      <div class="fcol" style="max-width:150px"><label>Fator conv. <span class="sub">se ativo difere</span></label><input id="ct_fator" placeholder="ex.: 1,2" value="${ed&&ed.fatorConv!=null?esc(String(ed.fatorConv).replace('.',',')):''}"></div>
+      <div class="fcol" style="max-width:140px"><label>Prazo</label><input id="ct_prazo" placeholder="ex.: 30 dias" value="${ed?esc(ed.prazo||''):''}"></div>
+      <button class="btn success" id="ct_add">${ed?'salvar alterações':'+ adicionar cotação'}</button>
+      ${ed?'<button class="btn sm" id="ct_cancel">cancelar</button>':''}
     </div></div>`;
 }
-function _bindCotPainel(){ const b=$('#ct_add'); if(b) b.onclick=()=>{
-  if(!_cotProd) return;
-  const _marca=$('#ct_marca').value.trim();
-  const _mp=_prodPorNome(_marca)||_prodPorNome(_cotProd);   // concentração/ativo vêm do cadastro do produto cotado
-  const _conc=(_mp&&_mp.ativos&&_mp.ativos[0])?_numConc(_mp.ativos[0]):null;
-  const _ativo=(_mp&&_mp.ativos&&_mp.ativos[0])?String(_mp.ativos[0].nome||''):'';
-  const c={produtoNome:_cotProd, fornecedor:$('#ct_forn').value.trim(), marca:_marca, preco:numUn($('#ct_preco').value).n||0, moeda:$('#ct_moeda').value, concentracao:_conc, ativo:_ativo, fatorConv:numUn($('#ct_fator').value).n, prazo:$('#ct_prazo').value.trim(), unidade:'', obs:'', escolhida:false};
-  salvarCotacaoSB(c);
-}; }
+function _cotIniciarEdicao(id){ _cotEdit=id; render(); }
+function _bindCotPainel(){
+  const cancel=$('#ct_cancel'); if(cancel) cancel.onclick=()=>{ _cotEdit=null; render(); };
+  const b=$('#ct_add'); if(b) b.onclick=()=>{
+    if(!_cotProd) return;
+    const _marca=$('#ct_marca').value.trim();
+    const _mp=_prodPorNome(_marca)||_prodPorNome(_cotProd);   // concentração/ativo vêm do cadastro do produto cotado
+    const _conc=(_mp&&_mp.ativos&&_mp.ativos[0])?_numConc(_mp.ativos[0]):null;
+    const _ativo=(_mp&&_mp.ativos&&_mp.ativos[0])?String(_mp.ativos[0].nome||''):'';
+    const dados={fornecedor:$('#ct_forn').value.trim(), marca:_marca, preco:numUn($('#ct_preco').value).n||0, moeda:$('#ct_moeda').value, concentracao:_conc, ativo:_ativo, fatorConv:numUn($('#ct_fator').value).n, prazo:$('#ct_prazo').value.trim()};
+    if(_cotEdit!=null){   // editar lançada (#2)
+      const alvo=(S.cotacoes||[]).find(c=>c.id===_cotEdit); if(!alvo){ _cotEdit=null; render(); return; }
+      Object.assign(alvo, dados); _cotEdit=null; atualizarCotacaoSB(alvo);
+    } else {
+      salvarCotacaoSB(Object.assign({produtoNome:_cotProd, unidade:'', obs:'', escolhida:false}, dados));
+    }
+  };
+}
 function escolherCotacao(nome,id){ (S.cotacoes||[]).forEach(c=>{ if(c.produtoNome===nome) c.escolhida=(c.id===id); }); marcarCotacaoEscolhidaSB(nome,id); render(); }
 function _planEscolhaFinal(nome,idStr){ const id=idStr?+idStr:null;
   (S.cotacoes||[]).forEach(c=>{ if(c.produtoNome===nome) c.escolhida=(id!=null&&c.id===id); });
@@ -3074,6 +3117,11 @@ async function salvarCotacaoSB(c){
     if(error){ _statusSB('❌ '+error.message,'#c0392b'); return; } c.id=data?data.id:Date.now(); S.cotacoes.push(c); _statusSB('✅ Cotação salva','#27ae60'); render();
   }catch(e){ _statusSB('❌ '+e.message,'#c0392b'); } }
 async function excluirCotacaoSB(id){ if(!SB) return; try{ await SB.from('cotacoes').delete().eq('id',id); }catch(e){ console.warn(e); } }
+async function atualizarCotacaoSB(c){ render();   // edita uma cotação já lançada (#2)
+  if(!SB) return;
+  try{ const {error}=await SB.from('cotacoes').update(_cotParaBanco(c)).eq('id',c.id);
+    if(error){ _statusSB('❌ '+error.message,'#c0392b'); return; } _statusSB('✅ Cotação atualizada','#27ae60');
+  }catch(e){ _statusSB('❌ '+e.message,'#c0392b'); } }
 async function marcarCotacaoEscolhidaSB(nome,id){ if(!SB) return; try{ await SB.from('cotacoes').update({escolhida:false}).eq('safra',SAFRA).eq('produto_nome',nome); await SB.from('cotacoes').update({escolhida:true}).eq('id',id); }catch(e){ console.warn(e); } }
 async function salvarDolarSB(v){ if(!SB) return; try{ await SB.from('config').upsert({chave:'dolar', valor:String(v)},{onConflict:'chave'}); }catch(e){ console.warn(e); } }
 
