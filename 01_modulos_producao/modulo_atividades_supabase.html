@@ -2966,7 +2966,7 @@ function gerarComandaDoPlano(id){
 }
 
 /* ---- Colunas opcionais + controles do topo + tela cheia (Lista de compras) ---- */
-let _plcFS=false, _plcModoForn=false;
+let _plcFS=false, _plcModoForn=false, _plcScrollTop=0;
 function _plcColsDefs(){ return [{k:'composicao',t:'Composição'},{k:'necessario',t:'Necessário'},{k:'estoque',t:'Em estoque'},{k:'comprar',t:'A comprar'},{k:'arredondar',t:'Arredondar'},{k:'fornecedores',t:'Fornecedores'},{k:'menor',t:'Menor preço'},{k:'selecionado',t:'Selecionado'},{k:'custo',t:'Custo estimado'}]; }
 function _plcColsVis(){ let v={}; try{ v=JSON.parse(localStorage.getItem('plc_cols')||'{}'); }catch(e){} const o={}; _plcColsDefs().forEach(c=>{ o[c.k]=(v[c.k]!==false); }); return o; }
 function _plcColsSet(k,on){ const v=_plcColsVis(); v[k]=!!on; try{ localStorage.setItem('plc_cols',JSON.stringify(v)); }catch(e){} render(); }
@@ -3131,6 +3131,7 @@ function _planComprasHTML(){
 function _plcAjustaAltura(){ const f=document.querySelector('#main .plc-flex'); if(!f) return; const t=f.getBoundingClientRect().top; f.style.height=Math.max(240, window.innerHeight - t - 84)+'px'; }  // trava a altura no espaço real (imune ao header variar)
 function _bindPlanCompras(){
   _plcAjustaAltura(); if(!window._plcResizeBound){ window._plcResizeBound=true; window.addEventListener('resize',_plcAjustaAltura); }
+  const _sc=document.querySelector('#main .plc-scroll'); if(_sc){ _sc.scrollTop=_plcScrollTop; _sc.addEventListener('scroll',()=>{ _plcScrollTop=_sc.scrollTop; }); }   // mantém a rolagem no lugar entre re-renders
   const s=$('#plc_lote'); if(s) s.onchange=()=>{ _planLote=s.value; render(); };
   const d=$('#plc_dolar'); if(d) d.onchange=()=>{ const v=numUn(d.value).n; if(v!=null&&v>0){ S.dolar=v; salvarDolarSB(v); } render(); };
   const bc=$('#plc_cols'); if(bc) bc.onclick=_plcAbreColunas;
