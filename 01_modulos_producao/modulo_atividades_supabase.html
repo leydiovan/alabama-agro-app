@@ -96,6 +96,11 @@ main{padding:16px 22px 60px;}
 .plc-tbl{table-layout:fixed;}
 .plc-tbl th,.plc-tbl td{overflow-wrap:anywhere;}
 .plc-tbl thead th{position:sticky;top:0;background:var(--bg2);z-index:2;box-shadow:inset 0 -1px 0 var(--border);}
+/* Lista de compras: layout travado — só a tabela rola; totais e cotação no rodapé fixo */
+.plc-flex{display:flex;flex-direction:column;height:calc(100vh - 210px);}
+.plc-scroll{flex:1 1 auto;min-height:0;overflow-y:auto;overflow-x:hidden;}
+.plc-foot{flex:0 0 auto;border-top:2px solid var(--border);padding-top:8px;margin-top:6px;max-height:55vh;overflow:auto;}
+.plc-total{font-size:15px;white-space:nowrap;color:var(--text);}
 .ptbl td{padding:4px 7px;border-bottom:1px solid rgba(31,51,84,.4);font-size:12px;}
 .ptbl input,.ptbl select{background:var(--bg);border:1px solid var(--border2);border-radius:5px;color:var(--text);padding:5px 7px;font-size:12px;width:100%;font-family:inherit;}
 .ptbl .num{text-align:right;}
@@ -3025,17 +3030,25 @@ function _planComprasHTML(){
       <td class="num">${custoEst>0?fmtR$(custoEst):'—'}</td></tr>`;
   }).join('')||`<tr><td colspan="${ncol}" class="hint">Nada planejado ainda.</td></tr>`;
   const painel=_cotProd?_cotPainelHTML(_cotProd, nec[_cotProd]):'';
-  return `<div class="row" style="margin-bottom:12px;gap:16px;align-items:flex-end">
+  return `<div class="plc-flex">
+    <div class="row" style="margin-bottom:10px;gap:16px;align-items:flex-end;flex:0 0 auto">
       <div class="fcol" style="max-width:240px"><label>Filtrar por lote</label><select id="plc_lote">${lotesOpt}</select></div>
       <div class="fcol" style="max-width:140px"><label>Dólar (R$)</label><input id="plc_dolar" value="${esc(String(S.dolar).replace('.',','))}" placeholder="5,00"></div>
     </div>
-    <div style="overflow-y:auto;overflow-x:hidden;max-height:calc(100vh - 200px)"><table class="ptbl plc-tbl">${colgroup}<thead><tr><th>Produto</th><th>Composição</th><th class="num">Necessário</th><th class="num">Em estoque</th><th class="num">A comprar</th>${forns.map(f=>'<th class="num">'+esc(f)+'</th>').join('')}<th class="num">Menor preço</th><th>Selecionado</th><th class="num">Custo estimado</th></tr></thead>
-    <tbody>${rows}</tbody>
-    <tfoot><tr><td colspan="${ncol-1}" style="text-align:right"><b>Total a comprar</b></td><td class="num"><b>${fmtR$(totalComprar)}</b></td></tr></tfoot></table></div>
-    <div class="hint" style="margin-top:8px">Estoque substituível: produtos do <b>mesmo ativo</b> e <b>mesma formulação</b> somam no "Em estoque", convertidos pela <b>concentração</b> (i.a. equivalente). <b>Misturas</b> (mais de um ativo) não entram no estoque — só via cotações. Clique num produto para cotar/comparar. Custo usa a cotação escolhida (ou o custo médio do almox). Não baixa estoque.</div>
-    ${painel}`;
+    <div class="plc-scroll"><table class="ptbl plc-tbl">${colgroup}<thead><tr><th>Produto</th><th>Composição</th><th class="num">Necessário</th><th class="num">Em estoque</th><th class="num">A comprar</th>${forns.map(f=>'<th class="num">'+esc(f)+'</th>').join('')}<th class="num">Menor preço</th><th>Selecionado</th><th class="num">Custo estimado</th></tr></thead>
+    <tbody>${rows}</tbody></table></div>
+    <div class="plc-foot">
+      <div class="row" style="justify-content:space-between;align-items:baseline;gap:14px;margin:0">
+        <div class="hint" style="margin:0;flex:1">Estoque substituível: <b>mesmo ativo</b> + <b>mesma formulação</b> somam no "Em estoque" pela <b>concentração</b>. <b>Misturas</b> só via cotações. Clique num produto para cotar/comparar.</div>
+        <div class="plc-total"><b>Total a comprar: ${fmtR$(totalComprar)}</b></div>
+      </div>
+      ${painel}
+    </div>
+  </div>`;
 }
+function _plcAjustaAltura(){ const f=document.querySelector('#main .plc-flex'); if(!f) return; const t=f.getBoundingClientRect().top; f.style.height=Math.max(240, window.innerHeight - t - 84)+'px'; }  // trava a altura no espaço real (imune ao header variar)
 function _bindPlanCompras(){
+  _plcAjustaAltura(); if(!window._plcResizeBound){ window._plcResizeBound=true; window.addEventListener('resize',_plcAjustaAltura); }
   const s=$('#plc_lote'); if(s) s.onchange=()=>{ _planLote=s.value; render(); };
   const d=$('#plc_dolar'); if(d) d.onchange=()=>{ const v=numUn(d.value).n; if(v!=null&&v>0){ S.dolar=v; salvarDolarSB(v); } render(); };
   $$('#main .plc-row').forEach(r=>r.onclick=()=>{ _cotProd=(_cotProd===r.dataset.prod)?null:r.dataset.prod; _cotEdit=null; render(); });
