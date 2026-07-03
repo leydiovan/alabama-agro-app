@@ -2966,10 +2966,12 @@ function gerarComandaDoPlano(id){
 }
 
 /* ---- Colunas opcionais + controles do topo + tela cheia (Lista de compras) ---- */
-let _plcFS=false, _plcModoForn=false, _plcScrollTop=0;
-function _plcColsDefs(){ return [{k:'composicao',t:'Composição'},{k:'necessario',t:'Necessário'},{k:'estoque',t:'Em estoque'},{k:'comprar',t:'A comprar'},{k:'arredondar',t:'Arredondar'},{k:'fornecedores',t:'Fornecedores'},{k:'menor',t:'Menor preço'},{k:'selecionado',t:'Selecionado'},{k:'custo',t:'Custo estimado'}]; }
-function _plcColsVis(){ let v={}; try{ v=JSON.parse(localStorage.getItem('plc_cols')||'{}'); }catch(e){} const o={}; _plcColsDefs().forEach(c=>{ o[c.k]=(v[c.k]!==false); }); return o; }
-function _plcColsSet(k,on){ const v=_plcColsVis(); v[k]=!!on; try{ localStorage.setItem('plc_cols',JSON.stringify(v)); }catch(e){} render(); }
+let _plcFS=false, _plcModoForn=false, _plcScrollTop=0, _plcFornsAtual=[];
+function _plcColsDefs(){ return [{k:'composicao',t:'Composição'},{k:'necessario',t:'Necessário'},{k:'estoque',t:'Em estoque'},{k:'comprar',t:'A comprar'},{k:'arredondar',t:'Arredondar'},{k:'menor',t:'Menor preço'},{k:'selecionado',t:'Selecionado'},{k:'custo',t:'Custo estimado'}]; }
+function _plcColsRaw(){ let v={}; try{ v=JSON.parse(localStorage.getItem('plc_cols')||'{}')||{}; }catch(e){} return v; }
+function _plcColsVis(){ const v=_plcColsRaw(); const o={}; _plcColsDefs().forEach(c=>{ o[c.k]=(v[c.k]!==false); }); return o; }
+function _plcFornVis(name){ return _plcColsRaw()['forn:'+name]!==false; }   // cada fornecedor é individual (dinâmico)
+function _plcColsSet(k,on){ const v=_plcColsRaw(); v[k]=!!on; try{ localStorage.setItem('plc_cols',JSON.stringify(v)); }catch(e){} render(); }
 /* "Arredondar" = quantidade real de compra (override manual), por safra no aparelho; tem prioridade sobre "A comprar" */
 function _plcArredKey(){ return 'plc_arred_'+(typeof SAFRA!=='undefined'?SAFRA:''); }
 function _plcArredAll(){ try{ return JSON.parse(localStorage.getItem(_plcArredKey())||'{}')||{}; }catch(e){ return {}; } }
@@ -2985,12 +2987,16 @@ function _planComprasControls(){
 }
 function _plcAbreColunas(){
   const vis=_plcColsVis();
-  const boxes=_plcColsDefs().map(c=>`<label style="display:flex;align-items:center;gap:9px;padding:7px 4px;cursor:pointer;font-size:13px"><input type="checkbox" data-ck="${c.k}" ${vis[c.k]?'checked':''}> ${c.t}</label>`).join('');
+  const cbox=(k,rot,on)=>`<label style="display:flex;align-items:center;gap:9px;padding:7px 4px;cursor:pointer;font-size:13px"><input type="checkbox" data-ck="${k}" ${on?'checked':''}> ${rot}</label>`;
+  const boxes=_plcColsDefs().map(c=>cbox(c.k, c.t, vis[c.k])).join('');
+  const fornBoxes=_plcFornsAtual.length
+    ? `<div class="hint" style="margin:9px 0 2px;color:var(--gold);text-transform:uppercase;letter-spacing:.5px">Fornecedores</div>`+_plcFornsAtual.map(f=>cbox('forn:'+esc(f), esc(f), _plcFornVis(f))).join('')
+    : '';
   let ov=document.getElementById('plcColsModal');
   if(!ov){ ov=document.createElement('div'); ov.id='plcColsModal'; ov.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:100001;display:flex;align-items:center;justify-content:center'; document.body.appendChild(ov); }
   ov.innerHTML=`<div style="background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:16px 18px;min-width:260px;max-width:90vw;max-height:85vh;overflow:auto">
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px"><b>Colunas da tabela</b><button class="btn sm" id="plcColsX">fechar</button></div>
-    <div class="hint" style="margin-bottom:6px">Produto fica sempre. Marque o que aparece:</div>${boxes}</div>`;
+    <div class="hint" style="margin-bottom:6px">Produto fica sempre. Marque o que aparece:</div>${boxes}${fornBoxes}</div>`;
   ov.style.display='flex';
   ov.querySelector('#plcColsX').onclick=()=>{ ov.style.display='none'; };
   ov.onclick=e=>{ if(e.target===ov) ov.style.display='none'; };
@@ -3035,6 +3041,7 @@ function _planComprasHTML(){
   });
   const nomes=Object.keys(nec).sort((a,b)=>a.localeCompare(b,'pt',{sensitivity:'base',numeric:true}));
   const forns=[...new Set(nomes.flatMap(n=>(S.cotacoes||[]).filter(c=>c.produtoNome===n).map(c=>c.fornecedor||'?')))].sort((a,b)=>a.localeCompare(b,'pt'));
+  _plcFornsAtual=forns.slice();   // p/ o menu de colunas listar cada fornecedor
   const VIS=_plcColsVis();
   // colunas (ordem + unidade de largura). Produto SEMPRE (3u); demais opcionais (1u; Composição 2u)
   const cols=[{k:'produto',u:3,th:'Produto'}];
@@ -3043,7 +3050,7 @@ function _planComprasHTML(){
   if(VIS.estoque) cols.push({k:'estoque',u:1,th:'Em estoque',num:1});
   if(VIS.comprar) cols.push({k:'comprar',u:1,th:'A comprar',num:1});
   if(VIS.arredondar) cols.push({k:'arredondar',u:1,th:'Arredondar',num:1});
-  if(VIS.fornecedores) forns.forEach(f=>cols.push({k:'forn',forn:f,u:1,th:esc(f),num:1}));
+  forns.forEach(f=>{ if(_plcFornVis(f)) cols.push({k:'forn',forn:f,u:1,th:esc(f),num:1}); });
   if(VIS.menor) cols.push({k:'menor',u:1,th:'Menor preço',num:1});
   if(VIS.selecionado) cols.push({k:'selecionado',u:1,th:'Selecionado'});
   if(VIS.custo) cols.push({k:'custo',u:1,th:'Custo estimado',num:1});
