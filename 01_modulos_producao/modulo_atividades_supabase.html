@@ -2670,7 +2670,7 @@ function renderPlanejamento(){
     <button class="${_planTab==='compras'?'on':''}" data-pt="compras">🛒 Lista de compras</button>
     <button class="${_planTab==='real'?'on':''}" data-pt="real">📊 Projetado × Realizado</button></div>`;
   const body=_planTab==='lote'?_planPorLoteHTML():_planTab==='compras'?_planComprasHTML():_planRealHTML();
-  return `<div class="wrap">${sub}${body}</div>`;
+  return `<div class="wrap"${_planTab==='compras'?' style="max-width:none"':''}>${sub}${body}</div>`;
 }
 function bindPlanejamento(){
   $$('#main [data-pt]').forEach(b=>b.onclick=()=>{ _planTab=b.dataset.pt; _planEdit=null; render(); });
