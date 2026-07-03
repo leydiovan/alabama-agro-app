@@ -101,6 +101,8 @@ main{padding:16px 22px 60px;}
 .plc-scroll{flex:1 1 auto;min-height:0;overflow-y:auto;overflow-x:hidden;}
 .plc-foot{flex:0 0 auto;border-top:2px solid var(--border);padding-top:8px;margin-top:6px;max-height:55vh;overflow:auto;}
 .plc-total{font-size:15px;white-space:nowrap;color:var(--text);}
+.plc-ctl{background:var(--bg);border:1px solid var(--border2);border-radius:6px;color:var(--text);padding:6px 8px;font-size:12px;font-family:inherit;}
+.wrap.plc-fs{position:fixed;inset:0;z-index:99999;max-width:none!important;margin:0;border-radius:0;padding:12px 16px;overflow:hidden;}
 .ptbl td{padding:4px 7px;border-bottom:1px solid rgba(31,51,84,.4);font-size:12px;}
 .ptbl input,.ptbl select{background:var(--bg);border:1px solid var(--border2);border-radius:5px;color:var(--text);padding:5px 7px;font-size:12px;width:100%;font-family:inherit;}
 .ptbl .num{text-align:right;}
@@ -2670,12 +2672,17 @@ function _planMover(id,dir){
 }
 
 function renderPlanejamento(){
-  const sub=`<div class="nav" style="margin-bottom:14px">
-    <button class="${_planTab==='lote'?'on':''}" data-pt="lote">📋 Por lote</button>
-    <button class="${_planTab==='compras'?'on':''}" data-pt="compras">🛒 Lista de compras</button>
-    <button class="${_planTab==='real'?'on':''}" data-pt="real">📊 Projetado × Realizado</button></div>`;
+  const sub=`<div class="nav-row" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:14px">
+    <div class="nav">
+      <button class="${_planTab==='lote'?'on':''}" data-pt="lote">📋 Por lote</button>
+      <button class="${_planTab==='compras'?'on':''}" data-pt="compras">🛒 Lista de compras</button>
+      <button class="${_planTab==='real'?'on':''}" data-pt="real">📊 Projetado × Realizado</button>
+    </div>
+    ${_planTab==='compras'?_planComprasControls():''}
+  </div>`;
   const body=_planTab==='lote'?_planPorLoteHTML():_planTab==='compras'?_planComprasHTML():_planRealHTML();
-  return `<div class="wrap"${_planTab==='compras'?' style="max-width:none"':''}>${sub}${body}</div>`;
+  const wcls='wrap'+((_planTab==='compras'&&_plcFS)?' plc-fs':'');
+  return `<div class="${wcls}"${_planTab==='compras'?' style="max-width:none"':''}>${sub}${body}</div>`;
 }
 function bindPlanejamento(){
   $$('#main [data-pt]').forEach(b=>b.onclick=()=>{ _planTab=b.dataset.pt; _planEdit=null; render(); });
@@ -2954,6 +2961,38 @@ function gerarComandaDoPlano(id){
   VIEW='nova'; $$('#nav button').forEach(x=>x.classList.toggle('on',x.dataset.v==='nova')); render();
 }
 
+/* ---- Colunas opcionais + controles do topo + tela cheia (Lista de compras) ---- */
+let _plcFS=false;
+function _plcColsDefs(){ return [{k:'composicao',t:'Composição'},{k:'necessario',t:'Necessário'},{k:'estoque',t:'Em estoque'},{k:'comprar',t:'A comprar'},{k:'fornecedores',t:'Fornecedores'},{k:'menor',t:'Menor preço'},{k:'selecionado',t:'Selecionado'},{k:'custo',t:'Custo estimado'}]; }
+function _plcColsVis(){ let v={}; try{ v=JSON.parse(localStorage.getItem('plc_cols')||'{}'); }catch(e){} const o={}; _plcColsDefs().forEach(c=>{ o[c.k]=(v[c.k]!==false); }); return o; }
+function _plcColsSet(k,on){ const v=_plcColsVis(); v[k]=!!on; try{ localStorage.setItem('plc_cols',JSON.stringify(v)); }catch(e){} render(); }
+function _planComprasControls(){
+  const lotesOpt=['<option value="">Todos os lotes</option>'].concat(_ordLotes(S.lotes).map(l=>`<option value="${esc(l.nome)}" ${l.nome===_planLote?'selected':''}>${esc(l.nome)}</option>`)).join('');
+  return `<select id="plc_lote" class="plc-ctl" title="Filtrar por lote">${lotesOpt}</select>`
+    +`<input id="plc_dolar" class="plc-ctl" style="max-width:110px" value="${esc(String(S.dolar).replace('.',','))}" placeholder="Dólar 5,00" title="Dólar (R$)">`
+    +`<button class="btn sm" id="plc_cols" title="Escolher colunas">⚙ Colunas</button>`
+    +`<button class="btn sm" id="plc_fs" title="Tela cheia">${_plcFS?'⤢ Sair tela cheia':'⛶ Tela cheia'}</button>`;
+}
+function _plcAbreColunas(){
+  const vis=_plcColsVis();
+  const boxes=_plcColsDefs().map(c=>`<label style="display:flex;align-items:center;gap:9px;padding:7px 4px;cursor:pointer;font-size:13px"><input type="checkbox" data-ck="${c.k}" ${vis[c.k]?'checked':''}> ${c.t}</label>`).join('');
+  let ov=document.getElementById('plcColsModal');
+  if(!ov){ ov=document.createElement('div'); ov.id='plcColsModal'; ov.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:100001;display:flex;align-items:center;justify-content:center'; document.body.appendChild(ov); }
+  ov.innerHTML=`<div style="background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:16px 18px;min-width:260px;max-width:90vw;max-height:85vh;overflow:auto">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px"><b>Colunas da tabela</b><button class="btn sm" id="plcColsX">fechar</button></div>
+    <div class="hint" style="margin-bottom:6px">Produto fica sempre. Marque o que aparece:</div>${boxes}</div>`;
+  ov.style.display='flex';
+  ov.querySelector('#plcColsX').onclick=()=>{ ov.style.display='none'; };
+  ov.onclick=e=>{ if(e.target===ov) ov.style.display='none'; };
+  ov.querySelectorAll('input[data-ck]').forEach(cb=>cb.onchange=()=>_plcColsSet(cb.dataset.ck, cb.checked));
+}
+function _plcToggleFS(){
+  _plcFS=!_plcFS;
+  const w=document.querySelector('#main .wrap'); if(w) w.classList.toggle('plc-fs',_plcFS);
+  try{ if(_plcFS){ if(document.documentElement.requestFullscreen) document.documentElement.requestFullscreen(); } else if(document.fullscreenElement){ document.exitFullscreen(); } }catch(e){}
+  const b=document.getElementById('plc_fs'); if(b) b.textContent=_plcFS?'⤢ Sair tela cheia':'⛶ Tela cheia';
+  setTimeout(_plcAjustaAltura,80);
+}
 /* ---- Lista de compras (consolidado da safra) ---- */
 function _planComprasHTML(){
   const lotesOpt=['<option value="">Todos os lotes</option>'].concat(_ordLotes(S.lotes).map(l=>`<option value="${esc(l.nome)}" ${l.nome===_planLote?'selected':''}>${esc(l.nome)}</option>`)).join('');
@@ -2965,10 +3004,20 @@ function _planComprasHTML(){
   });
   const nomes=Object.keys(nec).sort((a,b)=>a.localeCompare(b,'pt',{sensitivity:'base',numeric:true}));
   const forns=[...new Set(nomes.flatMap(n=>(S.cotacoes||[]).filter(c=>c.produtoNome===n).map(c=>c.fornecedor||'?')))].sort((a,b)=>a.localeCompare(b,'pt'));
-  const ncol=8+forns.length;
-  // larguras: Produto e Composição com o DOBRO (2u) das demais (1u); escala com o nº de fornecedores
-  const _totU=10+forns.length, _cw=u=>`<col style="width:${(u/_totU*100).toFixed(3)}%">`;
-  const colgroup=`<colgroup>${_cw(2)}${_cw(2)}${_cw(1)}${_cw(1)}${_cw(1)}${forns.map(()=>_cw(1)).join('')}${_cw(1)}${_cw(1)}${_cw(1)}</colgroup>`;
+  const VIS=_plcColsVis();
+  // colunas (ordem + unidade de largura). Produto SEMPRE (3u); demais opcionais (1u; Composição 2u)
+  const cols=[{k:'produto',u:3,th:'Produto'}];
+  if(VIS.composicao) cols.push({k:'composicao',u:2,th:'Composição'});
+  if(VIS.necessario) cols.push({k:'necessario',u:1,th:'Necessário',num:1});
+  if(VIS.estoque) cols.push({k:'estoque',u:1,th:'Em estoque',num:1});
+  if(VIS.comprar) cols.push({k:'comprar',u:1,th:'A comprar',num:1});
+  if(VIS.fornecedores) forns.forEach(f=>cols.push({k:'forn',forn:f,u:1,th:esc(f),num:1}));
+  if(VIS.menor) cols.push({k:'menor',u:1,th:'Menor preço',num:1});
+  if(VIS.selecionado) cols.push({k:'selecionado',u:1,th:'Selecionado'});
+  if(VIS.custo) cols.push({k:'custo',u:1,th:'Custo estimado',num:1});
+  const totU=cols.reduce((s,c)=>s+c.u,0);
+  const colgroup=`<colgroup>${cols.map(c=>`<col style="width:${(c.u/totU*100).toFixed(3)}%">`).join('')}</colgroup>`;
+  const thead=`<thead><tr>${cols.map(c=>`<th${c.num?' class="num"':''}>${c.th}</th>`).join('')}</tr></thead>`;
   let totalComprar=0;
   const rows=nomes.map((n,ri)=>{
     const pr=_prodPorNome(n); const cod=pr?pr.codigo:null;
@@ -3011,31 +3060,26 @@ function _planComprasHTML(){
     }
     const custoEst=aComprarBuy*custo; totalComprar+=custoEst;
     const condNote=nec[n].qtdCond>0?`<div class="sub" style="color:var(--gold)">⚠️ ${fmtBR(nec[n].qtdCond)} ${esc(nec[n].unidade)} condicional</div>`:'';
-    const fornCells=forns.map(f=>{
-      const fc=cots.filter(c=>(c.fornecedor||'?')===f);
-      if(!fc.length) return '<td></td>';
-      return '<td class="num">'+fc.map(c=>`${fmtR$(_cotR$(c))}${menor&&c.id===menor.id?' <span style="color:var(--gold)">◀</span>':''}`).join('<br>')+'</td>';
-    }).join('');
+    const _fornCell=f=>{ const fc=cots.filter(c=>(c.fornecedor||'?')===f); if(!fc.length) return '<td></td>'; return '<td class="num">'+fc.map(c=>`${fmtR$(_cotR$(c))}${menor&&c.id===menor.id?' <span style="color:var(--gold)">◀</span>':''}`).join('<br>')+'</td>'; };
     const menorCell=menor?`<b>${fmtR$(_cotR$(menor))}</b> <span class="sub">${esc(menor.fornecedor||'')}</span>`:'—';
     const selCell=cots.length?`<select class="plc-escolha" data-prod="${esc(n)}" onclick="event.stopPropagation()"><option value="">— menor (auto)</option>${cots.map(c=>`<option value="${c.id}" ${chosen&&chosen.id===c.id?'selected':''}>${esc(c.fornecedor||c.marca||'?')} — ${fmtR$(_cotR$(c))}</option>`).join('')}</select>`:'<span class="sub">—</span>';
-    return `<tr class="plc-row" data-prod="${esc(n)}" style="cursor:pointer">
-      <td>${esc(n)}${subsNote}</td>
-      <td class="sub">${_compResumo(pr)}</td>
-      <td class="num">${fmtBR(necQ)} ${esc(nec[n].unidade)}${condNote}</td>
-      <td class="num">${fmtBR(saldo)}${saldoNote}</td>
-      <td class="num">${aComprar>0?'<b>'+fmtBR(aComprarBuy)+'</b> '+esc(nec[n].unidade)+(ajusteTxt?'<div class="sub" style="color:var(--gold)">⚠️ '+ajusteTxt+'</div>':''):'—'}</td>
-      ${fornCells}
-      <td class="num">${menorCell}</td>
-      <td>${selCell}</td>
-      <td class="num">${custoEst>0?fmtR$(custoEst):'—'}</td></tr>`;
-  }).join('')||`<tr><td colspan="${ncol}" class="hint">Nada planejado ainda.</td></tr>`;
+    const CELL={
+      produto:`<td>${esc(n)}${subsNote}</td>`,
+      composicao:`<td class="sub">${_compResumo(pr)}</td>`,
+      necessario:`<td class="num">${fmtBR(necQ)} ${esc(nec[n].unidade)}${condNote}</td>`,
+      estoque:`<td class="num">${fmtBR(saldo)}${saldoNote}</td>`,
+      comprar:`<td class="num">${aComprar>0?'<b>'+fmtBR(aComprarBuy)+'</b> '+esc(nec[n].unidade)+(ajusteTxt?'<div class="sub" style="color:var(--gold)">⚠️ '+ajusteTxt+'</div>':''):'—'}</td>`,
+      menor:`<td class="num">${menorCell}</td>`,
+      selecionado:`<td>${selCell}</td>`,
+      custo:`<td class="num">${custoEst>0?fmtR$(custoEst):'—'}</td>`
+    };
+    const semCot=cots.length===0;   // sem NENHUMA cotação -> linha vermelha (texto branco vira vermelho; notas já coloridas ficam)
+    const tds=cols.map(c=> c.k==='forn' ? _fornCell(c.forn) : CELL[c.k]).join('');
+    return `<tr class="plc-row" data-prod="${esc(n)}" style="cursor:pointer${semCot?';color:var(--err)':''}">${tds}</tr>`;
+  }).join('')||`<tr><td colspan="${cols.length}" class="hint">Nada planejado ainda.</td></tr>`;
   const painel=_cotProd?_cotPainelHTML(_cotProd, nec[_cotProd]):'';
   return `<div class="plc-flex">
-    <div class="row" style="margin-bottom:10px;gap:16px;align-items:flex-end;flex:0 0 auto">
-      <div class="fcol" style="max-width:240px"><label>Filtrar por lote</label><select id="plc_lote">${lotesOpt}</select></div>
-      <div class="fcol" style="max-width:140px"><label>Dólar (R$)</label><input id="plc_dolar" value="${esc(String(S.dolar).replace('.',','))}" placeholder="5,00"></div>
-    </div>
-    <div class="plc-scroll"><table class="ptbl plc-tbl">${colgroup}<thead><tr><th>Produto</th><th>Composição</th><th class="num">Necessário</th><th class="num">Em estoque</th><th class="num">A comprar</th>${forns.map(f=>'<th class="num">'+esc(f)+'</th>').join('')}<th class="num">Menor preço</th><th>Selecionado</th><th class="num">Custo estimado</th></tr></thead>
+    <div class="plc-scroll"><table class="ptbl plc-tbl">${colgroup}${thead}
     <tbody>${rows}</tbody></table></div>
     <div class="plc-foot">
       <div class="row" style="justify-content:space-between;align-items:baseline;gap:14px;margin:0">
@@ -3051,6 +3095,9 @@ function _bindPlanCompras(){
   _plcAjustaAltura(); if(!window._plcResizeBound){ window._plcResizeBound=true; window.addEventListener('resize',_plcAjustaAltura); }
   const s=$('#plc_lote'); if(s) s.onchange=()=>{ _planLote=s.value; render(); };
   const d=$('#plc_dolar'); if(d) d.onchange=()=>{ const v=numUn(d.value).n; if(v!=null&&v>0){ S.dolar=v; salvarDolarSB(v); } render(); };
+  const bc=$('#plc_cols'); if(bc) bc.onclick=_plcAbreColunas;
+  const bf=$('#plc_fs'); if(bf) bf.onclick=_plcToggleFS;
+  if(!window._plcFsBound){ window._plcFsBound=true; document.addEventListener('fullscreenchange',()=>{ if(!document.fullscreenElement && _plcFS){ _plcFS=false; const w=document.querySelector('#main .wrap'); if(w) w.classList.remove('plc-fs'); const b=document.getElementById('plc_fs'); if(b) b.textContent='⛶ Tela cheia'; setTimeout(_plcAjustaAltura,80); } }); }
   $$('#main .plc-row').forEach(r=>r.onclick=()=>{ _cotProd=(_cotProd===r.dataset.prod)?null:r.dataset.prod; _cotEdit=null; render(); });
   $$('#main .plc-escolha').forEach(s=>{ s.onclick=e=>e.stopPropagation(); s.onchange=()=>_planEscolhaFinal(s.dataset.prod,s.value); });
   _bindCotPainel();

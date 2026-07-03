@@ -144,6 +144,7 @@ async function abrirModulo(key){
   if(!_frames[key]){
     const f=document.createElement('iframe');
     f.dataset.k=key;
+    f.allowFullscreen=true; f.setAttribute('allow','fullscreen');   // permite tela cheia dentro do módulo (Lista de compras)
     let src=m.src;
     if(m.sb){
       // passa a sessão atual + a safra ativa pro módulo Supabase (login único)
