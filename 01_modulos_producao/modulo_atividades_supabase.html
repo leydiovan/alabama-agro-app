@@ -103,6 +103,7 @@ main{padding:16px 22px 60px;}
 .plc-total{font-size:15px;white-space:nowrap;color:var(--text);}
 .plc-ctl{background:var(--bg);border:1px solid var(--border2);border-radius:6px;color:var(--text);padding:6px 8px;font-size:12px;font-family:inherit;}
 .wrap.plc-fs{position:fixed;inset:0;z-index:99999;max-width:none!important;margin:0;border-radius:0;padding:12px 16px;overflow:hidden;}
+.plc-tbl tr.forn-hd td{background:var(--bg3);border-top:2px solid var(--border);padding:9px 7px;font-size:12.5px;}
 .ptbl td{padding:4px 7px;border-bottom:1px solid rgba(31,51,84,.4);font-size:12px;}
 .ptbl input,.ptbl select{background:var(--bg);border:1px solid var(--border2);border-radius:5px;color:var(--text);padding:5px 7px;font-size:12px;width:100%;font-family:inherit;}
 .ptbl .num{text-align:right;}
@@ -2962,7 +2963,7 @@ function gerarComandaDoPlano(id){
 }
 
 /* ---- Colunas opcionais + controles do topo + tela cheia (Lista de compras) ---- */
-let _plcFS=false;
+let _plcFS=false, _plcModoForn=false;
 function _plcColsDefs(){ return [{k:'composicao',t:'Composição'},{k:'necessario',t:'Necessário'},{k:'estoque',t:'Em estoque'},{k:'comprar',t:'A comprar'},{k:'fornecedores',t:'Fornecedores'},{k:'menor',t:'Menor preço'},{k:'selecionado',t:'Selecionado'},{k:'custo',t:'Custo estimado'}]; }
 function _plcColsVis(){ let v={}; try{ v=JSON.parse(localStorage.getItem('plc_cols')||'{}'); }catch(e){} const o={}; _plcColsDefs().forEach(c=>{ o[c.k]=(v[c.k]!==false); }); return o; }
 function _plcColsSet(k,on){ const v=_plcColsVis(); v[k]=!!on; try{ localStorage.setItem('plc_cols',JSON.stringify(v)); }catch(e){} render(); }
@@ -2971,6 +2972,7 @@ function _planComprasControls(){
   return `<select id="plc_lote" class="plc-ctl" title="Filtrar por lote">${lotesOpt}</select>`
     +`<input id="plc_dolar" class="plc-ctl" style="max-width:110px" value="${esc(String(S.dolar).replace('.',','))}" placeholder="Dólar 5,00" title="Dólar (R$)">`
     +`<button class="btn sm" id="plc_cols" title="Escolher colunas">⚙ Colunas</button>`
+    +`<button class="btn sm${_plcModoForn?' success':''}" id="plc_forn" title="Agrupar por fornecedor">🏢 Modo Fornecedor</button>`
     +`<button class="btn sm" id="plc_fs" title="Tela cheia">${_plcFS?'⤢ Sair tela cheia':'⛶ Tela cheia'}</button>`;
 }
 function _plcAbreColunas(){
@@ -2994,6 +2996,25 @@ function _plcToggleFS(){
   _plcNotifyHub();   // avisa o hub p/ esconder o menu do Alabama Gestão
   const b=document.getElementById('plc_fs'); if(b) b.textContent=_plcFS?'⤢ Sair tela cheia':'⛶ Tela cheia';
   setTimeout(_plcAjustaAltura,80);
+}
+/* Visão "Modo Fornecedor": agrupa por fornecedor (1 produto por fornecedor = o selecionado/menor), com subtotal e % */
+function _plcFornHTML(dados, grandTotal){
+  const grupos={};
+  dados.forEach(d=>{ (grupos[d.forn]=grupos[d.forn]||[]).push(d); });
+  const nomes=Object.keys(grupos).sort((a,b)=>{ const sa=grupos[a].reduce((s,x)=>s+x.total,0), sb=grupos[b].reduce((s,x)=>s+x.total,0); return sb-sa; });
+  const cols=[3,2,1,1,1,1], totU=cols.reduce((s,u)=>s+u,0);
+  const colgroup=`<colgroup>${cols.map(u=>`<col style="width:${(u/totU*100).toFixed(2)}%">`).join('')}</colgroup>`;
+  let body='';
+  nomes.forEach(fn=>{
+    const arr=grupos[fn].slice().sort((a,b)=>b.total-a.total);
+    const sub=arr.reduce((s,x)=>s+x.total,0), pct=grandTotal>0?(sub/grandTotal*100):0;
+    body+=`<tr class="forn-hd"><td colspan="6"><b>🏢 ${esc(fn)}</b> — subtotal <b>${fmtR$(sub)}</b> <span class="sub">(${fmtBR(pct)}% do total · ${arr.length} ${arr.length===1?'produto':'produtos'})</span></td></tr>`;
+    arr.forEach(d=>{ const p=grandTotal>0?(d.total/grandTotal*100):0;
+      body+=`<tr><td>${esc(d.nome)}</td><td class="sub">${d.comp}</td><td class="num">${fmtBR(d.qtd)} ${esc(d.un)}</td><td class="num">${fmtR$(d.valor)}</td><td class="num"><b>${fmtR$(d.total)}</b></td><td class="num">${fmtBR(p)}%</td></tr>`;
+    });
+  });
+  if(!body) body='<tr><td colspan="6" class="hint">Nada a comprar nesta safra/lote.</td></tr>';
+  return `<div class="plc-scroll"><table class="ptbl plc-tbl">${colgroup}<thead><tr><th>Produto</th><th>Composição</th><th class="num">A comprar</th><th class="num">Valor unit.</th><th class="num">Total</th><th class="num">% do total</th></tr></thead><tbody>${body}</tbody></table></div>`;
 }
 /* ---- Lista de compras (consolidado da safra) ---- */
 function _planComprasHTML(){
@@ -3021,6 +3042,7 @@ function _planComprasHTML(){
   const colgroup=`<colgroup>${cols.map(c=>`<col style="width:${(c.u/totU*100).toFixed(3)}%">`).join('')}</colgroup>`;
   const thead=`<thead><tr>${cols.map(c=>`<th${c.num?' class="num"':''}>${c.th}</th>`).join('')}</tr></thead>`;
   let totalComprar=0;
+  const dadosForn=[];   // p/ o Modo Fornecedor: só o que precisa comprar, sob o fornecedor selecionado/menor
   const rows=nomes.map((n,ri)=>{
     const pr=_prodPorNome(n); const cod=pr?pr.codigo:null;
     const ea=_estoqueEquivAtivo(n);
@@ -3061,6 +3083,7 @@ function _planComprasHTML(){
       }
     }
     const custoEst=aComprarBuy*custo; totalComprar+=custoEst;
+    if(aComprar>1e-9) dadosForn.push({nome:n, comp:_compResumo(pr), qtd:aComprarBuy, un:nec[n].unidade, valor:custo, total:custoEst, forn: efetiva?(efetiva.fornecedor||'—'):'⚠️ sem cotação'});
     const condNote=nec[n].qtdCond>0?`<div class="sub" style="color:var(--gold)">⚠️ ${fmtBR(nec[n].qtdCond)} ${esc(nec[n].unidade)} condicional</div>`:'';
     const _fornCell=f=>{ const fc=cots.filter(c=>(c.fornecedor||'?')===f); if(!fc.length) return '<td></td>'; return '<td class="num">'+fc.map(c=>`${fmtR$(_cotR$(c))}${menor&&c.id===menor.id?' <span style="color:var(--gold)">◀</span>':''}`).join('<br>')+'</td>'; };
     const menorCell=menor?`<b>${fmtR$(_cotR$(menor))}</b> <span class="sub">${esc(menor.fornecedor||'')}</span>`:'—';
@@ -3081,9 +3104,9 @@ function _planComprasHTML(){
     return `<tr class="plc-row" data-prod="${esc(n)}" style="cursor:pointer${_corLinha?';color:'+_corLinha:''}">${tds}</tr>`;
   }).join('')||`<tr><td colspan="${cols.length}" class="hint">Nada planejado ainda.</td></tr>`;
   const painel=_cotProd?_cotPainelHTML(_cotProd, nec[_cotProd]):'';
+  const scrollHTML=_plcModoForn?_plcFornHTML(dadosForn,totalComprar):`<div class="plc-scroll"><table class="ptbl plc-tbl">${colgroup}${thead}<tbody>${rows}</tbody></table></div>`;
   return `<div class="plc-flex">
-    <div class="plc-scroll"><table class="ptbl plc-tbl">${colgroup}${thead}
-    <tbody>${rows}</tbody></table></div>
+    ${scrollHTML}
     <div class="plc-foot">
       <div class="row" style="justify-content:space-between;align-items:baseline;gap:14px;margin:0">
         <div class="hint" style="margin:0;flex:1">Estoque substituível: <b>mesmo ativo</b> + <b>mesma formulação</b> somam no "Em estoque" pela <b>concentração</b>. <b>Misturas</b> só via cotações. Clique num produto para cotar/comparar.</div>
@@ -3099,6 +3122,7 @@ function _bindPlanCompras(){
   const s=$('#plc_lote'); if(s) s.onchange=()=>{ _planLote=s.value; render(); };
   const d=$('#plc_dolar'); if(d) d.onchange=()=>{ const v=numUn(d.value).n; if(v!=null&&v>0){ S.dolar=v; salvarDolarSB(v); } render(); };
   const bc=$('#plc_cols'); if(bc) bc.onclick=_plcAbreColunas;
+  const bmf=$('#plc_forn'); if(bmf) bmf.onclick=()=>{ _plcModoForn=!_plcModoForn; render(); };
   const bf=$('#plc_fs'); if(bf) bf.onclick=_plcToggleFS;
   if(!window._plcFsBound){ window._plcFsBound=true; document.addEventListener('fullscreenchange',()=>{ if(!document.fullscreenElement && _plcFS){ _plcFS=false; const w=document.querySelector('#main .wrap'); if(w) w.classList.remove('plc-fs'); const b=document.getElementById('plc_fs'); if(b) b.textContent='⛶ Tela cheia'; _plcNotifyHub(); setTimeout(_plcAjustaAltura,80); } }); }
   $$('#main .plc-row').forEach(r=>r.onclick=()=>{ _cotProd=(_cotProd===r.dataset.prod)?null:r.dataset.prod; _cotEdit=null; render(); });
