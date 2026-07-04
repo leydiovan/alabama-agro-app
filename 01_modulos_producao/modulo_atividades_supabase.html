@@ -2579,8 +2579,12 @@ function _custosDefault(tipo){ const t=tipo||'';
 function _custoLinha(c, area){ const v=numUn((c&&c.valor)||'').n; if(v==null) return 0; const q=(c&&c.base==='total')? v : v*(area||0); return (c&&c.modo==='produto')? q*_custoUnitProd(c.prod||'') : q; }
 function _custoOperacao(p){ const a=_areaPlan(p.lote,p.areaParcial); return (p.custos||[]).reduce((s,c)=>s+_custoLinha(c,a),0); }
 function _cotMenor(nome){ const cots=(S.cotacoes||[]).filter(c=>c.produtoNome===nome); if(!cots.length) return null;
-  const todosConc=cots.every(c=>(+c.concentracao||0)>0);   // se TODAS têm concentração, compara por R$/ativo (senão, preço bruto)
-  const val=c=>{ const r=_cotR$(c); return todosConc?(r/(+c.concentracao)):r; };
+  const pr=_prodPorNome(nome);
+  // se dá p/ medir o volume equivalente por multi-ativo (limitante), compara pelo CUSTO EFETIVO = preço × volume necessário
+  const podeMult = !!(pr && pr.ativos && pr.ativos.length) && cots.every(c=>{ const s=_prodPorNome(c.marca); return s && _multiplicadorAtivos(pr.ativos, s.ativos); });
+  let val;
+  if(podeMult){ val=c=>{ const s=_prodPorNome(c.marca), mm=_multiplicadorAtivos(pr.ativos, s.ativos); return _cotR$(c)*(mm?mm.mult:1); }; }   // multi/single ativo: custo real p/ a necessidade
+  else { const todosConc=cots.every(c=>(+c.concentracao||0)>0); val=c=>{ const r=_cotR$(c); return todosConc?(r/(+c.concentracao)):r; }; }   // fallback: por concentração (ou preço bruto)
   return cots.reduce((m,c)=>val(c)<val(m)?c:m); }
 function _custoUnitProd(nome){ const pr=_prodPorNome(nome); const cod=pr?pr.codigo:null; const e=_cotEscolhida(nome)||_cotMenor(nome); return e?_cotR$(e):((cod!=null&&S.custoProd[cod])?S.custoProd[cod]:(pr?+pr.preco||0:0)); }
 function _custoProdutosAtiv(p){ return (p.produtos||[]).reduce((s,pr)=>{ const q=_planQtd(pr,p.lote,p.sementeKgha,p.areaParcial); if(q==null) return s; return s+q*_custoUnitProd(pr.nome); },0); }
