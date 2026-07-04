@@ -2575,7 +2575,10 @@ function _custosDefault(tipo){ const t=tipo||'';
 }
 function _custoLinha(c, area){ const v=numUn((c&&c.valor)||'').n; if(v==null) return 0; const q=(c&&c.base==='total')? v : v*(area||0); return (c&&c.modo==='produto')? q*_custoUnitProd(c.prod||'') : q; }
 function _custoOperacao(p){ const a=_areaPlan(p.lote,p.areaParcial); return (p.custos||[]).reduce((s,c)=>s+_custoLinha(c,a),0); }
-function _cotMenor(nome){ const cots=(S.cotacoes||[]).filter(c=>c.produtoNome===nome); if(!cots.length) return null; return cots.reduce((m,c)=>_cotR$(c)<_cotR$(m)?c:m); }
+function _cotMenor(nome){ const cots=(S.cotacoes||[]).filter(c=>c.produtoNome===nome); if(!cots.length) return null;
+  const todosConc=cots.every(c=>(+c.concentracao||0)>0);   // se TODAS têm concentração, compara por R$/ativo (senão, preço bruto)
+  const val=c=>{ const r=_cotR$(c); return todosConc?(r/(+c.concentracao)):r; };
+  return cots.reduce((m,c)=>val(c)<val(m)?c:m); }
 function _custoUnitProd(nome){ const pr=_prodPorNome(nome); const cod=pr?pr.codigo:null; const e=_cotEscolhida(nome)||_cotMenor(nome); return e?_cotR$(e):((cod!=null&&S.custoProd[cod])?S.custoProd[cod]:(pr?+pr.preco||0:0)); }
 function _custoProdutosAtiv(p){ return (p.produtos||[]).reduce((s,pr)=>{ const q=_planQtd(pr,p.lote,p.sementeKgha,p.areaParcial); if(q==null) return s; return s+q*_custoUnitProd(pr.nome); },0); }
 function _estimativaAtiv(p){ return _custoProdutosAtiv(p)+_custoOperacao(p); }
@@ -2977,10 +2980,27 @@ function _plcArredKey(){ return 'plc_arred_'+(typeof SAFRA!=='undefined'?SAFRA:'
 function _plcArredAll(){ try{ return JSON.parse(localStorage.getItem(_plcArredKey())||'{}')||{}; }catch(e){ return {}; } }
 function _plcArredGet(nome){ const v=_plcArredAll()[nome]; return (typeof v==='number'&&isFinite(v))?v:null; }
 function _plcArredSet(nome,val){ const a=_plcArredAll(); if(val==null) delete a[nome]; else a[nome]=val; try{ localStorage.setItem(_plcArredKey(), JSON.stringify(a)); }catch(e){} render(); }
+function _plcDolarModo(){ try{ return localStorage.getItem('plc_dolar_modo')==='ptax'?'ptax':'manual'; }catch(e){ return 'manual'; } }
+async function _fetchPTAX(){   // PTAX de venda mais recente (Banco Central / olinda)
+  const pad=n=>String(n).padStart(2,'0'), fmt=d=>pad(d.getMonth()+1)+'-'+pad(d.getDate())+'-'+d.getFullYear();
+  const hoje=new Date(), ini=new Date(hoje.getTime()-8*86400000);
+  const url="https://olinda.bcb.gov.br/olinda/servico/PTAX/versao/v1/odata/CotacaoDolarPeriodo(dataInicial=@i,dataFinalCotacao=@f)?@i='"+fmt(ini)+"'&@f='"+fmt(hoje)+"'&$format=json";
+  const r=await fetch(url); if(!r.ok) throw new Error('HTTP '+r.status);
+  const arr=((await r.json())||{}).value||[]; if(!arr.length) throw new Error('sem PTAX no período');
+  arr.sort((a,b)=>String(a.dataHoraCotacao).localeCompare(String(b.dataHoraCotacao)));
+  const v=arr[arr.length-1]; if(!v||!v.cotacaoVenda) throw new Error('sem cotação');
+  return {valor:+v.cotacaoVenda, data:String(v.dataHoraCotacao||'').slice(0,10)};
+}
+async function _plcAplicaPTAX(){
+  _statusSB('🔄 Buscando PTAX…','#3498db');
+  try{ const p=await _fetchPTAX(); S.dolar=p.valor; salvarDolarSB(p.valor); _statusSB('✅ PTAX '+fmtBR(p.valor)+' ('+p.data+')','#27ae60'); render(); }
+  catch(e){ try{ localStorage.setItem('plc_dolar_modo','manual'); }catch(_){} _statusSB('❌ PTAX indisponível ('+e.message+') — usando manual','#c0392b'); render(); }
+}
 function _planComprasControls(){
   const lotesOpt=['<option value="">Todos os lotes</option>'].concat(_ordLotes(S.lotes).map(l=>`<option value="${esc(l.nome)}" ${l.nome===_planLote?'selected':''}>${esc(l.nome)}</option>`)).join('');
   return `<select id="plc_lote" class="plc-ctl" title="Filtrar por lote">${lotesOpt}</select>`
-    +`<input id="plc_dolar" class="plc-ctl" style="max-width:110px" value="${esc(String(S.dolar).replace('.',','))}" placeholder="Dólar 5,00" title="Dólar (R$)">`
+    +`<select id="plc_dolar_modo" class="plc-ctl" title="Fonte do dólar"><option value="manual"${_plcDolarModo()!=='ptax'?' selected':''}>Dólar manual</option><option value="ptax"${_plcDolarModo()==='ptax'?' selected':''}>PTAX auto</option></select>`
+    +`<input id="plc_dolar" class="plc-ctl" style="max-width:100px" value="${esc(String(S.dolar).replace('.',','))}" placeholder="5,00" title="Dólar (R$)"${_plcDolarModo()==='ptax'?' readonly':''}>`
     +`<button class="btn sm" id="plc_cols" title="Escolher colunas">⚙ Colunas</button>`
     +`<button class="btn sm${_plcModoForn?' success':''}" id="plc_forn" title="Agrupar por fornecedor">🏢 Modo Fornecedor</button>`
     +`<button class="btn sm" id="plc_fs" title="Tela cheia">${_plcFS?'⤢ Sair tela cheia':'⛶ Tela cheia'}</button>`;
@@ -3144,6 +3164,8 @@ function _bindPlanCompras(){
   const _sc=document.querySelector('#main .plc-scroll'); if(_sc){ _sc.scrollTop=_plcScrollTop; _sc.addEventListener('scroll',()=>{ _plcScrollTop=_sc.scrollTop; }); }   // mantém a rolagem no lugar entre re-renders
   const s=$('#plc_lote'); if(s) s.onchange=()=>{ _planLote=s.value; render(); };
   const d=$('#plc_dolar'); if(d) d.onchange=()=>{ const v=numUn(d.value).n; if(v!=null&&v>0){ S.dolar=v; salvarDolarSB(v); } render(); };
+  const dm=$('#plc_dolar_modo'); if(dm) dm.onchange=()=>{ try{ localStorage.setItem('plc_dolar_modo', dm.value==='ptax'?'ptax':'manual'); }catch(e){} if(dm.value==='ptax'){ window._ptaxOnce=true; _plcAplicaPTAX(); } else render(); };
+  if(_plcDolarModo()==='ptax' && !window._ptaxOnce){ window._ptaxOnce=true; _plcAplicaPTAX(); }   // busca a PTAX 1x por sessão quando no modo automático
   const bc=$('#plc_cols'); if(bc) bc.onclick=_plcAbreColunas;
   const bmf=$('#plc_forn'); if(bmf) bmf.onclick=()=>{ _plcModoForn=!_plcModoForn; render(); };
   const bf=$('#plc_fs'); if(bf) bf.onclick=_plcToggleFS;
