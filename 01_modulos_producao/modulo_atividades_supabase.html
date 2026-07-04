@@ -3812,7 +3812,7 @@ async function carregarDoSupabase(){
     try{
       const r=await SB.from('produtos').select('*');
       if(!r.error && r.data && r.data.length){
-        S.produtos = r.data.map(p=>({codigo:p.codigo, nome:p.nome, comp:p.comp, tipo:p.classe||p.tipo, tipoBase:p.tipo, classe:p.classe, formulacao:p.formulacao, unidade:p.unidade, preco:p.preco, sementeTipo:p.semente_tipo||'', ativos:(Array.isArray(p.ativos)&&p.ativos.length)?p.ativos:_parseAtivosPlan(p.comp,p.tipo)}));
+        S.produtos = r.data.map(p=>({codigo:p.codigo, nome:p.nome, comp:p.comp, tipo:p.classe||p.tipo, tipoBase:p.tipo, classe:p.classe, formulacao:p.formulacao, unidade:p.unidade, preco:p.preco, sementeTipo:p.semente_tipo||'', ativos:(Array.isArray(p.ativos)&&p.ativos.length)?p.ativos:[]}));   /* usa só o ativo estruturado; não adivinha mais pelo comp */
       }
     }catch(e){ console.warn('produtos',e); }
 
