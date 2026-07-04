@@ -107,7 +107,8 @@ main{padding:16px 22px 60px;}
 .plc-arred{color:var(--ok)!important;cursor:text;outline:none;font-weight:600;}
 .plc-arred:empty::before{content:'—';color:var(--muted);font-weight:400;}
 .plc-arred:focus{background:rgba(39,174,96,.14);border-radius:4px;}
-.plc-arred-hd{display:inline-flex;align-items:center;gap:5px;cursor:pointer;text-transform:none;}
+.plc-arred-hd{cursor:pointer;color:var(--text);}
+.plc-arred-hd.off{color:var(--muted);opacity:.55;}
 .plc-tbl.arred-off .plc-arred{color:var(--muted)!important;opacity:.5;font-weight:400;}
 .ptbl td{padding:4px 7px;border-bottom:1px solid rgba(31,51,84,.4);font-size:12px;}
 .ptbl input,.ptbl select{background:var(--bg);border:1px solid var(--border2);border-radius:5px;color:var(--text);padding:5px 7px;font-size:12px;width:100%;font-family:inherit;}
@@ -3075,7 +3076,7 @@ function _planComprasHTML(){
   if(VIS.necessario) cols.push({k:'necessario',u:1,th:'Necessário',num:1});
   if(VIS.estoque) cols.push({k:'estoque',u:1,th:'Em estoque',num:1});
   if(VIS.comprar) cols.push({k:'comprar',u:1,th:'A comprar',num:1});
-  if(VIS.arredondar) cols.push({k:'arredondar',u:1,th:`<label class="plc-arred-hd" title="Ativar/desativar o Arredondar como prioridade"><input type="checkbox" id="plc_arred_on"${_plcArredOn()?' checked':''}> Arredondar</label>`,num:1});
+  if(VIS.arredondar) cols.push({k:'arredondar',u:1,th:`<span class="plc-arred-hd${_plcArredOn()?'':' off'}" id="plc_arred_on" title="Clique para ativar/desativar o Arredondar">Arredondar</span>`,num:1});
   forns.forEach(f=>{ if(_plcFornVis(f)) cols.push({k:'forn',forn:f,u:1,th:esc(f),num:1}); });
   if(VIS.menor) cols.push({k:'menor',u:1,th:'Menor preço',num:1});
   if(VIS.selecionado) cols.push({k:'selecionado',u:1,th:'Selecionado'});
@@ -3188,7 +3189,7 @@ function _bindPlanCompras(){
   if(!window._plcFsBound){ window._plcFsBound=true; document.addEventListener('fullscreenchange',()=>{ if(!document.fullscreenElement && _plcFS){ _plcFS=false; const w=document.querySelector('#main .wrap'); if(w) w.classList.remove('plc-fs'); const b=document.getElementById('plc_fs'); if(b) b.textContent='⛶ Tela cheia'; _plcNotifyHub(); setTimeout(_plcAjustaAltura,80); } }); }
   $$('#main .plc-row').forEach(r=>r.onclick=()=>{ _cotProd=(_cotProd===r.dataset.prod)?null:r.dataset.prod; _cotEdit=null; render(); });
   $$('#main .plc-escolha').forEach(s=>{ s.onclick=e=>e.stopPropagation(); s.onchange=()=>_planEscolhaFinal(s.dataset.prod,s.value); });
-  const ao=$('#plc_arred_on'); if(ao) ao.onchange=()=>_plcArredOnSet(ao.checked);
+  const ao=$('#plc_arred_on'); if(ao) ao.onclick=()=>_plcArredOnSet(!_plcArredOn());
   $$('#main .plc-arred').forEach(td=>{
     td.onclick=e=>e.stopPropagation();   // não abre a cotação ao clicar p/ editar
     td.onkeydown=e=>{ if(e.key==='Enter'){ e.preventDefault(); td.blur(); } };
