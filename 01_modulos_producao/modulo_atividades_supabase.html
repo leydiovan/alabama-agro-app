@@ -177,7 +177,7 @@ window.__POLIGONAIS__ = [];</script>
 /* ====================== ESTADO (seed injetado no final) ====================== */
 let S = window.__SEED__; if(!S.produtos) S.produtos=[];
 S.planejamento=S.planejamento||[]; S.saldoProd=S.saldoProd||{}; S.custoProd=S.custoProd||{};
-S.cotacoes=S.cotacoes||[]; S.dolar=S.dolar||5; S.unidades=S.unidades||[]; S.fornecedores=S.fornecedores||[];
+S.cotacoes=S.cotacoes||[]; S.dolar=S.dolar||5; S.unidades=S.unidades||[]; S.fornecedores=S.fornecedores||[]; S.arred=S.arred||{on:true,val:{}};
 
 /* tipos de atividade -> perfil/diário (extensível no futuro via cadastro) */
 const TIPO_PERFIL = (function(){
@@ -2985,12 +2985,13 @@ function _plcColsVis(){ const v=_plcColsRaw(); const o={}; _plcColsDefs().forEac
 function _plcFornVis(name){ return _plcColsRaw()['forn:'+name]!==false; }   // cada fornecedor é individual (dinâmico)
 function _plcColsSet(k,on){ const v=_plcColsRaw(); v[k]=!!on; try{ localStorage.setItem('plc_cols',JSON.stringify(v)); }catch(e){} render(); }
 /* "Arredondar" = quantidade real de compra (override manual), por safra no aparelho; tem prioridade sobre "A comprar" */
-function _plcArredKey(){ return 'plc_arred_'+(typeof SAFRA!=='undefined'?SAFRA:''); }
-function _plcArredAll(){ try{ return JSON.parse(localStorage.getItem(_plcArredKey())||'{}')||{}; }catch(e){ return {}; } }
-function _plcArredGet(nome){ const v=_plcArredAll()[nome]; return (typeof v==='number'&&isFinite(v))?v:null; }
-function _plcArredSet(nome,val){ const a=_plcArredAll(); if(val==null) delete a[nome]; else a[nome]=val; try{ localStorage.setItem(_plcArredKey(), JSON.stringify(a)); }catch(e){} render(); }
-function _plcArredOn(){ try{ return localStorage.getItem('plc_arred_on')!=='0'; }catch(e){ return true; } }   // liga/desliga a prioridade do Arredondar (padrão ligado)
-function _plcArredOnSet(on){ try{ localStorage.setItem('plc_arred_on', on?'1':'0'); }catch(e){} render(); }
+/* Arredondar agora é do BANCO (config chave 'arred_<safra>'), pra ser igual em qualquer navegador/origem */
+function _plcArredG(){ if(!S.arred||typeof S.arred!=='object') S.arred={on:true,val:{}}; if(!S.arred.val) S.arred.val={}; return S.arred; }
+function _plcArredGet(nome){ const v=_plcArredG().val[nome]; return (typeof v==='number'&&isFinite(v))?v:null; }
+function _plcArredSet(nome,val){ const a=_plcArredG(); if(val==null) delete a.val[nome]; else a.val[nome]=val; _salvarArredSB(); render(); }
+function _plcArredOn(){ return _plcArredG().on!==false; }   // liga/desliga a prioridade (padrão ligado)
+function _plcArredOnSet(on){ _plcArredG().on=!!on; _salvarArredSB(); render(); }
+async function _salvarArredSB(){ if(!SB) return; try{ await SB.from('config').upsert({chave:'arred_'+SAFRA, valor:JSON.stringify(_plcArredG())},{onConflict:'chave'}); }catch(e){ console.warn('arred',e); } }
 function _plcOrdemGet(){ try{ return localStorage.getItem('plc_ordem')||'nome'; }catch(e){ return 'nome'; } }
 function _plcDolarModo(){ try{ return localStorage.getItem('plc_dolar_modo')==='ptax'?'ptax':'manual'; }catch(e){ return 'manual'; } }
 async function _fetchPTAX(){   // PTAX de venda mais recente (Banco Central / olinda)
@@ -3839,6 +3840,11 @@ async function carregarDoSupabase(){
       if(!r.error) S.cotacoes=(r.data||[]).map(c=>({id:c.id, produtoNome:c.produto_nome, fornecedor:c.fornecedor||'', marca:c.marca||'', preco:+c.preco||0, moeda:c.moeda||'BRL', prazo:c.prazo||'', concentracao:c.concentracao, ativo:c.ativo||'', fatorConv:c.fator_conv, unidade:c.unidade||'', obs:c.obs||'', escolhida:!!c.escolhida}));
     }catch(e){ console.warn('cotacoes',e); }
     try{ const r=await SB.from('config').select('*').eq('chave','dolar').single(); if(r.data&&r.data.valor){ const d=parseFloat(String(r.data.valor).replace(',','.')); if(!isNaN(d)) S.dolar=d; } }catch(e){}
+    try{ const ra=await SB.from('config').select('valor').eq('chave','arred_'+SAFRA).single(); const o=(ra.data&&ra.data.valor)?JSON.parse(ra.data.valor):null;
+      if(o&&typeof o==='object'){ S.arred={on:o.on!==false, val:o.val||{}}; }
+      else { let lv={}; try{ lv=JSON.parse(localStorage.getItem('plc_arred_'+SAFRA)||'{}')||{}; }catch(e){} let lon=true; try{ lon=localStorage.getItem('plc_arred_on')!=='0'; }catch(e){}
+        S.arred={on:lon, val:lv}; if(Object.keys(lv).length){ _salvarArredSB(); } }   // migra o localStorage antigo -> banco (1x)
+    }catch(e){ S.arred={on:true,val:{}}; }   // Arredondar agora vem do banco (por safra)
 
     /* ----- SALDO do Almoxarifado (compartilhado; p/ lista de compras) ----- */
     try{
