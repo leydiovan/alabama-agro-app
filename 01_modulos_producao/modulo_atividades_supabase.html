@@ -3073,21 +3073,30 @@ function _plcExpDefs(){ return [
   {k:'sugerido',t:'A comprar (sugerida)',num:1},{k:'arredondar',t:'Arredondar',num:1},{k:'qtd',t:'Qtd a comprar',dft:1,num:1},
   {k:'valor',t:'Valor unit.',dft:1,num:1},{k:'total',t:'Total',dft:1,num:1},{k:'menor',t:'Menor preço',num:1},{k:'forn',t:'Fornecedor',dft:1} ]; }
 function _plcExpVis(){ let v=null; try{ v=JSON.parse(localStorage.getItem('plc_exp_cols')||'null'); }catch(e){} const o={}; _plcExpDefs().forEach(c=>{ o[c.k]= v?(v[c.k]===true):!!c.dft; }); return o; }
-function _plcExpSet(k,on){ const v=_plcExpVis(); v[k]=!!on; try{ localStorage.setItem('plc_exp_cols',JSON.stringify(v)); }catch(e){} }
-function _plcExpColsList(){ const vis=_plcExpVis(); const L=[{k:'produto',t:'Produto',num:0}]; _plcExpDefs().forEach(c=>{ if(vis[c.k]) L.push(c); }); return L; }
-function _plcExpCell(k,x){ const br=v=>Number(v||0).toLocaleString('pt-BR',{maximumFractionDigits:2}); const rl=v=>'R$ '+Number(v||0).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2});
+function _plcExpSet(k,on){ let raw=null; try{ raw=JSON.parse(localStorage.getItem('plc_exp_cols')||'null'); }catch(e){} if(!raw){ raw={}; _plcExpDefs().forEach(c=>raw[c.k]=!!c.dft); } raw[k]=!!on; try{ localStorage.setItem('plc_exp_cols',JSON.stringify(raw)); }catch(e){} }
+function _plcExpFornVis(name){ let v=null; try{ v=JSON.parse(localStorage.getItem('plc_exp_cols')||'null'); }catch(e){} return !!(v && v['forn:'+name]===true); }
+function _plcExpColsList(){ const vis=_plcExpVis(); const L=[{k:'produto',t:'Produto',num:0}];
+  _plcExpDefs().forEach(c=>{ if(c.k==='menor') _plcFornsAtual.forEach(f=>{ if(_plcExpFornVis(f)) L.push({k:'fornpreco',forn:f,t:f,num:1}); }); if(vis[c.k]) L.push(c); });
+  return L; }
+function _plcExpCell(c,x){ const k=c.k; const br=v=>Number(v||0).toLocaleString('pt-BR',{maximumFractionDigits:2}); const rl=v=>'R$ '+Number(v||0).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2});
   switch(k){ case 'produto': return x.nome+(x.plano?(' (plan.: '+x.plano+')'):'');
     case 'composicao': return _plcCompTxt(x.comp); case 'necessario': return br(x.nec)+' '+x.un; case 'estoque': return br(x.est);
     case 'sugerido': return br(x.sugerido)+' '+x.un; case 'arredondar': return x.arred!=null?br(x.arred):'—'; case 'qtd': return br(x.qtd)+' '+x.un;
-    case 'valor': return rl(x.valor); case 'total': return rl(x.total); case 'menor': return x.menor!=null?(rl(x.menor)+(x.menorForn?(' ('+x.menorForn+')'):'')):'—'; case 'forn': return x.forn; default: return ''; } }
+    case 'valor': return rl(x.valor); case 'total': return rl(x.total); case 'menor': return x.menor!=null?(rl(x.menor)+(x.menorForn?(' ('+x.menorForn+')'):'')):'—'; case 'forn': return x.forn;
+    case 'fornpreco': return (x.fp&&x.fp[c.forn]!=null)?rl(x.fp[c.forn]):'—'; default: return ''; } }
 function _plcAbreExpCols(){
   const vis=_plcExpVis();
-  const boxes=_plcExpDefs().map(c=>`<label style="display:flex;align-items:center;gap:9px;padding:6px 4px;cursor:pointer;font-size:13px"><input type="checkbox" data-ek="${c.k}" ${vis[c.k]?'checked':''}> ${c.t}</label>`).join('');
+  const lb=(ek,txt,ck)=>`<label style="display:flex;align-items:center;gap:9px;padding:6px 4px;cursor:pointer;font-size:13px"><input type="checkbox" data-ek="${ek}" ${ck?'checked':''}> ${txt}</label>`;
+  const boxes=_plcExpDefs().map(c=>lb(c.k,c.t,vis[c.k])).join('');
+  const fboxes=_plcFornsAtual.length
+    ? `<div class="hint" style="margin:11px 0 2px;color:var(--gold);text-transform:uppercase;letter-spacing:.5px;font-size:11px">Fornecedores (preços)</div>`
+      + _plcFornsAtual.map(f=>lb('forn:'+esc(f), esc(f), _plcExpFornVis(f))).join('')
+    : '';
   let ov=document.getElementById('plcExpModal');
   if(!ov){ ov=document.createElement('div'); ov.id='plcExpModal'; ov.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:100001;display:flex;align-items:center;justify-content:center'; document.body.appendChild(ov); }
   ov.innerHTML=`<div style="background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:16px 18px;min-width:260px;max-width:90vw;max-height:85vh;overflow:auto">
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px"><b>Colunas do export</b><button class="btn sm" id="plcExpX">fechar</button></div>
-    <div class="hint" style="margin-bottom:6px">Produto sempre. Marque o que vai no Imprimir / CSV / Excel:</div>${boxes}</div>`;
+    <div class="hint" style="margin-bottom:6px">Produto sempre. Marque o que vai no Imprimir / CSV / Excel:</div>${boxes}${fboxes}</div>`;
   ov.style.display='flex';
   ov.querySelector('#plcExpX').onclick=()=>{ ov.style.display='none'; };
   ov.onclick=e=>{ if(e.target===ov) ov.style.display='none'; };
@@ -3100,7 +3109,7 @@ function _plcExportCSV(){
   const R=[ cols.map(c=>c.t) ];
   _plcExportLinhas().forEach(l=>{
     if(l.tipo==='grupo') R.push(['>> '+l.forn+' — subtotal R$ '+br(l.sub)+' ('+br(l.pct)+'%)']);
-    else if(l.tipo==='item') R.push(cols.map(c=>_plcExpCell(c.k,l)));
+    else if(l.tipo==='item') R.push(cols.map(c=>_plcExpCell(c,l)));
     else { R.push([]); R.push(['TOTAL A COMPRAR (R$): '+br(l.total)]); }
   });
   _plcBaixar('﻿'+R.map(r=>r.map(q).join(sep)).join('\r\n'), 'text/csv;charset=utf-8', 'csv');
@@ -3112,7 +3121,7 @@ function _plcExportXLS(){
   let body='<tr>'+cols.map(c=>'<th>'+esc(c.t)+'</th>').join('')+'</tr>';
   _plcExportLinhas().forEach(l=>{
     if(l.tipo==='grupo') body+='<tr class="g"><td colspan="'+ncol+'"><b>'+esc(l.forn)+'</b> — subtotal R$ '+br(l.sub)+' ('+br(l.pct)+'%)</td></tr>';
-    else if(l.tipo==='item') body+='<tr>'+cols.map(c=>'<td'+(c.num?' class="m"':'')+'>'+esc(_plcExpCell(c.k,l))+'</td>').join('')+'</tr>';
+    else if(l.tipo==='item') body+='<tr>'+cols.map(c=>'<td'+(c.num?' class="m"':'')+'>'+esc(_plcExpCell(c,l))+'</td>').join('')+'</tr>';
     else body+='<tr class="t"><td colspan="'+Math.max(1,ncol-1)+'"><b>TOTAL A COMPRAR</b></td>'+(ncol>1?'<td class="m"><b>'+rl(l.total)+'</b></td>':'')+'</tr>';
   });
   const html='<html xmlns:x="urn:schemas-microsoft-com:office:excel"><head><meta charset="utf-8"><style>'
@@ -3130,7 +3139,7 @@ function _plcImprimir(){
   let body='';
   _plcExportLinhas().forEach(l=>{
     if(l.tipo==='grupo') body+='<tr class="hd"><td colspan="'+ncol+'"><b>'+esc(l.forn)+'</b> — subtotal '+rl(l.sub)+' ('+br(l.pct)+'%)</td></tr>';
-    else if(l.tipo==='item') body+='<tr>'+cols.map(c=>'<td'+(c.num?' class="n"':'')+'>'+esc(_plcExpCell(c.k,l))+'</td>').join('')+'</tr>';
+    else if(l.tipo==='item') body+='<tr>'+cols.map(c=>'<td'+(c.num?' class="n"':'')+'>'+esc(_plcExpCell(c,l))+'</td>').join('')+'</tr>';
   });
   const thead='<tr>'+cols.map(c=>'<th'+(c.num?' class="n"':'')+'>'+esc(c.t)+'</th>').join('')+'</tr>';
   const tfoot='<tr><td colspan="'+Math.max(1,ncol-1)+'" class="n"><b>Total a comprar</b></td>'+(ncol>1?'<td class="n"><b>'+rl(d.total)+'</b></td>':'')+'</tr>';
@@ -3238,7 +3247,8 @@ function _planComprasHTML(){
     const _temSub = !!(_subP && _subP.nome && _subP.nome!==n);
     const _selNome = _temSub ? _subP.nome : n;   // mostra o selecionado; planejado fica em 2º plano
     const custoEst=qtdCompra*custo; totalComprar+=custoEst;
-    if(qtdCompra>1e-9) dadosForn.push({nome:_selNome, plano:_temSub?n:'', comp:_compResumo(_temSub?_subP:pr), nec:necQ, est:saldo, sugerido:aComprarBuy, arred:arred, qtd:qtdCompra, un:nec[n].unidade, valor:custo, total:custoEst, menor:(menor?_cotR$(menor):null), menorForn:(menor?(menor.fornecedor||''):''), forn: efetiva?(efetiva.fornecedor||'—'):'⚠️ sem cotação'});
+    const _fp={}; cots.forEach(c=>{ const f=c.fornecedor||'?', v=_cotR$(c); if(_fp[f]==null||v<_fp[f]) _fp[f]=v; });
+    if(qtdCompra>1e-9) dadosForn.push({nome:_selNome, plano:_temSub?n:'', comp:_compResumo(_temSub?_subP:pr), nec:necQ, est:saldo, sugerido:aComprarBuy, arred:arred, qtd:qtdCompra, un:nec[n].unidade, valor:custo, total:custoEst, menor:(menor?_cotR$(menor):null), menorForn:(menor?(menor.fornecedor||''):''), forn: efetiva?(efetiva.fornecedor||'—'):'⚠️ sem cotação', fp:_fp});
     const condNote=nec[n].qtdCond>0?`<div class="sub" style="color:var(--gold)">⚠️ ${fmtBR(nec[n].qtdCond)} ${esc(nec[n].unidade)} condicional</div>`:'';
     const _fornCell=f=>{ const fc=cots.filter(c=>(c.fornecedor||'?')===f); if(!fc.length) return '<td></td>'; return '<td class="num">'+fc.map(c=>`${fmtR$(_cotR$(c))}${menor&&c.id===menor.id?' <span style="color:var(--gold)">◀</span>':''}`).join('<br>')+'</td>'; };
     const menorCell=menor?`<b>${fmtR$(_cotR$(menor))}</b> <span class="sub">${esc(menor.fornecedor||'')}</span>`:'—';
