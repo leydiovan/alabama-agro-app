@@ -2634,8 +2634,10 @@ function _parseAtivosPlan(comp,tipo){
 function _numConc(a){ if(!a) return null; const n=numUn(String(a.conc==null?'':a.conc)).n; return (n!=null&&n>0)?n:null; }
 function _formProd(p){ return String((p&&(p.formulacao||p.formCod))||'').trim().toLowerCase(); }
 /* resumo da composição (ativos) p/ a coluna da Lista de compras (#1) */
-function _compResumo(pr){ if(!pr) return '—'; const a=pr.ativos||[];
-  if(a.length) return a.map(x=>esc(String(x.nome||''))+((x.conc!=null&&x.conc!=='')?(' '+esc(String(x.conc).replace('.',','))+(x.unidade?(' '+esc(x.unidade)):'')):'')).join(' + ');
+function _compResumo(pr){ if(!pr) return '—';
+  const fmtL=x=>esc(String(x.nome||''))+((x.conc!=null&&x.conc!=='')?(' '+esc(String(x.conc).replace('.',','))+(x.unidade?(' '+esc(x.unidade)):'')):'');
+  const a=pr.ativos||[]; if(a.length) return a.map(fmtL).join(' + ');
+  const g=pr.garantias||[]; if(g.length) return g.map(fmtL).join(' · ');   // fertilizantes: garantias
   return esc(String(pr.comp||'—')); }
 /* multiplicador de volume p/ substituto multi-ativo (#3): vai pelo ativo LIMITANTE
    = MAIOR (conc_planejado / conc_substituto) entre os ativos casados por nome.
@@ -3816,7 +3818,7 @@ async function carregarDoSupabase(){
     try{
       const r=await SB.from('produtos').select('*');
       if(!r.error && r.data && r.data.length){
-        S.produtos = r.data.map(p=>({codigo:p.codigo, nome:p.nome, comp:p.comp, tipo:p.classe||p.tipo, tipoBase:p.tipo, classe:p.classe, formulacao:p.formulacao, unidade:p.unidade, preco:p.preco, sementeTipo:p.semente_tipo||'', ativos:(Array.isArray(p.ativos)&&p.ativos.length)?p.ativos:[]}));   /* usa só o ativo estruturado; não adivinha mais pelo comp */
+        S.produtos = r.data.map(p=>({codigo:p.codigo, nome:p.nome, comp:p.comp, tipo:p.classe||p.tipo, tipoBase:p.tipo, classe:p.classe, formulacao:p.formulacao, unidade:p.unidade, preco:p.preco, sementeTipo:p.semente_tipo||'', ativos:(Array.isArray(p.ativos)&&p.ativos.length)?p.ativos:[], garantias:Array.isArray(p.garantias)?p.garantias:[]}));   /* usa só o ativo estruturado; não adivinha mais pelo comp */
       }
     }catch(e){ console.warn('produtos',e); }
 
