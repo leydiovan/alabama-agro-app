@@ -2980,6 +2980,7 @@ function _plcArredKey(){ return 'plc_arred_'+(typeof SAFRA!=='undefined'?SAFRA:'
 function _plcArredAll(){ try{ return JSON.parse(localStorage.getItem(_plcArredKey())||'{}')||{}; }catch(e){ return {}; } }
 function _plcArredGet(nome){ const v=_plcArredAll()[nome]; return (typeof v==='number'&&isFinite(v))?v:null; }
 function _plcArredSet(nome,val){ const a=_plcArredAll(); if(val==null) delete a[nome]; else a[nome]=val; try{ localStorage.setItem(_plcArredKey(), JSON.stringify(a)); }catch(e){} render(); }
+function _plcOrdemGet(){ try{ return localStorage.getItem('plc_ordem')||'nome'; }catch(e){ return 'nome'; } }
 function _plcDolarModo(){ try{ return localStorage.getItem('plc_dolar_modo')==='ptax'?'ptax':'manual'; }catch(e){ return 'manual'; } }
 async function _fetchPTAX(){   // PTAX de venda mais recente (Banco Central / olinda)
   const pad=n=>String(n).padStart(2,'0'), fmt=d=>pad(d.getMonth()+1)+'-'+pad(d.getDate())+'-'+d.getFullYear();
@@ -3001,6 +3002,7 @@ function _planComprasControls(){
   return `<select id="plc_lote" class="plc-ctl" title="Filtrar por lote">${lotesOpt}</select>`
     +`<select id="plc_dolar_modo" class="plc-ctl" title="Fonte do dólar"><option value="manual"${_plcDolarModo()!=='ptax'?' selected':''}>Dólar manual</option><option value="ptax"${_plcDolarModo()==='ptax'?' selected':''}>PTAX auto</option></select>`
     +`<input id="plc_dolar" class="plc-ctl" style="max-width:100px" value="${esc(String(S.dolar).replace('.',','))}" placeholder="5,00" title="Dólar (R$)"${_plcDolarModo()==='ptax'?' readonly':''}>`
+    +`<select id="plc_ordem" class="plc-ctl" title="Ordenar a lista">${[['nome','Nome'],['ativo','Ativo'],['custo','Maior custo'],['comprar','Maior a comprar'],['planejado','Planejado']].map(o=>`<option value="${o[0]}"${_plcOrdemGet()===o[0]?' selected':''}>↕ ${o[1]}</option>`).join('')}</select>`
     +`<button class="btn sm" id="plc_cols" title="Escolher colunas">⚙ Colunas</button>`
     +`<button class="btn sm${_plcModoForn?' success':''}" id="plc_forn" title="Agrupar por fornecedor">🏢 Modo Fornecedor</button>`
     +`<button class="btn sm" id="plc_fs" title="Tela cheia">${_plcFS?'⤢ Sair tela cheia':'⛶ Tela cheia'}</button>`;
@@ -3079,7 +3081,7 @@ function _planComprasHTML(){
   const thead=`<thead><tr>${cols.map(c=>`<th${c.num?' class="num"':''}>${c.th}</th>`).join('')}</tr></thead>`;
   let totalComprar=0;
   const dadosForn=[];   // p/ o Modo Fornecedor: só o que precisa comprar, sob o fornecedor selecionado/menor
-  const rows=nomes.map((n,ri)=>{
+  const _arr=nomes.map((n,ri)=>{
     const pr=_prodPorNome(n); const cod=pr?pr.codigo:null;
     const ea=_estoqueEquivAtivo(n);
     let saldo, saldoNote='', subsNote='';
@@ -3143,8 +3145,17 @@ function _planComprasHTML(){
     // cor da linha: cinza = não precisa comprar; vermelho = precisa e sem NENHUMA cotação; normal = ok
     const _corLinha = (qtdCompra<=1e-9) ? 'var(--muted)' : (cots.length===0 ? 'var(--err)' : '');
     const tds=cols.map(c=> c.k==='forn' ? _fornCell(c.forn) : CELL[c.k]).join('');
-    return `<tr class="plc-row" data-prod="${esc(n)}" style="cursor:pointer${_corLinha?';color:'+_corLinha:''}">${tds}</tr>`;
-  }).join('')||`<tr><td colspan="${cols.length}" class="hint">Nada planejado ainda.</td></tr>`;
+    return {n, sNome:_selNome, sAtivo:(ativoP||_selNome||''), sCusto:custoEst, sComprar:aComprarBuy, html:`<tr class="plc-row" data-prod="${esc(n)}" style="cursor:pointer${_corLinha?';color:'+_corLinha:''}">${tds}</tr>`};
+  });
+  const _ord=_plcOrdemGet();   // ordenação (pelo NOME exibido = selecionado, por padrão)
+  _arr.sort((a,b)=>{
+    if(_ord==='ativo') return (a.sAtivo||'').localeCompare(b.sAtivo||'','pt',{sensitivity:'base'}) || a.sNome.localeCompare(b.sNome,'pt',{sensitivity:'base',numeric:true});
+    if(_ord==='custo') return (b.sCusto||0)-(a.sCusto||0);
+    if(_ord==='comprar') return (b.sComprar||0)-(a.sComprar||0);
+    if(_ord==='planejado') return a.n.localeCompare(b.n,'pt',{sensitivity:'base',numeric:true});
+    return a.sNome.localeCompare(b.sNome,'pt',{sensitivity:'base',numeric:true});
+  });
+  const rows=_arr.map(x=>x.html).join('')||`<tr><td colspan="${cols.length}" class="hint">Nada planejado ainda.</td></tr>`;
   const painel=_cotProd?_cotPainelHTML(_cotProd, nec[_cotProd]):'';
   const scrollHTML=_plcModoForn?_plcFornHTML(dadosForn,totalComprar):`<div class="plc-scroll"><table class="ptbl plc-tbl">${colgroup}${thead}<tbody>${rows}</tbody></table></div>`;
   return `<div class="plc-flex">
@@ -3166,6 +3177,7 @@ function _bindPlanCompras(){
   const d=$('#plc_dolar'); if(d) d.onchange=()=>{ const v=numUn(d.value).n; if(v!=null&&v>0){ S.dolar=v; salvarDolarSB(v); } render(); };
   const dm=$('#plc_dolar_modo'); if(dm) dm.onchange=()=>{ try{ localStorage.setItem('plc_dolar_modo', dm.value==='ptax'?'ptax':'manual'); }catch(e){} if(dm.value==='ptax'){ window._ptaxOnce=true; _plcAplicaPTAX(); } else render(); };
   if(_plcDolarModo()==='ptax' && !window._ptaxOnce){ window._ptaxOnce=true; _plcAplicaPTAX(); }   // busca a PTAX 1x por sessão quando no modo automático
+  const bo=$('#plc_ordem'); if(bo) bo.onchange=()=>{ try{ localStorage.setItem('plc_ordem', bo.value); }catch(e){} render(); };
   const bc=$('#plc_cols'); if(bc) bc.onclick=_plcAbreColunas;
   const bmf=$('#plc_forn'); if(bmf) bmf.onclick=()=>{ _plcModoForn=!_plcModoForn; render(); };
   const bf=$('#plc_fs'); if(bf) bf.onclick=_plcToggleFS;
