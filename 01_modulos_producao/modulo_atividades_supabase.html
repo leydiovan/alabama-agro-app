@@ -3018,7 +3018,8 @@ function _planComprasControls(){
     +`<button class="btn sm" id="plc_cols" title="Escolher colunas">⚙ Colunas</button>`
     +`<button class="btn sm${_plcModoForn?' success':''}" id="plc_forn" title="Agrupar por fornecedor">🏢 Modo Fornecedor</button>`
     +`<button class="btn sm" id="plc_print" title="Imprimir / PDF">🖨 Imprimir</button>`
-    +`<button class="btn sm" id="plc_csv" title="Exportar CSV (Excel)">⬇ CSV</button>`
+    +`<button class="btn sm" id="plc_csv" title="Exportar CSV">⬇ CSV</button>`
+    +`<button class="btn sm" id="plc_xls" title="Exportar Excel (tabela formatada)">📊 Excel</button>`
     +`<button class="btn sm" id="plc_fs" title="Tela cheia">${_plcFS?'⤢ Sair tela cheia':'⛶ Tela cheia'}</button>`;
 }
 function _plcAbreColunas(){
@@ -3049,16 +3050,51 @@ function _plcToggleFS(){
 }
 /* ---- Imprimir / Exportar a Lista de compras ---- */
 function _plcCompTxt(html){ const t=document.createElement('div'); t.innerHTML=String(html||''); return (t.textContent||'').trim(); }
+/* linhas de exportação (respeitam o Modo Fornecedor): grupo/item/total */
+function _plcExportLinhas(){
+  const d=_plcExportData, out=[];
+  if(_plcModoForn){ const g={}; d.itens.forEach(x=>{(g[x.forn]=g[x.forn]||[]).push(x);});
+    Object.keys(g).sort((a,b)=>g[b].reduce((s,x)=>s+x.total,0)-g[a].reduce((s,x)=>s+x.total,0)).forEach(fn=>{
+      const arr=g[fn].slice().sort((a,b)=>b.total-a.total), sub=arr.reduce((s,x)=>s+x.total,0);
+      out.push({tipo:'grupo', forn:fn, sub, pct:d.total>0?sub/d.total*100:0});
+      arr.forEach(x=>out.push(Object.assign({tipo:'item'},x))); });
+  } else { d.itens.slice().sort((a,b)=>String(a.nome).localeCompare(String(b.nome),'pt')).forEach(x=>out.push(Object.assign({tipo:'item'},x))); }
+  out.push({tipo:'total', total:d.total}); return out;
+}
+function _plcBaixar(conteudo, mime, ext){
+  const a=document.createElement('a'); a.href=URL.createObjectURL(new Blob([conteudo],{type:mime}));
+  a.download='lista_compras_'+String(SAFRA||'').replace(/\W/g,'-')+(_plcModoForn?'_por_fornecedor':'')+'.'+ext;
+  document.body.appendChild(a); a.click(); a.remove();
+}
 function _plcExportCSV(){
-  const d=_plcExportData, sep=';';
+  const flat=!_plcModoForn, sep=';';
   const q=s=>{ s=String(s==null?'':s); return /[";\n\r]/.test(s)?'"'+s.replace(/"/g,'""')+'"':s; };
   const br=v=>Number(v||0).toLocaleString('pt-BR',{maximumFractionDigits:2});
-  const L=[['Produto','Composicao','A comprar','Unidade','Valor unit (R$)','Total (R$)','Fornecedor']];
-  d.itens.forEach(x=>L.push([x.nome,_plcCompTxt(x.comp),br(x.qtd),x.un,br(x.valor),br(x.total),x.forn]));
-  L.push([]); L.push(['','','','','','Total a comprar (R$)',br(d.total)]);
-  const csv='﻿'+L.map(r=>r.map(q).join(sep)).join('\r\n');
-  const a=document.createElement('a'); a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv;charset=utf-8'}));
-  a.download='lista_compras_'+String(SAFRA||'').replace(/\W/g,'-')+'.csv'; document.body.appendChild(a); a.click(); a.remove();
+  const R=[ flat?['Produto','Composicao','A comprar','Unidade','Valor unit (R$)','Total (R$)','Fornecedor']:['Produto','Composicao','A comprar','Unidade','Valor unit (R$)','Total (R$)'] ];
+  _plcExportLinhas().forEach(l=>{
+    if(l.tipo==='grupo') R.push(['>> '+l.forn+' — subtotal R$ '+br(l.sub)+' ('+br(l.pct)+'%)']);
+    else if(l.tipo==='item') R.push(flat?[l.nome,_plcCompTxt(l.comp),br(l.qtd),l.un,br(l.valor),br(l.total),l.forn]:[l.nome,_plcCompTxt(l.comp),br(l.qtd),l.un,br(l.valor),br(l.total)]);
+    else { R.push([]); R.push(['','','','','','TOTAL A COMPRAR (R$): '+br(l.total)]); }
+  });
+  _plcBaixar('﻿'+R.map(r=>r.map(q).join(sep)).join('\r\n'), 'text/csv;charset=utf-8', 'csv');
+}
+function _plcExportXLS(){
+  const d=_plcExportData, flat=!_plcModoForn, ncol=flat?7:6;
+  const br=v=>Number(v||0).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2});
+  const bq=v=>Number(v||0).toLocaleString('pt-BR',{maximumFractionDigits:2});
+  const head=(flat?['Produto','Composição','A comprar','Un','Valor unit','Total','Fornecedor']:['Produto','Composição','A comprar','Un','Valor unit','Total']).map(h=>'<th>'+esc(h)+'</th>').join('');
+  let body='<tr>'+head+'</tr>';
+  _plcExportLinhas().forEach(l=>{
+    if(l.tipo==='grupo') body+='<tr class="g"><td colspan="'+ncol+'"><b>'+esc(l.forn)+'</b> — subtotal R$ '+br(l.sub)+' ('+bq(l.pct)+'%)</td></tr>';
+    else if(l.tipo==='item'){ let r='<td>'+esc(l.nome)+'</td><td>'+esc(_plcCompTxt(l.comp))+'</td><td class="n">'+bq(l.qtd)+'</td><td>'+esc(l.un)+'</td><td class="m">'+br(l.valor)+'</td><td class="m">'+br(l.total)+'</td>'+(flat?'<td>'+esc(l.forn)+'</td>':''); body+='<tr>'+r+'</tr>'; }
+    else body+='<tr class="t"><td colspan="'+(ncol-1)+'"><b>TOTAL A COMPRAR</b></td><td class="m"><b>R$ '+br(l.total)+'</b></td></tr>';
+  });
+  const html='<html xmlns:x="urn:schemas-microsoft-com:office:excel"><head><meta charset="utf-8"><style>'
+    +'table{border-collapse:collapse;font-family:Calibri,Arial;font-size:11pt}th{background:#1f6feb;color:#fff;border:1px solid #16324f;padding:6px;text-align:left}'
+    +'td{border:1px solid #c8c8c8;padding:4px 7px}.n,.m{text-align:right}.g td{background:#dbe5f1}.t td{background:#ffe08a}</style></head><body>'
+    +'<h3>Lista de Compras — Alabama Agro · Safra '+esc(String(SAFRA||'—'))+(d.lote?(' · Lote '+esc(d.lote)):' · Todos os lotes')+(_plcModoForn?' · por fornecedor':'')+'</h3>'
+    +'<table>'+body+'</table></body></html>';
+  _plcBaixar('﻿'+html, 'application/vnd.ms-excel;charset=utf-8', 'xls');
 }
 function _plcImprimir(){
   const d=_plcExportData, w=window.open('','_blank'); if(!w){ alert('Permita pop-ups p/ imprimir.'); return; }
@@ -3233,6 +3269,7 @@ function _bindPlanCompras(){
   const bmf=$('#plc_forn'); if(bmf) bmf.onclick=()=>{ _plcModoForn=!_plcModoForn; render(); };
   const bpr=$('#plc_print'); if(bpr) bpr.onclick=_plcImprimir;
   const bcsv=$('#plc_csv'); if(bcsv) bcsv.onclick=_plcExportCSV;
+  const bxls=$('#plc_xls'); if(bxls) bxls.onclick=_plcExportXLS;
   const bf=$('#plc_fs'); if(bf) bf.onclick=_plcToggleFS;
   if(!window._plcFsBound){ window._plcFsBound=true; document.addEventListener('fullscreenchange',()=>{ if(!document.fullscreenElement && _plcFS){ _plcFS=false; const w=document.querySelector('#main .wrap'); if(w) w.classList.remove('plc-fs'); const b=document.getElementById('plc_fs'); if(b) b.textContent='⛶ Tela cheia'; _plcNotifyHub(); setTimeout(_plcAjustaAltura,80); } }); }
   $$('#main .plc-row').forEach(r=>r.onclick=()=>{ _cotProd=(_cotProd===r.dataset.prod)?null:r.dataset.prod; _cotEdit=null; render(); });
