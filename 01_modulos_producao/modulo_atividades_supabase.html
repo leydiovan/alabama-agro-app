@@ -2978,7 +2978,7 @@ function gerarComandaDoPlano(id){
 }
 
 /* ---- Colunas opcionais + controles do topo + tela cheia (Lista de compras) ---- */
-let _plcFS=false, _plcModoForn=false, _plcScrollTop=0, _plcFornsAtual=[];
+let _plcFS=false, _plcModoForn=false, _plcScrollTop=0, _plcFornsAtual=[], _plcExportData={itens:[],total:0,lote:''};
 function _plcColsDefs(){ return [{k:'composicao',t:'Composição'},{k:'necessario',t:'Necessário'},{k:'estoque',t:'Em estoque'},{k:'comprar',t:'A comprar'},{k:'arredondar',t:'Arredondar'},{k:'menor',t:'Menor preço'},{k:'selecionado',t:'Selecionado'},{k:'custo',t:'Custo estimado'}]; }
 function _plcColsRaw(){ let v={}; try{ v=JSON.parse(localStorage.getItem('plc_cols')||'{}')||{}; }catch(e){} return v; }
 function _plcColsVis(){ const v=_plcColsRaw(); const o={}; _plcColsDefs().forEach(c=>{ o[c.k]=(v[c.k]!==false); }); return o; }
@@ -3017,6 +3017,8 @@ function _planComprasControls(){
     +`<select id="plc_ordem" class="plc-ctl" title="Ordenar a lista">${[['nome','Nome'],['ativo','Ativo'],['custo','Maior custo'],['comprar','Maior a comprar'],['planejado','Planejado']].map(o=>`<option value="${o[0]}"${_plcOrdemGet()===o[0]?' selected':''}>↕ ${o[1]}</option>`).join('')}</select>`
     +`<button class="btn sm" id="plc_cols" title="Escolher colunas">⚙ Colunas</button>`
     +`<button class="btn sm${_plcModoForn?' success':''}" id="plc_forn" title="Agrupar por fornecedor">🏢 Modo Fornecedor</button>`
+    +`<button class="btn sm" id="plc_print" title="Imprimir / PDF">🖨 Imprimir</button>`
+    +`<button class="btn sm" id="plc_csv" title="Exportar CSV (Excel)">⬇ CSV</button>`
     +`<button class="btn sm" id="plc_fs" title="Tela cheia">${_plcFS?'⤢ Sair tela cheia':'⛶ Tela cheia'}</button>`;
 }
 function _plcAbreColunas(){
@@ -3044,6 +3046,42 @@ function _plcToggleFS(){
   _plcNotifyHub();   // avisa o hub p/ esconder o menu do Alabama Gestão
   const b=document.getElementById('plc_fs'); if(b) b.textContent=_plcFS?'⤢ Sair tela cheia':'⛶ Tela cheia';
   setTimeout(_plcAjustaAltura,80);
+}
+/* ---- Imprimir / Exportar a Lista de compras ---- */
+function _plcCompTxt(html){ const t=document.createElement('div'); t.innerHTML=String(html||''); return (t.textContent||'').trim(); }
+function _plcExportCSV(){
+  const d=_plcExportData, sep=';';
+  const q=s=>{ s=String(s==null?'':s); return /[";\n\r]/.test(s)?'"'+s.replace(/"/g,'""')+'"':s; };
+  const br=v=>Number(v||0).toLocaleString('pt-BR',{maximumFractionDigits:2});
+  const L=[['Produto','Composicao','A comprar','Unidade','Valor unit (R$)','Total (R$)','Fornecedor']];
+  d.itens.forEach(x=>L.push([x.nome,_plcCompTxt(x.comp),br(x.qtd),x.un,br(x.valor),br(x.total),x.forn]));
+  L.push([]); L.push(['','','','','','Total a comprar (R$)',br(d.total)]);
+  const csv='﻿'+L.map(r=>r.map(q).join(sep)).join('\r\n');
+  const a=document.createElement('a'); a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv;charset=utf-8'}));
+  a.download='lista_compras_'+String(SAFRA||'').replace(/\W/g,'-')+'.csv'; document.body.appendChild(a); a.click(); a.remove();
+}
+function _plcImprimir(){
+  const d=_plcExportData, w=window.open('','_blank'); if(!w){ alert('Permita pop-ups p/ imprimir.'); return; }
+  const br=v=>Number(v||0).toLocaleString('pt-BR',{maximumFractionDigits:2});
+  const rl=v=>'R$ '+Number(v||0).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2});
+  const dt=new Date().toLocaleDateString('pt-BR');
+  const linha=x=>`<tr><td>${esc(x.nome)}</td><td>${x.comp}</td><td class="n">${br(x.qtd)} ${esc(x.un)}</td><td class="n">${rl(x.valor)}</td><td class="n">${rl(x.total)}</td></tr>`;
+  let body='';
+  if(_plcModoForn){ const g={}; d.itens.forEach(x=>{(g[x.forn]=g[x.forn]||[]).push(x);});
+    Object.keys(g).sort((a,b)=>g[b].reduce((s,x)=>s+x.total,0)-g[a].reduce((s,x)=>s+x.total,0)).forEach(fn=>{ const arr=g[fn].slice().sort((a,b)=>b.total-a.total); const sub=arr.reduce((s,x)=>s+x.total,0);
+      body+=`<tr class="hd"><td colspan="5"><b>${esc(fn)}</b> — subtotal ${rl(sub)} (${br(d.total>0?sub/d.total*100:0)}%)</td></tr>`+arr.map(linha).join(''); });
+  } else { body=d.itens.slice().sort((a,b)=>String(a.nome).localeCompare(String(b.nome),'pt')).map(linha).join(''); }
+  w.document.write('<!doctype html><html><head><meta charset="utf-8"><title>Lista de compras</title><style>'
+    +'body{font:12px system-ui,Arial;color:#111;padding:18px}h1{font-size:16px;margin:0}.sub{color:#555;font-size:11px;margin:2px 0 12px}'
+    +'table{width:100%;border-collapse:collapse}th{text-align:left;font-size:9px;text-transform:uppercase;color:#666;border-bottom:1.5px solid #333;padding:5px 6px}'
+    +'td{padding:4px 6px;border-bottom:1px solid #ddd;font-size:11px}.n{text-align:right}tr.hd td{background:#eee;padding-top:8px;font-size:12px;border-bottom:1px solid #bbb}'
+    +'tfoot td{border-top:2px solid #333;font-size:13px;padding-top:6px}.noprint{margin-bottom:10px}@media print{.noprint{display:none}}</style></head><body>'
+    +'<button class="noprint" onclick="window.print()" style="padding:8px 14px;font-size:13px;cursor:pointer">🖨 Imprimir / Salvar PDF</button>'
+    +'<h1>Lista de Compras — Alabama Agro</h1>'
+    +'<div class="sub">Safra '+esc(String(SAFRA||'—'))+(d.lote?(' · Lote '+esc(d.lote)):' · Todos os lotes')+(_plcModoForn?' · por fornecedor':'')+' · '+dt+'</div>'
+    +'<table><thead><tr><th>Produto</th><th>Composição</th><th class="n">A comprar</th><th class="n">Valor unit.</th><th class="n">Total</th></tr></thead>'
+    +'<tbody>'+body+'</tbody><tfoot><tr><td colspan="4" class="n"><b>Total a comprar</b></td><td class="n"><b>'+rl(d.total)+'</b></td></tr></tfoot></table></body></html>');
+  w.document.close(); setTimeout(()=>{ try{ w.focus(); w.print(); }catch(e){} }, 350);
 }
 /* Visão "Modo Fornecedor": agrupa por fornecedor (1 produto por fornecedor = o selecionado/menor), com subtotal e % */
 function _plcFornHTML(dados, grandTotal){
@@ -3168,6 +3206,7 @@ function _planComprasHTML(){
     return a.sNome.localeCompare(b.sNome,'pt',{sensitivity:'base',numeric:true});
   });
   const rows=_arr.map(x=>x.html).join('')||`<tr><td colspan="${cols.length}" class="hint">Nada planejado ainda.</td></tr>`;
+  _plcExportData={itens:dadosForn.slice(), total:totalComprar, lote:_planLote||''};   // p/ Imprimir / Exportar
   const painel=_cotProd?_cotPainelHTML(_cotProd, nec[_cotProd]):'';
   const scrollHTML=_plcModoForn?_plcFornHTML(dadosForn,totalComprar):`<div class="plc-scroll"><table class="ptbl plc-tbl${_plcArredOn()?'':' arred-off'}">${colgroup}${thead}<tbody>${rows}</tbody></table></div>`;
   return `<div class="plc-flex">
@@ -3192,6 +3231,8 @@ function _bindPlanCompras(){
   const bo=$('#plc_ordem'); if(bo) bo.onchange=()=>{ try{ localStorage.setItem('plc_ordem', bo.value); }catch(e){} render(); };
   const bc=$('#plc_cols'); if(bc) bc.onclick=_plcAbreColunas;
   const bmf=$('#plc_forn'); if(bmf) bmf.onclick=()=>{ _plcModoForn=!_plcModoForn; render(); };
+  const bpr=$('#plc_print'); if(bpr) bpr.onclick=_plcImprimir;
+  const bcsv=$('#plc_csv'); if(bcsv) bcsv.onclick=_plcExportCSV;
   const bf=$('#plc_fs'); if(bf) bf.onclick=_plcToggleFS;
   if(!window._plcFsBound){ window._plcFsBound=true; document.addEventListener('fullscreenchange',()=>{ if(!document.fullscreenElement && _plcFS){ _plcFS=false; const w=document.querySelector('#main .wrap'); if(w) w.classList.remove('plc-fs'); const b=document.getElementById('plc_fs'); if(b) b.textContent='⛶ Tela cheia'; _plcNotifyHub(); setTimeout(_plcAjustaAltura,80); } }); }
   $$('#main .plc-row').forEach(r=>r.onclick=()=>{ _cotProd=(_cotProd===r.dataset.prod)?null:r.dataset.prod; _cotEdit=null; render(); });
