@@ -482,8 +482,12 @@ async function _calcAberto(){
     const r=calcDia({data:p.data,marcacoes:p.marcacoes||[],feriado:fer,folga:p.folga,falta:p.falta,sem_he:p.sem_he,ha:p.ha,valor_ha:p.valor_ha});
     const k=p.funcionario_id+'|'+mes; const o=agg[k]||(agg[k]={extra:0,dias:0,falta:0,faltaJ:0,comissao:0,ha:0}); o.extra+=r.extra; if(!p.falta&&!p.folga&&(p.marcacoes||[]).length)o.dias++; if(p.falta)o.falta++; o.faltaJ+=r.faltaJornada; o.comissao+=r.comissao; o.ha+=r.ha; });
   const fmap={}, mesesSet=new Set();
-  Object.keys(agg).forEach(k=>{ const sp=k.split('|'), fid=+sp[0], mes=sp[1]; const f=S.funcs.find(x=>x.id===fid); if(!f) return;
-    const a=agg[k]; const vale=valeMes[k]||0; const tot=_totFunc(f,a)-vale; if(tot<=0||pagos.has(k)) return;
+  const allKeys=new Set([...Object.keys(agg), ...Object.keys(valeMes)]);   // inclui meses que só têm vale
+  allKeys.forEach(k=>{ const sp=k.split('|'), fid=+sp[0], mes=sp[1]; const f=S.funcs.find(x=>x.id===fid); if(!f) return;
+    if(pagos.has(k)) return;
+    const a=agg[k]||{extra:0,dias:0,falta:0,faltaJ:0,comissao:0,ha:0}; const vale=valeMes[k]||0;
+    const bruto=_totFunc(f,a); if(bruto<=0 && vale<=0) return;   // nada a mostrar; com vale sempre mostra (líquido pode ficar negativo = a receber)
+    const tot=bruto-vale;
     mesesSet.add(mes);
     const o=fmap[fid]||(fmap[fid]={fid,nome:f.nome,tipo:f.tipo,meio:f.meio_pgto||'',chave:f.chave_pix||'',titular:f.titular||'',porMes:{},total:0,extra:0,dias:0,falta:0,faltaJ:0,he$:0,dia$:0,comissao:0,ha:0,vale$:0});
     o.porMes[mes]=tot; o.total+=tot;
