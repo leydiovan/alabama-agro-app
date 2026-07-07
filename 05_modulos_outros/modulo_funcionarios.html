@@ -110,6 +110,7 @@ function janelaDoDia(dateStr, feriado){
 function calcDia(p){
   // p: {data, marcacoes:[{ent,sai}], feriado, folga, falta, sem_he, ha}
   const r={ worked:0, normal:0, extra:0, falta:!!p.falta, janela:0, faltaJornada:0 };
+  r.ha=+p.ha||0; r.valorHa=(p.valor_ha!=null&&p.valor_ha!=='')?+p.valor_ha:0; r.comissao=r.ha*r.valorHa;   // comissao por hectare do dia
   const jan=janelaDoDia(p.data, p.feriado||p.folga);       // feriado/folga: janela vazia -> tudo vira HE se trabalhar
   jan.forEach(w=>{ r.janela += (w[1]-w[0]); });
   if(p.falta||p.folga){ return r; }                        // falta/folga: sem hora a menos
@@ -270,7 +271,7 @@ async function preencherMes(){
     if(S.feriados[ds]) continue;                                   // feriado: deixa p/ ajuste manual
     const temMarc=p&&(p.marcacoes||[]).some(x=>x&&(x.ent||x.sai));
     if(temMarc||(p&&p.falta)) continue;                            // não sobrescreve dia já lançado/falta
-    const reg={funcionario_id:PF,data:ds,marcacoes:turnos,feriado:!!(p&&p.feriado),falta:false,sem_he:!!(p&&p.sem_he),ha:(p&&p.ha)??null,obs:(p&&p.obs)||null};
+    const reg={funcionario_id:PF,data:ds,marcacoes:turnos,feriado:!!(p&&p.feriado),falta:false,sem_he:!!(p&&p.sem_he),ha:(p&&p.ha)??null,valor_ha:(p&&p.valor_ha)??null,obs:(p&&p.obs)||null};
     S.ponto[ds]=reg; lote.push(reg);
   }
   if(!lote.length){ _st('Nada a preencher (dias já lançados).','#e67e22'); return; }
@@ -291,13 +292,13 @@ function pontoHTML(){
   if(!f){ body='<div class="hint">Escolha um funcionário e o mês para lançar o ponto.</div>'; }
   else {
     const [y,m]=MES.split('-').map(Number); const dias=_ult(y,m);
-    let rows='', tExtra=0, tFalta=0, tFaltaJ=0, tDias=0;
+    let rows='', tExtra=0, tFalta=0, tFaltaJ=0, tDias=0, tHa=0, tComissao=0;
     for(let d=1; d<=dias; d++){
       const ds=MES+'-'+String(d).padStart(2,'0'); const p=S.ponto[ds]||{data:ds,marcacoes:[]};
       const dow=new Date(ds+'T12:00:00').getDay(); const fer=!!p.feriado||!!S.feriados[ds];
-      const r=calcDia({data:ds,marcacoes:p.marcacoes||[],feriado:fer,folga:p.folga,falta:p.falta,sem_he:p.sem_he});
+      const r=calcDia({data:ds,marcacoes:p.marcacoes||[],feriado:fer,folga:p.folga,falta:p.falta,sem_he:p.sem_he,ha:p.ha,valor_ha:p.valor_ha});
       if(!p.falta && !p.folga && (p.marcacoes||[]).length) tDias++;
-      tExtra+=r.extra; if(p.falta) tFalta++; tFaltaJ+=r.faltaJornada;
+      tExtra+=r.extra; if(p.falta) tFalta++; tFaltaJ+=r.faltaJornada; tHa+=r.ha; tComissao+=r.comissao;
       const mk=(i,k)=>{ const v=(p.marcacoes&&p.marcacoes[i]&&p.marcacoes[i][k])||''; return `<input class="mark" data-d="${ds}" data-i="${i}" data-k="${k}" value="${esc(v)}" placeholder="${k==='ent'?'ent':'sai'}">`; };
       const cls=fer?'fer':(p.folga?'dom':(dow===0?'dom':'')); const dnome=['dom','seg','ter','qua','qui','sex','sáb'][dow]+(p.folga?' ·folga':'');
       rows+=`<tr class="${cls}">
@@ -307,6 +308,7 @@ function pontoHTML(){
         <td>${mk(2,'ent')} ${mk(2,'sai')}</td>
         <td class="num">${r.normal?m2hm(r.normal):'—'}</td>
         <td class="num he">${r.extra?m2hm(r.extra):'—'}</td>
+        <td style="white-space:nowrap"><input style="width:52px" inputmode="decimal" data-hafield="ha" data-d="${ds}" value="${p.ha!=null&&p.ha!==''?esc(p.ha):''}" placeholder="ha"> <span class="sub">×R$</span> <input style="width:58px" inputmode="decimal" data-hafield="valor_ha" data-d="${ds}" value="${p.valor_ha!=null&&p.valor_ha!==''?esc(p.valor_ha):''}" placeholder="/ha"><div class="sub" style="color:var(--gold)">${r.comissao?brl(r.comissao):''}</div></td>
         <td style="white-space:nowrap"><label class="sub"><input type="checkbox" data-d="${ds}" data-flag="falta" ${p.falta?'checked':''}> falta</label>
           <label class="sub"><input type="checkbox" data-d="${ds}" data-flag="feriado" ${p.feriado?'checked':''}> fer</label>
           <label class="sub" title="Folga concedida (não é falta nem feriado; sem hora a menos)"><input type="checkbox" data-d="${ds}" data-flag="folga" ${p.folga?'checked':''}> folga</label>
@@ -321,8 +323,9 @@ function pontoHTML(){
         <span class="pill">Faltas <b>${tFalta}</b></span>
         <span class="pill">A menos na jornada <b>${m2hm(tFaltaJ)}</b></span>
         ${f.tipo==='diarista'?`<span class="pill">Diárias <b>${brl(dia$)}</b></span>`:''}
+        ${tComissao?`<span class="pill">Comissão (ha) <b>${nf(tHa)} ha · ${brl(tComissao)}</b></span>`:''}
       </div>
-      <div class="box" style="overflow-x:auto"><table><thead><tr><th>Dia</th><th>Turno 1 (ent/sai)</th><th>Turno 2</th><th>Extra (3º turno)</th><th class="num">Normal</th><th class="num">Extra</th><th>Flags</th><th></th></tr></thead><tbody>${rows}</tbody></table>
+      <div class="box" style="overflow-x:auto"><table><thead><tr><th>Dia</th><th>Turno 1 (ent/sai)</th><th>Turno 2</th><th>Extra (3º turno)</th><th class="num">Normal</th><th class="num">Extra</th><th>Comissão (ha)</th><th>Flags</th><th></th></tr></thead><tbody>${rows}</tbody></table>
       <div class="hint">Marque os horários (HH:MM) de cada turno. Fora da janela normal (Seg–Sex 07–12 e 13:30–18; Sáb 07–12) conta como hora extra. Tolerância ${S.cfg.tolerancia_min||5} min. "aplic" = dia de aplicação (comissão por ha, sem HE).</div></div>`;
   }
   return `<div class="box"><div class="row">
@@ -355,11 +358,17 @@ function bindPonto(){
     const ds=c.dataset.d, fl=c.dataset.flag;
     const p=S.ponto[ds]||(S.ponto[ds]={data:ds,marcacoes:[],funcionario_id:PF}); p[fl]=c.checked;
   });
+  document.querySelectorAll('input[data-hafield]').forEach(inp=>inp.onchange=()=>{
+    const ds=inp.dataset.d, fld=inp.dataset.hafield;
+    const p=S.ponto[ds]||(S.ponto[ds]={data:ds,marcacoes:[],funcionario_id:PF});
+    const v=inp.value.trim().replace(',','.'); p[fld]= v===''?null:(parseFloat(v)||0);
+    route();   // atualiza a comissão do dia e os totais
+  });
 }
 async function salvarDia(ds){
   const p=S.ponto[ds]||{data:ds,marcacoes:[],funcionario_id:PF};
   const marc=(p.marcacoes||[]).filter(x=>x&&(x.ent||x.sai)).map(x=>({ent:x.ent||'',sai:x.sai||''}));
-  const reg={ funcionario_id:PF, data:ds, marcacoes:marc, feriado:!!p.feriado, folga:!!p.folga, falta:!!p.falta, sem_he:!!p.sem_he, ha:p.ha??null, obs:p.obs||null };
+  const reg={ funcionario_id:PF, data:ds, marcacoes:marc, feriado:!!p.feriado, folga:!!p.folga, falta:!!p.falta, sem_he:!!p.sem_he, ha:p.ha??null, valor_ha:p.valor_ha??null, obs:p.obs||null };
   try{ const {error}=await SB.from('ponto').upsert(reg,{onConflict:'funcionario_id,data'}); if(error) throw error;
     S.ponto[ds]=Object.assign(p,reg); _st('✅ Dia '+ds.slice(8)+' salvo','#27ae60'); route();
   }catch(e){ _st('❌ '+e.message,'#c0392b'); }
@@ -370,12 +379,12 @@ async function _resumoMes(mes){
   const [y,m]=mes.split('-').map(Number); const ini=mes+'-01'; const fim=mes+'-'+String(_ult(y,m)).padStart(2,'0');
   const {data}=await SB.from('ponto').select('*').gte('data',ini).lte('data',fim);
   const byF={};
-  (data||[]).forEach(p=>{ const fer=!!p.feriado||!!S.feriados[p.data]; const r=calcDia({data:p.data,marcacoes:p.marcacoes||[],feriado:fer,folga:p.folga,falta:p.falta,sem_he:p.sem_he});
-    const o=byF[p.funcionario_id]||(byF[p.funcionario_id]={extra:0,falta:0,dias:0,faltaJ:0}); o.extra+=r.extra; if(p.falta)o.falta++; else if(!p.folga && (p.marcacoes||[]).length)o.dias++; o.faltaJ+=r.faltaJornada; });
+  (data||[]).forEach(p=>{ const fer=!!p.feriado||!!S.feriados[p.data]; const r=calcDia({data:p.data,marcacoes:p.marcacoes||[],feriado:fer,folga:p.folga,falta:p.falta,sem_he:p.sem_he,ha:p.ha,valor_ha:p.valor_ha});
+    const o=byF[p.funcionario_id]||(byF[p.funcionario_id]={extra:0,falta:0,dias:0,faltaJ:0,comissao:0,ha:0}); o.extra+=r.extra; if(p.falta)o.falta++; else if(!p.folga && (p.marcacoes||[]).length)o.dias++; o.faltaJ+=r.faltaJornada; o.comissao+=r.comissao; o.ha+=r.ha; });
   return byF;
 }
 let REL={}, REL_PAG={}, REL_MES=null;
-function _totFunc(f,o){ const he=m2dec(o.extra)*valorHE(f); const dia=f.tipo==='diarista'?o.dias*valorDiaria(f):0; return he+dia; }
+function _totFunc(f,o){ const he=m2dec(o.extra)*valorHE(f); const dia=f.tipo==='diarista'?o.dias*valorDiaria(f):0; return he+dia+(o.comissao||0); }
 async function _loadPagamentos(mes){ const {data}=await SB.from('rh_pagamentos').select('*').eq('mes',mes); const m={}; (data||[]).forEach(p=>m[p.funcionario_id]=p); return m; }
 async function _relRefresh(){ REL=await _resumoMes(MES); REL_PAG=await _loadPagamentos(MES); REL_MES=MES; route(); }
 async function relMes(delta){ _mesShift(delta); await _relRefresh(); }
@@ -383,16 +392,16 @@ function relHTML(){
   if(!MES) MES=_mesAtual();
   let tGeral=0,tPago=0,tAberto=0;
   const rows=S.funcs.map(f=>{
-    const o=REL[f.id]||{extra:0,falta:0,dias:0,faltaJ:0};
-    if(!o.extra&&!o.falta&&!o.dias) return '';
-    const he$=m2dec(o.extra)*valorHE(f), dia$=f.tipo==='diarista'?o.dias*valorDiaria(f):0, tot=he$+dia$;
+    const o=REL[f.id]||{extra:0,falta:0,dias:0,faltaJ:0,comissao:0,ha:0};
+    if(!o.extra&&!o.falta&&!o.dias&&!o.comissao) return '';
+    const he$=m2dec(o.extra)*valorHE(f), dia$=f.tipo==='diarista'?o.dias*valorDiaria(f):0, com$=o.comissao||0, tot=he$+dia$+com$;
     tGeral+=tot; const pago=REL_PAG[f.id]; if(pago) tPago+=tot; else tAberto+=tot;
     const pagoCel=pago?`<span style="color:var(--ok)">✓ pago · <input type="date" value="${esc(pago.pago_em||'')}" data-paydt="${f.id}" title="Data do pagamento — clique para alterar" style="border:0;background:transparent;color:var(--ok);font:inherit;padding:0;cursor:pointer;color-scheme:dark;width:auto"></span> <button class="btn sm ghost" data-unpay="${f.id}">desfazer</button>`:`<button class="btn sm gold" data-pay="${f.id}">marcar pago</button>`;
     return `<tr><td><b>${esc(f.nome)}</b></td><td><span class="sub">${TIPO_NOME[f.tipo]}</span></td>
       <td class="num">${o.dias}</td><td class="num he">${m2hm(o.extra)}</td><td class="num">${brl(he$)}</td>
-      <td class="num">${dia$?brl(dia$):'—'}</td><td class="num">${o.falta||'—'}</td><td class="num">${m2hm(o.faltaJ)}</td>
+      <td class="num">${dia$?brl(dia$):'—'}</td><td class="num">${com$?brl(com$)+'<div class="sub">'+nf(o.ha)+' ha</div>':'—'}</td><td class="num">${o.falta||'—'}</td><td class="num">${m2hm(o.faltaJ)}</td>
       <td class="num"><b>${brl(tot)}</b></td><td style="white-space:nowrap">${pagoCel}</td></tr>`;
-  }).filter(Boolean).join('')||'<tr><td colspan="10" class="hint">Sem lançamentos no mês.</td></tr>';
+  }).filter(Boolean).join('')||'<tr><td colspan="11" class="hint">Sem lançamentos no mês.</td></tr>';
   return `<div class="box"><div style="font-weight:800;font-size:15px;margin-bottom:6px">Folha de hora extra — ${_mesLabel(MES)}</div>
     <div class="row no-print" style="align-items:center;gap:6px">
       <button class="btn" id="r_prev" title="Mês anterior">◀</button>
@@ -402,7 +411,7 @@ function relHTML(){
       <button class="btn" id="r_print">🖨️ Imprimir</button>
     </div>
     <div style="margin-top:8px"><span class="pill">Total ${brl(tGeral)}</span> <span class="pill">Pago <b>${brl(tPago)}</b></span> <span class="pill">Em aberto <b style="color:var(--gold)">${brl(tAberto)}</b></span></div></div>
-    <div class="box" style="overflow-x:auto"><table class="fit"><thead><tr><th>Funcionário</th><th>Tipo</th><th class="num">Dias</th><th class="num">Hora extra</th><th class="num">R$ HE</th><th class="num">Diárias</th><th class="num">Faltas</th><th class="num">A menos</th><th class="num">Total</th><th>Pagamento</th></tr></thead><tbody>${rows}</tbody></table>
+    <div class="box" style="overflow-x:auto"><table class="fit"><thead><tr><th>Funcionário</th><th>Tipo</th><th class="num">Dias</th><th class="num">Hora extra</th><th class="num">R$ HE</th><th class="num">Diárias</th><th class="num">Comissão</th><th class="num">Faltas</th><th class="num">A menos</th><th class="num">Total</th><th>Pagamento</th></tr></thead><tbody>${rows}</tbody></table>
     <div class="hint">Folha de <b>hora extra</b> + diárias. Registrados: o salário é à parte — aqui é só HE + faltas. "Marcar pago" quita o mês daquele funcionário (sai do "Em aberto").</div></div>`;
 }
 async function marcarPago(fid){ const f=S.funcs.find(x=>x.id===fid), o=REL[fid]; if(!f||!o) return;
@@ -429,33 +438,36 @@ async function _calcAberto(){
   const pagos=new Set((pgs||[]).map(p=>p.funcionario_id+'|'+p.mes));
   const agg={};   // f|mes -> {extra,dias}
   (pts||[]).forEach(p=>{ const mes=String(p.data).slice(0,7); const fer=!!p.feriado||!!S.feriados[p.data];
-    const r=calcDia({data:p.data,marcacoes:p.marcacoes||[],feriado:fer,folga:p.folga,falta:p.falta,sem_he:p.sem_he});
-    const k=p.funcionario_id+'|'+mes; const o=agg[k]||(agg[k]={extra:0,dias:0,falta:0,faltaJ:0}); o.extra+=r.extra; if(!p.falta&&!p.folga&&(p.marcacoes||[]).length)o.dias++; if(p.falta)o.falta++; o.faltaJ+=r.faltaJornada; });
+    if(AB_MES_DE && mes<AB_MES_DE) return; if(AB_MES_ATE && mes>AB_MES_ATE) return;   // filtro de período
+    const r=calcDia({data:p.data,marcacoes:p.marcacoes||[],feriado:fer,folga:p.folga,falta:p.falta,sem_he:p.sem_he,ha:p.ha,valor_ha:p.valor_ha});
+    const k=p.funcionario_id+'|'+mes; const o=agg[k]||(agg[k]={extra:0,dias:0,falta:0,faltaJ:0,comissao:0,ha:0}); o.extra+=r.extra; if(!p.falta&&!p.folga&&(p.marcacoes||[]).length)o.dias++; if(p.falta)o.falta++; o.faltaJ+=r.faltaJornada; o.comissao+=r.comissao; o.ha+=r.ha; });
   const fmap={}, mesesSet=new Set();
   Object.keys(agg).forEach(k=>{ const sp=k.split('|'), fid=+sp[0], mes=sp[1]; const f=S.funcs.find(x=>x.id===fid); if(!f) return;
     const a=agg[k]; const tot=_totFunc(f,a); if(tot<=0||pagos.has(k)) return;
     mesesSet.add(mes);
-    const o=fmap[fid]||(fmap[fid]={fid,nome:f.nome,tipo:f.tipo,meio:f.meio_pgto||'',chave:f.chave_pix||'',titular:f.titular||'',porMes:{},total:0,extra:0,dias:0,falta:0,faltaJ:0,he$:0,dia$:0});
+    const o=fmap[fid]||(fmap[fid]={fid,nome:f.nome,tipo:f.tipo,meio:f.meio_pgto||'',chave:f.chave_pix||'',titular:f.titular||'',porMes:{},total:0,extra:0,dias:0,falta:0,faltaJ:0,he$:0,dia$:0,comissao:0,ha:0});
     o.porMes[mes]=tot; o.total+=tot;
-    o.extra+=a.extra; o.dias+=a.dias; o.falta+=(a.falta||0); o.faltaJ+=(a.faltaJ||0);
+    o.extra+=a.extra; o.dias+=a.dias; o.falta+=(a.falta||0); o.faltaJ+=(a.faltaJ||0); o.comissao+=(a.comissao||0); o.ha+=(a.ha||0);
     o.he$+=m2dec(a.extra)*valorHE(f); o.dia$+=(f.tipo==='diarista'?a.dias*valorDiaria(f):0); });
   const meses=[...mesesSet].sort();
   const funcs=Object.values(fmap).sort((a,b)=>a.nome.localeCompare(b.nome,'pt'));
   const totMes={}; let total=0; meses.forEach(m=>{ let s=0; funcs.forEach(f=>s+=f.porMes[m]||0); totMes[m]=s; total+=s; });
   return {funcs,meses,totMes,total};
 }
-let AB_COLS=null, AB_TIPO='', AB_BUSCA='';
-function _abCols(){ if(!AB_COLS){ let sv=null; try{ sv=JSON.parse(localStorage.getItem('rh_aberto_cols')||'null'); }catch(e){} AB_COLS=Object.assign({dias:true,extra:true,he:true,dia:true,falta:true,faltaJ:true,meio:true,chave:true,titular:true}, sv||{}); } return AB_COLS; }
+let AB_COLS=null, AB_TIPO='', AB_BUSCA='', AB_MES_DE='', AB_MES_ATE='';
+function _abCols(){ if(!AB_COLS){ let sv=null; try{ sv=JSON.parse(localStorage.getItem('rh_aberto_cols')||'null'); }catch(e){} AB_COLS=Object.assign({dias:true,extra:true,he:true,dia:true,com:true,ha:false,falta:true,faltaJ:true,meio:true,chave:true,titular:true}, sv||{}); } return AB_COLS; }
 const AB_DEF=[
   {k:'dias',l:'Dias',cls:'',td:f=>f.dias||'—',ft:s=>s('dias')||'—'},
   {k:'extra',l:'Hora extra',cls:'he',td:f=>f.extra?m2hm(f.extra):'—',ft:s=>m2hm(s('extra'))},
   {k:'he',l:'R$ HE',cls:'',td:f=>f.he$?brl(f.he$):'—',ft:s=>brl(s('he$'))},
   {k:'dia',l:'Diárias',cls:'',td:f=>f.dia$?brl(f.dia$):'—',ft:s=>brl(s('dia$'))},
+  {k:'com',l:'Comissão',cls:'',td:f=>f.comissao?brl(f.comissao):'—',ft:s=>brl(s('comissao'))},
+  {k:'ha',l:'ha',cls:'',td:f=>f.ha?nf(f.ha):'—',ft:s=>nf(s('ha'))},
   {k:'falta',l:'Faltas',cls:'',td:f=>f.falta||'—',ft:s=>s('falta')||'—'},
   {k:'faltaJ',l:'A menos',cls:'',td:f=>f.faltaJ?m2hm(f.faltaJ):'—',ft:s=>m2hm(s('faltaJ'))},
 ];
 const AB_END=[ {k:'meio',l:'Meio de pagamento',td:f=>esc(f.meio||'—')}, {k:'chave',l:'Chave Pix / Conta',td:f=>esc(f.chave||'—')}, {k:'titular',l:'Titular',td:f=>esc(f.titular||'—')} ];
-const AB_SUMKEY={dias:'dias',extra:'extra',he:'he$',dia:'dia$',falta:'falta',faltaJ:'faltaJ'};
+const AB_SUMKEY={dias:'dias',extra:'extra',he:'he$',dia:'dia$',com:'comissao',ha:'ha',falta:'falta',faltaJ:'faltaJ'};
 function abertoHTML(){
   if(!ABERTO) return `<div class="box"><div class="hint">⏳ Calculando o que está em aberto…</div></div>`;
   const C=_abCols();
@@ -472,7 +484,11 @@ function abertoHTML(){
     <div class="row no-print" style="margin-top:6px;gap:10px;align-items:flex-end">
       <div class="fcol"><label>Tipo</label><select id="a_tipo">${tipoOpts}</select></div>
       <div class="fcol"><label>Buscar</label><input id="a_busca" value="${esc(AB_BUSCA)}" placeholder="nome do funcionário"></div>
+      <div class="fcol"><label>Período — de</label><input type="month" id="a_de" value="${esc(AB_MES_DE)}"></div>
+      <div class="fcol"><label>até</label><input type="month" id="a_ate" value="${esc(AB_MES_ATE)}"></div>
+      ${(AB_MES_DE||AB_MES_ATE)?`<button class="btn sm ghost" id="a_limpaper" style="margin-bottom:2px">limpar período</button>`:''}
     </div>
+    ${(AB_MES_DE||AB_MES_ATE)?`<div class="hint">Mostrando só ${AB_MES_DE?('de '+_mesLabel(AB_MES_DE)):'o início'} ${AB_MES_ATE?('até '+_mesLabel(AB_MES_ATE)):'até hoje'}.</div>`:''}
     <div class="no-print" style="margin-top:6px"><span class="sub">Mostrar colunas:</span> ${toggles}</div></div>`;
   if(!funcs.length) return cabec+`<div class="box"><div class="hint">${ABERTO.funcs.length?'Nenhum funcionário no filtro.':'🎉 Nada em aberto — tudo pago.'}</div></div>`;
   const det=AB_DEF.filter(c=>C[c.k]); const end=AB_END.filter(c=>C[c.k]);
@@ -492,6 +508,10 @@ function bindAberto(){
   if($('a_reload')) $('a_reload').onclick=async()=>{ ABERTO=null; route(); ABERTO=await _calcAberto(); route(); };
   if($('a_print')) $('a_print').onclick=()=>window.print();
   if($('a_tipo')) $('a_tipo').onchange=()=>{ AB_TIPO=$('a_tipo').value; route(); };
+  const _recalcPer=async()=>{ ABERTO=null; route(); ABERTO=await _calcAberto(); route(); };
+  if($('a_de')) $('a_de').onchange=()=>{ AB_MES_DE=$('a_de').value||''; _recalcPer(); };
+  if($('a_ate')) $('a_ate').onchange=()=>{ AB_MES_ATE=$('a_ate').value||''; _recalcPer(); };
+  if($('a_limpaper')) $('a_limpaper').onclick=()=>{ AB_MES_DE=''; AB_MES_ATE=''; _recalcPer(); };
   const bs=$('a_busca'); if(bs) bs.oninput=()=>{ AB_BUSCA=bs.value; const p=bs.selectionStart; route(); const n=$('a_busca'); if(n){ n.focus(); try{n.setSelectionRange(p,p);}catch(e){} } };
   document.querySelectorAll('.ab-col').forEach(c=>c.onchange=()=>{ _abCols()[c.dataset.k]=c.checked; try{localStorage.setItem('rh_aberto_cols',JSON.stringify(AB_COLS));}catch(e){} route(); });
 }
