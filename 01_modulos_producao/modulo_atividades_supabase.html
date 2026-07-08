@@ -2708,11 +2708,10 @@ function renderPlanejamento(){
       <button class="${_planTab==='compras'?'on':''}" data-pt="compras">🛒 Lista de compras</button>
       <button class="${_planTab==='real'?'on':''}" data-pt="real">📊 Projetado × Realizado</button>
       <button class="${_planTab==='relatorio'?'on':''}" data-pt="relatorio">📑 Relatório</button>
-      <button class="${_planTab==='resultados'?'on':''}" data-pt="resultados">📈 Resultados</button>
     </div>
     ${_planTab==='compras'?_planComprasControls():''}
   </div>`;
-  const body=_planTab==='lote'?_planPorLoteHTML():_planTab==='compras'?_planComprasHTML():_planTab==='relatorio'?_planRelatorioHTML():_planTab==='resultados'?_planResHTML():_planRealHTML();
+  const body=_planTab==='lote'?_planPorLoteHTML():_planTab==='compras'?_planComprasHTML():_planTab==='relatorio'?_planRelatorioHTML():_planRealHTML();
   const wcls='wrap'+((_planTab==='compras'&&_plcFS)?' plc-fs':'');
   return `<div class="${wcls}"${_planTab==='compras'?' style="max-width:none"':''}>${sub}${body}</div>`;
 }
@@ -2720,7 +2719,6 @@ function bindPlanejamento(){
   $$('#main [data-pt]').forEach(b=>b.onclick=()=>{ _planTab=b.dataset.pt; _planEdit=null; render(); });
   if(_planTab==='lote') _bindPlanPorLote(); else if(_planTab==='compras') _bindPlanCompras();
   else if(_planTab==='relatorio'){ const pb=$('#rel_print'); if(pb) pb.onclick=_planRelImprimir; const dc=$('#rel_det'); if(dc) dc.onchange=()=>{ _planRelDet=dc.checked; const box=$('#planRelBox'); if(box) box.innerHTML=_planRelBody(_planRelDet); }; }
-  else if(_planTab==='resultados') _bindPlanRes();
 }
 /* ---- Projetado × Realizado (por lote, safra atual) ---- */
 function _planRealHTML(){
@@ -2816,114 +2814,6 @@ function _planRelImprimir(){
     +'<h1>Relatório do Planejamento — Alabama Agro</h1><div class="sub">Safra '+esc(SAFRA)+' · '+dt+'</div>'
     +_planRelBody(true)+'</body></html>');
   w.document.close(); setTimeout(()=>{ try{ w.focus(); w.print(); }catch(e){} }, 400);
-}
-/* ---- Resultados (dashboard visual + DRE) ---- */
-const _RESPAL=['#4f8cff','#ff9f43','#26de81','#fd79a8','#a55eea','#feca57','#48dbfb','#ff6b6b','#00d2d3','#c8d6e5','#e17055','#00b894'];
-function _fmtRk(v){ v=+v||0; const a=Math.abs(v); if(a>=1e6) return 'R$ '+(v/1e6).toLocaleString('pt-BR',{maximumFractionDigits:2})+' mi'; if(a>=1e3) return 'R$ '+(v/1e3).toLocaleString('pt-BR',{maximumFractionDigits:0})+' mil'; return fmtR$(v); }
-function _catProduto(nome){ const pr=_prodPorNome(nome); const t=pr?(pr.tipoBase||pr.tipo||''):''; if(t==='Semente')return'Semente'; if(t==='Fertilizante')return'Fertilizante'; if(t==='Defensivo')return'Defensivo'; if(t==='Defensivos Biológicos')return'Biológico'; if(t==='Adjuvante')return'Adjuvante'; return 'Outros insumos'; }
-function _resKpi(label,val,sub){ return '<div style="flex:1;min-width:130px;background:rgba(255,255,255,.04);border:1px solid var(--linha,#2a3550);border-radius:12px;padding:12px 14px"><div class="sub" style="text-transform:uppercase;letter-spacing:.4px;font-size:10px">'+esc(label)+'</div><div style="font-size:20px;font-weight:800;margin-top:3px">'+val+'</div>'+(sub?('<div class="sub" style="margin-top:2px">'+sub+'</div>'):'')+'</div>'; }
-function _barChart(items){ const max=Math.max(1,...items.map(i=>i.val)); if(!items.length) return '<div class="hint">Sem dados.</div>';
-  return '<div style="display:flex;flex-direction:column;gap:7px">'+items.map(it=>'<div style="display:flex;align-items:center;gap:8px;font-size:12px">'
-    +'<div style="width:130px;flex:none;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="'+esc(it.label)+'">'+esc(it.label)+'</div>'
-    +'<div style="flex:1;background:rgba(255,255,255,.07);border-radius:5px;height:15px"><div style="width:'+Math.round(it.val/max*100)+'%;background:'+it.color+';height:100%;border-radius:5px;min-width:2px"></div></div>'
-    +'<div style="width:150px;flex:none;text-align:right" class="sub">'+_fmtRk(it.val)+(it.sub?(' <span style="opacity:.65">· '+it.sub+'</span>'):'')+'</div></div>').join('')+'</div>'; }
-function _donut(items){ const tot=items.reduce((s,i)=>s+i.val,0)||1; const r=54,C=2*Math.PI*r,cx=70,cy=70; let off=0;
-  const arcs=items.map(it=>{ const len=it.val/tot*C; const s='<circle cx="'+cx+'" cy="'+cy+'" r="'+r+'" fill="none" stroke="'+it.color+'" stroke-width="20" stroke-dasharray="'+len+' '+(C-len)+'" stroke-dashoffset="'+(-off)+'" transform="rotate(-90 '+cx+' '+cy+')"></circle>'; off+=len; return s; }).join('');
-  const leg=items.map(it=>'<div style="display:flex;align-items:center;gap:6px;font-size:12px;margin-bottom:3px"><span style="width:10px;height:10px;border-radius:2px;background:'+it.color+';flex:none"></span><span style="flex:1">'+esc(it.label)+'</span><span class="sub">'+_fmtRk(it.val)+' · '+(tot?Math.round(it.val/tot*100):0)+'%</span></div>').join('');
-  return '<div style="display:flex;gap:16px;align-items:center;flex-wrap:wrap"><svg viewBox="0 0 140 140" width="150" height="150" style="flex:none">'+arcs+'<text x="70" y="66" text-anchor="middle" font-size="9" fill="#8b949e">total</text><text x="70" y="82" text-anchor="middle" font-size="12" font-weight="700" fill="currentColor">'+_fmtRk(tot)+'</text></svg><div style="flex:1;min-width:180px">'+leg+'</div></div>'; }
-function _card(titulo,inner){ return '<div style="background:rgba(255,255,255,.03);border:1px solid var(--linha,#2a3550);border-radius:12px;padding:14px 16px"><div class="sec" style="margin:0 0 10px">'+esc(titulo)+'</div>'+inner+'</div>'; }
-function _dreCfg(){ try{ return JSON.parse(localStorage.getItem('plan_dre_'+SAFRA)||'null')||{}; }catch(e){ return {}; } }
-function _dreSet(cult,campo,val){ const c=_dreCfg(); (c[cult]=c[cult]||{})[campo]=val; try{ localStorage.setItem('plan_dre_'+SAFRA,JSON.stringify(c)); }catch(e){} }
-function _dreDef(cult){ const d={'Soja':{prod:70,preco:120},'Algodão':{prod:280,preco:145},'Milho':{prod:110,preco:55}}; return d[cult]||{prod:0,preco:0}; }
-function _planResBody(){
-  const ativos=(S.planejamento||[]).filter(p=>p.status!=='cancelado');
-  if(!ativos.length) return '<div class="hint">Sem planejamento nesta safra.</div>';
-  // cultura primária do lote (menor ordem) -> separa 1ª safra x safrinha
-  const primaria={}, minOrd={};
-  ativos.forEach(p=>{ const o=(p.ordem!=null?p.ordem:1e9); if(!(p.lote in minOrd)||o<minOrd[p.lote]){ minOrd[p.lote]=o; primaria[p.lote]=p.cultura||''; } });
-  const cicloDe=p=>{ if(!p.cultura) return '—'; return (p.cultura===primaria[p.lote])?'1ª safra':'Safrinha'; };
-  const byCult={},byLote={},byCat={},byTipo={}; let totProd=0,totOper=0;
-  ativos.forEach(p=>{ const oper=_custoOperacao(p); let prodTot=0;
-    (p.produtos||[]).forEach(pr=>{ const q=_planQtd(pr,p.lote,p.sementeKgha,p.areaParcial); if(q==null)return; const c=q*_custoUnitProd(pr.nome); prodTot+=c; byCat[_catProduto(pr.nome)]=(byCat[_catProduto(pr.nome)]||0)+c; });
-    if(oper) byCat['Operação']=(byCat['Operação']||0)+oper;
-    const est=prodTot+oper, cult=p.cultura||'(sem cultura)';
-    const R=byCult[cult]||(byCult[cult]={custo:0,prod:0,oper:0,n:0,lotes:{},ciclos:{}}); R.custo+=est; R.prod+=prodTot; R.oper+=oper; R.n++; R.lotes[p.lote]=true; R.ciclos[cicloDe(p)]=true;
-    (byLote[p.lote]=byLote[p.lote]||{custo:0,area:areaDe(p.lote)}); byLote[p.lote].custo+=est;
-    const tp=p.condicional?'Condicional':(p.tipoAtiv||'(sem tipo)'); byTipo[tp]=(byTipo[tp]||0)+est;
-    totProd+=prodTot; totOper+=oper; });
-  const totEst=totProd+totOper;
-  const areaTotal=Object.keys(byLote).reduce((s,l)=>s+(byLote[l].area||0),0);
-  const areaCult=c=>Object.keys((byCult[c]||{lotes:{}}).lotes).reduce((s,l)=>s+(areaDe(l)||0),0);
-  const cults=Object.keys(byCult).filter(c=>c!=='(sem cultura)');
-  const cicloRank=c=>byCult[c].ciclos['1ª safra']?0:1;
-  cults.sort((a,b)=>cicloRank(a)-cicloRank(b)||areaCult(b)-areaCult(a));
-  // ---- Resultado operacional por cultura/safra ----
-  let recTot=0,resTot=0;
-  const opRows=cults.map(c=>{ const cfg=_dreCfg()[c]||{}, def=_dreDef(c);
-    const prod=(cfg.prod!=null?cfg.prod:def.prod), preco=(cfg.preco!=null?cfg.preco:def.preco);
-    const ar=areaCult(c), cst=byCult[c].custo, custoHa=ar>0?cst/ar:0, custoUn=(ar>0&&prod>0)?cst/(ar*prod):0;
-    const rec=ar*prod*preco, recHa=ar>0?rec/ar:0, res=rec-cst, resHa=ar>0?res/ar:0, marg=rec>0?res/rec*100:null;
-    recTot+=rec; resTot+=res; const cic=Object.keys(byCult[c].ciclos).filter(x=>x!=='—');
-    return '<tr>'
-      +'<td class="sub" style="white-space:nowrap">'+(cic.join(' + ')||'—')+'</td>'
-      +'<td><b>🌾 '+esc(c)+'</b></td>'
-      +'<td class="num">'+fmtArea(ar)+'</td>'
-      +'<td class="num"><input class="dre-in" data-cult="'+esc(c)+'" data-f="prod" value="'+(prod||'')+'" style="width:58px;text-align:right" placeholder="un/ha"></td>'
-      +'<td class="num"><input class="dre-in" data-cult="'+esc(c)+'" data-f="preco" value="'+(preco||'')+'" style="width:62px;text-align:right" placeholder="R$/un"></td>'
-      +'<td class="num">'+fmtR$(cst)+'<div class="sub">'+fmtR$(custoHa)+'/ha</div></td>'
-      +'<td class="num">'+(custoUn>0?fmtR$(custoUn):'—')+'</td>'
-      +'<td class="num">'+(rec?fmtR$(rec):'—')+(rec?'<div class="sub">'+fmtR$(recHa)+'/ha</div>':'')+'</td>'
-      +'<td class="num" style="color:'+(res>=0?'#26de81':'#ff6b6b')+'"><b>'+fmtR$(res)+'</b>'+(ar>0?'<div class="sub" style="color:inherit">'+fmtR$(resHa)+'/ha</div>':'')+'</td>'
-      +'<td class="num">'+(marg!=null?fmtBR(marg)+'%':'—')+'</td></tr>'; }).join('');
-  const margTot=recTot>0?fmtBR(resTot/recTot*100)+'%':'—';
-  const custoHaTot=areaTotal>0?totEst/areaTotal:0, recHaTot=areaTotal>0?recTot/areaTotal:0, resHaTot=areaTotal>0?resTot/areaTotal:0;
-  // ---- KPIs ----
-  let h='<div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:16px">'
-    +_resKpi('Área plantada',fmtArea(areaTotal)+' ha')
-    +_resKpi('Receita projetada',_fmtRk(recTot),fmtR$(recHaTot)+'/ha')
-    +_resKpi('Custo de produção',_fmtRk(totEst),fmtR$(custoHaTot)+'/ha')
-    +_resKpi('Resultado projetado','<span style="color:'+(resTot>=0?'#26de81':'#ff6b6b')+'">'+_fmtRk(resTot)+'</span>',fmtR$(resHaTot)+'/ha · margem '+margTot)
-    +'</div>';
-  // ---- Tabela operacional (padrão RI) ----
-  h+=_card('Resultado operacional por cultura / safra',
-    '<div class="hint" style="margin:-4px 0 10px">Edite <b>produtividade</b> e <b>preço</b> por cultura (soja em sacas 60kg, algodão em @). Receita = área × produtividade × preço. Custo/ha e custo por unidade vêm do planejamento.</div>'
-    +'<div style="overflow-x:auto"><table class="ptbl"><thead><tr><th>Ciclo</th><th>Cultura</th><th class="num">Área (ha)</th><th class="num">Produt.<br>un/ha</th><th class="num">Preço<br>R$/un</th><th class="num">Custo<br>total · /ha</th><th class="num">Custo<br>R$/un</th><th class="num">Receita<br>total · /ha</th><th class="num">Result.<br>total · /ha</th><th class="num">Margem</th></tr></thead>'
-    +'<tbody>'+opRows+'</tbody>'
-    +'<tfoot><tr><td colspan="2"><b>Total</b></td><td class="num"><b>'+fmtArea(areaTotal)+'</b></td><td class="num"></td><td class="num"></td><td class="num"><b>'+fmtR$(totEst)+'</b><div class="sub">'+fmtR$(custoHaTot)+'/ha</div></td><td class="num"></td><td class="num"><b>'+fmtR$(recTot)+'</b></td><td class="num" style="color:'+(resTot>=0?'#26de81':'#ff6b6b')+'"><b>'+fmtR$(resTot)+'</b></td><td class="num"><b>'+margTot+'</b></td></tr></tfoot></table></div>');
-  // ---- DRE consolidada ----
-  const CATLBL={'Semente':'Sementes','Fertilizante':'Fertilizantes','Defensivo':'Defensivos','Biológico':'Biológicos','Adjuvante':'Adjuvantes','Outros insumos':'Outros insumos'};
-  const insumoCats=Object.keys(byCat).filter(k=>k!=='Operação').sort((a,b)=>byCat[b]-byCat[a]);
-  const dreHa=v=>areaTotal>0?fmtR$(v/areaTotal):'—';
-  const drePc=v=>recTot>0?fmtBR(v/recTot*100)+'%':'—';
-  const dreRow=(lbl,val,o)=>{ o=o||{}; const cor=o.res?(val>=0?'#26de81':'#ff6b6b'):''; const st=(o.bold?'font-weight:800;':'')+(o.top?'border-top:2px solid var(--linha,#2a3550);':'');
-    return '<tr style="'+st+'"><td>'+esc(lbl)+'</td><td class="num"'+(cor?' style="color:'+cor+'"':'')+'>'+(o.neg?'(':'')+fmtR$(Math.abs(val))+(o.neg?')':'')+'</td><td class="num sub">'+dreHa(val)+'</td><td class="num sub">'+drePc(val)+'</td></tr>'; };
-  let dre=dreRow('Receita líquida projetada',recTot,{bold:true});
-  insumoCats.forEach(k=>{ dre+=dreRow('(−) '+(CATLBL[k]||k),byCat[k],{neg:true}); });
-  if(byCat['Operação']) dre+=dreRow('(−) Operações / serviços',byCat['Operação'],{neg:true});
-  dre+=dreRow('(=) Custo de produção total',totEst,{neg:true,bold:true,top:true});
-  dre+=dreRow('(=) Lucro bruto projetado',resTot,{bold:true,res:true,top:true});
-  h+='<div style="margin-top:14px"></div>'+_card('DRE projetada (consolidada)',
-    '<div style="overflow-x:auto"><table class="ptbl"><thead><tr><th>Demonstrativo</th><th class="num">Total</th><th class="num">R$/ha</th><th class="num">% receita</th></tr></thead><tbody>'+dre+'</tbody></table></div>'
-    +'<div class="hint" style="margin-top:6px">Margem bruta projetada: <b style="color:'+(resTot>=0?'#26de81':'#ff6b6b')+'">'+margTot+'</b>. Custo reflete o que está lançado no planejamento (insumos + operação); receita usa os preços/produtividade da tabela acima.</div>');
-  // ---- Gráficos ----
-  const catItems=Object.keys(byCat).sort((a,b)=>byCat[b]-byCat[a]).map((k,i)=>({label:(CATLBL[k]||k),val:byCat[k],color:_RESPAL[i%_RESPAL.length]}));
-  const cultHaItems=cults.map((c,i)=>({label:c,val:byCult[c].custo,color:_RESPAL[i%_RESPAL.length],sub:fmtR$(areaCult(c)>0?byCult[c].custo/areaCult(c):0)+'/ha'}));
-  const tipoItems=Object.keys(byTipo).sort((a,b)=>byTipo[b]-byTipo[a]).slice(0,8).map((t,i)=>({label:t,val:byTipo[t],color:_RESPAL[i%_RESPAL.length]}));
-  const loteItems=Object.keys(byLote).sort((a,b)=>byLote[b].custo-byLote[a].custo).slice(0,10).map((l,i)=>({label:l,val:byLote[l].custo,color:_RESPAL[(i+3)%_RESPAL.length],sub:(byLote[l].area>0?fmtR$(byLote[l].custo/byLote[l].area):'—')+'/ha'}));
-  h+='<div style="margin-top:14px"></div><div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(330px,1fr));gap:14px">'
-    +_card('Composição do custo (categoria)',_donut(catItems))
-    +_card('Custo por cultura (total · R$/ha)',_barChart(cultHaItems))
-    +_card('Custo por tipo de atividade',_barChart(tipoItems))
-    +_card('Custo por lote — top 10 (total · R$/ha)',_barChart(loteItems))
-    +'</div>';
-  return h;
-}
-function _planResHTML(){
-  return '<div class="nav-row" style="justify-content:space-between;margin-bottom:12px"><div class="hint"><b>Resultados</b> — safra '+esc(SAFRA)+'. Dashboard do planejamento com DRE projetada (edite produtividade/preço).</div><button class="btn sm" id="res_print">🖨 Imprimir</button></div><div id="planResBox">'+_planResBody()+'</div>';
-}
-function _bindPlanRes(){
-  const pb=$('#res_print'); if(pb) pb.onclick=()=>window.print();
-  $$('#planResBox .dre-in').forEach(inp=>inp.onchange=()=>{ _dreSet(inp.dataset.cult,inp.dataset.f,parseFloat(String(inp.value).replace(',','.'))||0); const box=$('#planResBox'); if(box){ box.innerHTML=_planResBody(); _bindPlanRes(); } });
 }
 /* ---- Por lote ---- */
 function _planPorLoteHTML(){
