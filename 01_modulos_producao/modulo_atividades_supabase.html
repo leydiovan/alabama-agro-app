@@ -2562,13 +2562,13 @@ function _planBaseOpts(tipo,sel,unidade){
   const haLbl=(unidade?esc(unidade):'')+'/ha';       // ex.: L/ha, Kg/ha
   const list=[['ha', haLbl]];
   if(isTS) list.push(['100kg','/100kg sem']);        // /100kg só p/ Tratamento de Sementes
-  if(isPl) list.push(['populacao','população (pl/ha)']); // população só no Plantio
-  if(sel && !list.some(o=>o[0]===sel)) list.push([sel, sel==='100kg'?'/100kg sem':sel==='populacao'?'população (pl/ha)':haLbl]);
+  if(isPl) list.push(['populacao','população (sementes/ha)']); // população só no Plantio
+  if(sel && !list.some(o=>o[0]===sel)) list.push([sel, sel==='100kg'?'/100kg sem':sel==='populacao'?'população (sementes/ha)':haLbl]);
   return list.map(([v,l])=>'<option value="'+v+'" '+((sel===v||(!sel&&v==='ha'))?'selected':'')+'>'+l+'</option>').join('');
 }
 function _planQtd(prod, lote, sementeKgha, areaParcial){ const d=numUn((prod&&prod.dose)||'').n; const a=_areaPlan(lote,areaParcial); if(d==null||a==null) return null;
   if(prod&&prod.base==='100kg'){ const sk=numUn(sementeKgha||'').n; return sk!=null? d*(sk*a/100) : null; }
-  if(prod&&prod.base==='populacao'){ const f=_unFator(prod.unidade); return f? (d*a)/f : null; }   // população (pl/ha) -> unidade do produto (ex.: bag = 5.000.000)
+  if(prod&&prod.base==='populacao'){ const pr=_prodPorNome(prod.nome); const f=(pr&&pr.sementesEmb>0)?+pr.sementesEmb:_unFator(prod.unidade); return f? (d*a)/f : null; }   // população (sementes/ha) -> embalagens (sementes por embalagem do produto; ex.: big bag 5.000.000)
   return d*a; }
 /* ---- custos da operação por tipo (estimativa do lote) ---- */
 function _ehTS(tipo){ return /Tratamento de Sementes/i.test(tipo||''); }
@@ -2640,7 +2640,14 @@ function _parseAtivosPlan(comp,tipo){
 function _numConc(a){ if(!a) return null; const n=numUn(String(a.conc==null?'':a.conc)).n; return (n!=null&&n>0)?n:null; }
 function _formProd(p){ return String((p&&(p.formulacao||p.formCod))||'').trim().toLowerCase(); }
 /* resumo da composição (ativos) p/ a coluna da Lista de compras (#1) */
+function _fmtSem(n){ return Number(n||0).toLocaleString('pt-BR'); }
 function _compResumo(pr){ if(!pr) return '—';
+  if(pr.tipoBase==='Semente'||pr.tipo==='Semente'){   // semente: cultura · origem · embalagem/PMS
+    const p=[]; if(pr.cultura) p.push(pr.cultura);
+    if(pr.sementeTipo==='certificada'){ p.push('certificada'); const emb=pr.sementeEmb==='saco'?'saco':(pr.sementeEmb==='big_bag'?'big bag':''); if(emb) p.push(emb+(pr.sementesEmb?(' '+_fmtSem(pr.sementesEmb)+' sem.'):'')); }
+    else if(pr.sementeTipo==='salva'){ p.push('salva (kg)'); if(pr.pms) p.push('PMS '+_fmtSem(pr.pms)+'g'); }
+    return p.length?esc(p.join(' · ')):'—';
+  }
   const fmtL=x=>esc(String(x.nome||''))+((x.conc!=null&&x.conc!=='')?(' '+esc(String(x.conc).replace('.',','))+(x.unidade?(' '+esc(x.unidade)):'')):'');
   const a=pr.ativos||[]; if(a.length) return a.map(fmtL).join(' + ');
   const g=pr.garantias||[]; if(g.length) return g.map(fmtL).join(' · ');   // fertilizantes: garantias
@@ -3943,7 +3950,7 @@ async function carregarDoSupabase(){
     try{
       const r=await SB.from('produtos').select('*');
       if(!r.error && r.data && r.data.length){
-        S.produtos = r.data.map(p=>({codigo:p.codigo, nome:p.nome, comp:p.comp, tipo:p.classe||p.tipo, tipoBase:p.tipo, classe:p.classe, formulacao:p.formulacao, unidade:p.unidade, preco:p.preco, sementeTipo:p.semente_tipo||'', ativos:(Array.isArray(p.ativos)&&p.ativos.length)?p.ativos:[], garantias:Array.isArray(p.garantias)?p.garantias:[]}));   /* usa só o ativo estruturado; não adivinha mais pelo comp */
+        S.produtos = r.data.map(p=>({codigo:p.codigo, nome:p.nome, comp:p.comp, tipo:p.classe||p.tipo, tipoBase:p.tipo, classe:p.classe, formulacao:p.formulacao, unidade:p.unidade, preco:p.preco, sementeTipo:p.semente_tipo||'', cultura:p.cultura||'', sementeEmb:p.semente_emb||'', sementesEmb:p.sementes_emb, pms:p.pms, ativos:(Array.isArray(p.ativos)&&p.ativos.length)?p.ativos:[], garantias:Array.isArray(p.garantias)?p.garantias:[]}));   /* usa só o ativo estruturado; não adivinha mais pelo comp */
       }
     }catch(e){ console.warn('produtos',e); }
 
