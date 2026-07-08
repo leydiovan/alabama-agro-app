@@ -2521,7 +2521,8 @@ const PRINT_CSS=`<style>
 
 /* ====================== RENDER PRINCIPAL ====================== */
 /* ===================== PLANEJAMENTO DA SAFRA ===================== */
-let _planTab='lote';      // 'lote' | 'compras'
+let _planTab='lote';      // 'lote' | 'compras' | 'real' | 'relatorio'
+let _planRelDet=false;    // relatório: detalhar por lote
 let _planLote='';         // lote selecionado em "Por lote"
 let _planEdit=null;       // id em edição (ou 'novo')
 let _planProd=[];         // linhas de produto do editor {nome,tipo,dose,unidade}
@@ -2706,16 +2707,18 @@ function renderPlanejamento(){
       <button class="${_planTab==='lote'?'on':''}" data-pt="lote">📋 Por lote</button>
       <button class="${_planTab==='compras'?'on':''}" data-pt="compras">🛒 Lista de compras</button>
       <button class="${_planTab==='real'?'on':''}" data-pt="real">📊 Projetado × Realizado</button>
+      <button class="${_planTab==='relatorio'?'on':''}" data-pt="relatorio">📑 Relatório</button>
     </div>
     ${_planTab==='compras'?_planComprasControls():''}
   </div>`;
-  const body=_planTab==='lote'?_planPorLoteHTML():_planTab==='compras'?_planComprasHTML():_planRealHTML();
+  const body=_planTab==='lote'?_planPorLoteHTML():_planTab==='compras'?_planComprasHTML():_planTab==='relatorio'?_planRelatorioHTML():_planRealHTML();
   const wcls='wrap'+((_planTab==='compras'&&_plcFS)?' plc-fs':'');
   return `<div class="${wcls}"${_planTab==='compras'?' style="max-width:none"':''}>${sub}${body}</div>`;
 }
 function bindPlanejamento(){
   $$('#main [data-pt]').forEach(b=>b.onclick=()=>{ _planTab=b.dataset.pt; _planEdit=null; render(); });
   if(_planTab==='lote') _bindPlanPorLote(); else if(_planTab==='compras') _bindPlanCompras();
+  else if(_planTab==='relatorio'){ const pb=$('#rel_print'); if(pb) pb.onclick=_planRelImprimir; const dc=$('#rel_det'); if(dc) dc.onchange=()=>{ _planRelDet=dc.checked; const box=$('#planRelBox'); if(box) box.innerHTML=_planRelBody(_planRelDet); }; }
 }
 /* ---- Projetado × Realizado (por lote, safra atual) ---- */
 function _planRealHTML(){
@@ -2734,6 +2737,84 @@ function _planRealHTML(){
     <tfoot><tr><td style="text-align:right"><b>Total (${esc(SAFRA)})</b></td><td class="num"><b>${fmtR$(tP)}</b></td><td class="num"><b>${fmtR$(tR)}</b></td><td class="num"><b>${fmtR$(tR-tP)}</b></td></tr></tfoot></table>`;
 }
 
+/* ---- Relatório do planejamento (completo) ---- */
+function _planRelLoteDetalhe(lote){
+  const lista=(S.planejamento||[]).filter(p=>p.lote===lote && p.status!=='cancelado').sort(_planOrd);
+  const rows=lista.map(p=>{ const est=_estimativaAtiv(p);
+    const prods=(p.produtos||[]).map(pr=>{ const q=_planQtd(pr,p.lote,p.sementeKgha,p.areaParcial); return esc(pr.nome)+(pr.dose?(' '+esc(String(pr.dose))+(pr.base==='populacao'?' sem/ha':(pr.base==='100kg'?'/100kg':'/ha'))):'')+(q!=null?(' → '+fmtBR(q)+' '+esc(pr.unidade||'')):''); }).join(' · ')||'<span class="sub">—</span>';
+    return `<tr>
+      <td>${p.condicional?'<span class="sub" title="condicional">◇</span> ':''}${esc(p.epoca||p.tipoAtiv||'—')}${p.dataPrev?(' <span class="sub">'+esc(String(p.dataPrev).split('-').reverse().join('/'))+'</span>'):''}</td>
+      <td class="sub">${esc(p.tipoAtiv||'—')}</td>
+      <td>${p.cultura?('🌾 '+esc(p.cultura)):'<span class="sub">—</span>'}</td>
+      <td class="sub">${prods}</td>
+      <td class="num">${est?fmtR$(est):'—'}</td></tr>`; }).join('');
+  return `<table class="ptbl" style="margin:6px 0 16px"><thead><tr><th>Época / atividade</th><th>Tipo</th><th>Cultura</th><th>Produtos (dose → qtd)</th><th class="num">Estimativa</th></tr></thead><tbody>${rows}</tbody></table>`;
+}
+function _planRelBody(detalhe){
+  const ativos=(S.planejamento||[]).filter(p=>p.status!=='cancelado');
+  if(!ativos.length) return '<div class="hint">Sem planejamento nesta safra.</div>';
+  const porLote={}, porCult={}, porTipo={};
+  let totProd=0,totOper=0,nAtiv=0,nCond=0;
+  ativos.forEach(p=>{ const prod=_custoProdutosAtiv(p), oper=_custoOperacao(p), est=prod+oper;
+    const cult=p.cultura||'(sem cultura)';
+    const L=porLote[p.lote]||(porLote[p.lote]={area:areaDe(p.lote),cults:{},nAtiv:0,nCond:0,prod:0,oper:0});
+    L.cults[cult]=true; if(p.condicional)L.nCond++; else L.nAtiv++; L.prod+=prod; L.oper+=oper;
+    const C=porCult[cult]||(porCult[cult]={lotes:{},n:0,custo:0}); C.lotes[p.lote]=true; C.n++; C.custo+=est;
+    const tp=p.condicional?'Condicional':(p.tipoAtiv||'(sem tipo)'); const T=porTipo[tp]||(porTipo[tp]={n:0,custo:0}); T.n++; T.custo+=est;
+    totProd+=prod; totOper+=oper; if(p.condicional)nCond++; else nAtiv++; });
+  const lotesOrd=_ordLotes(S.lotes).map(l=>l.nome).filter(n=>porLote[n]);
+  Object.keys(porLote).forEach(n=>{ if(lotesOrd.indexOf(n)<0) lotesOrd.push(n); });
+  const areaTotal=Object.keys(porLote).reduce((s,l)=>s+(porLote[l].area||0),0);
+  const totEst=totProd+totOper;
+  const pct=v=>totEst>0?fmtBR(v/totEst*100)+'%':'—';
+  // Resumo geral
+  let h=`<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px">
+    <span class="pill">Lotes <b>${lotesOrd.length}</b></span>
+    <span class="pill">Área total <b>${fmtArea(areaTotal)} ha</b></span>
+    <span class="pill">Atividades <b>${nAtiv}</b>${nCond?(' <span class="sub">+ '+nCond+' cond.</span>'):''}</span>
+    <span class="pill">Estimativa <b style="color:var(--gold)">${fmtR$(totEst)}</b></span>
+    <span class="pill">Custo/ha <b>${areaTotal>0?fmtR$(totEst/areaTotal):'—'}</b></span>
+  </div>`;
+  // Por cultura
+  const cults=Object.keys(porCult).sort((a,b)=>porCult[b].custo-porCult[a].custo);
+  h+=`<div class="sec">Por cultura</div><table class="ptbl" style="margin-bottom:16px"><thead><tr><th>Cultura</th><th class="num">Lotes</th><th class="num">Área (ha)</th><th class="num">Atividades</th><th class="num">Estimativa</th><th class="num">%</th></tr></thead><tbody>`
+    +cults.map(c=>{ const C=porCult[c]; const ar=Object.keys(C.lotes).reduce((s,l)=>s+(areaDe(l)||0),0);
+      return `<tr><td>${c==='(sem cultura)'?'<span class="sub">(sem cultura)</span>':('🌾 '+esc(c))}</td><td class="num">${Object.keys(C.lotes).length}</td><td class="num">${fmtArea(ar)}</td><td class="num">${C.n}</td><td class="num">${fmtR$(C.custo)}</td><td class="num">${pct(C.custo)}</td></tr>`; }).join('')
+    +`</tbody><tfoot><tr><td><b>Total</b></td><td class="num"><b>${lotesOrd.length}</b></td><td class="num"><b>${fmtArea(areaTotal)}</b></td><td class="num"><b>${nAtiv+nCond}</b></td><td class="num"><b>${fmtR$(totEst)}</b></td><td class="num"></td></tr></tfoot></table>`;
+  // Por tipo de atividade
+  const tipos=Object.keys(porTipo).sort((a,b)=>porTipo[b].custo-porTipo[a].custo);
+  h+=`<div class="sec">Por tipo de atividade</div><table class="ptbl" style="margin-bottom:16px"><thead><tr><th>Tipo</th><th class="num">Qtde</th><th class="num">Estimativa</th><th class="num">%</th></tr></thead><tbody>`
+    +tipos.map(t=>`<tr><td>${esc(t)}</td><td class="num">${porTipo[t].n}</td><td class="num">${fmtR$(porTipo[t].custo)}</td><td class="num">${pct(porTipo[t].custo)}</td></tr>`).join('')
+    +`</tbody></table>`;
+  // Por lote
+  h+=`<div class="sec">Por lote</div><table class="ptbl" style="margin-bottom:16px"><thead><tr><th>Lote</th><th>Cultura(s)</th><th class="num">Área (ha)</th><th class="num">Ativ.</th><th class="num">Cond.</th><th class="num">Produtos</th><th class="num">Operação</th><th class="num">Total</th><th class="num">R$/ha</th></tr></thead><tbody>`
+    +lotesOrd.map(n=>{ const L=porLote[n], tot=L.prod+L.oper, cul=Object.keys(L.cults).filter(c=>c!=='(sem cultura)');
+      return `<tr><td><b>${esc(n)}</b></td><td class="sub">${cul.length?cul.join(' + '):'—'}</td><td class="num">${L.area!=null?fmtArea(L.area):'—'}</td><td class="num">${L.nAtiv}</td><td class="num">${L.nCond||'—'}</td><td class="num">${fmtR$(L.prod)}</td><td class="num">${fmtR$(L.oper)}</td><td class="num"><b>${fmtR$(tot)}</b></td><td class="num">${L.area>0?fmtR$(tot/L.area):'—'}</td></tr>`; }).join('')
+    +`</tbody><tfoot><tr><td colspan="5" style="text-align:right"><b>Total (${esc(SAFRA)})</b></td><td class="num"><b>${fmtR$(totProd)}</b></td><td class="num"><b>${fmtR$(totOper)}</b></td><td class="num"><b>${fmtR$(totEst)}</b></td><td class="num"><b>${areaTotal>0?fmtR$(totEst/areaTotal):'—'}</b></td></tr></tfoot></table>`;
+  // Detalhe por lote
+  if(detalhe){ h+=`<div class="sec">Detalhe por lote</div>`;
+    lotesOrd.forEach(n=>{ const L=porLote[n], cul=Object.keys(L.cults).filter(c=>c!=='(sem cultura)');
+      h+=`<div style="margin-top:12px;font-weight:800;font-size:14px">${esc(n)} <span class="sub" style="font-weight:400">· ${L.area!=null?fmtArea(L.area)+' ha':'—'}${cul.length?(' · '+cul.map(c=>'🌾 '+esc(c)).join(' + ')):''} · ${fmtR$(L.prod+L.oper)}</span></div>`+_planRelLoteDetalhe(n); });
+  }
+  return h;
+}
+function _planRelatorioHTML(){
+  return `<div class="nav-row" style="justify-content:space-between;margin-bottom:10px"><div class="hint"><b>Relatório do planejamento</b> — safra ${esc(SAFRA)}. Estimativa = produtos + operação (reflete o que está preenchido no plano).</div>
+    <div style="display:flex;gap:8px"><label class="sub" style="display:flex;align-items:center;gap:5px"><input type="checkbox" id="rel_det" ${_planRelDet?'checked':''}> detalhar por lote</label><button class="btn sm" id="rel_print">🖨 Imprimir</button></div></div>
+    <div id="planRelBox">${_planRelBody(_planRelDet)}</div>`;
+}
+function _planRelImprimir(){
+  const w=window.open('','_blank'); if(!w){ alert('Permita pop-ups p/ imprimir.'); return; }
+  const dt=new Date().toLocaleDateString('pt-BR');
+  w.document.write('<!doctype html><html><head><meta charset="utf-8"><title>Relatório do planejamento — '+esc(SAFRA)+'</title><style>'
+    +'body{font:12px system-ui,Arial;color:#111;padding:18px}h1{font-size:17px;margin:0}.sub{color:#666;font-size:11px}.sec{font-weight:800;margin:14px 0 4px;font-size:13px}.pill{display:inline-block;border:1px solid #bbb;border-radius:20px;padding:3px 10px;margin:0 6px 6px 0;font-size:11px}'
+    +'table.ptbl{width:100%;border-collapse:collapse;margin-bottom:12px;font-size:11px}.ptbl th{text-align:left;border-bottom:1.5px solid #333;padding:4px 6px;font-size:9px;text-transform:uppercase;color:#555}.ptbl td{padding:3px 6px;border-bottom:1px solid #ddd}.ptbl .num{text-align:right}.ptbl tfoot td{border-top:2px solid #333}'
+    +'.noprint{margin-bottom:10px}@media print{.noprint{display:none}}</style></head><body>'
+    +'<button class="noprint" onclick="window.print()" style="padding:8px 14px;cursor:pointer">🖨 Imprimir / PDF</button>'
+    +'<h1>Relatório do Planejamento — Alabama Agro</h1><div class="sub">Safra '+esc(SAFRA)+' · '+dt+'</div>'
+    +_planRelBody(true)+'</body></html>');
+  w.document.close(); setTimeout(()=>{ try{ w.focus(); w.print(); }catch(e){} }, 400);
+}
 /* ---- Por lote ---- */
 function _planPorLoteHTML(){
   const lotesOpt=_ordLotes(S.lotes).map(l=>`<option value="${esc(l.nome)}" ${l.nome===_planLote?'selected':''}>${esc(l.nome)}</option>`).join('');
