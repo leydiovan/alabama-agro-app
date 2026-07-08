@@ -462,6 +462,7 @@ function entradaHTML(){
       <div class="two"><label>Data <input type="date" id="eData" value="${isoToday}"></label><label>Fornecedor <input list="dlForn" id="eForn" placeholder="—"></label></div>
       <div class="three"><label>Nota Fiscal <input id="eNf" placeholder="nº"></label><label>Quantidade <input type="number" id="eQtd" min="0" step="any" placeholder="0"></label><label>Custo unit. (R$) <input type="number" id="eCusto" min="0" step="any" placeholder="0,00"></label></div>
       <div id="eLoteBox" class="two" style="display:none"><label>Lote <input id="eLote" placeholder="ex.: L-2026A"></label><label>Validade <input type="date" id="eValid"></label></div>
+      <div id="ePmsBox" class="two" style="display:none"><label>PMS na entrega — g/1000 sem. <input type="number" id="ePms" min="0" step="any" placeholder="ex.: 180"></label><div class="hint" id="ePmsHint" style="align-self:end"></div></div>
       <div class="totbox"><span class="k">Total da entrada</span><span class="v" id="eTotal">R$ 0,00</span></div>
       <div class="formactions"><button class="btn success" id="eSalvar">Confirmar entrada</button><span class="fmsg" id="eMsg"></span></div>
     </div><datalist id="dlForn">${S.fornecedores.map(f=>`<option value="${esc(f.nome)}">`).join('')}</datalist></div>`;
@@ -471,10 +472,17 @@ function bindEntrada(){
   const upd=()=>{const it=getItem($('eItem').value);
     $('ePerfil').textContent=it?`Perfil ${it.perfil} · ${PERFIL_NOME[it.perfil]}`:'—';
     $('eLoteBox').style.display=(it&&it.perfil==='A')?'grid':'none';
+    const isSem=(it&&it.tipo==='Semente'); $('ePmsBox').style.display=isSem?'grid':'none';
+    if(isSem){ const qtd=parseFloat($('eQtd').value)||0, pms=parseFloat($('ePms').value)||0, h=$('ePmsHint');
+      if(!qtd||!pms) h.textContent='Informe qtd e PMS p/ estimar população/peso.';
+      else if(it.sementeTipo==='salva'){ h.innerHTML='≈ <b>'+nf(Math.round(qtd*1e6/pms))+'</b> sementes ('+nf(qtd)+' kg)'; }
+      else if(it.sementeTipo==='certificada'){ const se=+it.sementesEmb||0; if(!se) h.textContent='Cadastre "sementes por embalagem" no produto p/ calcular o peso.'; else { const s=qtd*se; h.innerHTML='≈ <b>'+nf(Math.round(s))+'</b> sementes · <b>'+nf(Math.round(s*pms/1e6))+'</b> kg'; } }
+      else h.textContent=''; }
     if(it&&!$('eCusto').dataset.touched) $('eCusto').value=it.precoRef||'';
     $('eTotal').textContent=brl((parseFloat($('eQtd').value)||0)*(parseFloat($('eCusto').value)||0));};
   $('eItem').addEventListener('change',()=>{$('eCusto').dataset.touched='';upd();});
   $('eQtd').addEventListener('input',upd);
+  if($('ePms')) $('ePms').addEventListener('input',upd);
   $('eCusto').addEventListener('input',()=>{$('eCusto').dataset.touched='1';upd();});
   $('eSalvar').onclick=()=>{const m=$('eMsg');m.className='fmsg err';
     const it=getItem($('eItem').value);if(!it){m.textContent='Escolha um item.';return;}
@@ -484,7 +492,8 @@ function bindEntrada(){
     if(it.perfil==='A'){lote=$('eLote').value.trim();validade=$('eValid').value;
       if(!lote){m.textContent='Item controlado: informe o lote.';return;} if(!validade){m.textContent='Item controlado: informe a validade.';return;}}
     const forn=$('eForn').value.trim();
-    const _ent={id:U('en'),itemId:it.id,data:$('eData').value||isoToday,fornecedor:forn,nf:$('eNf').value.trim(),qtd,custoUnit:custo,lote,validade};
+    const pms=(it.tipo==='Semente'&&$('ePms')&&$('ePms').value!=='')?parseFloat($('ePms').value):null;
+    const _ent={id:U('en'),itemId:it.id,data:$('eData').value||isoToday,fornecedor:forn,nf:$('eNf').value.trim(),qtd,custoUnit:custo,lote,validade,pms};
     S.entradas.push(_ent); salvarEntradaSB(it,_ent);
     VIEW='estoque';FILTER='all';SEARCH='';route();};
   upd();
@@ -821,6 +830,7 @@ async function carregarAlmoxSB(){
         ativos:parseAtivos(p.comp||'',p.tipo),garantias:(p.tipo==='Fertilizante'?parseGarantias(p.comp||''):[]),compTexto:'',
         comanda:(isDef||isFol)?'Visível':'',
         formCod:normFormulacao(p.formulacao),formRaw:p.formulacao||'',tipo:p.tipo,classe:p.classe,perfil,
+        sementeTipo:p.semente_tipo||'',sementesEmb:p.sementes_emb,cultura:p.cultura||'',
         unidade:normUnidade(p.unidade)||p.unidade||'un',precoRef:p.preco||0,
         estoqueMin:0,local:'',equipamentoId:null};
     });
@@ -829,7 +839,7 @@ async function carregarAlmoxSB(){
         S.itens.forEach(it=>{ const c=m[it.codigo]; if(c){ it.estoqueMin=+c.estoque_min||0; it.local=c.local||''; it.equipamentoId=c.equipamento_id||null; if(c.comanda) it.comanda=c.comanda; } }); }
     }catch(e){ console.warn('almox_config',e); }
     try{ const {data:ents}=await SB.from('almox_entradas').select('*').order('id',{ascending:true});
-      S.entradas=(ents||[]).map(e=>({id:'en'+e.id,_dbid:e.id,itemId:String(e.item_codigo),data:e.data,fornecedor:e.fornecedor||'',nf:e.nf||'',qtd:+e.qtd||0,custoUnit:+e.custo_unit||0,lote:e.lote||null,validade:e.validade||null})); }catch(e){ console.warn('entradas',e); }
+      S.entradas=(ents||[]).map(e=>({id:'en'+e.id,_dbid:e.id,itemId:String(e.item_codigo),data:e.data,fornecedor:e.fornecedor||'',nf:e.nf||'',qtd:+e.qtd||0,custoUnit:+e.custo_unit||0,lote:e.lote||null,validade:e.validade||null,pms:e.pms})); }catch(e){ console.warn('entradas',e); }
     try{ const {data:sais}=await SB.from('almox_saidas').select('*').order('id',{ascending:true});
       S.saidas=(sais||[]).map(s=>({id:'sa'+s.id,_dbid:s.id,itemId:String(s.item_codigo),data:s.data,qtd:+s.qtd||0,requisitante:s.requisitante||'',destino:{tipo:s.destino_tipo||'geral',ref:s.destino_ref||''},lote:s.lote||null,obs:s.obs||''})); }catch(e){ console.warn('saidas',e); }
     _statusSB('✅ Almoxarifado do banco ('+S.itens.length+' itens)','#27ae60');
@@ -839,7 +849,7 @@ async function carregarAlmoxSB(){
 /* escrita incremental (padrão atividades) */
 async function salvarEntradaSB(it,en){
   if(!SB){ _statusSB('⚠️ Sem conexão — só na memória','#e67e22'); return; }
-  try{ const {data,error}=await SB.from('almox_entradas').insert({item_codigo:it.codigo,data:en.data,fornecedor:en.fornecedor,nf:en.nf,qtd:en.qtd,custo_unit:en.custoUnit,lote:en.lote,validade:en.validade}).select('id').single();
+  try{ const {data,error}=await SB.from('almox_entradas').insert({item_codigo:it.codigo,data:en.data,fornecedor:en.fornecedor,nf:en.nf,qtd:en.qtd,custo_unit:en.custoUnit,lote:en.lote,validade:en.validade,pms:(en.pms!=null?en.pms:null)}).select('id').single();
     if(error){ _statusSB('❌ Erro ao salvar entrada: '+error.message,'#c0392b'); return; }
     if(data) en._dbid=data.id; _statusSB('✅ Entrada salva no banco','#27ae60');
   }catch(e){ _statusSB('❌ Falha: '+e.message,'#c0392b'); }
