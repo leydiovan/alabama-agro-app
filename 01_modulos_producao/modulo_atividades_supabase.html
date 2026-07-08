@@ -176,7 +176,7 @@ window.__POLIGONAIS__ = [];</script>
 <script>
 /* ====================== ESTADO (seed injetado no final) ====================== */
 let S = window.__SEED__; if(!S.produtos) S.produtos=[];
-S.planejamento=S.planejamento||[]; S.saldoProd=S.saldoProd||{}; S.custoProd=S.custoProd||{};
+S.planejamento=S.planejamento||[]; S.saldoProd=S.saldoProd||{}; S.custoProd=S.custoProd||{}; S.culturas=S.culturas||[];
 S.cotacoes=S.cotacoes||[]; S.dolar=S.dolar||5; S.unidades=S.unidades||[]; S.fornecedores=S.fornecedores||[]; S.arred=S.arred||{on:true,val:{}};
 
 /* tipos de atividade -> perfil/diário (extensível no futuro via cadastro) */
@@ -484,6 +484,8 @@ function renderNova(){
         <select id="nv_tipo">${tipos.map(t=>`<option ${t===tipoSel?'selected':''}>${esc(t)}</option>`).join('')}</select></div>
       <div class="fcol"><label>Lote / Agrupamento</label>
         <select id="nv_lote" onchange="atualizaIndicadores()"><option value="">— selecione —</option>${lotesOpt}</select></div>
+      <div class="fcol" style="max-width:150px"><label>Cultura</label>
+        <select id="nv_cultura"><option value="">— cultura —</option>${(S.culturas||[]).map(c=>`<option>${esc(c.nome)}</option>`).join('')}</select></div>
       <div class="fcol" style="max-width:160px"><label>Data de emissão</label>
         <input type="date" id="nv_data" value="${_hojeLocal()}"></div>
       <div class="fcol" style="max-width:160px"><label>Executar em</label>
@@ -922,6 +924,7 @@ function bindNova(){
   // pré-preenche a partir do planejamento (gerar comanda)
   if(_planSeedTipo){ const t=$('#nv_tipo'); if(t){ t.value=_planSeedTipo; t.onchange&&t.onchange(); } _planSeedTipo=null; }
   if(_planSeedLote){ const l=$('#nv_lote'); if(l){ l.value=_planSeedLote; l.onchange&&l.onchange(); } _planSeedLote=null; }
+  if(_planSeedCultura!=null){ const cu=$('#nv_cultura'); if(cu) cu.value=_planSeedCultura; _planSeedCultura=null; }
 }
 function _operadoresCheckboxes(){
   const ed=_editCodigo?S.comandas.find(x=>x.codigo===_editCodigo):null;
@@ -950,7 +953,7 @@ function salvarNova(){
     if(!orig){msg.className='fmsg err';msg.textContent='Comanda não encontrada.';return;}
     const perfil=TIPO_PERFIL[tipo];
     const upd=Object.assign({},orig,{
-      tipoAtiv:tipo,perfil,loteNome:lote,operadores:_lerOperadores(),operadoresCalda:_lerOperadoresCalda(),
+      tipoAtiv:tipo,perfil,loteNome:lote,cultura:($('#nv_cultura')?$('#nv_cultura').value:'')||'',operadores:_lerOperadores(),operadoresCalda:_lerOperadoresCalda(),
       dataExecucao:($('#nv_exec')?$('#nv_exec').value:''),
       taxa:$('#nv_taxa').value,faixa:$('#nv_faixa').value,capacidade:$('#nv_cap').value,
       produtos:novaProd.filter(p=>p.nome).map(p=>({...p,comp:''})),
@@ -987,7 +990,7 @@ function salvarNova(){
   const perfil=TIPO_PERFIL[tipo];
   const c={
     codigo:prev.code,seqGeral:prev.g,seqTipo:prev.t,status:'lancada',
-    tipoAtiv:tipo,perfil,loteNome:lote,operadores:_lerOperadores(),operadoresCalda:_lerOperadoresCalda(),
+    tipoAtiv:tipo,perfil,loteNome:lote,cultura:($('#nv_cultura')?$('#nv_cultura').value:'')||'',operadores:_lerOperadores(),operadoresCalda:_lerOperadoresCalda(),
     dataEmissao:$('#nv_data').value,dataExecucao:($('#nv_exec')?$('#nv_exec').value:''),
     taxa:$('#nv_taxa').value,faixa:$('#nv_faixa').value,capacidade:$('#nv_cap').value,
     produtos:novaProd.filter(p=>p.nome).map(p=>({...p,comp:''})),
@@ -1127,6 +1130,7 @@ function abrirFicha(codigo,seq){
     <div class="mbody">
       <div class="kgrid">
         <div class="kv"><div class="k">Lote / Agrup.</div><div class="v">${esc(c.loteNome||'—')}</div></div>
+        ${c.cultura?`<div class="kv"><div class="k">Cultura</div><div class="v">🌾 ${esc(c.cultura)}</div></div>`:''}
         <div class="kv"><div class="k">Área</div><div class="v">${fmtArea(areaDe(c.loteNome))} ha</div></div>
         ${(c.status==='executada' && c.geralRetorno && c.geralRetorno.campo && c.geralRetorno.campo.area_ha!=null)?`<div class="kv"><div class="k">Área executada</div><div class="v">${fmtArea(c.geralRetorno.campo.area_ha)} ha <small style="color:var(--muted2)">(${c.geralRetorno.campo.area_modo==='comanda'?'planejada':'medida no campo'})</small></div></div>`:''}
         ${(c.perfil==='MAQUINA')?'':`<div class="kv"><div class="k">Vazão</div><div class="v">${esc(c.taxa??'—')}</div></div>
@@ -2521,16 +2525,18 @@ let _planTab='lote';      // 'lote' | 'compras'
 let _planLote='';         // lote selecionado em "Por lote"
 let _planEdit=null;       // id em edição (ou 'novo')
 let _planProd=[];         // linhas de produto do editor {nome,tipo,dose,unidade}
-let _planEpoca='', _planTipo='', _planSemente='', _planObs='', _planCond=false, _planCustos=[], _planArea='', _planData='', _planEstadio='';
+let _planEpoca='', _planTipo='', _planSemente='', _planObs='', _planCond=false, _planCustos=[], _planArea='', _planData='', _planEstadio='', _planCultura='';
+function _planCulturaDefault(){ const g=(S.planejamento||[]).filter(p=>p.lote===_planLote && p.status!=='cancelado' && p.cultura); if(!g.length) return ''; g.sort(_planOrd); return g[g.length-1].cultura||''; }
+function _planCulturaSel(){ const cur=_planCultura||''; const opts=['<option value="">— cultura —</option>'].concat((S.culturas||[]).map(c=>`<option value="${esc(c.nome)}" ${cur===c.nome?'selected':''}>${esc(c.nome)}</option>`)).join(''); return `<div class="fcol" style="max-width:150px"><label>Cultura</label><select id="pl_cultura" onchange="_planCultura=this.value">${opts}</select></div>`; }
 let _cotProd=null, _cotEdit=null;   // produto expandido na lista de compras
-let _planOrigemId=null, _planSeedTipo=null, _planSeedLote=null;  // p/ gerar comanda
+let _planOrigemId=null, _planSeedTipo=null, _planSeedLote=null, _planSeedCultura=null;  // p/ gerar comanda
 let _planSelMode=false; const _planSel=new Set();   // seleção múltipla na lista
 
 function _planTipos(){ return Object.keys(TIPO_PERFIL).filter(t=>t!=='(indefinido)'); }
-function _planCopia(p,lote,ordem){ return {id:null, lote, tipoAtiv:p.tipoAtiv, epoca:p.epoca, dataPrev:p.dataPrev, estadio:p.estadio, produtos:(p.produtos||[]).map(x=>({...x})), custos:(p.custos||[]).map(x=>({...x})), obs:p.obs, sementeKgha:p.sementeKgha, areaParcial:p.areaParcial, condicional:!!p.condicional, ordem:(ordem!=null?ordem:null), status:'planejado', comandaCodigo:''}; }
+function _planCopia(p,lote,ordem){ return {id:null, lote, tipoAtiv:p.tipoAtiv, epoca:p.epoca, dataPrev:p.dataPrev, estadio:p.estadio, cultura:p.cultura||'', produtos:(p.produtos||[]).map(x=>({...x})), custos:(p.custos||[]).map(x=>({...x})), obs:p.obs, sementeKgha:p.sementeKgha, areaParcial:p.areaParcial, condicional:!!p.condicional, ordem:(ordem!=null?ordem:null), status:'planejado', comandaCodigo:''}; }
 function _areaPlan(lote,areaParcial){ const ap=numUn(areaParcial==null?'':String(areaParcial)).n; return (ap!=null&&ap>0)?ap:areaDe(lote); }
 function _areaLbl(p){ const ap=numUn(p.areaParcial==null?'':String(p.areaParcial)).n; if(!(ap>0)) return ''; const al=areaDe(p.lote); return '<span class="sub" style="color:var(--gold)">· '+fmtBR(ap)+' ha (parcial'+(al!=null?' de '+fmtBR(al):'')+')</span>'; }
-function _planQuando(p){ let s=''; if(p.dataPrev) s+='<span class="sub">· 📅 '+esc(String(p.dataPrev).split('-').reverse().join('/'))+'</span> '; if(p.estadio) s+='<span class="sub">· 🌱 '+esc(p.estadio)+'</span> '; return s; }
+function _planQuando(p){ let s=''; if(p.cultura) s+='<span class="sub" style="color:var(--ok)">🌾 '+esc(p.cultura)+'</span> '; if(p.dataPrev) s+='<span class="sub">· 📅 '+esc(String(p.dataPrev).split('-').reverse().join('/'))+'</span> '; if(p.estadio) s+='<span class="sub">· 🌱 '+esc(p.estadio)+'</span> '; return s; }
 function _unFator(sim){ const u=(S.unidades||[]).find(x=>x.sim===sim); return (u&&u.fator>0)?u.fator:null; }
 function _unDim(sim){ const u=(S.unidades||[]).find(x=>x.sim===sim); return u?u.dim:''; }
 function _planPosSelect(){             // escolher onde a NOVA atividade entra na lista
@@ -2786,8 +2792,8 @@ function _planPorLoteHTML(){
 }
 function _bindPlanPorLote(){
   const sel=$('#pl_lote'); if(sel) sel.onchange=()=>{ _planLote=sel.value; _planEdit=null; _planSel.clear(); render(); };
-  const nv=$('#pl_novo'); if(nv) nv.onclick=()=>{ _planEdit='novo'; _planProd=[{}]; _planEpoca=''; _planData=''; _planEstadio=''; _planObs=''; _planSemente=''; _planArea=''; _planCond=false; _planTipo=_planTipos()[0]; _planCustos=_custosDefault(_planTipo); render(); };
-  const nc=$('#pl_novocond'); if(nc) nc.onclick=()=>{ _planEdit='novo'; _planProd=[{}]; _planEpoca=''; _planData=''; _planEstadio=''; _planObs=''; _planSemente=''; _planArea=''; _planCond=true; _planTipo=''; _planCustos=[]; render(); };
+  const nv=$('#pl_novo'); if(nv) nv.onclick=()=>{ _planEdit='novo'; _planProd=[{}]; _planEpoca=''; _planData=''; _planEstadio=''; _planObs=''; _planSemente=''; _planArea=''; _planCond=false; _planCultura=_planCulturaDefault(); _planTipo=_planTipos()[0]; _planCustos=_custosDefault(_planTipo); render(); };
+  const nc=$('#pl_novocond'); if(nc) nc.onclick=()=>{ _planEdit='novo'; _planProd=[{}]; _planEpoca=''; _planData=''; _planEstadio=''; _planObs=''; _planSemente=''; _planArea=''; _planCond=true; _planCultura=_planCulturaDefault(); _planTipo=''; _planCustos=[]; render(); };
   const el=$('#pl_espLote'); if(el) el.onclick=()=>espelharLoteInteiro();
   const sb=$('#pl_selBtn'); if(sb) sb.onclick=()=>{ _planSelMode=!_planSelMode; _planSel.clear(); render(); };
   $$('#main .plsel').forEach(c=>c.onchange=()=>{ const id=+c.dataset.selid; if(c.checked)_planSel.add(id); else _planSel.delete(id); render(); });
@@ -2804,7 +2810,7 @@ function _bindPlanPorLote(){
 function _planEditorHTML(){
   const ed=_planEdit!=='novo'?(S.planejamento||[]).find(p=>p.id===_planEdit):null;
   // ao abrir (1ª vez), semeia os globais do editor a partir do registro; depois só os globais mandam
-  if(ed && !_planProd._loaded){ _planProd=(ed.produtos||[]).map(p=>({...p})); _planProd._loaded=true; _planTipo=ed.tipoAtiv||_planTipos()[0]; _planEpoca=ed.epoca||''; _planObs=ed.obs||''; _planSemente=ed.sementeKgha!=null?String(ed.sementeKgha).replace('.',','):''; _planCond=!!ed.condicional; _planCustos=(ed.custos||[]).map(c=>({...c})); _planArea=ed.areaParcial!=null?String(ed.areaParcial).replace('.',','):''; _planData=ed.dataPrev||''; _planEstadio=ed.estadio||''; }
+  if(ed && !_planProd._loaded){ _planProd=(ed.produtos||[]).map(p=>({...p})); _planProd._loaded=true; _planTipo=ed.tipoAtiv||_planTipos()[0]; _planEpoca=ed.epoca||''; _planObs=ed.obs||''; _planSemente=ed.sementeKgha!=null?String(ed.sementeKgha).replace('.',','):''; _planCond=!!ed.condicional; _planCustos=(ed.custos||[]).map(c=>({...c})); _planArea=ed.areaParcial!=null?String(ed.areaParcial).replace('.',','):''; _planData=ed.dataPrev||''; _planEstadio=ed.estadio||''; _planCultura=ed.cultura||''; }
   const tipo=_planTipo||_planTipos()[0];
   const tiposOpt=_planTipos().map(t=>`<option ${t===tipo?'selected':''}>${esc(t)}</option>`).join('');
   const epoca=_planEpoca;
@@ -2827,6 +2833,7 @@ function _planEditorHTML(){
         <div class="fcol"><label>Descrição</label><input id="pl_epoca" value="${esc(epoca||'')}" oninput="_planEpoca=this.value" placeholder="ex.: se houver praga"></div>
         <div class="fcol" style="max-width:160px"><label>Data prevista</label><input type="date" id="pl_data" value="${esc(_planData||'')}" oninput="_planData=this.value"></div>
         <div class="fcol" style="max-width:150px"><label>Estádio da cultura</label><input id="pl_estadio" value="${esc(_planEstadio||'')}" oninput="_planEstadio=this.value" placeholder="ex.: V4, R1"></div>
+        ${_planCulturaSel()}
         ${showSemC?`<div class="fcol" style="max-width:160px"><label>Semente (kg/ha)</label><input id="pl_semente" value="${esc(_planSemente||'')}" oninput="_planSemente=this.value;_planProd.forEach((_,i)=>_planUpdQtd(i))" placeholder="ex.: 60"></div>`:''}
         ${_planAreaField()}
         ${_planEdit==='novo'?_planPosSelect():''}
@@ -2869,6 +2876,7 @@ function _planEditorHTML(){
       <div class="fcol"><label>Descrição</label><input id="pl_epoca" value="${esc(epoca||'')}" oninput="_planEpoca=this.value" placeholder="ex.: dessecação pré-plantio"></div>
       <div class="fcol" style="max-width:160px"><label>Data prevista</label><input type="date" id="pl_data" value="${esc(_planData||'')}" oninput="_planData=this.value"></div>
       <div class="fcol" style="max-width:150px"><label>Estádio da cultura</label><input id="pl_estadio" value="${esc(_planEstadio||'')}" oninput="_planEstadio=this.value" placeholder="ex.: V4, R1"></div>
+      ${_planCulturaSel()}
       ${(_ehTS(tipo)||_planProd.some(p=>p&&p.base==='100kg'))?`<div class="fcol" style="max-width:160px"><label>Semente (kg/ha) <span class="sub">p/ dose /100kg</span></label><input id="pl_semente" value="${esc(_planSemente||'')}" oninput="_planSemente=this.value;_planProd.forEach((_,i)=>_planUpdQtd(i))" placeholder="ex.: 60"></div>`:''}
       ${_planAreaField()}
       ${_planEdit==='novo'?_planPosSelect():''}
@@ -2912,22 +2920,22 @@ function salvarPlano(){
   const cond=!!_planCond;
   const sem=numUn($('#pl_semente')?.value||'').n;
   const area=numUn($('#pl_area')?.value||'').n;
-  const dataPrev=$('#pl_data')?.value||'', estadio=$('#pl_estadio')?.value||'';
+  const dataPrev=$('#pl_data')?.value||'', estadio=$('#pl_estadio')?.value||'', cultura=$('#pl_cultura')?.value||'';
   const produtos=(!cond&&_tipoSemProduto(tipo))?[]:_planProd.filter(p=>p&&p.nome).map(p=>({nome:p.nome,tipo:p.tipo||'',dose:p.dose||'',unidade:p.unidade||'',base:(p.base==='100kg'||p.base==='populacao')?p.base:'ha'}));
   const custos=cond?[]:_planCustos.filter(c=>c&&(String(c.valor||'').trim()||String(c.desc||'').trim()||String(c.prod||'').trim())).map(c=>({modo:c.modo==='produto'?'produto':'valor',desc:c.desc||'',prod:c.prod||'',valor:c.valor||'',base:c.base==='total'?'total':'ha'}));
   if(!_planLote){ alert('Selecione o lote.'); return; }
   if(_planEdit && _planEdit!=='novo'){
     const p=(S.planejamento||[]).find(x=>x.id===_planEdit);
-    if(p){ p.tipoAtiv=tipo; p.epoca=epoca; p.dataPrev=dataPrev; p.estadio=estadio; p.obs=obs; p.produtos=produtos; p.custos=custos; p.sementeKgha=sem; p.areaParcial=area; p.condicional=cond; atualizarPlanoSB(p); }
+    if(p){ p.tipoAtiv=tipo; p.epoca=epoca; p.dataPrev=dataPrev; p.estadio=estadio; p.cultura=cultura; p.obs=obs; p.produtos=produtos; p.custos=custos; p.sementeKgha=sem; p.areaParcial=area; p.condicional=cond; atualizarPlanoSB(p); }
   } else {
-    const novo={id:null, lote:_planLote, tipoAtiv:tipo, epoca, dataPrev, estadio, produtos, custos, obs, sementeKgha:sem, areaParcial:area, condicional:cond, ordem:null, status:'planejado', comandaCodigo:''};
+    const novo={id:null, lote:_planLote, tipoAtiv:tipo, epoca, dataPrev, estadio, cultura, produtos, custos, obs, sementeKgha:sem, areaParcial:area, condicional:cond, ordem:null, status:'planejado', comandaCodigo:''};
     const group=(S.planejamento||[]).filter(p=>p.lote===_planLote && p.status!=='cancelado' && !!p.condicional===!!cond).sort(_planOrd);
     let pos=$('#pl_pos')?parseInt($('#pl_pos').value,10):group.length; if(isNaN(pos))pos=group.length; pos=Math.max(0,Math.min(pos,group.length));
     const arr=group.slice(); arr.splice(pos,0,novo);   // insere na posição escolhida e renumera
     arr.forEach((p,k)=>{ const ord=(k+1)*10; if(p===novo) novo.ordem=ord; else if(p.ordem!==ord){ p.ordem=ord; atualizarPlanoSB(p); } });
     salvarPlanoSB(novo);
   }
-  _planEdit=null; _planProd=[]; _planCustos=[]; _planSemente=''; _planObs=''; _planEpoca=''; _planCond=false; _planArea=''; _planData=''; _planEstadio=''; render();
+  _planEdit=null; _planProd=[]; _planCustos=[]; _planSemente=''; _planObs=''; _planEpoca=''; _planCond=false; _planArea=''; _planData=''; _planEstadio=''; _planCultura=''; render();
 }
 function excluirPlano(id){ if(!confirm('Excluir esta atividade planejada?')) return; excluirPlanoSB(id); S.planejamento=(S.planejamento||[]).filter(p=>p.id!==id); render(); }
 
@@ -2973,7 +2981,7 @@ function _planBulkMir(){ if(!_planSel.size) return; const dest=prompt('Espelhar 
 function gerarComandaDoPlano(id){
   const p=(S.planejamento||[]).find(x=>x.id===id); if(!p) return;
   novaProd=(p.produtos||[]).map(pr=>({nome:pr.nome,tipo:pr.tipo||'',dose:pr.dose||'',qtdCarga:'',qtdTotal:'',comp:''}));
-  _planOrigemId=p.id; _planSeedTipo=p.tipoAtiv; _planSeedLote=p.lote; _editCodigo=null;
+  _planOrigemId=p.id; _planSeedTipo=p.tipoAtiv; _planSeedLote=p.lote; _planSeedCultura=p.cultura||''; _editCodigo=null;
   VIEW='nova'; $$('#nav button').forEach(x=>x.classList.toggle('on',x.dataset.v==='nova')); render();
 }
 
@@ -3406,7 +3414,7 @@ async function marcarCotacaoEscolhidaSB(nome,id){ if(!SB) return; try{ await SB.
 async function salvarDolarSB(v){ if(!SB) return; try{ await SB.from('config').upsert({chave:'dolar', valor:String(v)},{onConflict:'chave'}); }catch(e){ console.warn(e); } }
 
 /* ---- Persistência do planejamento ---- */
-function _planParaBanco(p){ return {safra:SAFRA, lote:p.lote, tipo_ativ:p.tipoAtiv, epoca:p.epoca||'', data_prev:(p.dataPrev||null), estadio:(p.estadio||null), produtos:p.produtos||[], custos:p.custos||[], obs:p.obs||'', semente_kgha:(p.sementeKgha!=null?p.sementeKgha:null), area_parcial:((p.areaParcial!=null&&p.areaParcial!=='')?(numUn(String(p.areaParcial)).n):null), condicional:!!p.condicional, ordem:(p.ordem!=null?p.ordem:null), status:p.status||'planejado', comanda_codigo:p.comandaCodigo||null}; }
+function _planParaBanco(p){ return {safra:SAFRA, lote:p.lote, tipo_ativ:p.tipoAtiv, epoca:p.epoca||'', data_prev:(p.dataPrev||null), estadio:(p.estadio||null), cultura:(p.cultura||null), produtos:p.produtos||[], custos:p.custos||[], obs:p.obs||'', semente_kgha:(p.sementeKgha!=null?p.sementeKgha:null), area_parcial:((p.areaParcial!=null&&p.areaParcial!=='')?(numUn(String(p.areaParcial)).n):null), condicional:!!p.condicional, ordem:(p.ordem!=null?p.ordem:null), status:p.status||'planejado', comanda_codigo:p.comandaCodigo||null}; }
 async function salvarPlanoSB(p){
   if(!SB){ p.id=Date.now(); S.planejamento.push(p); return; }
   try{ const {data,error}=await SB.from('planejamento').insert(_planParaBanco(p)).select('id').single();
@@ -3782,7 +3790,7 @@ function _comandaParaBanco(c){
   function num(v){ if(v===''||v==null) return null; const s=String(v).indexOf(',')>=0?String(v).replace(/\./g,'').replace(',','.'):String(v); const n=parseFloat(s); return isNaN(n)?null:n; }
   return {
     codigo:c.codigo, seq_geral:c.seqGeral, seq_tipo:c.seqTipo, status:c.status, safra:SAFRA,
-    tipo_ativ:c.tipoAtiv, perfil:c.perfil, lote_nome:c.loteNome, operadores:c.operadores||[], operadores_calda:c.operadoresCalda||[],
+    tipo_ativ:c.tipoAtiv, perfil:c.perfil, lote_nome:c.loteNome, cultura:c.cultura||null, operadores:c.operadores||[], operadores_calda:c.operadoresCalda||[],
     data_emissao:c.dataEmissao||null, data_execucao:c.dataExecucao||null,
     faixa:num(c.faixa), taxa:num(c.taxa), capacidade:num(c.capacidade),
     produtos:c.produtos||[], prod_texto:c.prodTexto||'',
@@ -3831,6 +3839,7 @@ function _preencherForm(c){
   if(sel){ sel.value=c.tipoAtiv; sel.dispatchEvent(new Event('change')); }
   const lot=$('#nv_lote');
   if(lot){ lot.value=c.loteNome||''; lot.dispatchEvent(new Event('change')); }
+  if($('#nv_cultura')) $('#nv_cultura').value=c.cultura||'';
   if($('#nv_data'))  $('#nv_data').value  =c.dataEmissao||'';
   if($('#nv_exec'))  $('#nv_exec').value  =c.dataExecucao||'';
   if($('#nv_taxa'))  $('#nv_taxa').value  =c.taxa||'';
@@ -3897,7 +3906,7 @@ function _comandaDoBanco(r){
   const dt=r.dados_tipo||{};
   return {
     codigo:r.codigo, seqGeral:r.seq_geral, seqTipo:r.seq_tipo, status:r.status,
-    tipoAtiv:r.tipo_ativ, perfil:r.perfil, loteNome:r.lote_nome, operadores:r.operadores||[], operadoresCalda:r.operadores_calda||[],
+    tipoAtiv:r.tipo_ativ, perfil:r.perfil, loteNome:r.lote_nome, cultura:r.cultura||'', operadores:r.operadores||[], operadoresCalda:r.operadores_calda||[],
     dataEmissao:r.data_emissao, dataExecucao:r.data_execucao,
     faixa:r.faixa, taxa:r.taxa, capacidade:r.capacidade,
     produtos:r.produtos||[], prodTexto:r.prod_texto||'',
@@ -3941,12 +3950,13 @@ async function carregarDoSupabase(){
     /* ----- UNIDADES (fator p/ converter população em bags etc.) ----- */
     try{ const r=await SB.from('unidades').select('*'); if(!r.error&&r.data&&r.data.length) S.unidades=r.data.map(u=>({sim:u.sim,nome:u.nome,dim:u.dim,fator:+u.fator||1})); }catch(e){ console.warn('unidades',e); }
     try{ const r=await SB.from('fornecedores').select('*'); if(!r.error&&r.data&&r.data.length) S.fornecedores=r.data.map(f=>({nome:f.nome})); }catch(e){ console.warn('fornecedores',e); }
+    try{ const r=await SB.from('culturas').select('*').order('nome'); if(!r.error&&r.data) S.culturas=r.data.map(c=>({id:c.id,nome:c.nome})); }catch(e){ console.warn('culturas',e); }
     try{ const r=await SB.from('funcionarios').select('id,nome,tipo,ativo').order('nome'); if(!r.error) S.funcionarios=(r.data||[]); }catch(e){ console.warn('funcionarios',e); }
 
     /* ----- PLANEJAMENTO da safra ----- */
     try{
       const r=await SB.from('planejamento').select('*').eq('safra',SAFRA).order('id',{ascending:true});
-      if(!r.error) S.planejamento=(r.data||[]).map(p=>({id:p.id, lote:p.lote, tipoAtiv:p.tipo_ativ, epoca:p.epoca||'', dataPrev:p.data_prev||'', estadio:p.estadio||'', produtos:p.produtos||[], custos:p.custos||[], obs:p.obs||'', sementeKgha:p.semente_kgha, areaParcial:p.area_parcial, condicional:!!p.condicional, ordem:(p.ordem!=null?p.ordem:null), status:p.status||'planejado', comandaCodigo:p.comanda_codigo||''}));
+      if(!r.error) S.planejamento=(r.data||[]).map(p=>({id:p.id, lote:p.lote, tipoAtiv:p.tipo_ativ, epoca:p.epoca||'', dataPrev:p.data_prev||'', estadio:p.estadio||'', cultura:p.cultura||'', produtos:p.produtos||[], custos:p.custos||[], obs:p.obs||'', sementeKgha:p.semente_kgha, areaParcial:p.area_parcial, condicional:!!p.condicional, ordem:(p.ordem!=null?p.ordem:null), status:p.status||'planejado', comandaCodigo:p.comanda_codigo||''}));
     }catch(e){ console.warn('planejamento',e); }
 
     /* ----- COTAÇÕES (por safra) + config (dólar) ----- */
