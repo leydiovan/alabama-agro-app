@@ -527,11 +527,21 @@ function produtosHTML(){
   return '<div class="cadwrap" style="margin-bottom:18px"><div class="cadhead"><h2>'+(e?'Editar produto':'Novo produto')+'</h2><span class="pf-big" id="iPerfil">—</span></div>'
     +'<div class="fcol">'
     +'<div class="two"><label>Nome <input id="iNome" value="'+(e?esc(e.nome):'')+'" placeholder="ex.: Glifosato 480"></label><label>Código <input id="iCod" value="'+(e?esc(e.codigo):'')+'" placeholder="—"></label></div>'
-    +'<div class="three"><label>Tipo <select id="iTipo">'+tipoOpts+'</select></label><label>Classe <input id="iClasse" list="dlClasse" value="'+(e?esc(e.classe):'')+'" placeholder="—"></label><label>Unidade <select id="iUn">'+uniOpts+'</select></label></div>'
-    +'<div class="three"><label>Formulação <select id="iForm"><option value="">—</option>'+formOpts+'</select></label><label>Fabricante <input id="iFab" list="dlFab" value="'+(e&&e.fabricante?esc(e.fabricante):'')+'" placeholder="ex.: Syngenta"><datalist id="dlFab">'+(S.fabricantes||[]).map(f=>'<option value="'+esc(f.nome||f)+'">').join('')+'</datalist></label><label>Preço ref. (R$) <input type="number" id="iPreco" min="0" step="any" value="'+(e?e.precoRef:'')+'" placeholder="0,00"></label></div>'
+    +'<div class="three"><label>Tipo <select id="iTipo">'+tipoOpts+'</select></label><label id="iClasseWrap">Classe <input id="iClasse" list="dlClasse" value="'+(e?esc(e.classe):'')+'" placeholder="—"></label><label id="iUnWrap">Unidade <select id="iUn">'+uniOpts+'</select></label></div>'
+    +'<div class="three"><label id="iFormWrap">Formulação <select id="iForm"><option value="">—</option>'+formOpts+'</select></label><label>Fabricante <input id="iFab" list="dlFab" value="'+(e&&e.fabricante?esc(e.fabricante):'')+'" placeholder="ex.: Syngenta"><datalist id="dlFab">'+(S.fabricantes||[]).map(f=>'<option value="'+esc(f.nome||f)+'">').join('')+'</datalist></label><label>Preço ref. (R$) <input type="number" id="iPreco" min="0" step="any" value="'+(e?e.precoRef:'')+'" placeholder="0,00"></label></div>'
     +'<div id="iCompSec"></div>'
     +'<label id="iComandaWrap" style="display:none">Comanda <select id="iComanda"><option '+(e&&e.comanda==='Visível'?'selected':'')+'>Visível</option><option '+(e&&e.comanda==='Invisível'?'selected':'')+'>Invisível</option></select></label>'
-    +'<label id="iSementeWrap" style="display:none">Tipo de semente <select id="iSemente"><option value="">—</option><option value="salva" '+(e&&e.sementeTipo==='salva'?'selected':'')+'>Salva (peso · kg/ton → kg/ha)</option><option value="certificada" '+(e&&e.sementeTipo==='certificada'?'selected':'')+'>Certificada (população → bags)</option></select></label>'
+    +'<div id="iSementeWrap" style="display:none"><div class="sectit">Semente</div>'
+      +'<div class="three">'
+        +'<label>Cultura <select id="iCultura"><option value="">—</option>'+(S.culturas||[]).map(c=>'<option '+(e&&e.cultura===c.nome?'selected':'')+'>'+esc(c.nome)+'</option>').join('')+'</select></label>'
+        +'<label>Origem <select id="iSemente"><option value="">—</option><option value="salva" '+(e&&e.sementeTipo==='salva'?'selected':'')+'>Salva (kg/ha)</option><option value="certificada" '+(e&&e.sementeTipo==='certificada'?'selected':'')+'>Certificada (população)</option></select></label>'
+        +'<label id="iEmbWrap">Embalagem <select id="iEmb"><option value="big_bag" '+(e&&e.sementeEmb==='big_bag'?'selected':'')+'>Big bag</option><option value="saco" '+(e&&e.sementeEmb==='saco'?'selected':'')+'>Saco</option></select></label>'
+      +'</div>'
+      +'<div class="two">'
+        +'<label id="iSemEmbWrap">Sementes por embalagem <input type="number" id="iSemEmb" min="0" step="any" value="'+(e&&e.sementesEmb!=null?e.sementesEmb:'')+'" placeholder="big bag 5.000.000 · saco 200.000"></label>'
+        +'<label id="iPmsWrap">PMS ref. — g/1000 sem. <input type="number" id="iPms" min="0" step="any" value="'+(e&&e.pms!=null?e.pms:'')+'" placeholder="opcional (o real vem na entrega)"></label>'
+      +'</div>'
+    +'</div>'
     +'<label>Estoque mínimo (ref.) <input type="number" id="iMin" min="0" step="any" value="'+(e?e.estoqueMin:'')+'" placeholder="0"></label>'
     +'<div class="formactions"><button class="btn success" id="iSalvar">'+(e?'Salvar alterações':'Cadastrar produto')+'</button>'+(e?'<button class="btn ghost" id="iCancel">Cancelar</button>':'')+'<span class="fmsg" id="iMsg"></span></div>'
     +'</div><datalist id="dlClasse"></datalist></div>'
@@ -578,6 +588,13 @@ function syncAtivos(){
     conc:r.querySelector('.aConc').value!==''?parseFloat(r.querySelector('.aConc').value):null,unidade:r.querySelector('.aUn').value}));
 }
 function _proxCodProduto(){ let mx=0; (S.produtos||[]).forEach(p=>{ const n=parseInt(String(p.codigo).replace(/\D/g,''),10); if(!isNaN(n)&&n>mx) mx=n; }); return String(mx+1); }
+function _semToggle(){   // mostra embalagem/sementes-por-emb só na certificada; salva é kg
+  const org=$('iSemente')?$('iSemente').value:'';
+  const cert=(org==='certificada');
+  if($('iEmbWrap')) $('iEmbWrap').style.display=cert?'':'none';
+  if($('iSemEmbWrap')) $('iSemEmbWrap').style.display=cert?'':'none';
+  if(cert && $('iSemEmb') && !$('iSemEmb').value){ $('iSemEmb').value=($('iEmb')&&$('iEmb').value==='saco')?200000:5000000; }
+}
 function bindProdutos(){
   const upd=()=>{const tipo=$('iTipo').value,pf=perfilDe(tipo);
     $('iPerfil').textContent='Perfil '+pf+' · '+PERFIL_NOME[pf];
@@ -587,9 +604,16 @@ function bindProdutos(){
     const classeV=$('iClasse').value.trim();
     const showCom=(tipo==='Defensivo'||tipo==='Defensivos Biológicos'||classeV==='Adubo Foliar');
     $('iComandaWrap').style.display=showCom?'flex':'none';
-    if($('iSementeWrap')) $('iSementeWrap').style.display=(tipo==='Semente')?'flex':'none';};
+    const isSem=(tipo==='Semente');
+    if($('iSementeWrap')) $('iSementeWrap').style.display=isSem?'block':'none';
+    if($('iCompSec')) $('iCompSec').style.display=isSem?'none':'';   // semente não tem composição livre
+    if($('iClasseWrap')) $('iClasseWrap').style.display=isSem?'none':'';
+    if($('iFormWrap')) $('iFormWrap').style.display=isSem?'none':'';
+    if($('iUnWrap')) $('iUnWrap').style.display=isSem?'none':'';     // unidade derivada da origem/embalagem
+    if(isSem) _semToggle();};
   $('iTipo').addEventListener('change',upd);
   $('iClasse').addEventListener('input',upd);
+  { const se=$('iSemente'); if(se) se.addEventListener('change',_semToggle); const em=$('iEmb'); if(em) em.addEventListener('change',_semToggle); }
   $('iSalvar').onclick=()=>{const m=$('iMsg');m.className='fmsg err';
     const nome=$('iNome').value.trim();if(!nome){m.textContent='Informe o nome.';return;}
     const tipo=$('iTipo').value,pf=perfilDe(tipo);const un=$('iUn').value;
@@ -603,10 +627,17 @@ function bindProdutos(){
     let cod=$('iCod').value.trim(); if(!cod) cod=_proxCodProduto();   // gera código automático se vazio
     const _ed=EDIT_PROD?getProd(EDIT_PROD):null;
     const cmpEl=$('iComanda');
-    const fields={nome,codigo:cod,tipo,classe:classeV||(TIPO_CLASSES[tipo]||['—'])[0],
-      perfil:pf,unidade:un,formCod:$('iForm').value,ativos,garantias,compTexto,comanda:(showCom&&cmpEl)?cmpEl.value:'',
-      compRaw:(_ed?_ed.compRaw:'')||'',precoRef:parseFloat($('iPreco').value)||0,estoqueMin:parseFloat($('iMin').value)||0,
-      sementeTipo:(tipo==='Semente'&&$('iSemente'))?$('iSemente').value:'',fabricante:($('iFab')?$('iFab').value.trim():'')};
+    const isSem=(tipo==='Semente');
+    const semOrg=isSem&&$('iSemente')?$('iSemente').value:'';
+    const semEmb=isSem?(semOrg==='certificada'?($('iEmb')?$('iEmb').value:'big_bag'):'kg'):'';
+    const semSementesEmb=(isSem&&semOrg==='certificada'&&$('iSemEmb')&&$('iSemEmb').value!=='')?parseFloat($('iSemEmb').value):null;
+    const semPms=(isSem&&$('iPms')&&$('iPms').value!=='')?parseFloat($('iPms').value):null;
+    const semCultura=isSem&&$('iCultura')?$('iCultura').value:'';
+    const unFinal=isSem?((semOrg==='salva')?'kg':((semEmb==='saco')?'saco':'big bag')):un;   // unidade derivada p/ semente
+    const fields={nome,codigo:cod,tipo,classe:isSem?'':(classeV||(TIPO_CLASSES[tipo]||['—'])[0]),
+      perfil:pf,unidade:unFinal,formCod:isSem?'':$('iForm').value,ativos:isSem?[]:ativos,garantias:isSem?[]:garantias,compTexto:isSem?'':compTexto,comanda:(showCom&&cmpEl)?cmpEl.value:'',
+      compRaw:isSem?'':((_ed?_ed.compRaw:'')||''),precoRef:parseFloat($('iPreco').value)||0,estoqueMin:parseFloat($('iMin').value)||0,
+      sementeTipo:isSem?semOrg:'',cultura:semCultura,sementeEmb:semEmb,sementesEmb:semSementesEmb,pms:semPms,fabricante:($('iFab')?$('iFab').value.trim():'')};
     if(_ed){Object.assign(_ed,fields);EDIT_PROD=null;}
     else {fields.formRaw='';fields.local='';S.produtos.push(Object.assign({id:U('pr')},fields));}
     salvarAbaSB('produtos',true);   // persiste no banco automaticamente
@@ -995,7 +1026,7 @@ function _regParaBanco(ent, r){
   const num=v=>{ if(v===''||v==null) return null; const s=String(v).indexOf(',')>=0?String(v).replace(/\./g,'').replace(',','.'):String(v); const n=parseFloat(s); return isNaN(n)?null:n; };
   switch(ent){
     case 'lotes': return {cod:r.cod??null, nome:r.nome, area:num(r.area)||0, base:!!r.base, partes:r.partes||[], geom:r.geom||null, disposicao:r.disposicao||'colados'};
-    case 'produtos': return {codigo:r.codigo??null, nome:r.nome, comp:r.compRaw||r.comp||null, formulacao:r.formCod||r.formulacao||null, tipo:r.tipo||null, classe:r.classe||null, unidade:r.unidade||null, preco:num(r.precoRef)||num(r.preco)||0, estoque:num(r.estoque)||0, estoque_min:num(r.estoqueMin), comp_texto:r.compTexto||null, ativos:r.ativos||[], garantias:r.garantias||[], comanda:r.comanda||null, semente_tipo:r.sementeTipo||null, fabricante:r.fabricante||null, validade:r.validade||null};
+    case 'produtos': return {codigo:r.codigo??null, nome:r.nome, comp:r.compRaw||r.comp||null, formulacao:r.formCod||r.formulacao||null, tipo:r.tipo||null, classe:r.classe||null, unidade:r.unidade||null, preco:num(r.precoRef)||num(r.preco)||0, estoque:num(r.estoque)||0, estoque_min:num(r.estoqueMin), comp_texto:r.compTexto||null, ativos:r.ativos||[], garantias:r.garantias||[], comanda:r.comanda||null, semente_tipo:r.sementeTipo||null, cultura:r.cultura||null, semente_emb:r.sementeEmb||null, sementes_emb:num(r.sementesEmb), pms:num(r.pms), fabricante:r.fabricante||null, validade:r.validade||null};
     case 'maquinas': return {id:(r.id!=null?r.id:undefined), id_frota:r.idFrota||r.id_frota||null, nome:r.nome||null, categoria:r.categoria||null, marca:r.marca||null, modelo:r.modelo||null, chassi:r.chassi||null, cor:r.cor||null, ano:r.ano||null, estado:r.estado||null, consumo_ref:num(r.consumoRef), faixa_m:num(r.faixaM!=null?r.faixaM:r.faixa_m)};
     case 'implementos': return {id:(r.id!=null?r.id:undefined), id_frota:r.idFrota||r.id_frota||null, nome:r.nome||null, categoria:r.categoria||null, marca:r.marca||null, modelo:r.modelo||null, chassi:r.chassi||null, cor:r.cor||null, ano:r.ano||null, estado:r.estado||null, largura_trabalho:num(r.larguraTrab!=null?r.larguraTrab:r.largura_trabalho)};
     case 'tiposAtiv': return {nome:r.nome, perfil:r.perfil||null, diario:r.diario||null, contador:r.contador||0, img:r.img||null};
@@ -1224,7 +1255,7 @@ function _statusSB(txt,cor){ let el=document.getElementById('sbStatus'); if(!el)
 /* mapeamento coleção(app) -> tabela(banco) e conversões */
 const _MAPA_CAD=[
   {col:'lotes', tab:'lotes', toApp:r=>({cod:r.cod,nome:r.nome,area:r.area,base:!!r.base,partes:r.partes||[],geom:r.geom||null,disposicao:r.disposicao||'colados'})},
-  {col:'produtos', tab:'produtos', toApp:r=>({id:r.id,codigo:r.codigo,nome:r.nome,tipo:r.tipo,classe:r.classe,unidade:r.unidade,perfil:perfilDe(r.tipo),precoRef:r.preco,estoque:r.estoque,estoqueMin:r.estoque_min,formCod:r.formulacao||'',compRaw:r.comp||'',compTexto:r.comp_texto||'',ativos:r.ativos||[],garantias:r.garantias||[],comanda:r.comanda||'',sementeTipo:r.semente_tipo||'',fabricante:r.fabricante||'',validade:r.validade||null})},
+  {col:'produtos', tab:'produtos', toApp:r=>({id:r.id,codigo:r.codigo,nome:r.nome,tipo:r.tipo,classe:r.classe,unidade:r.unidade,perfil:perfilDe(r.tipo),precoRef:r.preco,estoque:r.estoque,estoqueMin:r.estoque_min,formCod:r.formulacao||'',compRaw:r.comp||'',compTexto:r.comp_texto||'',ativos:r.ativos||[],garantias:r.garantias||[],comanda:r.comanda||'',sementeTipo:r.semente_tipo||'',cultura:r.cultura||'',sementeEmb:r.semente_emb||'',sementesEmb:r.sementes_emb,pms:r.pms,fabricante:r.fabricante||'',validade:r.validade||null})},
   {col:'maquinas', tab:'maquinas', toApp:r=>Object.assign({},r,{idFrota:r.id_frota!=null?r.id_frota:r.idFrota, faixaM:(r.faixa_m!=null?r.faixa_m:r.faixaM)})},
   {col:'implementos', tab:'implementos', toApp:r=>Object.assign({},r,{idFrota:r.id_frota,larguraTrab:r.largura_trabalho})},
   {col:'colaboradores', tab:'colaboradores', toApp:r=>r},
