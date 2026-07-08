@@ -2826,7 +2826,7 @@ function _barChart(items){ const max=Math.max(1,...items.map(i=>i.val)); if(!ite
   return '<div style="display:flex;flex-direction:column;gap:7px">'+items.map(it=>'<div style="display:flex;align-items:center;gap:8px;font-size:12px">'
     +'<div style="width:130px;flex:none;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="'+esc(it.label)+'">'+esc(it.label)+'</div>'
     +'<div style="flex:1;background:rgba(255,255,255,.07);border-radius:5px;height:15px"><div style="width:'+Math.round(it.val/max*100)+'%;background:'+it.color+';height:100%;border-radius:5px;min-width:2px"></div></div>'
-    +'<div style="width:92px;flex:none;text-align:right" class="sub">'+_fmtRk(it.val)+'</div></div>').join('')+'</div>'; }
+    +'<div style="width:150px;flex:none;text-align:right" class="sub">'+_fmtRk(it.val)+(it.sub?(' <span style="opacity:.65">· '+it.sub+'</span>'):'')+'</div></div>').join('')+'</div>'; }
 function _donut(items){ const tot=items.reduce((s,i)=>s+i.val,0)||1; const r=54,C=2*Math.PI*r,cx=70,cy=70; let off=0;
   const arcs=items.map(it=>{ const len=it.val/tot*C; const s='<circle cx="'+cx+'" cy="'+cy+'" r="'+r+'" fill="none" stroke="'+it.color+'" stroke-width="20" stroke-dasharray="'+len+' '+(C-len)+'" stroke-dashoffset="'+(-off)+'" transform="rotate(-90 '+cx+' '+cy+')"></circle>'; off+=len; return s; }).join('');
   const leg=items.map(it=>'<div style="display:flex;align-items:center;gap:6px;font-size:12px;margin-bottom:3px"><span style="width:10px;height:10px;border-radius:2px;background:'+it.color+';flex:none"></span><span style="flex:1">'+esc(it.label)+'</span><span class="sub">'+_fmtRk(it.val)+' · '+(tot?Math.round(it.val/tot*100):0)+'%</span></div>').join('');
@@ -2838,58 +2838,84 @@ function _dreDef(cult){ const d={'Soja':{prod:70,preco:120},'Algodão':{prod:280
 function _planResBody(){
   const ativos=(S.planejamento||[]).filter(p=>p.status!=='cancelado');
   if(!ativos.length) return '<div class="hint">Sem planejamento nesta safra.</div>';
-  const byCult={},byLote={},byTipo={},byCat={}; let totProd=0,totOper=0;
+  // cultura primária do lote (menor ordem) -> separa 1ª safra x safrinha
+  const primaria={}, minOrd={};
+  ativos.forEach(p=>{ const o=(p.ordem!=null?p.ordem:1e9); if(!(p.lote in minOrd)||o<minOrd[p.lote]){ minOrd[p.lote]=o; primaria[p.lote]=p.cultura||''; } });
+  const cicloDe=p=>{ if(!p.cultura) return '—'; return (p.cultura===primaria[p.lote])?'1ª safra':'Safrinha'; };
+  const byCult={},byLote={},byCat={},byTipo={}; let totProd=0,totOper=0;
   ativos.forEach(p=>{ const oper=_custoOperacao(p); let prodTot=0;
-    (p.produtos||[]).forEach(pr=>{ const q=_planQtd(pr,p.lote,p.sementeKgha,p.areaParcial); if(q==null)return; const c=q*_custoUnitProd(pr.nome); prodTot+=c; const cat=_catProduto(pr.nome); byCat[cat]=(byCat[cat]||0)+c; });
+    (p.produtos||[]).forEach(pr=>{ const q=_planQtd(pr,p.lote,p.sementeKgha,p.areaParcial); if(q==null)return; const c=q*_custoUnitProd(pr.nome); prodTot+=c; byCat[_catProduto(pr.nome)]=(byCat[_catProduto(pr.nome)]||0)+c; });
     if(oper) byCat['Operação']=(byCat['Operação']||0)+oper;
     const est=prodTot+oper, cult=p.cultura||'(sem cultura)';
-    (byCult[cult]=byCult[cult]||{custo:0,n:0,lotes:{}}); byCult[cult].custo+=est; byCult[cult].n++; byCult[cult].lotes[p.lote]=true;
+    const R=byCult[cult]||(byCult[cult]={custo:0,prod:0,oper:0,n:0,lotes:{},ciclos:{}}); R.custo+=est; R.prod+=prodTot; R.oper+=oper; R.n++; R.lotes[p.lote]=true; R.ciclos[cicloDe(p)]=true;
     (byLote[p.lote]=byLote[p.lote]||{custo:0,area:areaDe(p.lote)}); byLote[p.lote].custo+=est;
     const tp=p.condicional?'Condicional':(p.tipoAtiv||'(sem tipo)'); byTipo[tp]=(byTipo[tp]||0)+est;
     totProd+=prodTot; totOper+=oper; });
   const totEst=totProd+totOper;
   const areaTotal=Object.keys(byLote).reduce((s,l)=>s+(byLote[l].area||0),0);
   const areaCult=c=>Object.keys((byCult[c]||{lotes:{}}).lotes).reduce((s,l)=>s+(areaDe(l)||0),0);
-  // ---- DRE ----
-  const cults=Object.keys(byCult).sort((a,b)=>byCult[b].custo-byCult[a].custo);
+  const cults=Object.keys(byCult).filter(c=>c!=='(sem cultura)');
+  const cicloRank=c=>byCult[c].ciclos['1ª safra']?0:1;
+  cults.sort((a,b)=>cicloRank(a)-cicloRank(b)||areaCult(b)-areaCult(a));
+  // ---- Resultado operacional por cultura/safra ----
   let recTot=0,resTot=0;
-  const dreRows=cults.map(c=>{ const cfg=_dreCfg()[c]||{}, def=_dreDef(c);
+  const opRows=cults.map(c=>{ const cfg=_dreCfg()[c]||{}, def=_dreDef(c);
     const prod=(cfg.prod!=null?cfg.prod:def.prod), preco=(cfg.preco!=null?cfg.preco:def.preco);
-    const ar=areaCult(c), rec=ar*prod*preco, cst=byCult[c].custo, res=rec-cst; recTot+=rec; resTot+=res;
-    const real=(c!=='(sem cultura)');
-    return '<tr><td>'+(real?('🌾 '+esc(c)):'<span class="sub">(sem cultura)</span>')+'</td>'
+    const ar=areaCult(c), cst=byCult[c].custo, custoHa=ar>0?cst/ar:0, custoUn=(ar>0&&prod>0)?cst/(ar*prod):0;
+    const rec=ar*prod*preco, recHa=ar>0?rec/ar:0, res=rec-cst, resHa=ar>0?res/ar:0, marg=rec>0?res/rec*100:null;
+    recTot+=rec; resTot+=res; const cic=Object.keys(byCult[c].ciclos).filter(x=>x!=='—');
+    return '<tr>'
+      +'<td class="sub" style="white-space:nowrap">'+(cic.join(' + ')||'—')+'</td>'
+      +'<td><b>🌾 '+esc(c)+'</b></td>'
       +'<td class="num">'+fmtArea(ar)+'</td>'
-      +'<td class="num"><input class="dre-in" data-cult="'+esc(c)+'" data-f="prod" value="'+(prod||'')+'" style="width:66px;text-align:right" placeholder="un/ha"></td>'
-      +'<td class="num"><input class="dre-in" data-cult="'+esc(c)+'" data-f="preco" value="'+(preco||'')+'" style="width:70px;text-align:right" placeholder="R$/un"></td>'
-      +'<td class="num">'+(rec?fmtR$(rec):'—')+'</td>'
-      +'<td class="num">'+fmtR$(cst)+'</td>'
-      +'<td class="num" style="color:'+(res>=0?'#26de81':'#ff6b6b')+'"><b>'+fmtR$(res)+'</b></td>'
-      +'<td class="num">'+(rec>0?fmtBR(res/rec*100)+'%':'—')+'</td>'
-      +'<td class="num">'+(ar>0?fmtR$(res/ar):'—')+'</td></tr>'; }).join('');
+      +'<td class="num"><input class="dre-in" data-cult="'+esc(c)+'" data-f="prod" value="'+(prod||'')+'" style="width:58px;text-align:right" placeholder="un/ha"></td>'
+      +'<td class="num"><input class="dre-in" data-cult="'+esc(c)+'" data-f="preco" value="'+(preco||'')+'" style="width:62px;text-align:right" placeholder="R$/un"></td>'
+      +'<td class="num">'+fmtR$(cst)+'<div class="sub">'+fmtR$(custoHa)+'/ha</div></td>'
+      +'<td class="num">'+(custoUn>0?fmtR$(custoUn):'—')+'</td>'
+      +'<td class="num">'+(rec?fmtR$(rec):'—')+(rec?'<div class="sub">'+fmtR$(recHa)+'/ha</div>':'')+'</td>'
+      +'<td class="num" style="color:'+(res>=0?'#26de81':'#ff6b6b')+'"><b>'+fmtR$(res)+'</b>'+(ar>0?'<div class="sub" style="color:inherit">'+fmtR$(resHa)+'/ha</div>':'')+'</td>'
+      +'<td class="num">'+(marg!=null?fmtBR(marg)+'%':'—')+'</td></tr>'; }).join('');
   const margTot=recTot>0?fmtBR(resTot/recTot*100)+'%':'—';
-  // ---- montagem ----
-  const catItems=Object.keys(byCat).sort((a,b)=>byCat[b]-byCat[a]).map((k,i)=>({label:k,val:byCat[k],color:_RESPAL[i%_RESPAL.length]}));
-  const cultItems=cults.filter(c=>c!=='(sem cultura)').map((c,i)=>({label:c,val:byCult[c].custo,color:_RESPAL[i%_RESPAL.length]}));
+  const custoHaTot=areaTotal>0?totEst/areaTotal:0, recHaTot=areaTotal>0?recTot/areaTotal:0, resHaTot=areaTotal>0?resTot/areaTotal:0;
+  // ---- KPIs ----
+  let h='<div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:16px">'
+    +_resKpi('Área plantada',fmtArea(areaTotal)+' ha')
+    +_resKpi('Receita projetada',_fmtRk(recTot),fmtR$(recHaTot)+'/ha')
+    +_resKpi('Custo de produção',_fmtRk(totEst),fmtR$(custoHaTot)+'/ha')
+    +_resKpi('Resultado projetado','<span style="color:'+(resTot>=0?'#26de81':'#ff6b6b')+'">'+_fmtRk(resTot)+'</span>',fmtR$(resHaTot)+'/ha · margem '+margTot)
+    +'</div>';
+  // ---- Tabela operacional (padrão RI) ----
+  h+=_card('Resultado operacional por cultura / safra',
+    '<div class="hint" style="margin:-4px 0 10px">Edite <b>produtividade</b> e <b>preço</b> por cultura (soja em sacas 60kg, algodão em @). Receita = área × produtividade × preço. Custo/ha e custo por unidade vêm do planejamento.</div>'
+    +'<div style="overflow-x:auto"><table class="ptbl"><thead><tr><th>Ciclo</th><th>Cultura</th><th class="num">Área (ha)</th><th class="num">Produt.<br>un/ha</th><th class="num">Preço<br>R$/un</th><th class="num">Custo<br>total · /ha</th><th class="num">Custo<br>R$/un</th><th class="num">Receita<br>total · /ha</th><th class="num">Result.<br>total · /ha</th><th class="num">Margem</th></tr></thead>'
+    +'<tbody>'+opRows+'</tbody>'
+    +'<tfoot><tr><td colspan="2"><b>Total</b></td><td class="num"><b>'+fmtArea(areaTotal)+'</b></td><td class="num"></td><td class="num"></td><td class="num"><b>'+fmtR$(totEst)+'</b><div class="sub">'+fmtR$(custoHaTot)+'/ha</div></td><td class="num"></td><td class="num"><b>'+fmtR$(recTot)+'</b></td><td class="num" style="color:'+(resTot>=0?'#26de81':'#ff6b6b')+'"><b>'+fmtR$(resTot)+'</b></td><td class="num"><b>'+margTot+'</b></td></tr></tfoot></table></div>');
+  // ---- DRE consolidada ----
+  const CATLBL={'Semente':'Sementes','Fertilizante':'Fertilizantes','Defensivo':'Defensivos','Biológico':'Biológicos','Adjuvante':'Adjuvantes','Outros insumos':'Outros insumos'};
+  const insumoCats=Object.keys(byCat).filter(k=>k!=='Operação').sort((a,b)=>byCat[b]-byCat[a]);
+  const dreHa=v=>areaTotal>0?fmtR$(v/areaTotal):'—';
+  const drePc=v=>recTot>0?fmtBR(v/recTot*100)+'%':'—';
+  const dreRow=(lbl,val,o)=>{ o=o||{}; const cor=o.res?(val>=0?'#26de81':'#ff6b6b'):''; const st=(o.bold?'font-weight:800;':'')+(o.top?'border-top:2px solid var(--linha,#2a3550);':'');
+    return '<tr style="'+st+'"><td>'+esc(lbl)+'</td><td class="num"'+(cor?' style="color:'+cor+'"':'')+'>'+(o.neg?'(':'')+fmtR$(Math.abs(val))+(o.neg?')':'')+'</td><td class="num sub">'+dreHa(val)+'</td><td class="num sub">'+drePc(val)+'</td></tr>'; };
+  let dre=dreRow('Receita líquida projetada',recTot,{bold:true});
+  insumoCats.forEach(k=>{ dre+=dreRow('(−) '+(CATLBL[k]||k),byCat[k],{neg:true}); });
+  if(byCat['Operação']) dre+=dreRow('(−) Operações / serviços',byCat['Operação'],{neg:true});
+  dre+=dreRow('(=) Custo de produção total',totEst,{neg:true,bold:true,top:true});
+  dre+=dreRow('(=) Lucro bruto projetado',resTot,{bold:true,res:true,top:true});
+  h+='<div style="margin-top:14px"></div>'+_card('DRE projetada (consolidada)',
+    '<div style="overflow-x:auto"><table class="ptbl"><thead><tr><th>Demonstrativo</th><th class="num">Total</th><th class="num">R$/ha</th><th class="num">% receita</th></tr></thead><tbody>'+dre+'</tbody></table></div>'
+    +'<div class="hint" style="margin-top:6px">Margem bruta projetada: <b style="color:'+(resTot>=0?'#26de81':'#ff6b6b')+'">'+margTot+'</b>. Custo reflete o que está lançado no planejamento (insumos + operação); receita usa os preços/produtividade da tabela acima.</div>');
+  // ---- Gráficos ----
+  const catItems=Object.keys(byCat).sort((a,b)=>byCat[b]-byCat[a]).map((k,i)=>({label:(CATLBL[k]||k),val:byCat[k],color:_RESPAL[i%_RESPAL.length]}));
+  const cultHaItems=cults.map((c,i)=>({label:c,val:byCult[c].custo,color:_RESPAL[i%_RESPAL.length],sub:fmtR$(areaCult(c)>0?byCult[c].custo/areaCult(c):0)+'/ha'}));
   const tipoItems=Object.keys(byTipo).sort((a,b)=>byTipo[b]-byTipo[a]).slice(0,8).map((t,i)=>({label:t,val:byTipo[t],color:_RESPAL[i%_RESPAL.length]}));
-  const loteItems=Object.keys(byLote).sort((a,b)=>byLote[b].custo-byLote[a].custo).slice(0,10).map((l,i)=>({label:l,val:byLote[l].custo,color:_RESPAL[(i+3)%_RESPAL.length]}));
-  let h='<div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px">'
-    +_resKpi('Área total',fmtArea(areaTotal)+' ha')
-    +_resKpi('Custo estimado',_fmtRk(totEst),'insumos '+_fmtRk(totProd)+' · operação '+_fmtRk(totOper))
-    +_resKpi('Custo / ha',areaTotal>0?fmtR$(totEst/areaTotal):'—')
-    +_resKpi('Receita projetada',_fmtRk(recTot))
-    +_resKpi('Resultado projetado','<span style="color:'+(resTot>=0?'#26de81':'#ff6b6b')+'">'+_fmtRk(resTot)+'</span>','margem '+margTot)
-    +'</div>';
-  h+='<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:14px;margin-bottom:14px">'
-    +_card('Onde vai o dinheiro (categoria)',_donut(catItems))
-    +_card('Custo por cultura',_barChart(cultItems))
+  const loteItems=Object.keys(byLote).sort((a,b)=>byLote[b].custo-byLote[a].custo).slice(0,10).map((l,i)=>({label:l,val:byLote[l].custo,color:_RESPAL[(i+3)%_RESPAL.length],sub:(byLote[l].area>0?fmtR$(byLote[l].custo/byLote[l].area):'—')+'/ha'}));
+  h+='<div style="margin-top:14px"></div><div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(330px,1fr));gap:14px">'
+    +_card('Composição do custo (categoria)',_donut(catItems))
+    +_card('Custo por cultura (total · R$/ha)',_barChart(cultHaItems))
     +_card('Custo por tipo de atividade',_barChart(tipoItems))
-    +_card('Custo por lote (top 10)',_barChart(loteItems))
+    +_card('Custo por lote — top 10 (total · R$/ha)',_barChart(loteItems))
     +'</div>';
-  h+=_card('DRE projetada — resultado por cultura',
-    '<div class="hint" style="margin:-4px 0 8px">Preencha <b>produtividade (un/ha)</b> e <b>preço (R$/un)</b> de cada cultura — soja em sacas, algodão em @. Receita = área × produtividade × preço. Custo = estimativa do planejamento.</div>'
-    +'<div style="overflow-x:auto"><table class="ptbl"><thead><tr><th>Cultura</th><th class="num">Área (ha)</th><th class="num">Produt.</th><th class="num">Preço</th><th class="num">Receita</th><th class="num">Custo</th><th class="num">Resultado</th><th class="num">Margem</th><th class="num">R$/ha</th></tr></thead>'
-    +'<tbody>'+dreRows+'</tbody>'
-    +'<tfoot><tr><td colspan="4" style="text-align:right"><b>Total</b></td><td class="num"><b>'+fmtR$(recTot)+'</b></td><td class="num"><b>'+fmtR$(totEst)+'</b></td><td class="num" style="color:'+(resTot>=0?'#26de81':'#ff6b6b')+'"><b>'+fmtR$(resTot)+'</b></td><td class="num"><b>'+margTot+'</b></td><td class="num"><b>'+(areaTotal>0?fmtR$(resTot/areaTotal):'—')+'</b></td></tr></tfoot></table></div>');
   return h;
 }
 function _planResHTML(){
