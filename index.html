@@ -164,7 +164,7 @@ async function abrirModulo(key){
   Object.values(_frames).forEach(f=>f.classList.remove('on'));
   _frames[key].classList.add('on');
   document.querySelectorAll('.modbtn').forEach(b=>b.classList.toggle('on', b.dataset.k===key));
-  _ativo=key;
+  _ativo=key; localStorage.setItem('alabama_modulo',key);
 }
 
 /* logou: vai pro seletor de safra (não abre módulo ainda) */
@@ -301,9 +301,16 @@ async function boot(){
   $('#bkp').onclick=backupBanco;
   $('#imp').onclick=importarBanco;
   $('#impFile').onchange=e=>{ const f=e.target.files&&e.target.files[0]; if(f) _fazerRestore(f); };
-  // já logado? vai direto pro seletor de safra
+  // já logado? restaura direto a última safra + módulo (F5 não deve voltar pra tela de escolha)
   const { data } = await SB.auth.getSession();
-  if(data && data.session){ mostrarSeletorSafra(); }
+  if(data && data.session){
+    const ultimaSafra=localStorage.getItem('alabama_safra');
+    if(ultimaSafra){
+      $('#login').style.display='none';
+      _ativo=localStorage.getItem('alabama_modulo')||null;
+      escolherSafra(ultimaSafra);
+    } else { mostrarSeletorSafra(); }
+  }
 }
 window.addEventListener('load', boot);
 </script>

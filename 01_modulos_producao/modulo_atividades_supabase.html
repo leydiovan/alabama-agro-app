@@ -176,7 +176,7 @@ window.__POLIGONAIS__ = [];</script>
 <script>
 /* ====================== ESTADO (seed injetado no final) ====================== */
 let S = window.__SEED__; if(!S.produtos) S.produtos=[];
-S.planejamento=S.planejamento||[]; S.saldoProd=S.saldoProd||{}; S.custoProd=S.custoProd||{}; S.culturas=S.culturas||[];
+S.planejamento=S.planejamento||[]; S.saldoProd=S.saldoProd||{}; S.custoProd=S.custoProd||{}; S.culturas=S.culturas||[]; S.planPremissas=S.planPremissas||{}; S.planCrono=S.planCrono||[]; S.tecnologias=S.tecnologias||[]; S.sufixos=S.sufixos||[]; S.custosFixos=S.custosFixos||[]; S.maqDep=S.maqDep||[]; S.impDep=S.impDep||[]; S.funcRh=S.funcRh||[]; S.empregadores=S.empregadores||[];
 S.cotacoes=S.cotacoes||[]; S.dolar=S.dolar||5; S.unidades=S.unidades||[]; S.fornecedores=S.fornecedores||[]; S.arred=S.arred||{on:true,val:{}};
 
 /* tipos de atividade -> perfil/diário (extensível no futuro via cadastro) */
@@ -362,6 +362,7 @@ $('#nav').addEventListener('click',e=>{
   if(b.dataset.v==='aprovcampo') APC=null;
   VIEW=b.dataset.v;
   $$('#nav button').forEach(x=>x.classList.toggle('on',x===b));
+  _salvarEstadoNav();
   render();
 });
 
@@ -441,6 +442,13 @@ function bindComandas(){
 let novaProd=[];
 let novoMapaDeriva=[];  // [{nome,risco}] da Via Piloto // linhas de produto na emissão
 let _editCodigo=null;   // código da comanda sendo editada (null = nova)
+/* ---- estado da PARCELA por polígono (aplicação parcial desenhada/importada no mapa) ---- */
+let _parcPoli=null;     // {crs:'UTM23S', fonte:'desenho'|'KML', ring:[[E,N],...]} — canônico em UTM
+let _parcVerts=[];      // vértices em [lat,lon] (edição no Leaflet)
+let _parcDraw=false;    // modo desenho ligado
+let _parcMap=null, _parcPolyLayer=null, _parcMarkers=[], _parcKmlPolys=[];
+let _parcS2Layer=null, _parcBases=[], _parcPasses=[], _parcS2Variants=[];   // Sentinel-2 por data (Copernicus/CDSE)
+const _SH_INSTANCE='c7dc487f-9637-419e-a400-5fee5a3e6989';   // Instance ID Sentinel Hub (Copernicus Data Space) — público (vai na URL do tile)
 
 /* recalcula contadores (geral e por tipo) a partir das comandas carregadas do banco */
 function _recalcContadores(){
@@ -503,6 +511,7 @@ function renderNova(){
           <option value="total">Área total</option>
           <option value="ha">Parcial — por hectares</option>
           <option value="cargas">Parcial — por tanques/voos</option>
+          <option value="poligono">Parcial — por polígono no mapa</option>
         </select></div>
       <div class="fcol" id="nv_parcha_wrap" style="max-width:160px;display:none"><label>Hectares aplicados</label>
         <input id="nv_parc_ha" placeholder="ex: 30" oninput="atualizaIndicadores();recalcProdutosArea()"></div>
@@ -510,6 +519,34 @@ function renderNova(){
         <input id="nv_parc_cg" placeholder="ex: 2" oninput="atualizaIndicadores();recalcProdutosArea()"></div>
       <div class="fcol" id="nv_parc_info" style="flex:1;min-width:160px"><label>&nbsp;</label>
         <div class="hint" id="nv_parc_calc" style="padding-top:6px"></div></div>
+    </div>
+    <div id="nv_parcmapa" style="display:none;margin:2px 0 8px">
+      <div class="hint" style="margin-bottom:6px">Desenhe a <b>parcela aplicada</b> dentro do lote (clique para marcar cada vértice) ou importe um KML. Depois: <b>arraste</b> os pontos vermelhos para regular, clique num ponto branco no meio do lado para <b>inserir</b> vértice, clique num ponto vermelho para <b>remover</b>. A área é calculada automaticamente.</div>
+      <div class="actions" style="gap:8px;flex-wrap:wrap;align-items:center">
+        <button type="button" class="btn sm" id="nv_parc_btdraw" onclick="_parcToggleDraw()">✏️ Desenhar</button>
+        <button type="button" class="btn sm" onclick="_parcUndo()">↩︎ Desfazer vértice</button>
+        <button type="button" class="btn sm danger" onclick="_parcClear()">🗑️ Limpar</button>
+        <label class="btn sm" style="cursor:pointer">📄 Importar KML<input type="file" id="nv_parc_kml" accept=".kml,.kmz,application/vnd.google-earth.kml+xml" style="display:none" onchange="_parcKmlFile(this.files&&this.files[0])"></label>
+        <span id="nv_parc_areatxt" class="hint"></span>
+      </div>
+      <div class="actions" style="gap:8px;flex-wrap:wrap;align-items:center;margin-top:4px">
+        <span class="hint">🛰️ Sentinel-2 por data:</span>
+        <select id="nv_parc_s2date" onchange="_parcS2Pick(this.value)" style="max-width:250px"><option value="">— busque as passagens —</option></select>
+        <button type="button" class="btn sm" onclick="_parcS2Buscar()">🔄 buscar passagens</button>
+        <label class="hint" style="display:inline-flex;align-items:center;gap:4px">máx nuvem <input id="nv_parc_s2cc" type="number" value="20" min="0" max="100" style="width:56px"> %</label>
+        <span class="hint">(imagem recente e sem nuvem; escolha a data)</span>
+      </div>
+      <details style="margin-top:4px"><summary class="hint" style="cursor:pointer">⚙️ Ajuste de cor (Gain · Gamma · Red · Green · Blue) — igual ao Copernicus Browser</summary>
+        <div class="actions" style="gap:10px 14px;flex-wrap:wrap;align-items:center;margin-top:6px">
+          <label class="hint" style="display:inline-flex;align-items:center;gap:5px">Gain <input id="nv_fx_gain" type="range" min="0.5" max="5" step="0.1" value="3.6" oninput="_parcS2Fx()" style="width:120px"><b id="nv_fx_gainv" style="min-width:26px">3.6</b></label>
+          <label class="hint" style="display:inline-flex;align-items:center;gap:5px">Gamma <input id="nv_fx_gamma" type="range" min="0.2" max="2" step="0.05" value="1.5" oninput="_parcS2Fx()" style="width:120px"><b id="nv_fx_gammav" style="min-width:30px">1.50</b></label>
+          <span class="hint" style="display:inline-flex;align-items:center;gap:3px;color:#ff8a8a">Red <input id="nv_fx_rmin" type="number" step="0.01" min="0" max="1" value="0" oninput="_parcS2Fx()" style="width:58px">–<input id="nv_fx_rmax" type="number" step="0.01" min="0" max="1" value="0.45" oninput="_parcS2Fx()" style="width:58px"></span>
+          <span class="hint" style="display:inline-flex;align-items:center;gap:3px;color:#7fe0a0">Green <input id="nv_fx_gmin" type="number" step="0.01" min="0" max="1" value="0.1" oninput="_parcS2Fx()" style="width:58px">–<input id="nv_fx_gmax" type="number" step="0.01" min="0" max="1" value="0.7" oninput="_parcS2Fx()" style="width:58px"></span>
+          <span class="hint" style="display:inline-flex;align-items:center;gap:3px;color:#8ab6ff">Blue <input id="nv_fx_bmin" type="number" step="0.01" min="0" max="1" value="0.25" oninput="_parcS2Fx()" style="width:58px">–<input id="nv_fx_bmax" type="number" step="0.01" min="0" max="1" value="1" oninput="_parcS2Fx()" style="width:58px"></span>
+          <button type="button" class="btn sm" onclick="_parcS2FxReset()">↺ Alabama</button>
+        </div>
+      </details>
+      <div id="nv_parc_map" style="height:420px;border:1px solid #2c4a78;border-radius:8px;margin-top:6px;background:#0e1830"></div>
     </div>
     <div id="nv_campostipo"></div>
     <div id="nv_indic" style="display:none;margin:8px 0 4px;padding:10px 14px;border:1px solid #2d4;border-radius:8px;background:rgba(40,160,60,.08)">
@@ -652,12 +689,17 @@ function ajustaParcial(){
   // rótulo tanques/voos conforme tipo
   const tipo=$('#nv_tipo')?.value||'';
   const lbl=$('#nv_lbl_parccg'); if(lbl) lbl.textContent='Nº de '+(/A[eé]rea/i.test(tipo)?'voos':'tanques');
+  _parcTogglePainel();   // mostra/esconde o mapa de satélite (modo polígono)
 }
 /* área que vale nos cálculos do formulário (parcial ou total) */
 function _areaEfetivaForm(){
   const lote=$('#nv_lote')?.value;
   const areaTotal=lote?areaDe(lote):null;
   const modo=$('#nv_parcmodo')?.value||'total';
+  if(modo==='poligono'){
+    const ha=_parcAreaHa();
+    return (ha!=null && ha>0)? ha : areaTotal;
+  }
   if(modo==='ha'){
     const a=numUn($('#nv_parc_ha')?.value||'').n;
     return (a!=null && a>0)? a : areaTotal;
@@ -902,7 +944,265 @@ function desenhaMapaEditor(){
   });
 }
 
+/* ===================== PARCELA POR POLÍGONO (mapa de satélite) ===================== */
+/* Carrega Leaflet sob demanda (módulo admin roda online). cb(err?) */
+function _leafletReady(cb){
+  if(window.L){ cb(); return; }
+  if(window.__leafletLoading){ window.__leafletLoading.push(cb); return; }
+  window.__leafletLoading=[cb];
+  const done=(err)=>{ const q=window.__leafletLoading||[]; window.__leafletLoading=null; q.forEach(f=>{try{f(err);}catch(e){}}); };
+  const css=document.createElement('link'); css.rel='stylesheet'; css.href='https://unpkg.com/leaflet@1.9.4/dist/leaflet.css'; document.head.appendChild(css);
+  const s=document.createElement('script'); s.src='https://unpkg.com/leaflet@1.9.4/dist/leaflet.js';
+  s.onload=()=>done(); s.onerror=()=>done(new Error('leaflet')); document.head.appendChild(s);
+}
+/* UTM 23S (metros) -> [lat,lon] (WGS84). Inverso do _apcUTM. */
+function _utmToLatLon(E,N,zona,south){
+  if(south==null) south=true;
+  const a=6378137.0,f=1/298.257223563,e2=f*(2-f),ep2=e2/(1-e2),k0=0.9996;
+  const e1=(1-Math.sqrt(1-e2))/(1+Math.sqrt(1-e2));
+  const x=E-500000; let y=N; if(south) y-=10000000;
+  const M=y/k0, mu=M/(a*(1-e2/4-3*e2*e2/64-5*e2*e2*e2/256));
+  const phi1=mu+(3*e1/2-27*e1*e1*e1/32)*Math.sin(2*mu)+(21*e1*e1/16-55*e1*e1*e1*e1/32)*Math.sin(4*mu)+(151*e1*e1*e1/96)*Math.sin(6*mu)+(1097*e1*e1*e1*e1/512)*Math.sin(8*mu);
+  const C1=ep2*Math.cos(phi1)**2, T1=Math.tan(phi1)**2, N1=a/Math.sqrt(1-e2*Math.sin(phi1)**2), R1=a*(1-e2)/Math.pow(1-e2*Math.sin(phi1)**2,1.5), D=x/(N1*k0);
+  const lat=phi1-(N1*Math.tan(phi1)/R1)*(D*D/2-(5+3*T1+10*C1-4*C1*C1-9*ep2)*D**4/24+(61+90*T1+298*C1+45*T1*T1-252*ep2-3*C1*C1)*D**6/720);
+  const lon0=(zona*6-183)*Math.PI/180;
+  const lon=lon0+(D-(1+2*T1+C1)*D**3/6+(5-2*C1+28*T1-3*C1*C1+8*ep2+24*T1*T1)*D**5/120)/Math.cos(phi1);
+  return [lat*180/Math.PI, lon*180/Math.PI];
+}
+/* área de um anel UTM (metros) em hectares — shoelace */
+function _ringAreaHa(ring){
+  if(!Array.isArray(ring)||ring.length<3) return null;
+  let s=0; for(let i=0,n=ring.length;i<n;i++){ const a=ring[i], b=ring[(i+1)%n]; s+=a[0]*b[1]-b[0]*a[1]; }
+  return Math.abs(s)/2/10000;
+}
+/* parser KML -> [{nome, ring:[[lon,lat],...]}] (mesmo do Cadastros) */
+function _parcParseKML(txt){
+  const pols=[]; const doc=new DOMParser().parseFromString(txt,'text/xml');
+  const places=doc.getElementsByTagName('Placemark');
+  const pega=(node)=>{ const c=node.getElementsByTagName('coordinates')[0]; if(!c) return null;
+    return c.textContent.trim().split(/\s+/).map(par=>{ const [lon,lat]=par.split(',').map(parseFloat); return [lon,lat]; }).filter(p=>!isNaN(p[0])&&!isNaN(p[1])); };
+  for(const pm of places){ const nameEl=pm.getElementsByTagName('name')[0]; const nome=nameEl?nameEl.textContent.trim():('Polígono '+(pols.length+1));
+    const polysIn=pm.getElementsByTagName('Polygon');
+    if(polysIn.length){ for(const pg of polysIn){ const ring=pega(pg); if(ring&&ring.length>=3) pols.push({nome,ring}); } }
+    else { const ring=pega(pm); if(ring&&ring.length>=3) pols.push({nome,ring}); } }
+  return pols;
+}
+function _parcReset(){
+  _parcPoli=null; _parcVerts=[]; _parcDraw=false; _parcKmlPolys=[];
+  if(_parcMap){ try{_parcMap.remove();}catch(e){} }
+  _parcMap=null; _parcPolyLayer=null; _parcMarkers=[];
+  _parcS2Layer=null; _parcBases=[]; _parcPasses=[]; _parcS2Variants=[];
+}
+/* liga/desliga a exibição do mapa conforme o modo de aplicação.
+   No modo polígono o mapa DOCA na metade direita da janela (o formulário ocupa a esquerda). */
+function _parcAjustaAltura(){
+  const box=$('#nv_parcmapa'); const el=$('#nv_parc_map');
+  if(box && box.classList.contains('parc-dock') && el){ el.style.height=Math.max(300,(window.innerHeight-150))+'px'; if(_parcMap) _parcMap.invalidateSize(); }
+}
+function _parcTogglePainel(){
+  const modo=$('#nv_parcmodo')?.value||'total';
+  const box=$('#nv_parcmapa'); if(!box) return;
+  const main=$('#main');
+  if(modo==='poligono'){
+    box.classList.add('parc-dock');
+    box.style.cssText='position:fixed;top:0;right:0;width:50vw;height:100vh;z-index:1500;background:#0e1830;border-left:2px solid #2c4a78;padding:10px 12px;overflow:auto;box-shadow:-6px 0 20px rgba(0,0,0,.5)';
+    if(main){ main.style.width='50vw'; main.style.boxSizing='border-box'; }   // formulário na metade esquerda
+    const el=$('#nv_parc_map'); if(el) el.style.height=Math.max(300,(window.innerHeight-150))+'px';
+    if(!window.__parcResizeHooked){ window.__parcResizeHooked=true; window.addEventListener('resize',_parcAjustaAltura); }
+    _parcMapInit();
+  } else {
+    box.classList.remove('parc-dock'); box.style.cssText='display:none';
+    if(main){ main.style.width=''; main.style.boxSizing=''; }
+  }
+}
+function _parcMapInit(){
+  const el=$('#nv_parc_map'); if(!el) return;
+  _leafletReady(err=>{
+    if(err){ el.innerHTML='<div class="hint" style="padding:14px">Sem internet para carregar o mapa de satélite. Conecte-se e reabra, ou informe a área parcial por hectares.</div>'; return; }
+    if(_parcMap){ setTimeout(()=>{ _parcMap.invalidateSize(); _parcFit(); },60); return; }
+    _parcMap=L.map(el,{zoomControl:true,attributionControl:true});
+    // camadas de satélite selecionáveis
+    const esri=L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+      {maxZoom:21,maxNativeZoom:18,attribution:'Imagery © Esri'});
+    const eox=(y)=>L.tileLayer('https://tiles.maps.eox.at/wmts/1.0.0/s2cloudless-'+y+'_3857/default/g/{z}/{y}/{x}.jpg',
+      {maxZoom:21,maxNativeZoom:16,attribution:'Sentinel-2 cloudless '+y+' © EOX'});
+    // Sentinel-2 por data (Copernicus/CDSE) — TRUE_COLOR com REALCE (highlight-compress), sem marca d'água
+    const _hoje=new Date(), _de=new Date(_hoje.getTime()-120*864e5);
+    const _iso=d=>d.toISOString().slice(0,10);
+    const s2live=L.tileLayer.wms('https://sh.dataspace.copernicus.eu/ogc/wms/'+_SH_INSTANCE,{
+      layers:'TRUE_COLOR', format:'image/png', version:'1.3.0', maxZoom:21, maxNativeZoom:16,
+      attribution:'Sentinel-2 L2A © Copernicus/CDSE', TIME:_iso(_de)+'/'+_iso(_hoje), MAXCC:'20', PRIORITY:'mostRecent',
+      showLogo:false, UPSAMPLING:'BICUBIC', evalscript:btoa(_parcS2FxScript())});   // ajuste de cor "Alabama" (Gain/Gamma/RGB) igual ao Copernicus Browser
+    _parcS2Layer=s2live;
+    // demais visualizações da MESMA data (índices de vigor) — compartilham TIME com a cor natural
+    const s2idx=(lyr)=>L.tileLayer.wms('https://sh.dataspace.copernicus.eu/ogc/wms/'+_SH_INSTANCE,{
+      layers:lyr, format:'image/png', version:'1.3.0', maxZoom:21, maxNativeZoom:16,
+      attribution:'Sentinel-2 L2A © Copernicus/CDSE', TIME:_iso(_de)+'/'+_iso(_hoje), MAXCC:'20', PRIORITY:'mostRecent', showLogo:false, UPSAMPLING:'BICUBIC'});
+    const s2ndvi=s2idx('VEGETATION_INDEX'), s2agri=s2idx('AGRICULTURE'), s2moist=s2idx('MOISTURE_INDEX'), s2cir=s2idx('COLOR_INFRARED');
+    _parcS2Variants=[s2live, s2ndvi, s2agri, s2moist, s2cir];
+    const eox24=eox('2024'), eox23=eox('2023');
+    _parcBases=[esri, s2live, s2ndvi, s2agri, s2moist, s2cir, eox24, eox23];
+    esri.addTo(_parcMap);   // padrão: alta resolução (melhor pro desenho)
+    L.control.layers({
+      'Esri — alta resolução': esri,
+      'Sentinel-2 — cor natural (data)': s2live,
+      'Sentinel-2 — NDVI (vigor)': s2ndvi,
+      'Sentinel-2 — Agricultura': s2agri,
+      'Sentinel-2 — Umidade': s2moist,
+      'Sentinel-2 — Infravermelho': s2cir,
+      'Sentinel-2 cloudless 2024': eox24,
+      'Sentinel-2 cloudless 2023': eox23
+    }, null, {position:'topright', collapsed:true}).addTo(_parcMap);
+    // contorno do lote (referência, não editável)
+    const loteNome=$('#nv_lote')?.value; const info=_geomsDoLote(loteNome);
+    (info.geoms||[]).forEach(g=>{ const ll=(g.p||[]).map(([E,N])=>_utmToLatLon(E,N,23));
+      if(ll.length>=3) L.polygon(ll,{color:'#ffd24a',weight:2,fill:false,dashArray:'4 4'}).addTo(_parcMap); });
+    // se estou editando/importado, converte o polígono salvo (UTM) para vértices lat/lon
+    if((!_parcVerts||!_parcVerts.length) && _parcPoli && Array.isArray(_parcPoli.ring))
+      _parcVerts=_parcPoli.ring.map(([E,N])=>_utmToLatLon(E,N,23));
+    _parcMap.on('click', e=>{ if(!_parcDraw) return; _parcVerts.push([e.latlng.lat,e.latlng.lng]); _parcRedrawPoly(); });
+    _parcRedrawPoly();
+    setTimeout(()=>{ _parcMap.invalidateSize(); _parcFit(); },80);
+  });
+}
+function _parcFit(){
+  if(!_parcMap) return; const pts=[];
+  const loteNome=$('#nv_lote')?.value; const info=_geomsDoLote(loteNome);
+  (info.geoms||[]).forEach(g=>(g.p||[]).forEach(([E,N])=>pts.push(_utmToLatLon(E,N,23))));
+  (_parcVerts||[]).forEach(p=>pts.push(p));
+  if(pts.length){ try{ _parcMap.fitBounds(L.latLngBounds(pts),{padding:[24,24],maxZoom:18}); }catch(e){} }
+  else _parcMap.setView([-13.5,-56],5);
+}
+function _parcVertIcon(){ return L.divIcon({className:'',iconSize:[16,16],iconAnchor:[8,8],html:'<div style="width:16px;height:16px;border-radius:50%;background:#ff2d2d;border:2px solid #fff;box-shadow:0 0 0 1px rgba(0,0,0,.5);cursor:move"></div>'}); }
+function _parcMidIcon(){ return L.divIcon({className:'',iconSize:[13,13],iconAnchor:[6,6],html:'<div style="width:13px;height:13px;border-radius:50%;background:#fff;border:2px dashed #d40000;opacity:.85;cursor:copy" title="clique para inserir vértice"></div>'}); }
+function _parcRedrawPoly(){
+  if(!_parcMap) return;
+  if(_parcPolyLayer){ _parcMap.removeLayer(_parcPolyLayer); _parcPolyLayer=null; }
+  _parcMarkers.forEach(m=>_parcMap.removeLayer(m)); _parcMarkers=[];
+  const v=_parcVerts||[];
+  if(v.length>=2) _parcPolyLayer=L.polygon(v,{color:'#ff4d4f',weight:2,fillColor:'#ff4d4f',fillOpacity:.25}).addTo(_parcMap);
+  // vértices: ARRASTÁVEIS para regular; clique remove
+  v.forEach((pt,i)=>{
+    const m=L.marker(pt,{icon:_parcVertIcon(),draggable:true,zIndexOffset:1000}).addTo(_parcMap);
+    m.on('drag', e=>{ const ll=e.target.getLatLng(); _parcVerts[i]=[ll.lat,ll.lng]; if(_parcPolyLayer) _parcPolyLayer.setLatLngs(_parcVerts); _parcAreaLabel(); });
+    m.on('dragend', ()=>_parcRedrawPoly());
+    m.on('click', ev=>{ L.DomEvent.stop(ev); _parcVerts.splice(i,1); _parcRedrawPoly(); });
+    _parcMarkers.push(m);
+  });
+  // pontos médios: clique insere um vértice novo naquele lado (só fora do modo desenho)
+  if(!_parcDraw && v.length>=2){
+    for(let i=0;i<v.length;i++){
+      const a=v[i], b=v[(i+1)%v.length]; const mid=[(a[0]+b[0])/2,(a[1]+b[1])/2];
+      const mm=L.marker(mid,{icon:_parcMidIcon(),zIndexOffset:500}).addTo(_parcMap);
+      mm.on('click', ev=>{ L.DomEvent.stop(ev); _parcVerts.splice(i+1,0,mid); _parcRedrawPoly(); });
+      _parcMarkers.push(mm);
+    }
+  }
+  _parcUpdateArea();
+}
+function _parcToggleDraw(){
+  _parcDraw=!_parcDraw;
+  const b=$('#nv_parc_btdraw'); if(b){ b.classList.toggle('success',_parcDraw); b.textContent=_parcDraw?'✏️ Desenhando… (clique no mapa)':'✏️ Desenhar'; }
+  if(_parcMap){ _parcMap.getContainer().style.cursor=_parcDraw?'crosshair':''; }
+}
+function _parcUndo(){ if(_parcVerts&&_parcVerts.length){ _parcVerts.pop(); _parcRedrawPoly(); } }
+function _parcClear(){ _parcVerts=[]; _parcPoli=null; _parcRedrawPoly(); }
+function _parcCommit(){ // consolida _parcVerts -> _parcPoli (UTM)
+  if(_parcVerts&&_parcVerts.length>=3){ _parcPoli={crs:'UTM23S',fonte:(_parcPoli&&_parcPoli.fonte)||'desenho',ring:_parcVerts.map(([lat,lon])=>_apcUTM(lat,lon,23))}; }
+  else _parcPoli=null;
+}
+function _parcAreaHa(){
+  if(_parcVerts&&_parcVerts.length>=3) return _ringAreaHa(_parcVerts.map(([lat,lon])=>_apcUTM(lat,lon,23)));
+  if(_parcPoli&&Array.isArray(_parcPoli.ring)) return _ringAreaHa(_parcPoli.ring);
+  return null;
+}
+function _parcAreaLabel(){   // só o texto da área (leve — usado durante o arraste)
+  const ha=_parcAreaHa(); const lote=$('#nv_lote')?.value; const tot=lote?areaDe(lote):null;
+  const el=$('#nv_parc_areatxt');
+  if(el){ el.innerHTML = (ha!=null&&ha>0)
+    ? '<b style="color:var(--gold)">Parcela: '+fmt1(ha)+' ha</b>'+(tot?(' de '+fmt1(tot)+' ha · '+fmt1(ha/tot*100)+'%'):'')
+    : '<span class="hint">Marque ≥3 vértices (ou importe um KML) para definir a parcela.</span>'; }
+}
+function _parcUpdateArea(){   // texto + recálculo de produtos/indicadores (fim de gesto)
+  _parcAreaLabel(); atualizaIndicadores(); recalcProdutosArea();
+}
+function _parcKmlFile(file){
+  if(!file) return;
+  const nome=(file.name||'').toLowerCase();
+  if(nome.endsWith('.kmz')){ alert('Arquivo .kmz é compactado. Descompacte e importe o .kml de dentro dele (ou exporte como KML).'); return; }
+  const r=new FileReader();
+  r.onload=()=>{ try{
+    _parcKmlPolys=_parcParseKML(r.result);
+    if(!_parcKmlPolys.length){ alert('Nenhum polígono encontrado no KML.'); return; }
+    const aplicar=(idx)=>{ const p=_parcKmlPolys[idx]; if(!p) return;
+      _parcVerts=p.ring.map(([lon,lat])=>[lat,lon]);
+      if(_parcVerts.length>1 && _parcVerts[0][0]===_parcVerts[_parcVerts.length-1][0] && _parcVerts[0][1]===_parcVerts[_parcVerts.length-1][1]) _parcVerts.pop();
+      _parcPoli={crs:'UTM23S',fonte:'KML',ring:[]}; _parcDraw=false;
+      const b=$('#nv_parc_btdraw'); if(b){ b.classList.remove('success'); b.textContent='✏️ Desenhar'; }
+      _parcRedrawPoly(); _parcFit(); };
+    if(_parcKmlPolys.length===1) aplicar(0);
+    else { const nomes=_parcKmlPolys.map((p,i)=>(i+1)+') '+p.nome+' ('+p.ring.length+' pts)').join('\n');
+      const escolha=prompt('Vários polígonos no KML — digite o número:\n'+nomes,'1'); const idx=(parseInt(escolha,10)||1)-1; aplicar(idx); }
+  }catch(e){ alert('Erro ao ler KML: '+e.message); } };
+  r.readAsText(file);
+}
+/* ---- Sentinel-2 por data (Copernicus/CDSE) ---- */
+/* Ajuste de cor idêntico ao Copernicus Browser: Gain, Gamma e faixa por canal (Red/Green/Blue).
+   Base = cor natural (2.5×reflectância); v = mn + pow(2.5*refl*gain, gamma)*(mx-mn), por canal. */
+function _parcFxVal(id, def){ const el=$('#'+id); if(!el) return def; const v=parseFloat(String(el.value).replace(',','.')); return isNaN(v)?def:v; }
+function _parcS2FxScript(){
+  const g=_parcFxVal('nv_fx_gain',3.6), gm=_parcFxVal('nv_fx_gamma',1.5);
+  const rn=_parcFxVal('nv_fx_rmin',0), rx=_parcFxVal('nv_fx_rmax',0.45);
+  const gn=_parcFxVal('nv_fx_gmin',0.1), gx=_parcFxVal('nv_fx_gmax',0.7);
+  const bn=_parcFxVal('nv_fx_bmin',0.25), bx=_parcFxVal('nv_fx_bmax',1);
+  return '//VERSION=3\n'
+    +'function setup(){return {input:["B04","B03","B02","dataMask"],output:{bands:4}};}\n'
+    +'function adj(refl,g,gm,mn,mx){var v=2.5*refl;v=v*g;v=Math.pow(Math.max(0,v),gm);v=mn+v*(mx-mn);return Math.max(0,Math.min(1,v));}\n'
+    +'function evaluatePixel(s){return [adj(s.B04,'+g+','+gm+','+rn+','+rx+'),adj(s.B03,'+g+','+gm+','+gn+','+gx+'),adj(s.B02,'+g+','+gm+','+bn+','+bx+'),s.dataMask];}';
+}
+function _parcFxLabels(){ const a=$('#nv_fx_gainv'); if(a) a.textContent=_parcFxVal('nv_fx_gain',3.6).toFixed(1); const b=$('#nv_fx_gammav'); if(b) b.textContent=_parcFxVal('nv_fx_gamma',1.5).toFixed(2); }
+function _parcS2Fx(){ _parcFxLabels(); if(_parcS2Layer){ _parcS2Layer.setParams({evalscript:btoa(_parcS2FxScript())}); } }
+function _parcS2FxReset(){ const S2D={nv_fx_gain:3.6,nv_fx_gamma:1.5,nv_fx_rmin:0,nv_fx_rmax:0.45,nv_fx_gmin:0.1,nv_fx_gmax:0.7,nv_fx_bmin:0.25,nv_fx_bmax:1}; Object.keys(S2D).forEach(id=>{ const e=$('#'+id); if(e) e.value=S2D[id]; }); _parcS2Fx(); }
+function _parcSetBase(layer){   // troca a camada de fundo mantendo só uma
+  if(!_parcMap||!layer) return;
+  _parcBases.forEach(b=>{ if(b!==layer && _parcMap.hasLayer(b)) _parcMap.removeLayer(b); });
+  if(!_parcMap.hasLayer(layer)) layer.addTo(_parcMap);
+}
+function _parcLoteCentroLL(){   // centroide do lote em [lat,lon] (pra consultar o catálogo)
+  const loteNome=$('#nv_lote')?.value; const info=_geomsDoLote(loteNome);
+  let sx=0,sy=0,n=0; (info.geoms||[]).forEach(g=>(g.p||[]).forEach(([E,N])=>{sx+=E;sy+=N;n++;}));
+  if(!n) return null; return _utmToLatLon(sx/n, sy/n, 23);
+}
+async function _parcS2Buscar(){   // lista as passagens recentes (data + % nuvem) do catálogo keyless
+  const c=_parcLoteCentroLL(); if(!c){ alert('Selecione o lote primeiro.'); return; }
+  const sel=$('#nv_parc_s2date'); const maxcc=Math.max(0,Math.min(100,+($('#nv_parc_s2cc')?.value||20)));
+  if(sel) sel.innerHTML='<option value="">buscando passagens…</option>';
+  try{
+    const de=new Date(Date.now()-180*864e5).toISOString().slice(0,10);
+    const filtro="Collection/Name eq 'SENTINEL-2' and contains(Name,'MSIL2A') and OData.CSC.Intersects(area=geography'SRID=4326;POINT("+c[1]+" "+c[0]+")') and ContentDate/Start gt "+de+"T00:00:00.000Z";
+    const url="https://catalogue.dataspace.copernicus.eu/odata/v1/Products?$filter="+encodeURIComponent(filtro)+"&$orderby=ContentDate/Start desc&$top=50&$expand=Attributes";
+    const r=await fetch(url); const j=await r.json();
+    const seen={}; const passes=[];
+    (j.value||[]).forEach(p=>{ const cc=(p.Attributes||[]).find(a=>a.Name==='cloudCover'); const cloud=cc?Math.round(cc.Value):null;
+      const date=((p.ContentDate&&p.ContentDate.Start)||'').slice(0,10);
+      if(!date||seen[date]) return; seen[date]=1; if(cloud!=null && cloud>maxcc) return; passes.push({date,cloud}); });
+    _parcPasses=passes;
+    if(sel){ sel.innerHTML='<option value="">— '+passes.length+' passagens ≤'+maxcc+'% nuvem —</option>'
+      +passes.map(p=>'<option value="'+p.date+'">'+p.date+' · '+(p.cloud!=null?p.cloud+'% nuvem':'nuvem ?')+'</option>').join(''); }
+    if(!passes.length) alert('Nenhuma passagem com ≤'+maxcc+'% de nuvem nos últimos 6 meses. Aumente o "máx nuvem".');
+    else _parcS2Pick(passes[0].date, sel);   // já mostra a mais recente
+  }catch(e){ if(sel) sel.innerHTML='<option value="">erro ao buscar</option>'; alert('Erro ao buscar passagens (Copernicus): '+e.message); }
+}
+function _parcS2Pick(date, sel){   // aplica a data escolhida em TODAS as camadas Sentinel-2 e exibe a ativa
+  if(!date||!_parcMap||!_parcS2Variants.length) return;
+  _parcS2Variants.forEach(l=>l.setParams({TIME:date, MAXCC:'100'}));   // dia específico já filtrado pela lista
+  const ativa=_parcS2Variants.find(l=>_parcMap.hasLayer(l));   // mantém a visualização escolhida (cor/NDVI/…)
+  _parcSetBase(ativa||_parcS2Layer);
+  const s=sel||$('#nv_parc_s2date'); if(s && s.value!==date) s.value=date;
+}
+
 function bindNova(){
+  _parcReset();   // estado da parcela limpo; se for edição, _preencherForm repovoa
   renderProdRows();
   const tipo=$('#nv_tipo'), lote=$('#nv_lote'), area=$('#nv_area');
   tipo.onchange=()=>{ // atualiza preview do código
@@ -912,7 +1212,10 @@ function bindNova(){
     ajustaFormPorTipo();
     desenhaMapaEditor();
   };
-  lote.onchange=()=>{ const a=areaDe(lote.value); area.value=a!=null?fmtArea(a)+' ha':''; desenhaMapaEditor(); };
+  lote.onchange=()=>{ const a=areaDe(lote.value); area.value=a!=null?fmtArea(a)+' ha':''; desenhaMapaEditor();
+    // a parcela pertence ao lote antigo — descarta e reconstrói o mapa se estiver no modo polígono
+    if(!_editCodigo || $('#nv_lote')?.value!==(S.comandas.find(x=>x.codigo===_editCodigo)||{}).loteNome){ _parcReset(); }
+    _parcTogglePainel(); };
   $('#nv_addprod').onclick=()=>{novaProd.push({nome:'',tipo:'',dose:'',qtdCarga:'',qtdTotal:''});renderProdRows();};
   $('#nv_salvar').onclick=salvarNova;
   ajustaFormPorTipo();
@@ -972,13 +1275,14 @@ function salvarNova(){
         const modo=$('#nv_parcmodo')?.value||'total';
         if(modo==='total') return null;
         const areaEf=_areaEfetivaForm();
+        if(modo==='poligono'){ _parcCommit(); return {modo:'poligono', poligono:(_parcPoli||null), areaAplicada:areaEf}; }
         return {modo,ha:($('#nv_parc_ha')?.value||''),cargas:($('#nv_parc_cg')?.value||''),areaAplicada:areaEf};
       })()
     });
     const idx=S.comandas.findIndex(x=>x.codigo===_editCodigo);
     if(idx>=0) S.comandas[idx]=upd;
     const _st=upd.status||'lancada';
-    novaProd=[]; novoMapaDeriva=[]; _editCodigo=null;
+    novaProd=[]; novoMapaDeriva=[]; _editCodigo=null; _parcReset();
     msg.className='fmsg ok'; msg.textContent=`Comanda ${upd.codigo} atualizada!`;
     atualizarComandaSB(upd);
     renderPills();
@@ -1017,13 +1321,14 @@ function salvarNova(){
       const modo=$('#nv_parcmodo')?.value||'total';
       if(modo==='total') return null;
       const areaEf=_areaEfetivaForm();
+      if(modo==='poligono'){ _parcCommit(); return {modo:'poligono', poligono:(_parcPoli||null), areaAplicada:areaEf}; }
       return { modo, ha:($('#nv_parc_ha')?.value||''), cargas:($('#nv_parc_cg')?.value||''), areaAplicada:areaEf };
     })()
   };
   S.comandas.push(c);
   S.contadores.geral=prev.g;
   S.contadores.porTipo[tipo]=prev.t;
-  novaProd=[]; novoMapaDeriva=[];
+  novaProd=[]; novoMapaDeriva=[]; _parcReset();
   msg.className='fmsg ok';msg.textContent=`Comanda ${c.codigo} lançada!`;
   salvarComandaSB(c);  /* grava no Supabase */
   // se veio do planejamento, marca a atividade como "virou comanda"
@@ -2345,10 +2650,13 @@ function mapaDeriva(c){
   // partes centrais (composto) ou central simples — todas brancas
   (_geoms.geoms||[]).forEach(g=>{ todas.push({poli:{n:g.n,p:g.p}, cor:'#ffffff', risco:null, nome:g.n, central:true}); });
   sel.forEach(s=>{ const p=_poliPorNome(s.nome); if(p) todas.push({poli:p, cor:RISCO_COR[s.risco]||'#ccc', risco:s.risco, nome:s.nome, central:false}); });
-  if(!todas.length) return '<div style="text-align:center;color:#888;padding:30px;border:1px dashed #bbb">[ Sem poligonais para o mapa — selecione na comanda ]</div>';
+  // parcela aplicada (polígono desenhado/importado) — sobreposta em vermelho
+  const _parcRing=(c.parcial && c.parcial.modo==='poligono' && c.parcial.poligono && Array.isArray(c.parcial.poligono.ring) && c.parcial.poligono.ring.length>=3)?c.parcial.poligono.ring:null;
+  if(!todas.length && !_parcRing) return '<div style="text-align:center;color:#888;padding:30px;border:1px dashed #bbb">[ Sem poligonais para o mapa — selecione na comanda ]</div>';
   // limites
   const xs=[], ys=[];
   todas.forEach(t=>t.poli.p.forEach(pt=>{xs.push(pt[0]);ys.push(pt[1]);}));
+  if(_parcRing) _parcRing.forEach(pt=>{xs.push(pt[0]);ys.push(pt[1]);});
   let minX=Math.min(...xs),maxX=Math.max(...xs),minY=Math.min(...ys),maxY=Math.max(...ys);
   const dX=(maxX-minX)||100,dY=(maxY-minY)||100;
   minX-=dX*0.08;maxX+=dX*0.08;minY-=dY*0.08;maxY+=dY*0.08;
@@ -2376,14 +2684,25 @@ function mapaDeriva(c){
       paths+='<text x="'+PX(_gcx).toFixed(1)+'" y="'+PY(_gcy).toFixed(1)+'" text-anchor="middle" font-size="22" font-weight="800" fill="#000">'+esc(_nm)+'</text>';
     }
   }
+  // parcela aplicada (sobreposta em vermelho hachurado)
+  let defs='';
+  if(_parcRing){
+    defs='<defs><pattern id="parcHatch" width="7" height="7" patternTransform="rotate(45)" patternUnits="userSpaceOnUse"><rect width="7" height="7" fill="#ff2d2d" fill-opacity="0.12"/><line x1="0" y1="0" x2="0" y2="7" stroke="#d40000" stroke-width="2"/></pattern></defs>';
+    const dp='M'+_parcRing.map(p=>PX(p[0]).toFixed(1)+' '+PY(p[1]).toFixed(1)).join(' L')+' Z';
+    paths+='<path d="'+dp+'" fill="url(#parcHatch)" stroke="#d40000" stroke-width="2" stroke-dasharray="6 3"/>';
+    const _pha=_ringAreaHa(_parcRing);
+    const pcx=_parcRing.reduce((a,p)=>a+p[0],0)/_parcRing.length, pcy=_parcRing.reduce((a,p)=>a+p[1],0)/_parcRing.length;
+    if(_pha!=null) paths+='<text x="'+PX(pcx).toFixed(1)+'" y="'+PY(pcy).toFixed(1)+'" text-anchor="middle" font-size="12" font-weight="800" fill="#d40000" stroke="#fff" stroke-width="0.6" paint-order="stroke">'+esc(fmt1(_pha)+' ha')+'</text>';
+  }
   // legenda
   const swatch=(cor,op)=>'<span style="display:inline-block;width:12px;height:12px;background:'+cor+';opacity:'+op+';border:1px solid #333;vertical-align:middle"></span>';
-  const leg='<div style="display:flex;gap:16px;justify-content:center;margin-top:6px;font-size:11px">'
+  const leg='<div style="display:flex;gap:16px;justify-content:center;margin-top:6px;font-size:11px;flex-wrap:wrap">'
     +'<span>'+swatch(RISCO_COR.alto,'0.85')+' Risco muito alto</span>'
     +'<span>'+swatch(RISCO_COR.baixo,'0.85')+' Risco baixo</span>'
     +'<span>'+swatch(RISCO_COR.nulo,'0.85')+' Risco nulo</span>'
-    +'<span>'+swatch('#ffffff','1')+' Lote da aplicação</span></div>';
-  return '<div style="text-align:center"><svg viewBox="0 0 '+W+' '+H+'" style="width:100%;max-width:'+W+'px;border:1px solid #ccc;background:#f7f7f4">'+paths+'</svg>'+leg+'</div>';
+    +'<span>'+swatch('#ffffff','1')+' Lote da aplicação</span>'
+    +(_parcRing?'<span>'+swatch('#d40000','0.5')+' Parcela aplicada</span>':'')+'</div>';
+  return '<div style="text-align:center"><svg viewBox="0 0 '+W+' '+H+'" style="width:100%;max-width:'+W+'px;border:1px solid #ccc;background:#f7f7f4">'+defs+paths+'</svg>'+leg+'</div>';
 }
 
 function printPulv(c, via){
@@ -2520,21 +2839,37 @@ const PRINT_CSS=`<style>
 </style>`;
 
 /* ====================== RENDER PRINCIPAL ====================== */
+/* estado de navegação (view/aba/filtros do dashboard) por safra — sobrevive ao F5 (o hub sempre recarrega a página toda) */
+function _salvarEstadoNav(){ try{ localStorage.setItem('plan_estado_'+SAFRA, JSON.stringify({
+  view:VIEW, planTab:_planTab, pdCiclo:_pdCiclo, pdRegime:_pdRegime, pdCond:_pdCond,
+  pdCultSel:_pdCultSel?[..._pdCultSel]:null, pdLoteSel:_pdLoteSel?[..._pdLoteSel]:null
+})); }catch(e){} }
+function _restaurarEstadoNav(){ try{ const j=JSON.parse(localStorage.getItem('plan_estado_'+SAFRA)||'null'); if(!j) return;
+  if(j.view) VIEW=j.view;
+  if(j.planTab) _planTab=j.planTab;
+  if(j.pdCiclo) _pdCiclo=j.pdCiclo;
+  if(j.pdRegime) _pdRegime=j.pdRegime;
+  if(typeof j.pdCond==='boolean') _pdCond=j.pdCond;
+  if(Array.isArray(j.pdCultSel)) _pdCultSel=new Set(j.pdCultSel);
+  if(Array.isArray(j.pdLoteSel)) _pdLoteSel=new Set(j.pdLoteSel);
+}catch(e){} }
 /* ===================== PLANEJAMENTO DA SAFRA ===================== */
-let _planTab='lote';      // 'lote' | 'compras' | 'real' | 'relatorio'
+let _planTab='lote';      // 'lote' | 'compras' | 'real' | 'relatorio' | 'dashboard'
 let _planRelDet=false;    // relatório: detalhar por lote
 let _planLote='';         // lote selecionado em "Por lote"
 let _planEdit=null;       // id em edição (ou 'novo')
 let _planProd=[];         // linhas de produto do editor {nome,tipo,dose,unidade}
-let _planEpoca='', _planTipo='', _planSemente='', _planObs='', _planCond=false, _planCustos=[], _planArea='', _planData='', _planEstadio='', _planCultura='';
+let _planEpoca='', _planTipo='', _planSemente='', _planObs='', _planCond=false, _planCustos=[], _planArea='', _planData='', _planEstadio='', _planCultura='', _planCiclo='safra';
 function _planCulturaDefault(){ const g=(S.planejamento||[]).filter(p=>p.lote===_planLote && p.status!=='cancelado' && p.cultura); if(!g.length) return ''; g.sort(_planOrd); return g[g.length-1].cultura||''; }
 function _planCulturaSel(){ const cur=_planCultura||''; const opts=['<option value="">— cultura —</option>'].concat((S.culturas||[]).map(c=>`<option value="${esc(c.nome)}" ${cur===c.nome?'selected':''}>${esc(c.nome)}</option>`)).join(''); return `<div class="fcol" style="max-width:150px"><label>Cultura</label><select id="pl_cultura" onchange="_planCultura=this.value">${opts}</select></div>`; }
+function _planCicloDefault(){ const g=(S.planejamento||[]).filter(p=>p.lote===_planLote && p.status!=='cancelado'); if(!g.length) return 'safra'; g.sort(_planOrd); return g[g.length-1].ciclo==='safrinha'?'safrinha':'safra'; }
+function _planCicloSel(){ const cur=(_planCiclo==='safrinha')?'safrinha':'safra'; return `<div class="fcol" style="max-width:130px"><label>Ciclo</label><select id="pl_ciclo" onchange="_planCiclo=this.value"><option value="safra" ${cur==='safra'?'selected':''}>🌱 Safra</option><option value="safrinha" ${cur==='safrinha'?'selected':''}>🌾 Safrinha</option></select></div>`; }
 let _cotProd=null, _cotEdit=null;   // produto expandido na lista de compras
 let _planOrigemId=null, _planSeedTipo=null, _planSeedLote=null, _planSeedCultura=null;  // p/ gerar comanda
 let _planSelMode=false; const _planSel=new Set();   // seleção múltipla na lista
 
 function _planTipos(){ return Object.keys(TIPO_PERFIL).filter(t=>t!=='(indefinido)'); }
-function _planCopia(p,lote,ordem){ return {id:null, lote, tipoAtiv:p.tipoAtiv, epoca:p.epoca, dataPrev:p.dataPrev, estadio:p.estadio, cultura:p.cultura||'', produtos:(p.produtos||[]).map(x=>({...x})), custos:(p.custos||[]).map(x=>({...x})), obs:p.obs, sementeKgha:p.sementeKgha, areaParcial:p.areaParcial, condicional:!!p.condicional, ordem:(ordem!=null?ordem:null), status:'planejado', comandaCodigo:''}; }
+function _planCopia(p,lote,ordem){ return {id:null, lote, tipoAtiv:p.tipoAtiv, epoca:p.epoca, dataPrev:p.dataPrev, estadio:p.estadio, cultura:p.cultura||'', ciclo:(p.ciclo==='safrinha'?'safrinha':'safra'), produtos:(p.produtos||[]).map(x=>({...x})), custos:(p.custos||[]).map(x=>({...x})), obs:p.obs, sementeKgha:p.sementeKgha, areaParcial:p.areaParcial, condicional:!!p.condicional, ordem:(ordem!=null?ordem:null), status:'planejado', comandaCodigo:''}; }
 function _areaPlan(lote,areaParcial){ const ap=numUn(areaParcial==null?'':String(areaParcial)).n; return (ap!=null&&ap>0)?ap:areaDe(lote); }
 function _areaLbl(p){ const ap=numUn(p.areaParcial==null?'':String(p.areaParcial)).n; if(!(ap>0)) return ''; const al=areaDe(p.lote); return '<span class="sub" style="color:var(--gold)">· '+fmtBR(ap)+' ha (parcial'+(al!=null?' de '+fmtBR(al):'')+')</span>'; }
 function _planQuando(p){ let s=''; if(p.cultura) s+='<span class="sub" style="color:var(--ok)">🌾 '+esc(p.cultura)+'</span> '; if(p.dataPrev) s+='<span class="sub">· 📅 '+esc(String(p.dataPrev).split('-').reverse().join('/'))+'</span> '; if(p.estadio) s+='<span class="sub">· 🌱 '+esc(p.estadio)+'</span> '; return s; }
@@ -2610,6 +2945,23 @@ function _custosHTML(p){           // lista os custos da operação no card (igu
 function _planSeedCustos(){ const vazio=!_planCustos.length||_planCustos.every(c=>!String(c.valor||'').trim()); if(vazio) _planCustos=_custosDefault(_planTipo); }
 function _planRecalcCustos(){ const a=_areaPlan(_planLote,_planArea); let op=0; _planCustos.forEach((c,i)=>{ const t=_custoLinha(c,a); op+=t; const el=$('#plc_'+i); if(el) el.textContent=fmtR$(t); }); const o=$('#pl_optot'); if(o) o.textContent=fmtR$(op); const est=$('#pl_esttot'); if(est){ const tmpP={lote:_planLote,produtos:_planProd,sementeKgha:_planSemente,custos:_planCustos,areaParcial:_planArea}; const pc=_tipoSemProduto(_planTipo)?0:_custoProdutosAtiv(tmpP); est.textContent=fmtR$(pc+op); } }
 function _prodPorNome(n){ return (S.produtos||[]).find(p=>p.nome===n); }
+/* ---- compatibilidade HERBICIDA × TECNOLOGIA da semente (alerta no plano) ---- */
+const _mnorm=s=>String(s||'').trim().toLowerCase();
+function _molGate(){ const g=new Set(); (S.tecnologias||[]).forEach(t=>(t.moleculas||[]).forEach(m=>g.add(_mnorm(m)))); return g; }   // moléculas "trait-gated": só elas exigem tolerância (glifosato/glufosinato/2,4-D/dicamba)
+function _ativosDoProd(nome){ const pr=_prodPorNome(nome); if(!pr) return []; return (pr.ativos||[]).map(a=>String((a&&a.nome)||a||'')).filter(Boolean); }
+function _tolDoPlantio(lote,cultura,ciclo){   // moléculas toleradas pela(s) SEMENTE(s) desse plantio (união das tecnologias)
+  const cic=(ciclo==='safrinha'?'safrinha':'safra'), cul=cultura||''; const tol=new Set(); const techs=new Set(); let temSemente=false, temTec=false;
+  (S.planejamento||[]).filter(p=>p.lote===lote && (p.cultura||'')===cul && (p.ciclo==='safrinha'?'safrinha':'safra')===cic && p.status!=='cancelado')
+    .forEach(p=>(p.produtos||[]).forEach(pr=>{ const prod=_prodPorNome(pr.nome); if(prod && prod.tipoBase==='Semente'){ temSemente=true;
+      (prod.tecnologias||[]).forEach(tn=>{ temTec=true; techs.add(tn); const t=(S.tecnologias||[]).find(x=>x.nome===tn); if(t)(t.moleculas||[]).forEach(m=>tol.add(_mnorm(m))); }); } }));
+  return {tol, techs:[...techs], temSemente, temTec};
+}
+function _conflitosHerbicida(p){   // atividade p: herbicidas que aplicam molécula que a semente do plantio NÃO tolera
+  const gate=_molGate(); if(!gate.size) return {conflitos:[], techs:[], semTec:false};
+  const {tol,techs,temSemente,temTec}=_tolDoPlantio(p.lote,p.cultura,p.ciclo); if(!temSemente) return {conflitos:[], techs, semTec:false};   // não há semente identificada no plantio → não dá pra julgar
+  const out=[]; (p.produtos||[]).forEach(pr=>{ _ativosDoProd(pr.nome).forEach(a=>{ const al=_mnorm(a); if(gate.has(al) && !tol.has(al)) out.push({produto:pr.nome, molecula:a}); }); });
+  return {conflitos:out, techs, semTec:!temTec};   // semTec=true → semente sem tecnologia cadastrada (não tolera nada → mata a cultura)
+}
 /* ---- parser de princípios ativos (portado do Cadastros/Almox) p/ o #9 ---- */
 const _paNaccent=s=>String(s||'').normalize('NFD').replace(/[̀-ͯ]/g,'').toUpperCase();
 const _paNumBR=s=>{s=String(s);if(s.indexOf(',')>=0)s=s.replace(/\./g,'').replace(',','.');return parseFloat(s);};
@@ -2708,18 +3060,101 @@ function renderPlanejamento(){
       <button class="${_planTab==='compras'?'on':''}" data-pt="compras">🛒 Lista de compras</button>
       <button class="${_planTab==='real'?'on':''}" data-pt="real">📊 Projetado × Realizado</button>
       <button class="${_planTab==='relatorio'?'on':''}" data-pt="relatorio">📑 Relatório</button>
+      <button class="${_planTab==='dashboard'?'on':''}" data-pt="dashboard">📈 Dashboard</button>
+      <button class="${_planTab==='custofixo'?'on':''}" data-pt="custofixo">🏢 Custos fixos</button>
     </div>
     ${_planTab==='compras'?_planComprasControls():''}
   </div>`;
-  const body=_planTab==='lote'?_planPorLoteHTML():_planTab==='compras'?_planComprasHTML():_planTab==='relatorio'?_planRelatorioHTML():_planRealHTML();
+  const body=_planTab==='lote'?_planPorLoteHTML():_planTab==='compras'?_planComprasHTML():_planTab==='relatorio'?_planRelatorioHTML():_planTab==='dashboard'?_planDashHTML():_planTab==='custofixo'?_planCustoFixoHTML():_planRealHTML();
   const wcls='wrap'+((_planTab==='compras'&&_plcFS)?' plc-fs':'');
-  return `<div class="${wcls}"${_planTab==='compras'?' style="max-width:none"':''}>${sub}${body}</div>`;
+  const wStyle=_planTab==='compras'?' style="max-width:none"':(_planTab==='dashboard'?' style="max-width:1600px"':'');   // Dashboard mais largo: cabem os 7 cards de Destaques numa linha só
+  return `<div class="${wcls}"${wStyle}>${sub}${body}</div>`;
 }
 function bindPlanejamento(){
-  $$('#main [data-pt]').forEach(b=>b.onclick=()=>{ _planTab=b.dataset.pt; _planEdit=null; render(); });
+  $$('#main [data-pt]').forEach(b=>b.onclick=()=>{ _planTab=b.dataset.pt; _planEdit=null; _salvarEstadoNav(); render(); });
   if(_planTab==='lote') _bindPlanPorLote(); else if(_planTab==='compras') _bindPlanCompras();
+  else if(_planTab==='custofixo') _bindPlanCustoFixo();
   else if(_planTab==='relatorio'){ const pb=$('#rel_print'); if(pb) pb.onclick=_planRelImprimir; const dc=$('#rel_det'); if(dc) dc.onchange=()=>{ _planRelDet=dc.checked; const box=$('#planRelBox'); if(box) box.innerHTML=_planRelBody(_planRelDet); }; }
 }
+/* ================== CUSTOS FIXOS (por safra) ================== */
+let _cfEdit=null;
+const CF_CATS=['Administrativo/estrutura','RH fixo / pró-labore','Impostos/seguros/licenças','Manutenção e financeiro','Outros'];
+function _cfAnual(c){ const v=+c.valor||0; return (c.periodicidade==='mensal')? v*12 : v; }   // mensal→×12; anual/safra = total do ciclo
+function _deprecAno(m){ const v=+m.valorAquisicao||0, vu=+m.vidaUtilAnos||0, r=+m.residualPct||0; if(!(v>0)||!(vu>0)) return 0; return v*(1-Math.max(0,Math.min(100,r))/100)/vu; }
+function _deprecItens(){ const out=[];
+  (S.maqDep||[]).forEach(m=>{ const d=_deprecAno(m); if(d>0) out.push({nome:m.nome,tipo:'Máquina',valAno:d}); });
+  (S.impDep||[]).forEach(m=>{ const d=_deprecAno(m); if(d>0) out.push({nome:m.nome,tipo:'Implemento',valAno:d}); });
+  return out.sort((a,b)=>b.valAno-a.valAno); }
+function _encEmpregador(nome){ const e=(S.empregadores||[]).find(x=>x.nome===nome); return e?(e.inss+e.sat+e.terceiros+e.fgts):null; }
+function _rhFixoItens(){ const out=[];
+  (S.funcRh||[]).forEach(f=>{ if(f.ativo===false) return; if(!(f.tipo==='registrado'||f.tipo==='prolabore')) return; if(f.custoFixo===false) return;
+    const encEmp=_encEmpregador(f.empregador); const enc=Math.max(0,(encEmp!=null?encEmp:(+f.encargosPct||0))); const pf=+f.porFora||0;
+    let carteira, mes;
+    if(f.tipo==='prolabore'){ carteira=0; const amt=(f.porFora!=null?pf:(+f.salario||0)); mes=amt*(1+enc/100); }
+    else { carteira=(f.carteira!=null?+f.carteira:(+f.salario||0)); mes=carteira*(1+enc/100)+pf; }
+    if(!(mes>0)) return;
+    out.push({nome:f.nome, tipo:(f.tipo==='prolabore'?'Pró-labore':'Registrado'), empregador:f.empregador||'', carteira, porFora:(f.tipo==='prolabore'?(f.porFora!=null?pf:(+f.salario||0)):pf), encargos:enc, mes, ano:mes*12}); });
+  return out.sort((a,b)=>b.ano-a.ano); }
+function _cfTotais(){ let caixaManual=0, ncManual=0;
+  (S.custosFixos||[]).forEach(c=>{ const a=_cfAnual(c); if(c.tipo==='nao_caixa') ncManual+=a; else caixaManual+=a; });
+  const deprec=_deprecItens().reduce((s,i)=>s+i.valAno,0);
+  const rh=_rhFixoItens().reduce((s,i)=>s+i.ano,0);
+  const caixa=caixaManual+rh;
+  return {caixa, caixaManual, rh, ncManual, deprec, naoCaixa:ncManual+deprec, total:caixa+ncManual+deprec}; }
+function _planCustoFixoHTML(){
+  const T=_cfTotais(); const dep=_deprecItens(); const rh=_rhFixoItens(); const itens=(S.custosFixos||[]).slice();
+  const ed=_cfEdit!=null?(S.custosFixos||[]).find(c=>c.id===_cfEdit):null;
+  const optCat=CF_CATS.map(c=>`<option${ed&&ed.categoria===c?' selected':''}>${esc(c)}</option>`).join('');
+  const per=p=>['mensal','anual','safra'].map(x=>`<option value="${x}"${(ed?ed.periodicidade:'anual')===x?' selected':''}>${x==='mensal'?'Mensal':x==='anual'?'Anual':'Safra'}</option>`).join('');
+  const card=(lbl,val,cor)=>`<div style="background:var(--bg3,#111a2e);border:1px solid var(--border,#22345a);border-radius:10px;padding:10px 14px;min-width:150px"><div class="sub">${lbl}</div><div style="font-size:20px;font-weight:800;color:${cor||'var(--text)'}">${fmtR$(val)}</div></div>`;
+  const cats={}; itens.forEach(c=>{ cats[c.categoria||'Outros']=(cats[c.categoria||'Outros']||0)+_cfAnual(c); });
+  const rowsItens=itens.length?itens.map(c=>`<tr><td>${esc(c.categoria||'—')}</td><td>${esc(c.descricao||'—')}</td><td style="text-align:right">${fmtR$(+c.valor||0)}</td><td class="sub">${esc(c.periodicidade||'anual')}</td><td class="sub">${c.tipo==='nao_caixa'?'não-caixa':'caixa'}</td><td style="text-align:right">${fmtR$(_cfAnual(c))}</td><td style="white-space:nowrap"><span class="btn sm" style="cursor:pointer" onclick="_cfEditar(${c.id})">✎</span> <span class="btn sm danger" style="cursor:pointer" onclick="_cfDel(${c.id})">✕</span></td></tr>`).join(''):'<tr><td colspan="7" class="sub" style="padding:10px">Nenhum item ainda. Lance acima.</td></tr>';
+  const rowsDep=dep.length?dep.map(d=>`<tr><td>${esc(d.nome)}</td><td class="sub">${esc(d.tipo)}</td><td style="text-align:right">${fmtR$(d.valAno)}<span class="sub">/ano</span></td></tr>`).join(''):'<tr><td colspan="3" class="sub" style="padding:10px">Sem depreciação — preencha valor de aquisição + vida útil nas máquinas/implementos (Cadastros).</td></tr>';
+  return `<div class="sec" style="margin-top:4px">Custos fixos — safra ${esc(SAFRA)}</div>
+    <div class="sub" style="margin-bottom:10px">Monte aqui o custo fixo da fazenda. O rateio por hectare/cultura entra depois, por cima deste total.</div>
+    <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px">
+      ${card('RH fixo / ano', T.rh, 'var(--ok,#37d67a)')}
+      ${card('Custo-caixa / ano', T.caixa, 'var(--ok,#37d67a)')}
+      ${card('Depreciação / ano', T.deprec, 'var(--gold,#e0b34a)')}
+      ${card('Não-caixa / ano', T.naoCaixa, 'var(--gold,#e0b34a)')}
+      ${card('Custo fixo TOTAL / ano', T.total, 'var(--text)')}
+    </div>
+    <div class="sec">Lançar item</div>
+    <div class="row" style="flex-wrap:wrap;gap:8px 12px;align-items:flex-end;margin-bottom:6px">
+      <div class="fcol" style="max-width:220px"><label>Categoria</label><select id="cf_cat">${optCat}</select></div>
+      <div class="fcol" style="min-width:220px"><label>Descrição</label><input id="cf_desc" value="${ed?esc(ed.descricao||''):''}" placeholder="ex.: Energia da sede"></div>
+      <div class="fcol" style="max-width:140px"><label>Valor (R$)</label><input id="cf_val" type="number" step="any" value="${ed&&ed.valor!=null?ed.valor:''}" placeholder="0,00"></div>
+      <div class="fcol" style="max-width:120px"><label>Periodicidade</label><select id="cf_per">${per()}</select></div>
+      <div class="fcol" style="max-width:130px"><label>Tipo</label><select id="cf_tipo"><option value="caixa"${ed&&ed.tipo==='caixa'?' selected':(!ed?' selected':'')}>Caixa</option><option value="nao_caixa"${ed&&ed.tipo==='nao_caixa'?' selected':''}>Não-caixa</option></select></div>
+      <div class="fcol" style="min-width:160px"><label>Obs</label><input id="cf_obs" value="${ed?esc(ed.obs||''):''}" placeholder="opcional"></div>
+      <button class="btn success" id="cf_salvar">${ed?'💾 Salvar':'+ Adicionar'}</button>${ed?'<button class="btn" id="cf_cancel">Cancelar</button>':''}
+      <span class="fmsg" id="cf_msg"></span>
+    </div>
+    <div class="sec" style="margin-top:8px">Itens lançados (${itens.length})</div>
+    <table class="ptbl"><thead><tr><th>Categoria</th><th>Descrição</th><th style="text-align:right">Valor</th><th>Periodic.</th><th>Tipo</th><th style="text-align:right">R$/ano</th><th></th></tr></thead><tbody>${rowsItens}</tbody></table>
+    <div class="sec" style="margin-top:14px">RH fixo (derivado dos funcionários) <span class="sub">— registrados e pró-labores marcados; caixa, ao vivo</span></div>
+    <table class="ptbl"><thead><tr><th>Funcionário</th><th>Empregador</th><th>Tipo</th><th style="text-align:right">Carteira</th><th style="text-align:right">Por fora</th><th style="text-align:right">Enc.</th><th style="text-align:right">Custo/mês</th><th style="text-align:right">Custo/ano</th></tr></thead><tbody>${rh.length?rh.map(r=>`<tr><td>${esc(r.nome)}</td><td class="sub">${esc(r.empregador||'—')}</td><td class="sub">${esc(r.tipo)}</td><td style="text-align:right">${fmtR$(r.carteira)}</td><td style="text-align:right">${fmtR$(r.porFora)}</td><td style="text-align:right" class="sub">${fmt1(r.encargos)}%</td><td style="text-align:right">${fmtR$(r.mes)}</td><td style="text-align:right">${fmtR$(r.ano)}</td></tr>`).join(''):'<tr><td colspan="8" class="sub" style="padding:10px">Nenhum registrado/pró-labore no custo fixo. Cadastre em Funcionários (carteira + encargos).</td></tr>'}</tbody><tfoot><tr><td colspan="7" style="text-align:right"><b>Subtotal RH fixo</b></td><td style="text-align:right"><b>${fmtR$(T.rh)}/ano</b></td></tr></tfoot></table>
+    <div class="sec" style="margin-top:14px">Depreciação (derivada das máquinas/implementos) <span class="sub">— não-caixa, ao vivo do Cadastros</span></div>
+    <table class="ptbl"><thead><tr><th>Item</th><th>Tipo</th><th style="text-align:right">Depreciação</th></tr></thead><tbody>${rowsDep}</tbody><tfoot><tr><td colspan="2" style="text-align:right"><b>Subtotal depreciação</b></td><td style="text-align:right"><b>${fmtR$(T.deprec)}/ano</b></td></tr></tfoot></table>`;
+}
+function _bindPlanCustoFixo(){
+  const b=$('#cf_salvar'); if(b) b.onclick=_cfSalvar;
+  const c=$('#cf_cancel'); if(c) c.onclick=()=>{ _cfEdit=null; render(); };
+}
+function _cfLerForm(){ return { safra:SAFRA, categoria:$('#cf_cat')?.value||'', descricao:($('#cf_desc')?.value||'').trim(), valor:parseFloat($('#cf_val')?.value)||0, periodicidade:$('#cf_per')?.value||'anual', tipo:$('#cf_tipo')?.value||'caixa', rateio:'por_ha', obs:($('#cf_obs')?.value||'').trim() }; }
+async function _cfSalvar(){
+  const msg=$('#cf_msg'); const reg=_cfLerForm();
+  if(!reg.descricao && !reg.valor){ if(msg){ msg.className='fmsg err'; msg.textContent='Informe descrição e valor.'; } return; }
+  if(!SB){ if(msg){ msg.className='fmsg err'; msg.textContent='Sem conexão.'; } return; }
+  try{
+    if(_cfEdit!=null){ const {error}=await SB.from('custos_fixos').update(reg).eq('id',_cfEdit); if(error) throw error; _cfEdit=null; }
+    else { const {error}=await SB.from('custos_fixos').insert(reg); if(error) throw error; }
+    await _cfReload(); render();
+  }catch(e){ if(msg){ msg.className='fmsg err'; msg.textContent='Erro: '+e.message; } }
+}
+function _cfEditar(id){ _cfEdit=id; render(); }
+async function _cfDel(id){ if(!confirm('Remover este item de custo fixo?')) return; try{ await SB.from('custos_fixos').delete().eq('id',id); await _cfReload(); render(); }catch(e){ alert('Erro: '+e.message); } }
+async function _cfReload(){ try{ const r=await SB.from('custos_fixos').select('*').eq('safra',SAFRA); if(!r.error&&r.data) S.custosFixos=r.data.map(c=>({id:c.id,categoria:c.categoria||'',descricao:c.descricao||'',valor:+c.valor||0,periodicidade:c.periodicidade||'anual',tipo:c.tipo||'caixa',rateio:c.rateio||'por_ha',rateioAlvo:c.rateio_alvo||'',obs:c.obs||''})); }catch(e){} }
 /* ---- Projetado × Realizado (por lote, safra atual) ---- */
 function _planRealHTML(){
   const proj={}, real={};
@@ -2815,6 +3250,509 @@ function _planRelImprimir(){
     +_planRelBody(true)+'</body></html>');
   w.document.close(); setTimeout(()=>{ try{ w.focus(); w.print(); }catch(e){} }, 400);
 }
+
+/* ================== DASHBOARD DO PLANEJAMENTO (aba 📈) ==================
+   Exibição AO VIVO do banco (S.planejamento + premissas), no padrão dos
+   releases de RI (SLC). Unidade de análise: PLANTIO = lote × cultura ×
+   ciclo — nos pivôs o mesmo lote tem 2 plantios na safra (ex.: Soja 1ª
+   safra + Algodão safrinha); o ciclo é POR ATIVIDADE (campo no editor).
+   Nada é salvo renderizado. */
+let _pdCiclo='todos', _pdRegime='todos', _pdCond=true;    // filtros (condicionais INCLUSOS por padrão — igual ao Relatório)
+let _pdCultSel=null, _pdLoteSel=null;                     // Set (null = todos)
+let _pdOpenLotes=false, _pdOpenCards=false, _pdShowPrem=false;
+let _pdSortK='rha', _pdSortD=-1, _pdVis=null;
+const _PD_BLOCOS=[['kpi','Destaques'],['mix','Mix de culturas'],['cat','Composição do custo'],['tipo','Custo por tipo de atividade'],['rec','Recortes (regime & ciclo)'],['cult','Custo & margem por cultura'],['lotes','Ranking de plantios'],['crono','Cronograma ideal'],['des','Curva de desembolso'],['sens','Sensibilidade da margem']];
+const _PD_CATS=['Sementes','Fertilizantes','Defensivos','Outros insumos','Combustíveis','Operações'];
+const _PD_CATCOR={'Sementes':'#d4e157','Fertilizantes':'#26c6da','Defensivos':'#ff7043','Outros insumos':'#ab47bc','Combustíveis':'#8d6e63','Operações':'#78909c'};
+const _PD_PAL=['#ffc107','#00c896','#4da3ff','#ff7043','#ab47bc','#26c6da','#d4e157','#ec407a','#8d6e63','#78909c'];
+const _PD_UNKG={sc:60,'@':15,kg:1,ton:1000};
+const _PD_CSS='.pd-fbar{display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:8px}'
+ +'.pd-chip{border:1px solid var(--border);background:var(--bg4);color:var(--muted);border-radius:20px;padding:4px 11px;font-size:11px;cursor:pointer;display:inline-flex;align-items:center;gap:5px}'
+ +'.pd-chip.on{border-color:var(--border2);color:var(--text);background:var(--bg5)}'
+ +'.pd-dot{width:8px;height:8px;border-radius:50%;display:inline-block;flex:none}'
+ +'.pd-dd{position:relative}.pd-dd summary{list-style:none;cursor:pointer;border:1px solid var(--border);background:var(--bg4);border-radius:20px;padding:4px 11px;font-size:11px;color:var(--muted)}.pd-dd summary::-webkit-details-marker{display:none}.pd-dd[open] summary{border-color:var(--border2);color:var(--text)}'
+ +'.pd-ddbox{position:absolute;z-index:30;top:calc(100% + 4px);left:0;background:var(--bg2);border:1px solid var(--border2);border-radius:10px;padding:10px;min-width:240px;max-height:320px;overflow:auto;box-shadow:0 8px 24px rgba(0,0,0,.45)}'
+ +'.pd-ck{display:flex;align-items:center;gap:6px;font-size:12px;padding:3px 2px;cursor:pointer;color:var(--text)}'
+ +'.pd-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(340px,1fr));gap:12px;align-items:start;margin-bottom:12px}'
+ +'.pd-2col{display:flex;gap:12px;align-items:flex-start;flex-wrap:wrap;margin-bottom:12px}.pd-2col>div{min-width:0;display:flex;flex-direction:column;gap:12px}.pd-2col>div:first-child{flex:1 1 60%}.pd-2col>div:last-child{flex:1 1 38%}.pd-2col .pd-card{margin-bottom:0}'
+ +'.pd-card{background:var(--bg3);border:1px solid var(--border);border-radius:10px;padding:12px;overflow-x:auto}'
+ +'.pd-card h4{margin:0 0 10px;font-size:10.5px;text-transform:uppercase;letter-spacing:.6px;color:var(--muted)}'
+ +'.pd-hrow{display:flex;align-items:center;gap:8px;margin:4px 0}'
+ +'.pd-hlbl{width:150px;flex:none;font-size:11px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}'
+ +'.pd-htrk{flex:1;height:14px;background:var(--bg4);border-radius:7px;overflow:hidden}'
+ +'.pd-hfill{height:100%;border-radius:7px}'
+ +'.pd-hval{width:100px;flex:none;text-align:right;font-size:11px;font-weight:700;color:var(--text)}'
+ +'.pd-stk{display:flex;height:16px;border-radius:8px;overflow:hidden;background:var(--bg4)}.pd-stk>div{height:100%}'
+ +'.pd-leg{display:flex;gap:10px;flex-wrap:wrap;margin-top:8px;font-size:10.5px;color:var(--muted)}.pd-leg span{display:inline-flex;align-items:center;gap:4px}'
+ +'.pd-heat td{text-align:center;font-size:10px;padding:4px 6px}.pd-heat th{font-size:9px}'
+ +'table.pd-sort th{user-select:none}'
+ +'.pd-gantt{border-collapse:collapse;width:100%}.pd-gantt th{font-size:9px;color:var(--muted);padding:3px 2px;text-align:center;border-bottom:1px solid var(--border)}'
+ +'.pd-gantt td{padding:0 1px;height:34px;border-bottom:1px solid var(--border);min-width:44px;vertical-align:middle}'
+ +'.pd-gantt td.pd-glbl{min-width:135px;font-size:11px;color:var(--text);white-space:nowrap;padding:0 6px;text-align:left}'
+ +'.pd-gbar{height:13px;font-size:8.5px;font-weight:800;display:flex;align-items:center;justify-content:center;color:#0a2413;margin:1px 0;white-space:nowrap;overflow:visible}'
+ +'.pd-gdot{width:7px;height:7px;border-radius:50%;background:#4da3ff;margin:2px auto 0}'
+ /* aba Dashboard = painel BRANCO no software (resolve texto verde-escuro; já sai igual à impressão) */
+ +'.pd-light{--bg:#fff;--bg2:#fff;--bg3:#f6f8fb;--bg4:#eef2f7;--bg5:#e3e9f1;--border:#dbe2ec;--border2:#b7c4d4;--text:#15202b;--muted:#5c6b7a;--muted2:#8a97a6;--ok:#0a7d51;--ok-l:#0a7d51;--ok-d:#0a7d51;--warn:#a86e00;--err:#c0392b;--gold:#9a7400;--gold-d:#9a7400;background:#fff;color:#15202b;border-radius:12px;padding:14px 16px}'
+ +'.pd-light .pd-chip.on{background:#e3e9f1}.pd-light .hint{color:#7a8a99}';
+(function(){ try{ const st=document.createElement('style'); st.textContent=_PD_CSS; document.head.appendChild(st); }catch(e){} })();
+
+/* ---- listas, segmentos e filtros ---- */
+function _pdCults(){ const s=new Set(); (S.planejamento||[]).forEach(p=>{ if(p.status!=='cancelado') s.add(p.cultura||'(sem cultura)'); }); return [...s].sort((a,b)=>a.localeCompare(b,'pt')); }
+function _pdLotes(){ const s=new Set(); (S.planejamento||[]).forEach(p=>{ if(p.status!=='cancelado') s.add(p.lote); }); return _ordLotes([...s].map(n=>({nome:n}))).map(l=>l.nome); }
+function _pdSegLbl(cult,ciclo){ return (ciclo==='safrinha')?(cult+' 2ª safra'):cult; }
+function _pdSegs(){ const m={};   // segmentos cultura×ciclo presentes no plano (safra toda, sem filtro)
+  (S.planejamento||[]).forEach(p=>{ if(p.status==='cancelado') return; const cult=p.cultura||'(sem cultura)', ciclo=(p.ciclo==='safrinha'?'safrinha':'safra'); m[cult+'|'+ciclo]={cult,ciclo}; });
+  return Object.values(m).sort((a,b)=>(a.ciclo===b.ciclo ? a.cult.localeCompare(b.cult,'pt') : (a.ciclo==='safra'?-1:1))); }
+function _pdRegimeDe(lote){ const l=lotePorNome(lote); return (l&&l.irrigado)?'irrigado':'sequeiro'; }
+function _pdTglCult(i){ const all=_pdCults(), c=all[i]; if(c==null) return; if(!_pdCultSel) _pdCultSel=new Set(all); if(_pdCultSel.has(c)) _pdCultSel.delete(c); else _pdCultSel.add(c); if(_pdCultSel.size===all.length) _pdCultSel=null; _salvarEstadoNav(); render(); }
+function _pdTglLote(i){ const all=_pdLotes(), n=all[i]; if(n==null) return; if(!_pdLoteSel) _pdLoteSel=new Set(all); if(_pdLoteSel.has(n)) _pdLoteSel.delete(n); else _pdLoteSel.add(n); if(_pdLoteSel.size===all.length) _pdLoteSel=null; _salvarEstadoNav(); render(); }
+function _pdLotesTodos(v){ _pdLoteSel=v?null:new Set(); _salvarEstadoNav(); render(); }
+function _pdSetCiclo(v){ _pdCiclo=v; _salvarEstadoNav(); render(); }
+function _pdSetRegime(v){ _pdRegime=v; _salvarEstadoNav(); render(); }
+function _pdSortBy(k){ if(_pdSortK===k) _pdSortD=-_pdSortD; else { _pdSortK=k; _pdSortD=(k==='lote')?1:-1; } render(); }
+function _pdVisGet(){ if(_pdVis) return _pdVis; let v=null; try{ v=JSON.parse(localStorage.getItem('pd_vis')||'null'); }catch(e){}
+  _pdVis={}; _PD_BLOCOS.forEach(([k])=>{ _pdVis[k]=v?v[k]!==false:true; }); return _pdVis; }
+function _pdVisTgl(k){ const v=_pdVisGet(); v[k]=!v[k]; try{ localStorage.setItem('pd_vis',JSON.stringify(v)); }catch(e){} render(); }
+function _pdFiltroDesc(){ const p=[];
+  p.push(_pdCultSel?('Culturas: '+[..._pdCultSel].join(', ')):'todas as culturas');
+  p.push(_pdLoteSel?(_pdLoteSel.size+' lote(s)'):'todos os lotes');
+  if(_pdCiclo!=='todos') p.push('ciclo: '+_pdCiclo);
+  if(_pdRegime!=='todos') p.push('regime: '+_pdRegime);
+  if(_pdCond) p.push('incl. condicionais');
+  return p.join(' · '); }
+function _pdAtivos(){ return (S.planejamento||[]).filter(p=>{
+  if(p.status==='cancelado') return false;
+  if(!_pdCond && p.condicional) return false;
+  const cult=p.cultura||'(sem cultura)';
+  if(_pdCultSel && !_pdCultSel.has(cult)) return false;
+  if(_pdLoteSel && !_pdLoteSel.has(p.lote)) return false;
+  if(_pdCiclo!=='todos' && (p.ciclo==='safrinha'?'safrinha':'safra')!==_pdCiclo) return false;
+  if(_pdRegime!=='todos' && _pdRegimeDe(p.lote)!==_pdRegime) return false;
+  return true; }); }
+
+/* ---- categorias de custo (insumos + operação) ---- */
+function _pdCatProduto(nome){ const pr=_prodPorNome(nome); const t=String((pr&&(pr.tipo||pr.classe||pr.tipoBase))||'').toLowerCase();
+  if((pr&&pr.sementeTipo)||t.includes('semente')) return 'Sementes';
+  if(t.includes('fertil')||t.includes('adubo')||t.includes('corretiv')||t.includes('calc')||t.includes('gesso')) return 'Fertilizantes';
+  if(/herbic|insetic|fungic|acaric|nematic|adjuv|espalhante|regulador|desfolh|maturador|biol|bacter|bactér|inocul|defens|óleo|oleo/.test(t)) return 'Defensivos';
+  return 'Outros insumos'; }
+function _pdCatCusto(c){ const s=String((c&&(c.modo==='produto'?c.prod:c.desc))||'').toLowerCase();
+  return (s.includes('diesel')||s.includes('combust')||s.includes('gasolina')||s.includes('arla'))?'Combustíveis':'Operações'; }
+
+/* ---- agregação (derivada ao vivo a cada render) ---- */
+function _pdAgg(){
+  const ativos=_pdAtivos();
+  const plant={}, bySeg={}, bySegR={}, byTipo={}, byCat={}, byMes={}, byReg={}, byCic={};
+  let custoTot=0, nAtiv=0, nCond=0, semData=0, dieselL=0, dieselR=0; const lotesSet=new Set();
+  const add=(o,k,v)=>{ o[k]=(o[k]||0)+v; };
+  ativos.forEach(p=>{
+    const cult=p.cultura||'(sem cultura)', ciclo=(p.ciclo==='safrinha'?'safrinha':'safra');
+    const kP=p.lote+'||'+cult+'||'+ciclo;
+    const P=plant[kP]||(plant[kP]={lote:p.lote,cult,ciclo,area:areaDe(p.lote)||0,custo:0,nAtiv:0});
+    const kS=cult+'|'+ciclo;
+    const C=bySeg[kS]||(bySeg[kS]={cult,ciclo,label:_pdSegLbl(cult,ciclo),area:0,custo:0,lotes:new Set(),nAtiv:0,cat:{}});
+    const _reg=_pdRegimeDe(p.lote), kSR=cult+'|'+ciclo+'|'+_reg;   // segmento cultura×ciclo×regime (composição separa irrigado/sequeiro)
+    const CR=bySegR[kSR]||(bySegR[kSR]={cult,ciclo,regime:_reg,label:_pdSegLbl(cult,ciclo),area:0,custo:0,cat:{}});
+    let est=0;
+    (p.produtos||[]).forEach(pr=>{ const q=_planQtd(pr,p.lote,p.sementeKgha,p.areaParcial); if(q==null) return; const v=q*_custoUnitProd(pr.nome); if(!v) return; est+=v; const cat=_pdCatProduto(pr.nome); add(byCat,cat,v); add(C.cat,cat,v); add(CR.cat,cat,v); });
+    const aPl=_areaPlan(p.lote,p.areaParcial);
+    (p.custos||[]).forEach(c=>{ const v=_custoLinha(c,aPl); if(!v) return; est+=v; const cat=_pdCatCusto(c); add(byCat,cat,v); add(C.cat,cat,v); add(CR.cat,cat,v);
+      if(c.modo==='produto'&&/diesel/i.test(String(c.prod||''))){ const n=numUn(c.valor||'').n; if(n!=null){ dieselL+=(c.base==='total'?n:n*(aPl||0)); dieselR+=v; } } });
+    P.custo+=est; P.nAtiv++;
+    C.custo+=est; C.lotes.add(p.lote); C.nAtiv++;
+    CR.custo+=est;
+    lotesSet.add(p.lote);
+    add(byTipo, p.tipoAtiv||'(sem tipo)', est);
+    if(p.dataPrev) add(byMes, String(p.dataPrev).slice(0,7), est); else semData+=est;
+    (byReg[_pdRegimeDe(p.lote)]=byReg[_pdRegimeDe(p.lote)]||{area:0,custo:0}).custo+=est;
+    (byCic[ciclo]=byCic[ciclo]||{area:0,custo:0}).custo+=est;
+    custoTot+=est; if(p.condicional) nCond++; else nAtiv++;
+  });
+  Object.values(plant).forEach(P=>{ bySeg[P.cult+'|'+P.ciclo].area+=P.area;
+    const kSR=P.cult+'|'+P.ciclo+'|'+_pdRegimeDe(P.lote); if(bySegR[kSR]) bySegR[kSR].area+=P.area;
+    (byReg[_pdRegimeDe(P.lote)]=byReg[_pdRegimeDe(P.lote)]||{area:0,custo:0}).area+=P.area;
+    (byCic[P.ciclo]=byCic[P.ciclo]||{area:0,custo:0}).area+=P.area; });
+  const areaTot=Object.values(plant).reduce((s,P)=>s+P.area,0);
+  return {ativos, plant, bySeg, bySegR, byTipo, byCat, byMes, byReg, byCic, custoTot, areaTot, nAtiv, nCond, semData, dieselL, dieselR, nLotes:lotesSet.size};
+}
+
+/* ---- premissas (produtividade/preço por cultura+ciclo; irrigado por lote) ---- */
+function _pdNum(s){ if(s==null||s==='') return null; s=String(s).trim();   // pt-BR: '4.200' = 4200 (milhar); '4,2' = 4.2
+  if(/^-?\d{1,3}(\.\d{3})+(,\d+)?$/.test(s)||s.indexOf(',')>=0) s=s.replace(/\./g,'').replace(',','.');
+  const n=parseFloat(s); return isNaN(n)?null:n; }
+function _pdPrem(cult,ciclo){ return (S.planPremissas||{})[cult+'|'+(ciclo==='safrinha'?'safrinha':'safra')]||null; }
+function _pdProdHaUn(cult,ciclo){ const pr=_pdPrem(cult,ciclo); if(!pr) return null; const prod=_pdNum(pr.prod), kg=_PD_UNKG[pr.un||'sc']||60; return (prod!=null&&prod>0)?prod/kg:null; }
+function _pdReceitaHa(cult,ciclo){ const pr=_pdPrem(cult,ciclo); if(!pr) return null; const pHa=_pdProdHaUn(cult,ciclo), prc=_pdNum(pr.preco); return (pHa!=null&&prc!=null&&prc>0)?pHa*prc:null; }
+function _pdPremInput(i,campo,valor){ const s=_pdSegs()[i]; if(!s) return; const k=s.cult+'|'+s.ciclo; const o=S.planPremissas[k]||(S.planPremissas[k]={prod:'',preco:'',un:'sc'}); o[campo]=valor; }
+function _pdPremCommit(i){ const s=_pdSegs()[i]; if(s) _pdPremSalvar(s); }
+function _pdIrrCk(i,v){ const n=_pdLotes()[i]; if(n!=null) _pdIrrigadoSalvar(n,v); }
+async function _pdPremSalvar(s){ const o=S.planPremissas[s.cult+'|'+s.ciclo]||{}; render();
+  if(!SB) return;
+  if(S.planPremErr){ _statusSB('⚠️ Rode a migração 56 p/ salvar premissas no banco (por enquanto valem só nesta sessão)','#b9770e'); return; }
+  try{ const {error}=await SB.from('plan_premissas').upsert({safra:SAFRA, cultura:s.cult, ciclo:s.ciclo, prod_kgha:_pdNum(o.prod), preco:_pdNum(o.preco), unidade_venda:o.un||'sc'},{onConflict:'safra,cultura,ciclo'});
+    if(error) _statusSB('❌ Premissas: '+error.message,'#c0392b'); else _statusSB('✅ Premissas salvas','#27ae60');
+  }catch(e){ _statusSB('❌ '+e.message,'#c0392b'); } }
+async function _pdIrrigadoSalvar(loteNome,v){ const l=lotePorNome(loteNome); if(l) l.irrigado=!!v; render();
+  if(!SB||!l) return;
+  try{ let q=SB.from('lotes').update({irrigado:!!v}); q=(l.cod!=null&&l.cod!=='')?q.eq('cod',l.cod):q.eq('nome',l.nome);
+    const {error}=await q; if(error) _statusSB('⚠️ Irrigado não salvo (rode a migração 56): '+error.message,'#b9770e'); else _statusSB('✅ Lote atualizado','#27ae60'); }catch(e){} }
+
+/* ---- formatação e gráficos SVG/CSS (sem lib) ---- */
+function _pdComp(n){ if(n==null||isNaN(n)) return '—'; const a=Math.abs(n);
+  if(a>=1e6) return Number(n/1e6).toLocaleString('pt-BR',{maximumFractionDigits:2})+' mi';
+  if(a>=1e3) return Number(n/1e3).toLocaleString('pt-BR',{maximumFractionDigits:1})+' mil';
+  return Number(n).toLocaleString('pt-BR',{maximumFractionDigits:0}); }
+function _pdMesLbl(k){ const m=['jan','fev','mar','abr','mai','jun','jul','ago','set','out','nov','dez']; const pt=String(k).split('-'); return (m[(+pt[1]||1)-1]||'?')+'/'+String(pt[0]||'').slice(2); }
+function _pdCorCult(cult){ const n=String(cult||'').toLowerCase();
+  if(n.includes('soja')) return '#00c896'; if(n.includes('algod')) return '#cfd8dc'; if(n.includes('milho')) return '#ffc107'; if(n.includes('girassol')) return '#ff9800';
+  const all=_pdCults(); return _PD_PAL[Math.max(0,all.indexOf(cult))%_PD_PAL.length]; }
+function _pdDonut(items,centerTxt,centerSub){
+  const list=items.filter(x=>x.v>0); const tot=list.reduce((s,x)=>s+x.v,0)||1; const R=54, C=2*Math.PI*R; let off=0;
+  const segs=list.map(x=>{ const f=x.v/tot, o=(C*0.25-off*C).toFixed(2); off+=f;
+    return `<circle r="${R}" cx="70" cy="70" fill="none" stroke="${x.cor}" stroke-width="20" stroke-dasharray="${(f*C).toFixed(2)} ${(C-f*C).toFixed(2)}" stroke-dashoffset="${o}"><title>${esc(x.l)}: ${fmtBR(x.v)} (${fmtBR(f*100)}%)</title></circle>`; }).join('');
+  return `<svg viewBox="0 0 140 140" style="width:150px;height:150px;flex:none">${segs}<text x="70" y="67" text-anchor="middle" font-size="15" font-weight="800" fill="var(--text)">${esc(centerTxt)}</text><text x="70" y="82" text-anchor="middle" font-size="8.5" fill="var(--muted)">${esc(centerSub)}</text></svg>`; }
+function _pdHBars(items,fmt){ const list=items.filter(x=>x.v>0); const max=Math.max(...list.map(x=>x.v),1);
+  return list.map(x=>`<div class="pd-hrow"><div class="pd-hlbl" title="${esc(x.l)}">${esc(x.l)}</div><div class="pd-htrk"><div class="pd-hfill" style="width:${(x.v/max*100).toFixed(1)}%;background:${x.cor||'var(--gold)'}"></div></div><div class="pd-hval">${fmt(x.v)}</div></div>`).join('')||'<div class="hint">—</div>'; }
+function _pdStack(porCat,tot){ if(!(tot>0)) return '<div class="hint">—</div>';
+  return `<div class="pd-stk">${_PD_CATS.filter(c=>porCat[c]>0).map(c=>`<div style="width:${(porCat[c]/tot*100).toFixed(1)}%;background:${_PD_CATCOR[c]}" title="${esc(c)}: ${fmtR$(porCat[c])} (${fmtBR(porCat[c]/tot*100)}%)"></div>`).join('')}</div>`; }
+function _pdChartMes(meses){
+  if(!meses.length) return '<div class="hint">Sem datas previstas no plano — preencha "Data prevista" nas atividades.</div>';
+  const W=640,H=200,padL=8,padB=26,padT=16; const bw=(W-padL*2)/meses.length;
+  const max=Math.max(...meses.map(m=>m.v),1); const tot=meses.reduce((s,m)=>s+m.v,0)||1; let acc=0; const pts=[];
+  const bars=meses.map((m,i)=>{ const h=(m.v/max)*(H-padB-padT); const x=padL+i*bw; acc+=m.v; pts.push([x+bw/2, padT+(1-acc/tot)*(H-padB-padT)]);
+    return `<rect x="${(x+bw*0.12).toFixed(1)}" y="${(H-padB-h).toFixed(1)}" width="${(bw*0.76).toFixed(1)}" height="${Math.max(h,0.5).toFixed(1)}" rx="2" fill="var(--gold)" opacity="0.85"><title>${esc(m.lbl)}: ${fmtR$(m.v)}</title></rect>`
+      +`<text x="${(x+bw/2).toFixed(1)}" y="${H-padB+11}" text-anchor="middle" font-size="8.5" fill="var(--muted)">${esc(m.lbl)}</text>`
+      +`<text x="${(x+bw/2).toFixed(1)}" y="${(H-padB-h-3).toFixed(1)}" text-anchor="middle" font-size="8" fill="var(--muted)">${_pdComp(m.v)}</text>`; }).join('');
+  const line=pts.map((p,i)=>(i?'L':'M')+p[0].toFixed(1)+' '+p[1].toFixed(1)).join(' ');
+  return `<svg viewBox="0 0 ${W} ${H}" style="width:100%;height:auto">${bars}<path d="${line}" fill="none" stroke="var(--ok)" stroke-width="1.6"/>${pts.map(p=>`<circle cx="${p[0].toFixed(1)}" cy="${p[1].toFixed(1)}" r="2.2" fill="var(--ok)"/>`).join('')}</svg>`
+    +`<div class="hint">Barras = desembolso planejado do mês · linha verde = % acumulado do total (${fmtR$(tot)}).</div>`; }
+
+/* ---- blocos ---- */
+function _pdKpisHTML(a){
+  const rha=a.areaTot>0?a.custoTot/a.areaTot:null;
+  let rec=0, custoPrem=0, areaPrem=0, prodTon=0; const semPrem=[];
+  const segsOrd=Object.values(a.bySeg).sort((x,y)=>y.custo-x.custo);   // cultura×ciclo — só p/ os totais gerais (premissa não varia por regime)
+  segsOrd.forEach(B=>{ const rh=_pdReceitaHa(B.cult,B.ciclo);
+    const pr=_pdPrem(B.cult,B.ciclo), pk=pr?_pdNum(pr.prod):null;
+    if(pk!=null&&pk>0) prodTon+=pk*B.area/1000;
+    if(rh!=null){ rec+=rh*B.area; custoPrem+=B.custo; areaPrem+=B.area; } else semPrem.push(B.label); });
+  const mg=areaPrem>0?rec-custoPrem:null;
+  /* linhas iguais às do cronograma: cultura × ciclo × REGIME (irrigado/sequeiro) — não só cultura */
+  const porReg={};
+  Object.values(a.plant).forEach(P=>{ const reg=_pdRegimeDe(P.lote); const k=P.cult+'|'+P.ciclo+'|'+reg;
+    const R=porReg[k]||(porReg[k]={cult:P.cult,ciclo:P.ciclo,regime:reg,area:0,custo:0});
+    R.area+=P.area; R.custo+=P.custo; });
+  const segsReg=Object.values(porReg).sort((x,y)=>y.custo-x.custo);
+  const rows=segsReg.map(R=>{ const rh=_pdReceitaHa(R.cult,R.ciclo), pr=_pdPrem(R.cult,R.ciclo), pk=pr?_pdNum(pr.prod):null;
+    const rhaR=R.area>0?R.custo/R.area:null, prodR=(pk!=null&&pk>0)?pk*R.area/1000:null, recR=rh!=null?rh*R.area:null, mgR=rh!=null?rh*R.area-R.custo:null, mgHaR=(rh!=null&&R.area>0)?rh-R.custo/R.area:null;
+    return `<tr><td><span class="pd-dot" style="background:${_pdCorCult(R.cult)}"></span>${esc(_pdSegLbl(R.cult,R.ciclo))} <span class="sub">· ${R.regime==='irrigado'?'irrigado':'sequeiro'}</span></td>
+      <td class="num">${fmtArea(R.area)}</td><td class="num">${fmtR$(R.custo)}</td><td class="num">${rhaR!=null?fmtR$(rhaR):'—'}</td>
+      <td class="num">${prodR!=null?fmtBR(prodR)+' t':'—'}</td><td class="num">${recR!=null?fmtR$(recR):'—'}</td>
+      <td class="num" style="color:${mgR==null?'inherit':(mgR>=0?'var(--ok)':'var(--err)')}">${mgR!=null?fmtR$(mgR):'—'}</td><td class="num">${mgHaR!=null?fmtR$(mgHaR):'—'}</td></tr>`; }).join('');
+  return `<div class="pd-card" style="margin-bottom:12px"><h4>Destaques</h4>
+    <table class="ptbl"><thead><tr><th>Segmento</th><th class="num">Área (ha)</th><th class="num">Custo total</th><th class="num">Custo médio</th><th class="num">Produção</th><th class="num">Receita proj.</th><th class="num">Margem proj.</th><th class="num">Margem/ha</th></tr></thead>
+    <tbody>${rows}</tbody>
+    <tfoot><tr><td><b>Total</b></td><td class="num"><b>${fmtArea(a.areaTot)}</b></td><td class="num"><b>${fmtR$(a.custoTot)}</b></td><td class="num"><b>${rha!=null?fmtR$(rha):'—'}</b></td>
+      <td class="num"><b>${prodTon>0?fmtBR(prodTon)+' t':'—'}</b></td><td class="num"><b>${areaPrem>0?fmtR$(rec):'—'}</b></td>
+      <td class="num"><b>${mg!=null?fmtR$(mg):'—'}</b></td><td class="num"><b>${(mg!=null&&areaPrem>0)?fmtR$(mg/areaPrem):'—'}</b></td></tr></tfoot></table>
+    <div class="hint">${Object.keys(a.plant).length} plantios (lote×cultura×ciclo) · ${a.nLotes} lotes · ${a.nAtiv} atividades${a.nCond?(' + '+a.nCond+' condicionais'):''}${semPrem.length?(' · sem premissa (produção/receita/margem): '+semPrem.map(esc).join(', ')):''}</div>
+    </div>`; }
+function _pdMixHTML(a){
+  const segs=Object.values(a.bySeg).sort((x,y)=>y.area-x.area);
+  const leg=segs.map(B=>`<tr><td><span class="pd-dot" style="background:${_pdCorCult(B.cult)}"></span> ${esc(B.label)}</td><td class="num">${fmtArea(B.area)}</td><td class="num">${a.areaTot>0?fmtBR(B.area/a.areaTot*100):'—'}%</td><td class="num">${B.lotes.size}</td></tr>`).join('');
+  return `<div class="pd-card"><h4>Mix de culturas (área planejada)</h4><div style="display:flex;gap:14px;align-items:center;flex-wrap:wrap">
+    ${_pdDonut(segs.map(B=>({l:B.label,v:B.area,cor:_pdCorCult(B.cult)})), _pdComp(a.areaTot), 'ha')}
+    <table class="ptbl" style="flex:1;min-width:190px"><thead><tr><th>Cultura</th><th class="num">ha</th><th class="num">%</th><th class="num">Lotes</th></tr></thead><tbody>${leg}</tbody></table>
+  </div><div class="hint">Pivô com 2 plantios conta a área nos dois (1ª + 2ª safra somadas, padrão dos releases).</div></div>`; }
+function _pdCatHTML(a){
+  const cats=_PD_CATS.filter(c=>a.byCat[c]>0);                    // só categorias com custo no plano
+  const segs=Object.values(a.bySegR).filter(R=>R.custo>0).sort((x,y)=>y.custo-x.custo);  // linha por cultura×ciclo×REGIME (separa irrigado/sequeiro)
+  const pc=x=>Number(x).toLocaleString('pt-BR',{maximumFractionDigits:1})+'%';   // % da composição: 1 casa (limpo)
+  const cel=(catObj,tot,c)=>{ const v=catObj[c]||0; return v?`<td class="num" title="${esc(c)}: ${fmtR$(v)}">${pc(v/tot*100)}</td>`:'<td class="num" style="color:var(--muted2)">—</td>'; };
+  const th=cats.map(c=>`<th class="num" style="white-space:nowrap"><span class="pd-dot" style="background:${_PD_CATCOR[c]}"></span> ${esc(c)}</th>`).join('');
+  const rows=segs.map(R=>`<tr><td style="white-space:nowrap"><span class="pd-dot" style="background:${_pdCorCult(R.cult)}"></span>${esc(_pdSegLbl(R.cult,R.ciclo))} <span class="sub">· ${R.regime==='irrigado'?'irrigado':'sequeiro'}</span></td>${cats.map(c=>cel(R.cat,R.custo,c)).join('')}<td class="num"><b>${fmtR$(R.custo)}</b></td></tr>`).join('');
+  const totRow=`<tr><td><b>Total</b></td>${cats.map(c=>`<td class="num"><b>${a.custoTot>0?pc((a.byCat[c]||0)/a.custoTot*100):'0%'}</b></td>`).join('')}<td class="num"><b>${fmtR$(a.custoTot)}</b></td></tr>`;
+  const diesel=a.dieselL>0?`<div class="hint" style="margin-top:8px">⛽ Diesel contabilizado: <b style="color:var(--text)">${fmtBR(a.dieselL)} L</b> × ${fmtR$(a.dieselR/a.dieselL)}/L (custo médio do almoxarifado) = <b style="color:var(--text)">${fmtR$(a.dieselR)}</b> — dentro de "Combustíveis".</div>`:'';
+  return `<div class="pd-card"><h4>Composição do custo por categoria <span class="sub" style="text-transform:none;letter-spacing:0">· % de cada segmento</span></h4>
+    <table class="ptbl"><thead><tr><th>Segmento</th>${th}<th class="num">Custo total</th></tr></thead>
+    <tbody>${rows}</tbody><tfoot>${totRow}</tfoot></table>${diesel}</div>`; }
+function _pdTipoHTML(a){
+  const tipos=Object.keys(a.byTipo).sort((x,y)=>a.byTipo[y]-a.byTipo[x]);
+  return `<div class="pd-card"><h4>Custo por tipo de atividade</h4>${_pdHBars(tipos.map(t=>({l:t+(a.custoTot>0?' · '+fmtBR(a.byTipo[t]/a.custoTot*100)+'%':''),v:a.byTipo[t]})),v=>'R$ '+_pdComp(v))}</div>`; }
+function _pdRecHTML(a){
+  const tab=(titulo,obj,lbls,ics)=>{ const rows=Object.keys(lbls).map(k=>{ const o=obj[k]; if(!o||!((o.custo||0)>0||(o.area||0)>0)) return '';
+      return `<tr><td>${ics[k]||''} ${lbls[k]}</td><td class="num">${fmtArea(o.area||0)}</td><td class="num">${fmtR$(o.custo||0)}</td><td class="num">${(o.area>0)?fmtR$((o.custo||0)/o.area):'—'}</td></tr>`; }).join('');
+    return `<div style="flex:1;min-width:230px"><div class="sec" style="margin-top:0">${titulo}</div><table class="ptbl"><thead><tr><th></th><th class="num">ha</th><th class="num">Custo</th><th class="num">R$/ha</th></tr></thead><tbody>${rows||'<tr><td colspan="4" class="hint">—</td></tr>'}</tbody></table></div>`; };
+  const dHa=(o1,o2)=>(o1&&o2&&o1.area>0&&o2.area>0)?(o1.custo/o1.area-o2.custo/o2.area):null;
+  const d1=dHa(a.byReg.irrigado,a.byReg.sequeiro), d2=dHa(a.byCic.safrinha,a.byCic.safra);
+  return `<div class="pd-card"><h4>Recortes — regime hídrico & ciclo</h4><div style="display:flex;gap:14px;flex-wrap:wrap">
+    ${tab('Irrigado × Sequeiro',a.byReg,{irrigado:'Irrigado',sequeiro:'Sequeiro'},{irrigado:'💧',sequeiro:'☀️'})}
+    ${tab('Safra × Safrinha',a.byCic,{safra:'Safra',safrinha:'Safrinha'},{safra:'🌱',safrinha:'🌾'})}
+  </div>${d1!=null?`<div class="hint">Irrigado custa <b style="color:var(--text)">${fmtR$(Math.abs(d1))}/ha ${d1>=0?'a mais':'a menos'}</b> que sequeiro no plano.</div>`:''}
+  ${d2!=null?`<div class="hint">Safrinha custa <b style="color:var(--text)">${fmtR$(Math.abs(d2))}/ha ${d2>=0?'a mais':'a menos'}</b> que safra no plano.</div>`:''}
+  <div class="hint">Irrigado é atributo do lote (⚙ Premissas); o ciclo é definido em cada atividade do plano (campo "Ciclo" no editor).</div></div>`; }
+function _pdCultHTML(a){
+  const segs=Object.values(a.bySeg).sort((x,y)=>y.custo-x.custo);
+  const bars=_pdHBars(segs.filter(B=>B.area>0).map(B=>({l:B.label,v:B.custo/B.area,cor:_pdCorCult(B.cult)})),v=>fmtR$(v)+'/ha');
+  const rows=segs.map(B=>{ const rha=B.area>0?B.custo/B.area:null;
+    const pr=_pdPrem(B.cult,B.ciclo), un=(pr&&pr.un)||'sc'; const pHa=_pdProdHaUn(B.cult,B.ciclo), rcHa=_pdReceitaHa(B.cult,B.ciclo);
+    const preco=pr?_pdNum(pr.preco):null;
+    const mgHa=(rcHa!=null&&rha!=null)?rcHa-rha:null;
+    const eqProd=(preco>0&&rha!=null)?rha/preco:null, eqPreco=(pHa>0&&rha!=null)?rha/pHa:null;
+    return `<tr><td><span class="pd-dot" style="background:${_pdCorCult(B.cult)}"></span> <b>${esc(B.label)}</b>${B.ciclo==='safrinha'?' 🌾':''}</td>
+      <td class="num">${fmtArea(B.area)}</td><td class="num">${a.areaTot>0?fmtBR(B.area/a.areaTot*100)+'%':'—'}</td>
+      <td class="num">${fmtR$(B.custo)}</td><td class="num"><b>${rha!=null?fmtR$(rha):'—'}</b></td>
+      <td class="num">${pHa!=null?fmtBR(pHa)+' '+esc(un)+'/ha':'—'}</td>
+      <td class="num">${rcHa!=null?fmtR$(rcHa):'—'}</td>
+      <td class="num" style="color:${mgHa==null?'inherit':(mgHa>=0?'var(--ok)':'var(--err)')}">${mgHa!=null?fmtR$(mgHa):'—'}</td>
+      <td class="num">${(mgHa!=null&&rcHa>0)?fmtBR(mgHa/rcHa*100)+'%':'—'}</td>
+      <td class="num">${eqProd!=null?fmtBR(eqProd)+' '+esc(un)+'/ha':'—'}</td>
+      <td class="num">${eqPreco!=null?fmtR$(eqPreco)+'/'+esc(un):'—'}</td></tr>`; }).join('');
+  const rhaT=a.areaTot>0?a.custoTot/a.areaTot:null;
+  return `<div class="pd-card" style="margin-bottom:12px"><h4>Custo & margem projetada por cultura (segmento cultura × ciclo)</h4>
+    <div style="max-width:640px;margin-bottom:10px">${bars}</div>
+    <table class="ptbl"><thead><tr><th>Cultura</th><th class="num">Área (ha)</th><th class="num">% área</th><th class="num">Custo total</th><th class="num">Custo/ha</th><th class="num">Prod. estim.</th><th class="num">Receita/ha</th><th class="num">Margem/ha</th><th class="num">Margem %</th><th class="num">Equilíbrio (prod.)</th><th class="num">Equilíbrio (preço)</th></tr></thead>
+    <tbody>${rows}</tbody>
+    <tfoot><tr><td><b>Total / média pond.</b></td><td class="num"><b>${fmtArea(a.areaTot)}</b></td><td class="num">100%</td><td class="num"><b>${fmtR$(a.custoTot)}</b></td><td class="num"><b>${rhaT!=null?fmtR$(rhaT):'—'}</b></td><td colspan="6"></td></tr></tfoot></table>
+    <div class="hint">Produtividade, preço e unidade vêm de ⚙ Premissas (por cultura+ciclo). Equilíbrio (break-even) = produtividade ou preço mínimos p/ cobrir o custo/ha do plano.</div></div>`; }
+function _pdLotesHTML(a,print){
+  const arr=Object.values(a.plant).map(P=>({lote:P.lote, seg:_pdSegLbl(P.cult,P.ciclo), cor:_pdCorCult(P.cult), area:P.area||0, custo:P.custo, rha:(P.area>0?P.custo/P.area:0), nAtiv:P.nAtiv, irr:_pdRegimeDe(P.lote)==='irrigado'}));
+  const k=_pdSortK, d=_pdSortD;
+  arr.sort((x,y)=> k==='lote' ? d*String(x.lote+' '+x.seg).localeCompare(String(y.lote+' '+y.seg),'pt',{numeric:true,sensitivity:'base'}) : d*((x[k]||0)-(y[k]||0)));
+  const max=Math.max(...arr.map(x=>x.rha),1);
+  const th=(kk,l)=>print?`<th class="num">${l}</th>`:`<th class="num" style="cursor:pointer" onclick="_pdSortBy('${kk}')" title="ordenar">${l}${_pdSortK===kk?(_pdSortD>0?' ▲':' ▼'):''}</th>`;
+  const rows=arr.map(x=>`<tr><td><b>${esc(x.lote)}</b>${x.irr?' 💧':''}</td><td><span class="pd-dot" style="background:${x.cor}"></span> ${esc(x.seg)}</td><td class="num">${fmtArea(x.area)}</td><td class="num">${x.nAtiv}</td><td class="num">${fmtR$(x.custo)}</td><td class="num">${a.custoTot>0?fmtBR(x.custo/a.custoTot*100)+'%':'—'}</td>
+    <td style="min-width:150px"><div style="display:flex;align-items:center;gap:6px"><div class="pd-htrk" style="flex:1"><div class="pd-hfill" style="width:${(x.rha/max*100).toFixed(1)}%;background:var(--gold)"></div></div><b style="font-size:11px;white-space:nowrap">${x.rha>0?fmtR$(x.rha):'—'}</b></div></td></tr>`).join('');
+  return `<div class="pd-card" style="margin-bottom:12px"><h4>Ranking de plantios (lote × cultura × ciclo)${print?'':' <span class="sub" style="text-transform:none;letter-spacing:0">· clique no cabeçalho p/ ordenar · pivô aparece 2× (1ª e 2ª safra)</span>'}</h4>
+    <table class="ptbl pd-sort"><thead><tr>${print?'<th>Lote</th>':`<th style="cursor:pointer" onclick="_pdSortBy('lote')">Lote${_pdSortK==='lote'?(_pdSortD>0?' ▲':' ▼'):''}</th>`}<th>Cultura</th>${th('area','Área (ha)')}${th('nAtiv','Ativ.')}${th('custo','Custo total')}<th class="num">% custo</th>${th('rha','R$/ha')}</tr></thead><tbody>${rows}</tbody></table></div>`; }
+/* ---- cronograma ideal (janelas por cultura×ciclo×regime; config 'crono_ideal_<safra>') ---- */
+function _pdCronoRows(){ const m={}; (S.planejamento||[]).forEach(p=>{ if(p.status==='cancelado') return; const cult=p.cultura||'(sem cultura)', ciclo=(p.ciclo==='safrinha'?'safrinha':'safra'), reg=_pdRegimeDe(p.lote); m[cult+'|'+ciclo+'|'+reg]={cult,ciclo,regime:reg}; });
+  return Object.values(m).sort((a,b)=>(a.ciclo===b.ciclo ? (a.cult===b.cult ? a.regime.localeCompare(b.regime) : a.cult.localeCompare(b.cult,'pt')) : (a.ciclo==='safra'?-1:1))); }
+function _pdCronoDe(cult,ciclo,reg){ return (S.planCrono||[]).find(x=>x.cultura===cult&&x.ciclo===ciclo&&x.regime===reg)||null; }
+function _pdCronoSet(i,campo,valor){   // só guarda o valor — NÃO redesenha (digitar em <input type=date> dispararia onchange a cada dígito e o re-render destruiria o próprio campo, perdendo o foco)
+  const r=_pdCronoRows()[i]; if(!r) return;
+  S.planCrono=S.planCrono||[]; let e=S.planCrono.find(x=>x.cultura===r.cult&&x.ciclo===r.ciclo&&x.regime===r.regime);
+  if(!e){ e={cultura:r.cult, ciclo:r.ciclo, regime:r.regime}; S.planCrono.push(e); }
+  e[campo]=valor||''; }
+function _pdCronoCommit(){ _pdCronoSalvar(); }   // ao sair do campo (blur): redesenha o gráfico e salva
+async function _pdCronoSalvar(){ render(); if(!SB) return;
+  try{ const {error}=await SB.from('config').upsert({chave:'crono_ideal_'+SAFRA, valor:JSON.stringify(S.planCrono||[])},{onConflict:'chave'});
+    if(error) _statusSB('❌ Cronograma: '+error.message,'#c0392b'); else _statusSB('✅ Cronograma salvo','#27ae60'); }catch(e){} }
+function _pdIcoCult(cult){ /* glifos compactos de cultura (20×20), estilo release */
+  const n=String(cult||'').toLowerCase();
+  if(n.includes('soja')) return '<image href="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAEAAAABACAYAAACqaXHeAAAH70lEQVR4AeXBD7TV8wEA8M+991dPq15TziLZnqJzJHqVTdnCEMpCXpo/Pc1hSymdFY5GzUwc5sWTNH9rWf+Wf83/nTbixFb+hdQmqheSSk2pVe+9O+d8O+d6vft67/V+Vx0+n0Tz4hN8myV9y0W+2drgQpyKI5HGaEy1U+SbqTFG4yo0VdX9WIzXfCmV17nAN0xrPIFBSGEOxuJKpHAcmuMRX4rsu5rjJzgCLbEDH2ER3kC56r6Lp9EVyzEIL8l4VXCynSL7nna4Bj9Hvuw+xsO4D+8IUpiKrliM3lglaIRxGCn4t50i+5Zi3IV8VGA+XsVaNMKh6I4OuAKXYwquw9noizX4GVYJ8jANRdiGsbjNTpF9x3CUIoHHcB3eVVUbnIYh+CFSuAS90VgwEisECdyLInyGAfi7r4jsG07FeFRiFEpV1ROj0BuNVddG8AJmyBiGi7ABp2OhXUT2vjxMQIQxKJWRj/G4GElswdOYhyX4FBU4GIWYjbSgNW4UDMZCWUT2vnPRAe/gFhlt8QQKsQm3426sUd1beEZVRcjHXMxWg8jed6ngj9ghaIrHUYgl6I931U97wQt2I2nv6ozjsRmzZNyEbliCk/Gu+lsq6IeUGiTtPU0xEQk8iHWCjhiKbbgAq+2ZGViNbjhHDZK+Xk1wOAbiJfwYK3GjjEsQ4SG8ac9txm2Ca5CURSS3WuIX6IOjcQASMv6Dvlgr4yzBAxpuEq5AV/TCc3YRyZ0+eAAHytiGj7EYT+MhbJZxMNpjHRZquK2YjOvRF8/ZRSQ3+mEG8jAP92ABVmG7mrUWlKFCPP6B6/EjWUTi1wFTkIdxGItKNUsI0igXROKzBGm0RwJpXxGJ3x+Qj2kYg7TqfoChOBXtBe9jgeAg8VmPLdgfTbDFV0Ti1R19sRFXIa26gZiIfEFaUIhCwQHYHxvkWCRew5DAJKxWXTGmIIHZmITXBF0xFP2RQD42aLhW+A42YKtdRPZcAh3RDQejGfphB+5RXVtMQBJXokRVL+BlnI5m2CQenZDAe0jbRaT+GuESDEdH1c3FStUNRQs8jhLZnY7mWIzPxOMkwb9kEamfdpiOYwWrMR8r8AUizJbdGYI7ZNcDkwT3ikceBgrmyCJSd4dgLg7FMozGHOxQuxQORwVeVdV+GIMr0RhP4W7xGIxD8RZekEWkbhphGg7FPBRhvYZrhSfQAztQgjEo13CdcIPg96iURaRuBqEnVqAI69VPBZbhKHTDi0hhJnpgOYoxXzwK8BhaYCYeVoNI7VIYKbgW62V8H5fjVLQTfIBnMQllMp7EURiBF3EBTsEqnIgy8fgpHsLBmI/BdiNSu144Au/jLzIuwgTkCyoFhSjEEAzFdMFEDME5uApnCsaiTDyOwVNogmdxHj63G5HaXSZ4EOWCCzEZSTyKu/CaoBtG4CxMFUzHRxiBKbgVaWzHw+IzEk3wIC7DDrWI7F4h+mIT7hMcgruRxJUoUdXzeB6jcBvuwctYganYgUlogXewWXyOEpRihzpI2r3RSGIq1gqGIh+PoETNSvBXNMNgGTMwUrBSvCoFSXWUVLOe6I8tKJFxhqBU7e4UnK6qRoL/itcaQRt1lJTdfihFEqVYLkjhMFTgNbV7FWm0Q0JGUlAhXh8K2qijpOxuRRcswc2qS2uYbYI88Von2F8dJVV3BYZjKwZhk4wKLEOEbmrXDQl8gLSM7YIW4pUWJNRRUlW/xnhUYggWqu4pwQi7l8AIwbOCFEZggiASr4MEa9VRUsatGI8UfoM/ye4ubEQRRqvZNTgTn+NuNMMjuAMtMBvDxCeBHoK31VEqr3OBnaaimaA7uqASy1EuYxNW42ycgo5Yg3VohO4Yj+GoxGAswBz0wXpchBuwQXx6YhQ+xGhUqoNIxmnoh144FufiXKzGZEzCh4KpglIMwACUCyLBRgzDNIxDL5ShN94VrwSuFUxBuTpK5XUusNMazMODmIwyfA8d0BND0Bpv43Mswp9RgRZogTSWYjIuxnwcgmlIoi9eF78hGIFPMQhb1FGiefEJdiOB4zAcRYjwBe7HeJTJiATlqroGN2Mmzhe/PngEjXEeZquHVF7nArVYhYfxGFqhM3rgMhTgE6xGJSpVNxbtMRZLxasPZqMJbsGd6inRvPgE9dQFV6M/IsEKLMB7WIty5KMdzkMzFGCleCQxEuPQGBMxAhXqKVJ/b+B8/A6/xAAUoEDNtuEj8YgwE0VI4zrchLQ9ENlzSzEKV6MTuqAdWiHCJnyGcfgC5eLRHkXYjEsxSwNEGq4Ci7BIdQdgHCrE50DB65ilgZJyKy1I2jNdsQrDZLQTlIlBUm5VCpLqrxFuR1scKKNQsFgMknKrQpBSP0mMx/H4BKUyThT8UwwiuVUpSKq7w1CCM7EVxVgr6IKjsQaviEEkt5Jq1xJtUYgzcBbysA4XYK6MKwSzsE0MIrnVWLBddsfgZTSSsQ1T8FuUyTgJA7EVE8Qkklv5gs2y24hlqMRSvIRHsUpVhZiBCDdgmZhEcqu1YK3slqGjmqVQjBK0xBO4WYwiuXWYYIW6a4JOOBkDcaRgOn6FcjGK5FY3wduC1jgGR+AQtEQ+mqI5WqIt9pOxHGMwHWkxi+ROAr0Ex+NNdELK7m3HYryCJ/EMtsuRSO50RUfBSYLPsQBvYQXWYxM2YxM24mNs8TWJ5M5WrEYZ/oa5WID/2Yckmhef4Nss6Vvu//8s+/nkI0pIAAAAAElFTkSuQmCC" x="0" y="0" width="20" height="20"/>';
+  if(n.includes('algod')) return '<image href="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAEAAAABACAYAAACqaXHeAAAIxUlEQVR4AeXBD5DVdYEA8M/v9x4uBzxgA0vAdBVE4t/KgSYgPs3MDBHlT3rUC2GuYdbOoZK6u1od47T/l9hBRv5JrERPEPx7Gsio0QhiRqmrcCgih0UQu8sGCMvuHjNfZh7LKvv27XtLM34+USqT9kEW+4BL6lgxTsNA9EE3wd/wJ2zEZjTqIEnF1wmfxmRchJMd2zasxEP4H9QroiiVSSuSFGbhWpwmP29hARaiThFEqUxaEUzEPJTJ2o/n8BxextvYLeiOUzAM5+N8lMh6C1/GwwosSmXSCugf8CPMQiR4A/NxH/4iNx/GNHwJAwRNWIivYp8CiVKZtALphWUYJ6jFTbgd++WnBBW4CT0Ev8GV+KsCSJSUlymA7ngCYwXrcSkeQ4P8NWANlmMs+uBUjMOD2K+dEiXlZdrpBCzBhYLHMQHbFM5OLMZwDMRHUY4laNAOiZLyMu10M2YIVmAS9ii8/ViGc9AfZ6ATntYOsfY5G3MEVbgK+xTPPlyFKsEcnK0dYvmLMQ9J1GMmqhVfNWaiHknMQyxPsfxNxBjBT7BWx1mL2wVjMFGeYvmbLdiNb+t438ZuwWx5iuVnIM4X/BJ/0fG245eC8zFQHmL5mYBIcK/j515BhAnyEMvPeYKdWOf4WYedgvPkIZafswRr0ej4acRawVnykNR23XGKoErbfBifwjnojw8JduENrMWvsUPuqjAepyCFOm2QlLsYg3EBYsFQzMImvIRq7200voIJ6Oz9XYd38QhuxRrvrSdGYgCGCWJMxzOoQqMcRKlMWivOwCxMwane336swixsFfTCD/EFxLLq8SZ2CE7E6egkqxGLMAe7kMQkXIML0dn724IH8TP8r2OIUpm099EXc5HBCXL3VdyKEViC0wX1eAiL8SxqNNcTaUzDlegkeAO34loM1jYH8AvciHe8hyiVSXsPl+AenCRowlosx/N4A7U4Af0wHBfjI6hALzyFXoJn8S94RW6GYj7SWqrDcvwaf8A2HEAP9MdoTMS5iAR/xjV4ylGiVCbtKNNxBzoJnsU38Vu56Yc1OFkwD19HvbbphB9gtqyFqMROrRuLW5AW1OOLWOQIiZLyMkeYinvQCfvwFVyHt+UmwmKMFPwH/g2N2q4RT6IzzhP8CXfLzVbcix24ECUYj9dR5bBESXmZw4bjUXTGHlyB+9Ekd5/FNwRLca32W4VyDMKZeAVVctOEdXgBk9AZn8Fj2O6QWJDEQnRFAz6PFdomRqWgBrPRpP2acB1qBDcg1jYr8Hk0oCsWIumQWPA5nCv4LyzXdmkMEyzANoXzf1ggGI60tluO+YJz8TmHxIjxNcF2zJWfCYIG3KXw7sJBwTD5mYvtgjmIY4zDEMFPUS0/owTrsVnhbUYFFuBX8rMLPxUMxbgkLhU04T75ewLluFPx3Kn97sONiHBpEqMFG7BR/r6L7/r7txEbMAijkzhD8KrcxJiLwdiAxfij42M4rsYgVOFGNGrdqxiEAUn0FmyXm4/hm7K+hkW4HjU6Rk/8J6YjIbgSi/Gq1m0XnBgjITgoNxvxsqwEZmIFeiu+3liBmUjIehkb5eagIBGjTtBDbupxi6wmwSg8jG6KpxsexihBk6xbUC83PQV1MbYIBsjdUmwSvIbHBWPwY8XzY4wRPI7XBJuwVO76C7bEWC8Yge5ycxB3CwZjHtYJZmCmwpuJGYJ1mIfBgrtwUG66Y4RgfYynBV1wudzdj0bBeEzDLsFtGKJwhuA2QTWmYbygEQ/I3QR0ETwd4zHUCSoQyc1mvCS4BJtwLZrQDYvQRft1wSJ0QxMqsAmXCF7CZrmJUCGow6MxduEewRh8Vu5WCgahPx7AQsFILEAkfxEWYKRgIR5AfwwSrJS7KRgruAfVseB7qBX8CP3k5klBhMsEc/Ci4Bp8S/6+hWsEL2KO4DJEgiflpg9uFdTiew6JBdtwg6AvlqGX1q3GVsEMJLAHU/G2oBI3IZa7GDehUvA2pmAPEpgh2IrVWleKh9BPcAO2OSRRUl7msBcxGEPQDxfhKdTKitAHA9BHsA8X4yQcwG9Qg2cwGV1xAYZhNeocW1/8HBWIsAPjsUHwDUwT3II3MQAnIcIezZ2MR/FxwYP4VzQ5JEpl0o7QFctwsWAHKrEdk3EBPqq5apTKWo7v4AUMx1IMENRgER7G71Ej6IkRmIjp6CnYhMn4I87Bv+MKWdUo1dxWPIsl+BC+g48IVuBK7HFYlMqkHaUL7sQ/yV8T7sAs9MbtmKK5RtQKeiDW3BJUYCcW4ouI5G8x/hl7HSGppb2oRBp9tbQfj2AlEihFX5yJkShFhKtRgZ2YisvwdZyHCDFKNdeE1fg+HhPEuBqRoBq/wwa8g2o04JO4HCVaegeV2OsoUSqTdpRP4z6UOrYaLMU8vCJI4FxMwXNYpqVTcQE+ht6CnXgNz2CLliZhHJZgDRoEQ/FlTEZPx1aNaXjSEaJUJu0IJ2Izumrpb3gXPdBJ1kH8Ajdgm47RFzcjg6SsetSiM7ppaQ9Oww6HJTV3ALXojFV4AuuwETvRhK4YjS/gKpyAGbgcN+N27FccJahAJXoJDuAB3IvnsQcRemMgzsZn8AnU4oAjRKlM2lF6IYW3tG4wbsMnZW3AD/Hf2K0wUrgKc3CmrJWYjSqtK0Md/uoIUSqT1k4RrsbNOF1WHdZgI6qxFOvl5ixMRinOwGikZL2JStyPJu0QpTJpBdIFM/ElDNLSH3CW3KxHuZZexwLcjb0KIKlw9mI+foKP4yKMwD+iDKcggQbHlsCpgrfwEn6Pp7EWjQooqfAa8TyeF0zCUpRiFNY6tlHoKbgeDymiWPGtQp3geq27XrAbqxRZrPhq8DPBVMxFQksJzMVUwR2oUWSJkvIyHeAFXIHeSONCvIsGnIiLMR8ZweuYjncVWZTKpHWQ0/EIhji2V3E53tQBEiXlZTpINX6FThiKEs3VYT6m4886SJTKpB0HPTAWZYItWI1aHSzp+KjFE/4OxD7g/h+Wsi+JI/OniwAAAABJRU5ErkJggg==" x="0" y="0" width="20" height="20"/>';
+  if(n.includes('milho')) return '<ellipse cx="9" cy="10" rx="3.8" ry="6.6" fill="#FFD54F"/><line x1="9" y1="4" x2="9" y2="16.4" stroke="#F9A825" stroke-width="0.8"/><line x1="6.6" y1="6" x2="6.6" y2="14" stroke="#F9A825" stroke-width="0.8"/><line x1="11.4" y1="6" x2="11.4" y2="14" stroke="#F9A825" stroke-width="0.8"/><path d="M12.6,15 Q16.4,11 14.6,3.6" fill="none" stroke="#7ED09B" stroke-width="1.7"/>';
+  if(n.includes('girassol')) return '<circle cx="10" cy="10" r="3.1" fill="#6d4c41"/><g fill="#FFD54F"><ellipse cx="10" cy="4.6" rx="1.8" ry="3.1"/><ellipse cx="10" cy="15.4" rx="1.8" ry="3.1"/><ellipse cx="4.6" cy="10" rx="3.1" ry="1.8"/><ellipse cx="15.4" cy="10" rx="3.1" ry="1.8"/><ellipse cx="6.2" cy="6.2" rx="1.6" ry="2.8" transform="rotate(-45 6.2 6.2)"/><ellipse cx="13.8" cy="13.8" rx="1.6" ry="2.8" transform="rotate(-45 13.8 13.8)"/><ellipse cx="13.8" cy="6.2" rx="1.6" ry="2.8" transform="rotate(45 13.8 6.2)"/><ellipse cx="6.2" cy="13.8" rx="1.6" ry="2.8" transform="rotate(45 6.2 13.8)"/></g>';
+  return '<path d="M10,17.5 Q3.5,10 10,3 Q16.5,10 10,17.5" fill="#8BC34A"/><line x1="10" y1="6" x2="10" y2="16" stroke="#558B2F" stroke-width="1"/>'; }
+function _pdIcoIrrigado(){ return '<image href="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAADAAAAAwCAYAAABXAvmHAAAFHklEQVR4AdXBfXCXBQEA4GfvXhgwwKlQtLnAbXwuaifXiSEEHsXBAiIvujqUDyOixEiv0+zjxC616yTk4kPolkCCgCNTIy8jqevoEs3jOps6YFf4sbXTMcYYzm2//nj/eG8Nx++FvXk8T44tM13KApe4UHbGYSUmoRW7sB3DMBR16PQBCJ3fBOzGr3EnluEXWIYidOFlLEej/7PQ+d2FTdgoUobZWIcn0Ym78Uc0oBn7sAtdUhbq3WCUY7PYSdyJfWLrcQQtKMQd6MIuKQud23jcgWloQ5PYb/TUgqfFmrESu6Qs0NMY/BaNqEQFaiTzIsZiK0IpCvS0AoXYjFpkJNeAscjFHCkK9DQEeViIADmYgSm6C5Cvp5UYgwzqMUSKQj09j+W4D/PRgcmox7fxZ4zDMpTjWziMPCzBevwH+zEVG6Uox5aZ/scA/AiLMAwNeAljUYaTKMApkYGowWCU4iiexyk8hj9JUY4tM/WiAKfQhQGYimKcwF8xEEsxER04jEdwBrnolLJcc0v0Yg1ycAwdOI6voAptOINa9MM9OIz38Ek8gCeQkaJA715Ape6m41qxDL6L0WI1mIhrZa8A+RIK9O4ACnX3B3xOrBHVmCB2GivwL9kZhd/h6xLKNbdEL9qwV3c1CFAjdgCv6u51tDi/SmxDHYZjnwQC2ZuIH+JNVItswiCxIdiKXJHvoNS5BViMtbgdP8NICQWy14hFyBcL8Vmx05iEaSKtuEVPY7Adq/EFPIO3MFxCgezV4zlME9uDWWIZrMVwkd0YJFaKB7EfJ/AZjMCHcRKhhELJ3I4OsWfxF5FytOBXYm9jNa7AQyjHBtyLFizBSszDWeRIKJSdfPRHk57aRCoxEt/UXS7WIQcz0IwSrEM5FuItDEOOhALZWYTDWIVBzq0an9bTHEzAKjRjOfajHrNRJzISLRIKZacTpViPFdiHZ/F3tIocwwI9LcXDaMIK3IKbcFgswOdxSEKh7PxbbC8acSs+hn5owAt4HLViAzEb1ViDGbgBp0WGYDG+hqvwKQmFsvMKWpGPDmzERoQoxkhMwUY8hfvRinIMwA9wBgvQjutRiRsxWuT7eEVCoeycwIuYhjKxDtShDgexCVuxHUtRJjIM87EYX8I4BGK7sdYFCGQng2dErkE/scFYhHI04Sa04ycoFHkK1+MeTEAgksEGLEebCxDKXhVW4uNYgD1ihbgZRdiM1XgUs0SWiHXhKA5gG/7mIuTYMlMCt+Eh1KIStWI5qMDd+CiexvewEzuRh3a8gWN4Vx/INbdEAkcwCxMxAy/hdbF6VKMJq3AZXsODqMVxNKJTH8k1t0QCHTiI61CBhbgM+RiBMkxCMUahFO9gm5SEkqvFVHwVt+Eu7y+DD3l/V2A8ijAMBTiOx2QpdGHO4ufYgXm4DuX4CPrjHfwDT+B+9Ee7yFDcjHm4Blcig1cxCvdKIHRxmrEDO0QChGgXuw/90Y4ReBxTRN7DHuzBHBzFTyUQ6ltdaNddRqQYOzEFZ7AbVTiENSjFF9EhgVD6OlGCvRiDJ7EadSLrUYb5aJZQKH2Xowqj8Ut8A2eRh1vxCSxEswsQStcAFKEIj2IDpqMC89GKL6PBBQqlqwBNeA0VqEID/okf4/dodxFC6RqB53CjlATSNQL1UhRI11V4Q4oC6RqJOikK9Z3pmIxiFGAgJuEoZuJtvIkjOIiMPhDqO5NxOV7GSbThEeRhKK7E1RiPQ3hXHwj1nQd8AAKXuP8CCAVIfjhotH4AAAAASUVORK5CYII=" x="0" y="0" width="12" height="12"/>'; }   /* ícone oficial (IMAGENS/icons8-irrigacao) recolorido verde-médio */
+function _pdIcoAtiv(tipo){ /* ícones próprios por tipo de atividade — SILHUETAS CHEIAS,
+  desenhadas p/ 12–13px (imagem detalhada não funciona nesse tamanho). viewBox 0 0 12 12 */
+  const t=String(tipo||'').toLowerCase();
+  if(/a[ée]rea/.test(t))       return '<path d="M6,0.7 L7,4.1 L11.4,5.5 L11.4,6.7 L7,6.4 L6.6,9.5 L8.3,10.6 L8.3,11.4 L6,10.9 L3.7,11.4 L3.7,10.6 L5.4,9.5 L5,6.4 L0.6,6.7 L0.6,5.5 L5,4.1 Z" fill="#9fc5ff"/>';                                                                       // avião (silhueta)
+  if(/pulveriza/.test(t))      return '<path d="M6,0.8 C6,0.8 2.4,5.4 2.4,7.7 A3.6,3.6 0 0 0 9.6,7.7 C9.6,5.4 6,0.8 6,0.8 Z" fill="#4da3ff"/>';                                                                                                                                              // gota (pulverização)
+  if(/aduba|s[oó]lido/.test(t)) return '<circle cx="6" cy="3.2" r="1.9" fill="#c9995f"/><circle cx="3" cy="8.2" r="1.9" fill="#c9995f"/><circle cx="9" cy="8.2" r="1.9" fill="#c9995f"/>';                                                                                                     // grânulos (adubação)
+  if(/tratamento/.test(t))     return '<path d="M6,0.7 L10.9,2.7 V6.3 Q10.9,9.8 6,11.4 Q1.1,9.8 1.1,6.3 V2.7 Z" fill="#b06cc4"/><circle cx="6" cy="5.6" r="1.8" fill="#fff"/>';                                                                                                                // escudo + semente (TS)
+  if(/plantio/.test(t))        return '<path d="M5.3,11.4 L5.3,7 C2.9,6.8 1.5,5.2 1.3,2.3 C4.3,2.5 5.9,4 6,6.5 C6.5,4.6 8,3.4 10.7,3.2 C10.5,5.9 9,7.3 6.7,7.4 L6.7,11.4 Z" fill="#00c896"/>';                                                                                                // broto (plantio)
+  if(/colheita/.test(t))       return '<rect x="5.4" y="0.8" width="1.2" height="10.4" rx="0.6" fill="#e0b64f"/><g fill="#e0b64f"><ellipse cx="3.6" cy="3.2" rx="2" ry="1.1" transform="rotate(-35 3.6 3.2)"/><ellipse cx="8.4" cy="3.2" rx="2" ry="1.1" transform="rotate(35 8.4 3.2)"/><ellipse cx="3.4" cy="6" rx="2" ry="1.1" transform="rotate(-35 3.4 6)"/><ellipse cx="8.6" cy="6" rx="2" ry="1.1" transform="rotate(35 8.6 6)"/></g>'; // espiga (colheita)
+  if(/grade|gradagem|subsol/.test(t)) return '<rect x="0.8" y="2.2" width="10.4" height="2" rx="1" fill="#8d9aa8"/><rect x="2.2" y="4.4" width="1.8" height="4.6" rx="0.9" fill="#8d9aa8"/><rect x="5.1" y="4.4" width="1.8" height="6.6" rx="0.9" fill="#8d9aa8"/><rect x="8" y="4.4" width="1.8" height="4.6" rx="0.9" fill="#8d9aa8"/>'; // grade/subsolador
+  return '<circle cx="6" cy="6" r="3.4" fill="#4da3ff"/>'; }
+function _pdCronoHTML(a,print){
+  /* Réplica do "Cronograma ideal de plantio e colheita" do release da SLC:
+     trimestres e meses em células verdes preenchidas, ícone+rótulo da cultura
+     em bloco verde à esquerda, FAIXAS RETAS sem texto (legenda abaixo) e
+     ícones próprios por tipo de atividade nas datas do plano.
+     Fundo TRANSPARENTE (funciona em qualquer tema); impressão sai branca. */
+  const V={esc:'#0D5D3F', vivo:'#00C65E', preto:'#183029', medio:'#009A44', cinza:'#595959'};
+  /* aba Dashboard é sempre painel claro (no software e na impressão) — grade discreta clara */
+  const P={bg:'none', grid:'#dbe2ec', row:'#e8edf3', acei:'#BFE8D2'};
+  const DAY=86400000;
+  const pd=d=>{ const p=String(d).slice(0,10).split('-').map(Number); return new Date(p[0],p[1]-1,p[2]).getTime(); };
+  const dBR=t=>new Date(t).toLocaleDateString('pt-BR');
+  const vis={}; Object.values(a.plant).forEach(Pl=>{ const reg=_pdRegimeDe(Pl.lote); vis[Pl.cult+'|'+Pl.ciclo+'|'+reg]={cult:Pl.cult,ciclo:Pl.ciclo,regime:reg}; });
+  const rows=Object.values(vis).sort((x,y)=>(x.ciclo===y.ciclo ? (x.cult===y.cult ? x.regime.localeCompare(y.regime) : x.cult.localeCompare(y.cult,'pt')) : (x.ciclo==='safra'?-1:1)));
+  if(!rows.length) return `<div class="pd-card" style="margin-bottom:12px;background:transparent"><h4>Cronograma ideal de safra — ${esc(SAFRA)}</h4><div class="hint">Nenhum plantio nos filtros atuais.</div></div>`;
+  const marks={}; a.ativos.forEach(p=>{ if(!p.dataPrev) return; const k=(p.cultura||'(sem cultura)')+'|'+((p.ciclo==='safrinha')?'safrinha':'safra')+'|'+_pdRegimeDe(p.lote);
+    const t=pd(p.dataPrev), tp=p.tipoAtiv||''; const M=(marks[k]=marks[k]||{}); const e=M[t+'|'+tp]||(M[t+'|'+tp]={t,tp,v:0,n:0}); e.v+=_estimativaAtiv(p); e.n++; });
+  let tMin=Infinity, tMax=-Infinity; const semJan=[];
+  const linhas=rows.map(r=>{ const w=_pdCronoDe(r.cult,r.ciclo,r.regime)||{};
+    ['pIni','pFim','pAceite','cIni','cFim','vazioIni','vazioFim'].forEach(k=>{ if(w[k]){ const t=pd(w[k]); tMin=Math.min(tMin,t); tMax=Math.max(tMax,t); } });
+    const mk=Object.values(marks[r.cult+'|'+r.ciclo+'|'+r.regime]||{}).sort((x,y)=>x.t-y.t||String(x.tp).localeCompare(String(y.tp)));
+    mk.forEach(m2=>{ tMin=Math.min(tMin,m2.t); tMax=Math.max(tMax,m2.t); });
+    if(!w.pIni&&!w.cIni) semJan.push(_pdSegLbl(r.cult,r.ciclo)+' '+r.regime);
+    return {...r, w, marks:mk}; });
+  if(!isFinite(tMin)) return `<div class="pd-card" style="margin-bottom:12px;background:transparent"><h4>Cronograma ideal de safra — ${esc(SAFRA)}</h4><div class="hint">Defina as janelas ideais em <b>⚙ Premissas → Cronograma ideal</b>.</div></div>`;
+  let d0=new Date(tMin); d0=new Date(d0.getFullYear(), d0.getMonth(), 1);
+  const months=[]; let y=d0.getFullYear(), m=d0.getMonth();
+  while(new Date(y,m,1).getTime()<=tMax && months.length<26){ months.push({t:new Date(y,m,1).getTime(), y, m}); m++; if(m>11){m=0;y++;} }
+  const tEnd=new Date(y,m,1).getTime();
+  const padL=172, W=980, chartW=W-padL-8, HQ=17, HM=17, H0=HQ+HM+5, rowH=48, H=H0+linhas.length*rowH+4;
+  const X=t=>padL+Math.max(0,Math.min(1,(t-months[0].t)/(tEnd-months[0].t)))*chartW;
+  const mesFim=mo=>new Date(mo.y,mo.m+1,1).getTime();
+  const MESES=['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
+  const QCOR={1:V.esc,2:V.vivo,3:V.preto,4:V.medio};
+  let g=(P.bg==='none')?'':`<rect x="0" y="0" width="${W}" height="${H}" fill="${P.bg}" rx="8"/>`;
+  g+=`<defs><pattern id="pdHatch" width="6" height="6" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><rect width="6" height="6" fill="rgba(192,57,43,0.05)"/><line x1="0" y1="0" x2="0" y2="6" stroke="rgba(192,57,43,0.4)" stroke-width="1.3"/></pattern></defs>`;
+  const tris=[]; months.forEach(mo=>{ const qn=Math.floor(mo.m/3)+1, t=qn+'T'+String(mo.y).slice(2); if(tris.length&&tris[tris.length-1].t===t) tris[tris.length-1].fim=mo; else tris.push({t,qn,ini:mo,fim:mo}); });
+  tris.forEach(tr=>{ const x1=X(tr.ini.t), x2=X(mesFim(tr.fim));
+    g+=`<rect x="${x1.toFixed(1)}" y="0" width="${Math.max(x2-x1-1,1).toFixed(1)}" height="${HQ-1}" fill="${QCOR[tr.qn]}"/>`
+      +`<text x="${((x1+x2)/2).toFixed(1)}" y="${HQ-5}" text-anchor="middle" font-size="9" font-weight="800" fill="#fff">${tr.t}</text>`; });
+  months.forEach(mo=>{ const x1=X(mo.t), x2=X(mesFim(mo));
+    g+=`<rect x="${x1.toFixed(1)}" y="${HQ}" width="${Math.max(x2-x1-1,1).toFixed(1)}" height="${HM-1}" fill="${V.esc}"/>`
+      +`<text x="${((x1+x2)/2).toFixed(1)}" y="${HQ+HM-5}" text-anchor="middle" font-size="8.5" font-weight="700" fill="#fff">${MESES[mo.m]}</text>`
+      +`<line x1="${x1.toFixed(1)}" y1="${H0}" x2="${x1.toFixed(1)}" y2="${H}" stroke="${P.grid}" stroke-width="0.7"/>`; });
+  g+=`<line x1="0" y1="${H0}" x2="${W}" y2="${H0}" stroke="${P.grid}" stroke-width="0.9"/>`+`<line x1="${padL}" y1="${H0}" x2="${padL}" y2="${H}" stroke="${P.grid}" stroke-width="0.9"/>`;
+  linhas.forEach((sgl,i)=>{ const y0=H0+i*rowH, yc=y0+20;
+    g+=`<g transform="translate(6,${(y0+rowH/2-15).toFixed(1)}) scale(1.5)">${_pdIcoCult(sgl.cult)}</g>`
+      +`<text x="44" y="${(y0+rowH/2-1).toFixed(1)}" font-size="11" font-weight="800" fill="${V.esc}">${esc(_pdSegLbl(sgl.cult,sgl.ciclo))}</text>`
+      +`<text x="44" y="${(y0+rowH/2+12).toFixed(1)}" font-size="10" fill="${V.medio}">${sgl.regime==='irrigado'?'irrigado':'sequeiro'}</text>`
+      +`<line x1="0" y1="${(y0+rowH).toFixed(1)}" x2="${W}" y2="${(y0+rowH).toFixed(1)}" stroke="${P.grid}" stroke-width="0.7"/>`;
+    const w=sgl.w;
+    if(w.vazioIni&&w.vazioFim){ const vx1=X(pd(w.vazioIni)), vx2=X(pd(w.vazioFim)+DAY);
+      g+=`<rect x="${vx1.toFixed(1)}" y="${(y0+2).toFixed(1)}" width="${Math.max(vx2-vx1,2).toFixed(1)}" height="${rowH-4}" fill="url(#pdHatch)"><title>${esc(_pdSegLbl(sgl.cult,sgl.ciclo))} · vazio sanitário: ${dBR(pd(w.vazioIni))} → ${dBR(pd(w.vazioFim))}</title></rect>`; }
+    const bar=(t1,t2,cor,lbl,dash)=>{ if(t1==null||t2==null||t2<=t1) return; const x1=X(t1), x2=X(t2);
+      g+=`<rect x="${x1.toFixed(1)}" y="${(yc-8).toFixed(1)}" width="${Math.max(x2-x1,2).toFixed(1)}" height="16" fill="${cor}"${dash?` stroke="${V.medio}" stroke-width="1" stroke-dasharray="3 2"`:''}><title>${esc(_pdSegLbl(sgl.cult,sgl.ciclo))} · ${sgl.regime} · ${lbl}: ${dBR(t1)} → ${dBR(t2-DAY)}</title></rect>`; };
+    if(w.pIni&&w.pFim) bar(pd(w.pIni), pd(w.pFim)+DAY, V.medio, 'plantio ideal');
+    if(w.pFim&&w.pAceite) bar(pd(w.pFim)+DAY, pd(w.pAceite)+DAY, P.acei, 'plantio aceitável (não ideal)', true);
+    if(w.cIni&&w.cFim) bar(pd(w.cIni), pd(w.cFim)+DAY, V.esc, 'colheita');
+    let lastX=-1e9;
+    sgl.marks.forEach(mk=>{ let x=X(mk.t); if(x-lastX<14) x=lastX+14; lastX=x;
+      g+=`<g transform="translate(${(x-6.5).toFixed(1)},${(y0+rowH-16.5).toFixed(1)}) scale(1.08)">${_pdIcoAtiv(mk.tp)}<title>${esc(mk.tp||'atividade')} · ${dBR(mk.t)} · ${mk.n}× · ${fmtR$(mk.v)}</title></g>`; });
+  });
+  const tiposPres=[...new Set(linhas.reduce((s,l)=>s.concat(l.marks.map(m2=>m2.tp||'')),[]))].filter(Boolean).sort((x,y)=>x.localeCompare(y,'pt'));
+  const icoLeg=tiposPres.length?`<div class="pd-leg" style="margin-top:4px">${tiposPres.map(tp=>`<span><svg viewBox="0 0 12 12" style="width:13px;height:13px;vertical-align:-2px">${_pdIcoAtiv(tp)}</svg> ${esc(tp)}</span>`).join('')}</div>`:'';
+  return `<div class="pd-card" style="margin-bottom:12px;background:transparent"><h4>Cronograma ideal de safra — ${esc(SAFRA)}</h4>
+    <div style="${print?'background:#fff;border-radius:8px;padding:8px':''}"><svg viewBox="0 0 ${W} ${H}" style="width:100%;height:auto;display:block">${g}</svg></div>
+    <div class="pd-leg"><span><span class="pd-dot" style="background:#009A44;border-radius:2px;width:16px"></span> plantio ideal</span><span><span class="pd-dot" style="background:#BFE8D2;border:1px dashed #009A44;border-radius:2px;width:16px"></span> aceitável (não ideal)</span><span><span class="pd-dot" style="background:#0D5D3F;border-radius:2px;width:16px"></span> colheita</span><span><svg width="16" height="12" style="vertical-align:-3px;flex:none"><defs><pattern id="pdHatchLeg" width="6" height="6" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><rect width="6" height="6" fill="rgba(192,57,43,0.05)"/><line x1="0" y1="0" x2="0" y2="6" stroke="rgba(192,57,43,0.4)" stroke-width="1.3"/></pattern></defs><rect width="16" height="12" rx="2" fill="url(#pdHatchLeg)" stroke="#c0392b" stroke-width="0.6"/></svg> vazio sanitário</span></div>
+    ${icoLeg}
+    <div class="hint">Ícones = atividades do plano com data prevista (tipo, data e custo no tooltip). Janelas ideais e o vazio sanitário são <b>cadastrados por safra</b> (mudam a cada ano) em ⚙ Premissas → "Cronograma ideal".</div>
+    ${semJan.length?`<div class="hint" style="color:var(--warn)">⚠️ Sem janela definida: ${semJan.map(x=>esc(x)).join(', ')}.</div>`:''}</div>`; }
+function _pdDesHTML(a){
+  const meses=Object.keys(a.byMes).sort().map(k=>({k,lbl:_pdMesLbl(k),v:a.byMes[k]}));
+  return `<div class="pd-card" style="margin-bottom:12px"><h4>Curva de desembolso do planejamento</h4>${_pdChartMes(meses)}${a.semData>0?`<div class="hint" style="color:var(--warn)">⚠️ + ${fmtR$(a.semData)} sem data prevista (não entra na curva).</div>`:''}</div>`; }
+function _pdSensHTML(a){
+  const segs=Object.values(a.bySeg).filter(B=>_pdReceitaHa(B.cult,B.ciclo)!=null);
+  if(!segs.length) return `<div class="pd-card" style="margin-bottom:12px"><h4>Sensibilidade da margem projetada</h4><div class="hint">Defina produtividade e preço em ⚙ Premissas p/ simular cenários.</div></div>`;
+  const custo=segs.reduce((s,B)=>s+B.custo,0);
+  const rec=segs.reduce((s,B)=>s+_pdReceitaHa(B.cult,B.ciclo)*B.area,0);
+  const ds=[-0.1,-0.05,0,0.05,0.1];
+  const rows=ds.map(dp=>`<tr><td style="white-space:nowrap"><b>Preço ${dp>0?'+':''}${Math.round(dp*100)}%</b></td>${ds.map(dq=>{ const m=rec*(1+dp)*(1+dq)-custo;
+    return `<td class="num" style="color:${m>=0?'var(--ok)':'var(--err)'};${(dp===0&&dq===0)?'font-weight:800;outline:1px solid var(--border2);':''}">${'R$ '+_pdComp(m)}</td>`; }).join('')}</tr>`).join('');
+  return `<div class="pd-card" style="margin-bottom:12px"><h4>Sensibilidade da margem projetada — preço × produtividade</h4>
+    <table class="ptbl"><thead><tr><th></th>${ds.map(d=>`<th class="num">Prod. ${d>0?'+':''}${Math.round(d*100)}%</th>`).join('')}</tr></thead><tbody>${rows}</tbody></table>
+    <div class="hint">Base: segmentos com premissas (${segs.map(B=>esc(B.label)).join(', ')}) · centro = cenário das premissas · custo do plano fixo.</div></div>`; }
+function _pdPremPanelHTML(){
+  const all=_pdSegs(), segs=all.filter(s=>s.cult!=='(sem cultura)'), lotes=_pdLotes();
+  const rows=segs.map(s=>{ const i=all.findIndex(x=>x.cult===s.cult&&x.ciclo===s.ciclo); const pr=_pdPrem(s.cult,s.ciclo)||{prod:'',preco:'',un:'sc'}; const rh=_pdReceitaHa(s.cult,s.ciclo);
+    const unOpt=['sc','@','kg','ton'].map(u=>`<option value="${u}" ${((pr.un||'sc')===u)?'selected':''}>${u==='sc'?'sc 60 kg':(u==='@'?'@ 15 kg':u)}</option>`).join('');
+    return `<tr><td><span class="pd-dot" style="background:${_pdCorCult(s.cult)}"></span> <b>${esc(_pdSegLbl(s.cult,s.ciclo))}</b></td>
+      <td>${s.ciclo==='safrinha'?'🌾 Safrinha':'🌱 Safra'}</td>
+      <td><input value="${esc(pr.prod||'')}" style="width:90px" placeholder="ex.: 4.200" oninput="_pdPremInput(${i},'prod',this.value)" onchange="_pdPremCommit(${i})"> <span class="sub">kg/ha</span></td>
+      <td><select onchange="_pdPremInput(${i},'un',this.value);_pdPremCommit(${i})">${unOpt}</select></td>
+      <td><input value="${esc(pr.preco||'')}" style="width:90px" placeholder="ex.: 115,00" oninput="_pdPremInput(${i},'preco',this.value)" onchange="_pdPremCommit(${i})"> <span class="sub">R$/un</span></td>
+      <td class="num">${rh!=null?fmtR$(rh)+'/ha':'—'}</td></tr>`; }).join('');
+  const cr=_pdCronoRows();
+  const crRows=cr.map((r,i)=>{ const w=_pdCronoDe(r.cult,r.ciclo,r.regime)||{};
+    const inp=(campo,val)=>`<input type="date" value="${esc(val||'')}" oninput="_pdCronoSet(${i},'${campo}',this.value)" onblur="_pdCronoCommit()">`;
+    return `<tr><td><span class="pd-dot" style="background:${_pdCorCult(r.cult)}"></span> <b>${esc(_pdSegLbl(r.cult,r.ciclo))}</b> <span class="sub">· ${r.regime==='irrigado'?'💧 irrigado':'☀️ sequeiro'}</span></td>
+      <td style="white-space:nowrap">${inp('pIni',w.pIni)} <span class="sub">a</span> ${inp('pFim',w.pFim)}</td>
+      <td>${inp('pAceite',w.pAceite)}</td>
+      <td style="white-space:nowrap">${inp('cIni',w.cIni)} <span class="sub">a</span> ${inp('cFim',w.cFim)}</td>
+      <td style="white-space:nowrap">${inp('vazioIni',w.vazioIni)} <span class="sub">a</span> ${inp('vazioFim',w.vazioFim)}</td></tr>`; }).join('');
+  const irr=lotes.map((n,i)=>`<label class="pd-ck" style="display:inline-flex;margin:0 12px 4px 0"><input type="checkbox" ${_pdRegimeDe(n)==='irrigado'?'checked':''} onchange="_pdIrrCk(${i},this.checked)"> ${esc(n)}</label>`).join('');
+  return `<div class="pd-card" style="margin-bottom:12px;border-color:var(--border2)"><h4>⚙ Premissas & atributos <span class="sub" style="text-transform:none;letter-spacing:0">· salvos no banco, valem p/ a safra ${esc(SAFRA)}</span></h4>
+    ${S.planPremErr?'<div class="hint" style="color:var(--warn);margin-bottom:8px">⚠️ A tabela <b>plan_premissas</b> (e as colunas novas) ainda não existem no banco — rode a migração <b>02_sql_supabase/56_planejamento_dashboard.sql</b>. Até lá, o que você digitar vale só nesta sessão.</div>':''}
+    <table class="ptbl" style="margin-bottom:10px"><thead><tr><th>Segmento</th><th>Ciclo</th><th>Produtividade estim.</th><th>Un. venda</th><th>Preço esperado</th><th class="num">Receita/ha</th></tr></thead><tbody>${rows||'<tr><td colspan="6" class="hint">Sem culturas no plano — defina a cultura nas atividades.</td></tr>'}</tbody></table>
+    <div class="sec" style="margin-top:12px">📅 Cronograma ideal <span class="sub" style="font-weight:400">(janelas por cultura × regime — alimentam o gráfico estilo release)</span></div>
+    <table class="ptbl" style="margin-bottom:10px"><thead><tr><th>Segmento</th><th>🌱 Plantio ideal (de – até)</th><th>Aceitável até <span class="sub">(não ideal)</span></th><th>🌾 Colheita (de – até)</th><th>⛔ Vazio sanitário (de – até) <span class="sub">opcional</span></th></tr></thead><tbody>${crRows||'<tr><td colspan="5" class="hint">Sem plantios no plano.</td></tr>'}</tbody></table>
+    <div class="hint" style="margin-bottom:10px">Vazio sanitário = janela obrigatória sem a cultura no campo (ex.: algodão/bicudo) — muda a cada safra por norma estadual; deixe em branco se não se aplica.</div>
+    <div class="hint" style="margin-bottom:8px">O ciclo (safra/safrinha) é definido em <b>cada atividade</b> do plano — campo "Ciclo" no editor da aba Por lote. Os segmentos acima refletem o que está lançado.</div>
+    <div class="sec" style="margin-top:0">Lotes irrigados 💧 <span class="sub" style="font-weight:400">(marque os lotes com pivô/irrigação)</span></div><div>${irr||'<span class="hint">Sem lotes no plano.</span>'}</div></div>`; }
+
+/* ---- corpo, aba, impressão e export ---- */
+function _pdBodyHTML(print){
+  const a=_pdAgg(), vis=_pdVisGet();
+  if(!a.ativos.length) return '<div class="hint" style="margin-top:10px">Nenhuma atividade planejada com os filtros atuais.</div>';
+  let h='';
+  if(!print&&_pdShowPrem) h+=_pdPremPanelHTML();
+  if(vis.kpi) h+=_pdKpisHTML(a);
+  const C={ mix:vis.mix?_pdMixHTML(a):'', cat:vis.cat?_pdCatHTML(a):'', tipo:vis.tipo?_pdTipoHTML(a):'',
+    rec:vis.rec?_pdRecHTML(a):'', cult:vis.cult?_pdCultHTML(a):'', lotes:vis.lotes?_pdLotesHTML(a,print):'',
+    crono:vis.crono?_pdCronoHTML(a,print):'', des:vis.des?_pdDesHTML(a):'', sens:vis.sens?_pdSensHTML(a):'' };
+  // tela E impressão iguais: Ranking de plantios (lista comprida) ocupa metade ESQUERDA; cards compactos empilham na DIREITA
+  const dir=C.mix+C.cat+C.tipo+C.rec+C.des+C.sens;
+  if(C.lotes) h+='<div class="pd-2col"><div>'+C.lotes+'</div><div>'+dir+'</div></div>';
+  else if(dir) h+='<div class="pd-grid">'+dir+'</div>';
+  h+=C.cult+C.crono;   // cards largos (tabela 11 col + cronograma) full width abaixo
+  return h; }
+function _planDashHTML(){
+  if(!(S.planejamento||[]).some(p=>p.status!=='cancelado')) return '<div class="hint">Sem planejamento nesta safra — monte o plano na aba "Por lote".</div>';
+  const cults=_pdCults(), lotes=_pdLotes(), vis=_pdVisGet();
+  const seg=(val,cur,fn,lbl)=>`<button class="pd-chip${cur===val?' on':''}" onclick="${fn}('${val}')">${lbl}</button>`;
+  const nL=_pdLoteSel?_pdLoteSel.size:lotes.length;
+  return `<div class="pd-light"><div class="pd-fbar">
+      ${cults.map((c,i)=>`<button class="pd-chip${(!_pdCultSel||_pdCultSel.has(c))?' on':''}" onclick="_pdTglCult(${i})"><span class="pd-dot" style="background:${_pdCorCult(c)}"></span>${esc(c)}</button>`).join('')}
+      <details class="pd-dd"${_pdOpenLotes?' open':''} ontoggle="_pdOpenLotes=this.open"><summary>📍 Lotes <b>${nL}/${lotes.length}</b></summary><div class="pd-ddbox">
+        <div style="display:flex;gap:6px;margin-bottom:6px"><button class="btn sm" onclick="_pdLotesTodos(true)">todos</button><button class="btn sm" onclick="_pdLotesTodos(false)">nenhum</button></div>
+        ${lotes.map((n,i)=>`<label class="pd-ck"><input type="checkbox" ${(!_pdLoteSel||_pdLoteSel.has(n))?'checked':''} onchange="_pdTglLote(${i})"> ${esc(n)} <span class="sub">· ${fmtArea(areaDe(n))} ha${_pdRegimeDe(n)==='irrigado'?' · 💧':''}</span></label>`).join('')}
+      </div></details>
+      <span class="sub">|</span>
+      ${seg('todos',_pdCiclo,'_pdSetCiclo','Todos os ciclos')}${seg('safra',_pdCiclo,'_pdSetCiclo','🌱 Safra')}${seg('safrinha',_pdCiclo,'_pdSetCiclo','🌾 Safrinha')}
+      <span class="sub">|</span>
+      ${seg('todos',_pdRegime,'_pdSetRegime','Todos os regimes')}${seg('sequeiro',_pdRegime,'_pdSetRegime','☀️ Sequeiro')}${seg('irrigado',_pdRegime,'_pdSetRegime','💧 Irrigado')}
+      <label class="pd-ck"><input type="checkbox" ${_pdCond?'checked':''} onchange="_pdCond=this.checked;_salvarEstadoNav();render()"> incl. condicionais</label>
+      <span style="flex:1"></span>
+      <button class="btn sm${_pdShowPrem?' success':''}" onclick="_pdShowPrem=!_pdShowPrem;render()">⚙ Premissas</button>
+      <details class="pd-dd"${_pdOpenCards?' open':''} ontoggle="_pdOpenCards=this.open"><summary>🎛 Cards</summary><div class="pd-ddbox" style="left:auto;right:0">${_PD_BLOCOS.map(([k,l])=>`<label class="pd-ck"><input type="checkbox" ${vis[k]?'checked':''} onchange="_pdVisTgl('${k}')"> ${esc(l)}</label>`).join('')}</div></details>
+      <button class="btn sm" onclick="_pdCSV()">⬇ CSV</button>
+      <button class="btn sm" onclick="_pdImprimir()">🖨 Imprimir</button>
+    </div>
+    <div class="hint" style="margin-bottom:10px">Dashboard <b>ao vivo</b> do planejamento — safra ${esc(SAFRA)} · ${esc(_pdFiltroDesc())} · custos na mesma base do Relatório (produtos × preço + operação).</div>
+    ${_pdBodyHTML(false)}</div>`; }
+function _pdImprimir(){
+  const w=window.open('','_blank'); if(!w){ alert('Permita pop-ups p/ imprimir.'); return; }
+  const dt=new Date().toLocaleDateString('pt-BR');
+  w.document.write('<!doctype html><html><head><meta charset="utf-8"><title>Dashboard do planejamento — '+esc(SAFRA)+'</title><style>'
+    +':root{--bg:#fff;--bg2:#fff;--bg3:#fff;--bg4:#efefef;--bg5:#e4e4e4;--border:#c9c9c9;--border2:#8a8a8a;--text:#111;--muted:#555;--muted2:#666;--ok:#0a7d51;--ok-d:#0a7d51;--ok-l:#0a7d51;--warn:#a86e00;--err:#c0392b;--gold:#8a6d00;--gold-d:#8a6d00}'
+    +'body{font:12px system-ui,Arial;color:#111;background:#fff;padding:18px}h1{font-size:17px;margin:0}.sub{color:#666;font-size:10px}.hint{color:#777;font-size:10px;margin-top:4px}.sec{font-weight:800;margin:10px 0 4px;font-size:12px}'
+    +'table.ptbl{width:100%;border-collapse:collapse;margin-bottom:8px;font-size:10.5px}.ptbl th{text-align:left;border-bottom:1.5px solid #333;padding:4px 6px;font-size:9px;text-transform:uppercase;color:#555}.ptbl td{padding:3px 6px;border-bottom:1px solid #ddd}.ptbl .num,.ptbl th.num{text-align:right}.ptbl tfoot td{border-top:2px solid #333}'
+    +_PD_CSS
+    +'.pd-card{break-inside:avoid;border:1px solid #ccc}'
+    /* impressão: 2 colunas por FLOAT (fragmenta entre páginas; Ranking 60% esq / cards 40% dir) — evita a página 1 quase vazia do flex */
+    +'.pd-2col{display:block}.pd-2col::after{content:"";display:block;clear:both}.pd-2col>div{display:block;box-sizing:border-box}.pd-2col>div:first-child{float:left;width:60%;padding-right:8px}.pd-2col>div:last-child{float:right;width:39%}.pd-2col .pd-card{margin-bottom:10px}.pd-2col>div:first-child .pd-card{break-inside:auto}.ptbl tr{break-inside:avoid}'
+    +'.noprint{margin-bottom:10px}@media print{.noprint{display:none}}'
+    +'</style></head><body>'
+    +'<button class="noprint" onclick="window.print()" style="padding:8px 14px;cursor:pointer">🖨 Imprimir / PDF</button>'
+    +'<h1>Dashboard do Planejamento — Alabama Agro</h1><div class="sub">Safra '+esc(SAFRA)+' · '+dt+' · '+esc(_pdFiltroDesc())+'</div><div style="height:10px"></div>'
+    +_pdBodyHTML(true)+'</body></html>');
+  w.document.close(); setTimeout(()=>{ try{ w.focus(); w.print(); }catch(e){} }, 500); }
+function _pdCSV(){
+  const a=_pdAgg(); const L=[]; const N=n=>(n==null||isNaN(n))?'':fmtBR(n);
+  L.push('DASHBOARD DO PLANEJAMENTO — ALABAMA AGRO;Safra '+SAFRA);
+  L.push('Filtros;'+_pdFiltroDesc());
+  L.push('Gerado em;'+new Date().toLocaleString('pt-BR'));
+  L.push('');
+  L.push('RESUMO'); L.push('Área planejada (ha);'+N(a.areaTot)); L.push('Custo total (R$);'+N(a.custoTot)); L.push('Custo médio (R$/ha);'+(a.areaTot>0?N(a.custoTot/a.areaTot):''));
+  L.push('');
+  L.push('POR CULTURA (segmento cultura × ciclo)'); L.push('Cultura;Ciclo;Área (ha);% área;Custo total (R$);Custo (R$/ha);Prod. estim. (kg/ha);Preço (R$/un);Receita proj. (R$);Margem proj. (R$)');
+  Object.values(a.bySeg).sort((x,y)=>y.custo-x.custo).forEach(B=>{ const pr=_pdPrem(B.cult,B.ciclo)||{}; const rh=_pdReceitaHa(B.cult,B.ciclo);
+    L.push([B.cult,B.ciclo,N(B.area),(a.areaTot>0?N(B.area/a.areaTot*100):''),N(B.custo),(B.area>0?N(B.custo/B.area):''),pr.prod||'',pr.preco||'',(rh!=null?N(rh*B.area):''),(rh!=null?N(rh*B.area-B.custo):'')].join(';')); });
+  L.push('');
+  L.push('POR PLANTIO (lote × cultura × ciclo)'); L.push('Lote;Cultura;Ciclo;Regime;Área (ha);Atividades;Custo total (R$);Custo (R$/ha)');
+  Object.values(a.plant).sort((x,y)=>y.custo-x.custo).forEach(P=>{
+    L.push([P.lote,P.cult,P.ciclo,_pdRegimeDe(P.lote),N(P.area),P.nAtiv,N(P.custo),(P.area>0?N(P.custo/P.area):'')].join(';')); });
+  L.push('');
+  L.push('POR CATEGORIA'); L.push('Categoria;Custo (R$);% do custo');
+  _PD_CATS.forEach(c=>{ if(a.byCat[c]>0) L.push([c,N(a.byCat[c]),(a.custoTot>0?N(a.byCat[c]/a.custoTot*100):'')].join(';')); });
+  L.push('');
+  L.push('POR TIPO DE ATIVIDADE'); L.push('Tipo;Custo (R$);% do custo');
+  Object.keys(a.byTipo).sort((x,y)=>a.byTipo[y]-a.byTipo[x]).forEach(t=>L.push([t,N(a.byTipo[t]),(a.custoTot>0?N(a.byTipo[t]/a.custoTot*100):'')].join(';')));
+  L.push('');
+  L.push('DESEMBOLSO POR MÊS'); L.push('Mês;Custo (R$)');
+  Object.keys(a.byMes).sort().forEach(m=>L.push([_pdMesLbl(m),N(a.byMes[m])].join(';')));
+  if(a.semData>0) L.push(['(sem data prevista)',N(a.semData)].join(';'));
+  const el=document.createElement('a'); el.href=URL.createObjectURL(new Blob(['﻿'+L.join('\r\n')],{type:'text/csv;charset=utf-8'})); el.download='dashboard_planejamento_'+String(SAFRA||'').replace(/\W/g,'-')+'.csv'; document.body.appendChild(el); el.click(); el.remove(); }
+
 /* ---- Por lote ---- */
 function _planPorLoteHTML(){
   const lotesOpt=_ordLotes(S.lotes).map(l=>`<option value="${esc(l.nome)}" ${l.nome===_planLote?'selected':''}>${esc(l.nome)}</option>`).join('');
@@ -2830,9 +3768,13 @@ function _planPorLoteHTML(){
       const estLine=(_pc||_op)?`<div class="prow" style="margin-top:6px;border-top:1px solid var(--line);padding-top:6px"><span class="sub">estimativa</span><span class="sub">prod ${fmtR$(_pc)} + oper ${fmtR$(_op)} = <b style="color:var(--gold)">${fmtR$(_est)}</b></span></div>`:'';
       const prodsPart=_tipoSemProduto(p.tipoAtiv)?'':_prodsHTML(p);
       const custosPart=(p.custos&&p.custos.length)?`<div class="sub" style="margin-top:6px;opacity:.65">operação</div>${_custosHTML(p)}`:'';
+      const _cf=_conflitosHerbicida(p);
+      const cfLine=(_cf.conflitos&&_cf.conflitos.length)?(_cf.semTec
+        ?`<div class="prow" style="margin-top:6px;background:rgba(255,179,0,.14);border:1px solid var(--warn);border-radius:6px;padding:6px 8px"><span style="color:var(--warn);font-weight:700">⚠️ verificar semente</span><span class="sub" style="color:var(--warn)">${_cf.conflitos.map(c=>esc(c.molecula)+' ('+esc(c.produto)+')').join(', ')} exige tolerância e a semente está SEM tecnologia cadastrada — se não tolerar, mata a cultura</span></div>`
+        :`<div class="prow" style="margin-top:6px;background:rgba(255,68,68,.12);border:1px solid var(--err);border-radius:6px;padding:6px 8px"><span style="color:var(--err);font-weight:700">⚠️ incompatível</span><span class="sub" style="color:var(--err)">${_cf.conflitos.map(c=>esc(c.molecula)+' ('+esc(c.produto)+')').join(', ')} — a semente (${_cf.techs.map(esc).join(', ')}) não tolera</span></div>`):'';
       return `<div class="card"${_planSel.has(p.id)?' style="outline:2px solid var(--gold)"':''}>
         <div class="chead">${_planSelMode?`<input type="checkbox" class="plsel" data-selid="${p.id}" ${_planSel.has(p.id)?'checked':''} style="margin-right:7px;width:15px;height:15px;vertical-align:middle">`:''}<span class="num" style="color:var(--gold);font-weight:800;margin-right:6px">#${idx+1}</span><b>${esc(p.tipoAtiv||'—')}</b> ${p.epoca?`<span class="sub">· ${esc(p.epoca)}</span>`:''} ${_planQuando(p)}${_areaLbl(p)} ${tag}</div>
-        <div class="cbody">${prodsPart}${custosPart}${estLine}</div>
+        <div class="cbody">${prodsPart}${custosPart}${cfLine}${estLine}</div>
         <div class="actions">
           <button class="btn sm" onclick="_planMover(${p.id},-1)" ${idx===0?'disabled':''} title="Subir">↑</button>
           <button class="btn sm" onclick="_planMover(${p.id},1)" ${idx===ativs.length-1?'disabled':''} title="Descer">↓</button>
@@ -2872,6 +3814,11 @@ function _planPorLoteHTML(){
         <button class="btn sm" id="pl_selMir" ${_planSel.size?'':'disabled'}>📄 Espelhar para…</button>
         <button class="btn sm" id="pl_selClr" ${_planSel.size?'':'disabled'}>Limpar</button>
       </div>`:''}
+      ${(()=>{ if(!_planLote) return ''; let nInc=0,nVer=0; lista.forEach(p=>{ const c=_conflitosHerbicida(p); if(c.conflitos.length){ if(c.semTec) nVer++; else nInc++; } });
+        let out='';
+        if(nInc) out+=`<div class="row" style="margin-bottom:8px;padding:8px 10px;background:rgba(255,68,68,.12);border:1px solid var(--err);border-radius:8px"><b style="color:var(--err)">⚠️ ${nInc} atividade(s) com herbicida INCOMPATÍVEL</b> <span class="sub" style="color:var(--err)">— aplica molécula que a tecnologia da semente deste lote não tolera.</span></div>`;
+        if(nVer) out+=`<div class="row" style="margin-bottom:8px;padding:8px 10px;background:rgba(255,179,0,.14);border:1px solid var(--warn);border-radius:8px"><b style="color:var(--warn)">⚠️ ${nVer} atividade(s) a verificar</b> <span class="sub" style="color:var(--warn)">— herbicida que exige tolerância, mas a semente deste lote está sem tecnologia cadastrada.</span></div>`;
+        return out; })()}
       ${_planLote?`<div class="sec">${ativs.length} atividade(s) planejada(s) — ${esc(_planLote)} (em ordem de época) · <b style="color:var(--gold)">estimativa do lote: ${fmtR$(lista.reduce((s,p)=>s+_estimativaAtiv(p),0))}</b>${(()=>{const tc=conds.reduce((s,p)=>s+_estimativaAtiv(p),0);return tc>0?` <span class="sub">(inclui ${fmtR$(tc)} em condicionais)</span>`:'';})()}</div>`:''}
       <div class="cards">${cards}</div>
       ${conds.length?`<div class="sec" style="margin-top:18px">🧪 Produtos condicionais — ${esc(_planLote)} <span class="sub">(podem ou não ser aplicados; já entram na compra e na estimativa)</span></div><div class="cards">${condCards}</div>`:''}`;
@@ -2880,8 +3827,8 @@ function _planPorLoteHTML(){
 }
 function _bindPlanPorLote(){
   const sel=$('#pl_lote'); if(sel) sel.onchange=()=>{ _planLote=sel.value; _planEdit=null; _planSel.clear(); render(); };
-  const nv=$('#pl_novo'); if(nv) nv.onclick=()=>{ _planEdit='novo'; _planProd=[{}]; _planEpoca=''; _planData=''; _planEstadio=''; _planObs=''; _planSemente=''; _planArea=''; _planCond=false; _planCultura=_planCulturaDefault(); _planTipo=_planTipos()[0]; _planCustos=_custosDefault(_planTipo); render(); };
-  const nc=$('#pl_novocond'); if(nc) nc.onclick=()=>{ _planEdit='novo'; _planProd=[{}]; _planEpoca=''; _planData=''; _planEstadio=''; _planObs=''; _planSemente=''; _planArea=''; _planCond=true; _planCultura=_planCulturaDefault(); _planTipo=''; _planCustos=[]; render(); };
+  const nv=$('#pl_novo'); if(nv) nv.onclick=()=>{ _planEdit='novo'; _planProd=[{}]; _planEpoca=''; _planData=''; _planEstadio=''; _planObs=''; _planSemente=''; _planArea=''; _planCond=false; _planCultura=_planCulturaDefault(); _planCiclo=_planCicloDefault(); _planTipo=_planTipos()[0]; _planCustos=_custosDefault(_planTipo); render(); };
+  const nc=$('#pl_novocond'); if(nc) nc.onclick=()=>{ _planEdit='novo'; _planProd=[{}]; _planEpoca=''; _planData=''; _planEstadio=''; _planObs=''; _planSemente=''; _planArea=''; _planCond=true; _planCultura=_planCulturaDefault(); _planCiclo=_planCicloDefault(); _planTipo=''; _planCustos=[]; render(); };
   const el=$('#pl_espLote'); if(el) el.onclick=()=>espelharLoteInteiro();
   const sb=$('#pl_selBtn'); if(sb) sb.onclick=()=>{ _planSelMode=!_planSelMode; _planSel.clear(); render(); };
   $$('#main .plsel').forEach(c=>c.onchange=()=>{ const id=+c.dataset.selid; if(c.checked)_planSel.add(id); else _planSel.delete(id); render(); });
@@ -2898,7 +3845,7 @@ function _bindPlanPorLote(){
 function _planEditorHTML(){
   const ed=_planEdit!=='novo'?(S.planejamento||[]).find(p=>p.id===_planEdit):null;
   // ao abrir (1ª vez), semeia os globais do editor a partir do registro; depois só os globais mandam
-  if(ed && !_planProd._loaded){ _planProd=(ed.produtos||[]).map(p=>({...p})); _planProd._loaded=true; _planTipo=ed.tipoAtiv||_planTipos()[0]; _planEpoca=ed.epoca||''; _planObs=ed.obs||''; _planSemente=ed.sementeKgha!=null?String(ed.sementeKgha).replace('.',','):''; _planCond=!!ed.condicional; _planCustos=(ed.custos||[]).map(c=>({...c})); _planArea=ed.areaParcial!=null?String(ed.areaParcial).replace('.',','):''; _planData=ed.dataPrev||''; _planEstadio=ed.estadio||''; _planCultura=ed.cultura||''; }
+  if(ed && !_planProd._loaded){ _planProd=(ed.produtos||[]).map(p=>({...p})); _planProd._loaded=true; _planTipo=ed.tipoAtiv||_planTipos()[0]; _planEpoca=ed.epoca||''; _planObs=ed.obs||''; _planSemente=ed.sementeKgha!=null?String(ed.sementeKgha).replace('.',','):''; _planCond=!!ed.condicional; _planCustos=(ed.custos||[]).map(c=>({...c})); _planArea=ed.areaParcial!=null?String(ed.areaParcial).replace('.',','):''; _planData=ed.dataPrev||''; _planEstadio=ed.estadio||''; _planCultura=ed.cultura||''; _planCiclo=ed.ciclo==='safrinha'?'safrinha':'safra'; }
   const tipo=_planTipo||_planTipos()[0];
   const tiposOpt=_planTipos().map(t=>`<option ${t===tipo?'selected':''}>${esc(t)}</option>`).join('');
   const epoca=_planEpoca;
@@ -2922,6 +3869,7 @@ function _planEditorHTML(){
         <div class="fcol" style="max-width:160px"><label>Data prevista</label><input type="date" id="pl_data" value="${esc(_planData||'')}" oninput="_planData=this.value"></div>
         <div class="fcol" style="max-width:150px"><label>Estádio da cultura</label><input id="pl_estadio" value="${esc(_planEstadio||'')}" oninput="_planEstadio=this.value" placeholder="ex.: V4, R1"></div>
         ${_planCulturaSel()}
+        ${_planCicloSel()}
         ${showSemC?`<div class="fcol" style="max-width:160px"><label>Semente (kg/ha)</label><input id="pl_semente" value="${esc(_planSemente||'')}" oninput="_planSemente=this.value;_planProd.forEach((_,i)=>_planUpdQtd(i))" placeholder="ex.: 60"></div>`:''}
         ${_planAreaField()}
         ${_planEdit==='novo'?_planPosSelect():''}
@@ -2965,6 +3913,7 @@ function _planEditorHTML(){
       <div class="fcol" style="max-width:160px"><label>Data prevista</label><input type="date" id="pl_data" value="${esc(_planData||'')}" oninput="_planData=this.value"></div>
       <div class="fcol" style="max-width:150px"><label>Estádio da cultura</label><input id="pl_estadio" value="${esc(_planEstadio||'')}" oninput="_planEstadio=this.value" placeholder="ex.: V4, R1"></div>
       ${_planCulturaSel()}
+      ${_planCicloSel()}
       ${(_ehTS(tipo)||_planProd.some(p=>p&&p.base==='100kg'))?`<div class="fcol" style="max-width:160px"><label>Semente (kg/ha) <span class="sub">p/ dose /100kg</span></label><input id="pl_semente" value="${esc(_planSemente||'')}" oninput="_planSemente=this.value;_planProd.forEach((_,i)=>_planUpdQtd(i))" placeholder="ex.: 60"></div>`:''}
       ${_planAreaField()}
       ${_planEdit==='novo'?_planPosSelect():''}
@@ -3009,21 +3958,22 @@ function salvarPlano(){
   const sem=numUn($('#pl_semente')?.value||'').n;
   const area=numUn($('#pl_area')?.value||'').n;
   const dataPrev=$('#pl_data')?.value||'', estadio=$('#pl_estadio')?.value||'', cultura=$('#pl_cultura')?.value||'';
+  const ciclo=($('#pl_ciclo')?.value==='safrinha')?'safrinha':'safra';
   const produtos=(!cond&&_tipoSemProduto(tipo))?[]:_planProd.filter(p=>p&&p.nome).map(p=>({nome:p.nome,tipo:p.tipo||'',dose:p.dose||'',unidade:p.unidade||'',base:(p.base==='100kg'||p.base==='populacao')?p.base:'ha'}));
   const custos=cond?[]:_planCustos.filter(c=>c&&(String(c.valor||'').trim()||String(c.desc||'').trim()||String(c.prod||'').trim())).map(c=>({modo:c.modo==='produto'?'produto':'valor',desc:c.desc||'',prod:c.prod||'',valor:c.valor||'',base:c.base==='total'?'total':'ha'}));
   if(!_planLote){ alert('Selecione o lote.'); return; }
   if(_planEdit && _planEdit!=='novo'){
     const p=(S.planejamento||[]).find(x=>x.id===_planEdit);
-    if(p){ p.tipoAtiv=tipo; p.epoca=epoca; p.dataPrev=dataPrev; p.estadio=estadio; p.cultura=cultura; p.obs=obs; p.produtos=produtos; p.custos=custos; p.sementeKgha=sem; p.areaParcial=area; p.condicional=cond; atualizarPlanoSB(p); }
+    if(p){ p.tipoAtiv=tipo; p.epoca=epoca; p.dataPrev=dataPrev; p.estadio=estadio; p.cultura=cultura; p.ciclo=ciclo; p.obs=obs; p.produtos=produtos; p.custos=custos; p.sementeKgha=sem; p.areaParcial=area; p.condicional=cond; atualizarPlanoSB(p); }
   } else {
-    const novo={id:null, lote:_planLote, tipoAtiv:tipo, epoca, dataPrev, estadio, cultura, produtos, custos, obs, sementeKgha:sem, areaParcial:area, condicional:cond, ordem:null, status:'planejado', comandaCodigo:''};
+    const novo={id:null, lote:_planLote, tipoAtiv:tipo, epoca, dataPrev, estadio, cultura, ciclo, produtos, custos, obs, sementeKgha:sem, areaParcial:area, condicional:cond, ordem:null, status:'planejado', comandaCodigo:''};
     const group=(S.planejamento||[]).filter(p=>p.lote===_planLote && p.status!=='cancelado' && !!p.condicional===!!cond).sort(_planOrd);
     let pos=$('#pl_pos')?parseInt($('#pl_pos').value,10):group.length; if(isNaN(pos))pos=group.length; pos=Math.max(0,Math.min(pos,group.length));
     const arr=group.slice(); arr.splice(pos,0,novo);   // insere na posição escolhida e renumera
     arr.forEach((p,k)=>{ const ord=(k+1)*10; if(p===novo) novo.ordem=ord; else if(p.ordem!==ord){ p.ordem=ord; atualizarPlanoSB(p); } });
     salvarPlanoSB(novo);
   }
-  _planEdit=null; _planProd=[]; _planCustos=[]; _planSemente=''; _planObs=''; _planEpoca=''; _planCond=false; _planArea=''; _planData=''; _planEstadio=''; _planCultura=''; render();
+  _planEdit=null; _planProd=[]; _planCustos=[]; _planSemente=''; _planObs=''; _planEpoca=''; _planCond=false; _planArea=''; _planData=''; _planEstadio=''; _planCultura=''; _planCiclo='safra'; render();
 }
 function excluirPlano(id){ if(!confirm('Excluir esta atividade planejada?')) return; excluirPlanoSB(id); S.planejamento=(S.planejamento||[]).filter(p=>p.id!==id); render(); }
 
@@ -3502,7 +4452,7 @@ async function marcarCotacaoEscolhidaSB(nome,id){ if(!SB) return; try{ await SB.
 async function salvarDolarSB(v){ if(!SB) return; try{ await SB.from('config').upsert({chave:'dolar', valor:String(v)},{onConflict:'chave'}); }catch(e){ console.warn(e); } }
 
 /* ---- Persistência do planejamento ---- */
-function _planParaBanco(p){ return {safra:SAFRA, lote:p.lote, tipo_ativ:p.tipoAtiv, epoca:p.epoca||'', data_prev:(p.dataPrev||null), estadio:(p.estadio||null), cultura:(p.cultura||null), produtos:p.produtos||[], custos:p.custos||[], obs:p.obs||'', semente_kgha:(p.sementeKgha!=null?p.sementeKgha:null), area_parcial:((p.areaParcial!=null&&p.areaParcial!=='')?(numUn(String(p.areaParcial)).n):null), condicional:!!p.condicional, ordem:(p.ordem!=null?p.ordem:null), status:p.status||'planejado', comanda_codigo:p.comandaCodigo||null}; }
+function _planParaBanco(p){ return {safra:SAFRA, lote:p.lote, tipo_ativ:p.tipoAtiv, epoca:p.epoca||'', data_prev:(p.dataPrev||null), estadio:(p.estadio||null), cultura:(p.cultura||null), ciclo:(p.ciclo==='safrinha'?'safrinha':'safra'), produtos:p.produtos||[], custos:p.custos||[], obs:p.obs||'', semente_kgha:(p.sementeKgha!=null?p.sementeKgha:null), area_parcial:((p.areaParcial!=null&&p.areaParcial!=='')?(numUn(String(p.areaParcial)).n):null), condicional:!!p.condicional, ordem:(p.ordem!=null?p.ordem:null), status:p.status||'planejado', comanda_codigo:p.comandaCodigo||null}; }
 async function salvarPlanoSB(p){
   if(!SB){ p.id=Date.now(); S.planejamento.push(p); return; }
   try{ const {data,error}=await SB.from('planejamento').insert(_planParaBanco(p)).select('id').single();
@@ -3521,6 +4471,8 @@ function render(){
   if(_VIEWCOD) return;   // modo "visualizar comanda" (iframe do tablet): UI normal suprimida
   renderPills();
   const m=$('#main');
+  if(m && m.style.width){ m.style.width=''; m.style.boxSizing=''; }   // desfaz a metade-esquerda do mapa docado ao trocar de tela
+  if(VIEW!=='nova') _parcReset();   // saiu da comanda: solta o mapa da parcela
   if(VIEW==='comandas'){m.innerHTML=renderComandas();bindComandas();}
   else if(VIEW==='nova'){m.innerHTML=renderNova();bindNova();}
   else if(VIEW==='planejamento'){m.innerHTML=renderPlanejamento();bindPlanejamento();}
@@ -3940,6 +4892,8 @@ function _preencherForm(c){
   if($('#nv_parcmodo')) $('#nv_parcmodo').value=modo;
   if(modo==='ha'     &&c.parcial&&$('#nv_parc_ha')) $('#nv_parc_ha').value=c.parcial.ha||'';
   if(modo==='cargas' &&c.parcial&&$('#nv_parc_cg')) $('#nv_parc_cg').value=c.parcial.cargas||'';
+  if(modo==='poligono'){ _parcPoli=(c.parcial&&c.parcial.poligono)||null;
+    _parcVerts=(_parcPoli&&Array.isArray(_parcPoli.ring))?_parcPoli.ring.map(([E,N])=>_utmToLatLon(E,N,23)):[]; }
   ajustaParcial();
   // campos por tipo
   _preencherCamposTipo(c);
@@ -4015,7 +4969,7 @@ async function carregarDoSupabase(){
     try{
       const r=await SB.from('lotes').select('*');
       if(!r.error && r.data && r.data.length){
-        S.lotes = r.data.map(l=>({cod:l.cod, nome:l.nome, area:l.area, base:!!l.base, partes:l.partes||[], geom:l.geom||null, disposicao:l.disposicao||'colados'}));
+        S.lotes = r.data.map(l=>({cod:l.cod, nome:l.nome, area:l.area, base:!!l.base, partes:l.partes||[], geom:l.geom||null, disposicao:l.disposicao||'colados', irrigado:!!l.irrigado}));
       }
     }catch(e){ console.warn('lotes',e); }
 
@@ -4031,7 +4985,7 @@ async function carregarDoSupabase(){
     try{
       const r=await SB.from('produtos').select('*');
       if(!r.error && r.data && r.data.length){
-        S.produtos = r.data.map(p=>({codigo:p.codigo, nome:p.nome, comp:p.comp, tipo:p.classe||p.tipo, tipoBase:p.tipo, classe:p.classe, formulacao:p.formulacao, unidade:p.unidade, preco:p.preco, sementeTipo:p.semente_tipo||'', cultura:p.cultura||'', sementeEmb:p.semente_emb||'', sementesEmb:p.sementes_emb, pms:p.pms, ativos:(Array.isArray(p.ativos)&&p.ativos.length)?p.ativos:[], garantias:Array.isArray(p.garantias)?p.garantias:[]}));   /* usa só o ativo estruturado; não adivinha mais pelo comp */
+        S.produtos = r.data.map(p=>({codigo:p.codigo, nome:p.nome, variedade:p.nome, sufixo:p.sufixo||'', comp:p.comp, tipo:p.classe||p.tipo, tipoBase:p.tipo, classe:p.classe, formulacao:p.formulacao, unidade:p.unidade, preco:p.preco, sementeTipo:p.semente_tipo||'', cultura:p.cultura||'', sementeEmb:p.semente_emb||'', sementesEmb:p.sementes_emb, pms:p.pms, tecnologias:(Array.isArray(p.tecnologias)?p.tecnologias:[]), ativos:(Array.isArray(p.ativos)&&p.ativos.length)?p.ativos:[], garantias:Array.isArray(p.garantias)?p.garantias:[]}));   /* usa só o ativo estruturado; não adivinha mais pelo comp */
       }
     }catch(e){ console.warn('produtos',e); }
 
@@ -4039,12 +4993,35 @@ async function carregarDoSupabase(){
     try{ const r=await SB.from('unidades').select('*'); if(!r.error&&r.data&&r.data.length) S.unidades=r.data.map(u=>({sim:u.sim,nome:u.nome,dim:u.dim,fator:+u.fator||1})); }catch(e){ console.warn('unidades',e); }
     try{ const r=await SB.from('fornecedores').select('*'); if(!r.error&&r.data&&r.data.length) S.fornecedores=r.data.map(f=>({nome:f.nome})); }catch(e){ console.warn('fornecedores',e); }
     try{ const r=await SB.from('culturas').select('*').order('nome'); if(!r.error&&r.data) S.culturas=r.data.map(c=>({id:c.id,nome:c.nome})); }catch(e){ console.warn('culturas',e); }
+    try{ const r=await SB.from('tecnologias_semente').select('*'); if(!r.error&&r.data) S.tecnologias=r.data.map(t=>({nome:t.nome,sigla:t.sigla||'',tipo:t.tipo||'',detentora:t.detentora||'',moleculas:Array.isArray(t.moleculas)?t.moleculas:[]})); }catch(e){ console.warn('tecnologias',e); }
+    try{ const r=await SB.from('sufixos_semente').select('*'); if(!r.error&&r.data) S.sufixos=r.data.map(s=>({sigla:s.sigla,nome:s.nome||'',detentora:s.detentora||'',culturas:Array.isArray(s.culturas)?s.culturas:[],traits:Array.isArray(s.traits)?s.traits:[]})); }catch(e){ console.warn('sufixos',e); }
+    /* semente: nome de exibição = "variedade + sufixo"; traits derivados do sufixo (alimentam o alerta) */
+    (S.produtos||[]).forEach(p=>{ if(p.tipoBase==='Semente' && p.sufixo){
+      const suf=(S.sufixos||[]).find(s=>s.sigla===p.sufixo && (!s.culturas||!s.culturas.length||!p.cultura||s.culturas.includes(p.cultura))) || (S.sufixos||[]).find(s=>s.sigla===p.sufixo);
+      p.nome=(p.variedade||p.nome)+' '+p.sufixo;
+      if(suf && Array.isArray(suf.traits) && suf.traits.length) p.tecnologias=suf.traits.slice();
+    }});
+    /* ----- CUSTO FIXO: depreciação (máquinas/implementos) + itens da safra ----- */
+    try{ const r=await SB.from('maquinas').select('nome,valor_aquisicao,vida_util_anos,residual_pct'); if(!r.error&&r.data) S.maqDep=r.data.map(m=>({nome:m.nome,valorAquisicao:m.valor_aquisicao,vidaUtilAnos:m.vida_util_anos,residualPct:m.residual_pct})); }catch(e){ console.warn('maqDep',e); }
+    try{ const r=await SB.from('implementos').select('nome,valor_aquisicao,vida_util_anos,residual_pct'); if(!r.error&&r.data) S.impDep=r.data.map(m=>({nome:m.nome,valorAquisicao:m.valor_aquisicao,vidaUtilAnos:m.vida_util_anos,residualPct:m.residual_pct})); }catch(e){ console.warn('impDep',e); }
+    try{ const r=await SB.from('custos_fixos').select('*').eq('safra',SAFRA); if(!r.error&&r.data) S.custosFixos=r.data.map(c=>({id:c.id,categoria:c.categoria||'',descricao:c.descricao||'',valor:+c.valor||0,periodicidade:c.periodicidade||'anual',tipo:c.tipo||'caixa',rateio:c.rateio||'por_ha',rateioAlvo:c.rateio_alvo||'',obs:c.obs||''})); }catch(e){ console.warn('custosFixos',e); }
+    try{ const r=await SB.from('funcionarios').select('nome,tipo,ativo,salario,carteira,por_fora,empregador,custo_fixo,encargos_pct'); if(!r.error&&r.data) S.funcRh=r.data.map(f=>({nome:f.nome,tipo:f.tipo,ativo:f.ativo,salario:f.salario,carteira:f.carteira,porFora:f.por_fora,empregador:f.empregador||'',custoFixo:f.custo_fixo,encargosPct:f.encargos_pct})); }catch(e){ console.warn('funcRh',e); }
+    try{ const r=await SB.from('empregadores').select('*'); if(!r.error&&r.data) S.empregadores=r.data.map(e=>({nome:e.nome,inss:+e.inss_patronal_pct||0,sat:+e.sat_pct||0,terceiros:+e.terceiros_pct||0,fgts:+e.fgts_pct||0,funrural:!!e.funrural})); }catch(e){ console.warn('empregadores',e); }
+    /* ----- PREMISSAS do planejamento (dashboard): produtividade/preço por cultura+ciclo ----- */
+    try{ const r=await SB.from('plan_premissas').select('*').eq('safra',SAFRA);
+      if(r.error){ S.planPremErr=true; console.warn('plan_premissas',r.error.message); }
+      else { S.planPremErr=false; S.planPremissas={}; const _m7=d=>d?String(d).slice(0,7):''; (r.data||[]).forEach(p=>{ S.planPremissas[p.cultura+'|'+(p.ciclo==='safrinha'?'safrinha':'safra')]={prod:(p.prod_kgha!=null?String(p.prod_kgha).replace('.',','):''), preco:(p.preco!=null?String(p.preco).replace('.',','):''), un:p.unidade_venda||'sc'}; }); }
+    }catch(e){ S.planPremErr=true; console.warn('plan_premissas',e); }
+    /* ----- CRONOGRAMA IDEAL (janelas por cultura×ciclo×regime; config por safra) ----- */
+    try{ const r=await SB.from('config').select('valor').eq('chave','crono_ideal_'+SAFRA).single();
+      S.planCrono=(r.data&&r.data.valor)?JSON.parse(r.data.valor):[];
+    }catch(e){ S.planCrono=S.planCrono||[]; }
     try{ const r=await SB.from('funcionarios').select('id,nome,tipo,ativo').order('nome'); if(!r.error) S.funcionarios=(r.data||[]); }catch(e){ console.warn('funcionarios',e); }
 
     /* ----- PLANEJAMENTO da safra ----- */
     try{
       const r=await SB.from('planejamento').select('*').eq('safra',SAFRA).order('id',{ascending:true});
-      if(!r.error) S.planejamento=(r.data||[]).map(p=>({id:p.id, lote:p.lote, tipoAtiv:p.tipo_ativ, epoca:p.epoca||'', dataPrev:p.data_prev||'', estadio:p.estadio||'', cultura:p.cultura||'', produtos:p.produtos||[], custos:p.custos||[], obs:p.obs||'', sementeKgha:p.semente_kgha, areaParcial:p.area_parcial, condicional:!!p.condicional, ordem:(p.ordem!=null?p.ordem:null), status:p.status||'planejado', comandaCodigo:p.comanda_codigo||''}));
+      if(!r.error) S.planejamento=(r.data||[]).map(p=>({id:p.id, lote:p.lote, tipoAtiv:p.tipo_ativ, epoca:p.epoca||'', dataPrev:p.data_prev||'', estadio:p.estadio||'', cultura:p.cultura||'', ciclo:(p.ciclo==='safrinha'?'safrinha':'safra'), produtos:p.produtos||[], custos:p.custos||[], obs:p.obs||'', sementeKgha:p.semente_kgha, areaParcial:p.area_parcial, condicional:!!p.condicional, ordem:(p.ordem!=null?p.ordem:null), status:p.status||'planejado', comandaCodigo:p.comanda_codigo||''}));
     }catch(e){ console.warn('planejamento',e); }
 
     /* ----- COTAÇÕES (por safra) + config (dólar) ----- */
@@ -4160,6 +5137,7 @@ async function bootSupabase(){
     const h=new URLSearchParams(location.hash.slice(1));
     const at=h.get('at'), rt=h.get('rt'); const sf=h.get('safra'); if(sf) SAFRA=sf;
     if(h.get('view')==='comanda'){ _VIEWCOD=h.get('cod')||null; _VIEWVIA=h.get('via')||'auto'; }
+    else{ _restaurarEstadoNav(); }   // volta pra onde o usuário estava (view/aba/filtros) — F5 sempre recarrega a página toda
     if(at&&rt){ await SB.auth.setSession({ access_token:at, refresh_token:rt }); history.replaceState(null,'',location.pathname+location.search); }
   }catch(e){ console.warn('handoff sessão',e); }
   // já tem sessão salva? entra direto

@@ -209,11 +209,29 @@ const S={
     'S-metolacloro','Diquat','Propiconazol','Azoxistrobina','Ciproconazol','Tebuconazol','Clorotalonil',
     'Tiametoxam','Lambda-cialotrina','Diclosulam','Trifluralina','Cletodim','Flumioxazina','Fomesafem',
     'Clomazona','Metomil','Benzoato de emamectina','Clorfenapir','Clorimurom-etílico','Imazetapir',
-    'Malationa','2,4-D','Fipronil','Etefom','Bacillus thuringiensis','Trichoderma','Pochonia',
+    'Malationa','2,4-D','Glifosato','Glufosinato de amônio','Dicamba','Fipronil','Etefom','Bacillus thuringiensis','Trichoderma','Pochonia',
     'Purpureocillium','Bradyrhizobium japonicum'].map(n=>({nome:n})),
   culturas:[{nome:'Soja'},{nome:'Algodão'},{nome:'Feijão'},{nome:'Milheto'},{nome:'Braquiária'}],
   fabricantes:[{nome:'Syngenta'},{nome:'Bayer'},{nome:'BASF'},{nome:'Corteva'},{nome:'FMC'},{nome:'UPL'},{nome:'Adama'},{nome:'Nufarm'},{nome:'Ourofino'}],
   safras:[{nome:'2024/2025',ano:2025},{nome:'2025/2026',ano:2026}],
+  tecnologias:[
+    {nome:'Roundup Ready',sigla:'RR',moleculas:['Glifosato'],obs:'Tolerância ao glifosato'},
+    {nome:'GlyTol',sigla:'GT',moleculas:['Glifosato'],obs:'Tolerância ao glifosato (algodão)'},
+    {nome:'LibertyLink',sigla:'LL',moleculas:['Glufosinato de amônio'],obs:'Tolerância ao glufosinato'},
+    {nome:'Enlist',sigla:'E',moleculas:['2,4-D','Glifosato','Glufosinato de amônio'],obs:'Tolerância a 2,4-D colina + glifosato + glufosinato'},
+    {nome:'Xtend (dicamba)',sigla:'XT',moleculas:['Dicamba','Glifosato'],obs:'Tolerância a dicamba + glifosato'},
+    {nome:'Intacta (Bt)',sigla:'INT',moleculas:[],obs:'Controle de lagartas Bt (soja)'},
+    {nome:'Bollgard II',sigla:'BG2',moleculas:[],obs:'Bt 2 proteínas — lagartas (algodão)'},
+    {nome:'Bollgard 3',sigla:'BG3',moleculas:[],obs:'Bt 3 proteínas (inc. Vip3A) — algodão'},
+    {nome:'WideStrike',sigla:'WS',moleculas:[],obs:'Bt 2 proteínas — lagartas (algodão)'},
+    {nome:'WideStrike 3',sigla:'WS3',moleculas:[],obs:'Bt 3 proteínas (algodão)'},
+    {nome:'TwinLink',sigla:'TL',moleculas:[],obs:'Bt 2 proteínas — lagartas (algodão)'},
+    {nome:'TwinLink Plus',sigla:'STP',moleculas:[],obs:'Bt 3 proteínas (algodão)'},
+    {nome:'VT PRO',sigla:'VTP',moleculas:[],obs:'Bt — lagartas (milho)'},
+    {nome:'Viptera (Vip3A)',sigla:'VIP',moleculas:[],obs:'Bt Vip3A — amplo espectro (milho)'},
+    {nome:'PowerCore',sigla:'PWC',moleculas:[],obs:'Bt piramidado (milho)'},
+    {nome:'Convencional',sigla:'CONV',moleculas:[],obs:'Sem transgenia'},
+  ],
 };
 
 /* ===== parsers (composição estruturada) — portados do Almoxarifado ===== */
@@ -319,7 +337,8 @@ function loteThumb(g){
 
 /* ===================== ROTEAMENTO ===================== */
 let VIEW='geral', TAB='lotes', SEARCH='', GSEARCH='';
-let EDIT_PROD=null, EDIT_IDX=null;
+let EDIT_PROD=null, EDIT_IDX=null, EDIT_TEC=null, FORM_TEC_MOL=null;
+let EDIT_SUF=null, FORM_SUF_TRAITS=null, FORM_SUF_CULT=null;
 const ENTIDADES=[
   ['lotes','Lotes',()=>S.lotes.length],
   ['produtos','Produtos',()=>S.produtos.length],
@@ -332,6 +351,8 @@ const ENTIDADES=[
   ['formulacoes','Formulações',()=>S.formulacoes.length],
   ['principios','Princípios ativos',()=>S.principios.length],
   ['culturas','Culturas',()=>S.culturas.length],
+  ['tecnologias','Traits (tecnologia)',()=>(S.tecnologias||[]).length],
+  ['sufixos','Sufixos',()=>(S.sufixos||[]).length],
   ['fabricantes','Fabricantes',()=>S.fabricantes.length],
   ['safras','Safras',()=>S.safras.length],
   ['referencias','Referências',()=>S.referencias.length],
@@ -402,12 +423,14 @@ function cadHTML(){
   else if(TAB==='formulacoes') body=formulacoesHTML();
   else if(TAB==='principios') body=principiosHTML();
   else if(TAB==='culturas') body=culturasHTML();
+  else if(TAB==='tecnologias') body=tecnologiasHTML();
+  else if(TAB==='sufixos') body=sufixosHTML();
   else if(TAB==='fabricantes') body=fabricantesHTML();
   else if(TAB==='safras') body=safrasHTML();
   return '<div class="subnav">'+sub+'</div>'+body;
 }
 function bindTab(){
-  document.querySelectorAll('[data-tab]').forEach(b=>b.onclick=()=>{TAB=b.dataset.tab;SEARCH='';EDIT_PROD=null;EDIT_IDX=null;route();});
+  document.querySelectorAll('[data-tab]').forEach(b=>b.onclick=()=>{TAB=b.dataset.tab;SEARCH='';EDIT_PROD=null;EDIT_IDX=null;EDIT_TEC=null;FORM_TEC_MOL=null;EDIT_SUF=null;FORM_SUF_TRAITS=null;FORM_SUF_CULT=null;route();});
   if(TAB==='lotes') bindLotes();
   else if(TAB==='produtos') bindProdutos();
   else if(TAB==='tiposAtiv') bindTipos();
@@ -420,6 +443,8 @@ function bindTab(){
   else if(TAB==='formulacoes') bindFormulacoes();
   else if(TAB==='principios') bindPrincipios();
   else if(TAB==='culturas') bindCulturas();
+  else if(TAB==='tecnologias') bindTecnologias();
+  else if(TAB==='sufixos') bindSufixos();
   else if(TAB==='fabricantes') bindFabricantes();
   else if(TAB==='safras') bindSafras();
 }
@@ -541,6 +566,9 @@ function produtosHTML(){
         +'<label id="iSemEmbWrap">Sementes por embalagem <input type="number" id="iSemEmb" min="0" step="any" value="'+(e&&e.sementesEmb!=null?e.sementesEmb:'')+'" placeholder="big bag 5.000.000 · saco 200.000"></label>'
         +'<label id="iPmsWrap">PMS ref. — g/1000 sem. <input type="number" id="iPms" min="0" step="any" value="'+(e&&e.pms!=null?e.pms:'')+'" placeholder="opcional (o real vem na entrega)"></label>'
       +'</div>'
+      +'<label id="iSufWrap">Tecnologia <span class="sub" style="font-weight:400">— escolha o sufixo; o pacote de traits e o vínculo com os herbicidas vêm juntos</span>'
+        +'<select id="iSufixo"></select></label>'
+        +'<div id="iSufInfo" class="sub" style="margin-top:4px"></div>'
     +'</div>'
     +'<label>Estoque mínimo (ref.) <input type="number" id="iMin" min="0" step="any" value="'+(e?e.estoqueMin:'')+'" placeholder="0"></label>'
     +'<div class="formactions"><button class="btn success" id="iSalvar">'+(e?'Salvar alterações':'Cadastrar produto')+'</button>'+(e?'<button class="btn ghost" id="iCancel">Cancelar</button>':'')+'<span class="fmsg" id="iMsg"></span></div>'
@@ -588,6 +616,30 @@ function syncAtivos(){
     conc:r.querySelector('.aConc').value!==''?parseFloat(r.querySelector('.aConc').value):null,unidade:r.querySelector('.aUn').value}));
 }
 function _proxCodProduto(){ let mx=0; (S.produtos||[]).forEach(p=>{ const n=parseInt(String(p.codigo).replace(/\D/g,''),10); if(!isNaN(n)&&n>mx) mx=n; }); return String(mx+1); }
+/* ---- sufixo de tecnologia no form de semente ---- */
+function _sufParaCultura(cul){ return (S.sufixos||[]).filter(s=>!cul || !(s.culturas&&s.culturas.length) || s.culturas.includes(cul)); }
+function _sufMoleculas(suf){ const set=new Set(); (suf&&suf.traits||[]).forEach(tn=>{ const t=(S.tecnologias||[]).find(x=>x.nome===tn); if(t)(t.moleculas||[]).forEach(m=>set.add(m)); }); return [...set]; }
+function _sufObj(sigla, cul){ const arr=_sufParaCultura(cul).filter(s=>s.sigla===sigla); return arr[0]||(S.sufixos||[]).find(s=>s.sigla===sigla)||null; }
+function _sufRepop(keep){   // reconstrói o <select> de sufixo pela cultura atual
+  const sel=$('iSufixo'); if(!sel) return;
+  const cul=$('iCultura')?$('iCultura').value:'';
+  const atual=(keep!=null?keep:sel.value)||'';
+  const sufs=_sufParaCultura(cul);
+  sel.innerHTML='<option value="">— sem tecnologia / convencional —</option>'
+    +sufs.map(s=>'<option value="'+esc(s.sigla)+'"'+(s.sigla===atual?' selected':'')+'>'+esc(s.sigla)+(s.nome?' — '+esc(s.nome):'')+(s.detentora?' ('+esc(s.detentora)+')':'')+'</option>').join('');
+  _sufInfo();
+}
+function _sufInfo(){   // mostra o pacote (traits) + moléculas + prévia "variedade + sufixo"
+  const box=$('iSufInfo'); if(!box) return;
+  const sel=$('iSufixo'); const cul=$('iCultura')?$('iCultura').value:'';
+  const suf=sel&&sel.value?_sufObj(sel.value,cul):null;
+  const variedade=($('iNome')?$('iNome').value.trim():'')||'(variedade)';
+  if(!suf){ box.innerHTML='<span class="sub">Convencional / sem tecnologia. No sistema aparece só: <b>'+esc(variedade)+'</b></span>'; return; }
+  const mol=_sufMoleculas(suf);
+  box.innerHTML='<div><b>Pacote:</b> '+((suf.traits||[]).map(esc).join(' · ')||'—')+'</div>'
+    +'<div><b>Tolera:</b> '+(mol.length?mol.map(esc).join(' · '):'nenhum herbicida')+(suf.detentora?' &nbsp;·&nbsp; <b>Detentora:</b> '+esc(suf.detentora):'')+'</div>'
+    +'<div style="margin-top:2px">No sistema aparece como: <b>'+esc(variedade)+' '+esc(suf.sigla)+'</b></div>';
+}
 function _semToggle(){   // mostra embalagem/sementes-por-emb só na certificada; salva é kg
   const org=$('iSemente')?$('iSemente').value:'';
   const cert=(org==='certificada');
@@ -610,10 +662,14 @@ function bindProdutos(){
     if($('iClasseWrap')) $('iClasseWrap').style.display=isSem?'none':'';
     if($('iFormWrap')) $('iFormWrap').style.display=isSem?'none':'';
     if($('iUnWrap')) $('iUnWrap').style.display=isSem?'none':'';     // unidade derivada da origem/embalagem
-    if(isSem) _semToggle();};
+    if(isSem){ _semToggle(); const _ed=EDIT_PROD?getProd(EDIT_PROD):null;
+      _sufRepop(($('iSufixo')&&$('iSufixo').value)?$('iSufixo').value:((_ed&&_ed.sufixo)||'')); }};
   $('iTipo').addEventListener('change',upd);
   $('iClasse').addEventListener('input',upd);
   { const se=$('iSemente'); if(se) se.addEventListener('change',_semToggle); const em=$('iEmb'); if(em) em.addEventListener('change',_semToggle); }
+  { const cu=$('iCultura'); if(cu) cu.addEventListener('change',()=>_sufRepop(''));   // troca de cultura -> lista de sufixos daquela cultura
+    const sf=$('iSufixo'); if(sf) sf.addEventListener('change',_sufInfo);
+    const nm=$('iNome'); if(nm) nm.addEventListener('input',()=>{ if($('iSufInfo')) _sufInfo(); }); }
   $('iSalvar').onclick=()=>{const m=$('iMsg');m.className='fmsg err';
     const nome=$('iNome').value.trim();if(!nome){m.textContent='Informe o nome.';return;}
     const tipo=$('iTipo').value,pf=perfilDe(tipo);const un=$('iUn').value;
@@ -633,11 +689,14 @@ function bindProdutos(){
     const semSementesEmb=(isSem&&semOrg==='certificada'&&$('iSemEmb')&&$('iSemEmb').value!=='')?parseFloat($('iSemEmb').value):null;
     const semPms=(isSem&&$('iPms')&&$('iPms').value!=='')?parseFloat($('iPms').value):null;
     const semCultura=isSem&&$('iCultura')?$('iCultura').value:'';
+    const semSufixo=isSem&&$('iSufixo')?$('iSufixo').value:'';                         // sigla escolhida
+    const _sufSel=semSufixo?_sufObj(semSufixo,semCultura):null;
+    const semTecs=_sufSel?(_sufSel.traits||[]).slice():[];                              // traits derivados do sufixo (retrocompat)
     const unFinal=isSem?((semOrg==='salva')?'kg':((semEmb==='saco')?'saco':'big bag')):un;   // unidade derivada p/ semente
     const fields={nome,codigo:cod,tipo,classe:isSem?'':(classeV||(TIPO_CLASSES[tipo]||['—'])[0]),
       perfil:pf,unidade:unFinal,formCod:isSem?'':$('iForm').value,ativos:isSem?[]:ativos,garantias:isSem?[]:garantias,compTexto:isSem?'':compTexto,comanda:(showCom&&cmpEl)?cmpEl.value:'',
       compRaw:isSem?'':((_ed?_ed.compRaw:'')||''),precoRef:parseFloat($('iPreco').value)||0,estoqueMin:parseFloat($('iMin').value)||0,
-      sementeTipo:isSem?semOrg:'',cultura:semCultura,sementeEmb:semEmb,sementesEmb:semSementesEmb,pms:semPms,fabricante:($('iFab')?$('iFab').value.trim():'')};
+      sementeTipo:isSem?semOrg:'',cultura:semCultura,sementeEmb:semEmb,sementesEmb:semSementesEmb,pms:semPms,tecnologias:isSem?semTecs:[],sufixo:isSem?semSufixo:'',fabricante:($('iFab')?$('iFab').value.trim():'')};
     if(_ed){Object.assign(_ed,fields);EDIT_PROD=null;}
     else {fields.formRaw='';fields.local='';S.produtos.push(Object.assign({id:U('pr')},fields));}
     salvarAbaSB('produtos',true);   // persiste no banco automaticamente
@@ -716,6 +775,8 @@ function maquinasHTML(){
   return '<div class="cadwrap" style="margin-bottom:18px"><div class="cadhead"><h2>'+(e?'Editar máquina':'Nova máquina / veículo')+'</h2></div><div class="fcol">'
     +fichaForm('m',e,MAQ_CATS,'TRA-001')
     +'<div class="two"><label>Consumo ref. (L/h) <input type="number" id="mCons" step="any" value="'+(e&&e.consumoRef?e.consumoRef:'')+'" placeholder="opcional"></label><label>Faixa efetiva (m) <input type="number" id="mFaixa" step="any" value="'+(e&&(e.faixaM!=null?e.faixaM:e.faixa_m)!=null&&(e.faixaM!=null?e.faixaM:e.faixa_m)!==''?(e.faixaM!=null?e.faixaM:e.faixa_m):'')+'" placeholder="autopropelido de aplicação, ex.: 27.30"></label></div>'
+    +'<div class="sectit" style="margin-top:6px">Depreciação <span class="sub" style="font-weight:400">(alimenta o custo fixo — não-caixa)</span></div>'
+    +'<div class="three"><label>Valor de aquisição (R$) <input type="number" id="mValor" step="any" value="'+(e&&e.valorAquisicao!=null?e.valorAquisicao:'')+'" placeholder="opcional"></label><label>Vida útil (anos) <input type="number" id="mVida" step="any" value="'+(e&&e.vidaUtilAnos!=null?e.vidaUtilAnos:'')+'" placeholder="ex.: 10"></label><label>Residual (%) <input type="number" id="mResid" step="any" value="'+(e&&e.residualPct!=null&&e.residualPct!==''?e.residualPct:'')+'" placeholder="0"></label></div>'
     +'<div class="formactions"><button class="btn success sm" id="mSalvar">'+(e?'Salvar':'Adicionar')+'</button>'+(e?'<button class="btn ghost sm" id="mCancel">Cancelar</button>':'')+'<span class="fmsg" id="mMsg"></span></div>'
     +'</div></div>'
     +'<div class="toolbar"><span class="lbl">Categoria</span>'+filtroCats(S.maquinas,MFILT,'mf')+'</div>'
@@ -725,6 +786,7 @@ function maquinasHTML(){
 function bindMaquinas(){
   $('mSalvar').onclick=()=>{const m=$('mMsg');m.className='fmsg err';const f=readFicha('m');if(!f.nome){m.textContent='Informe a descrição.';return;}
     f.cor=(EDIT_IDX!=null?S.maquinas[EDIT_IDX].cor:'')||'';f.consumoRef=parseFloat($('mCons').value)||null;f.faixaM=parseFloat($('mFaixa').value)||null;
+    f.valorAquisicao=parseFloat($('mValor').value)||null;f.vidaUtilAnos=parseFloat($('mVida').value)||null;f.residualPct=($('mResid').value!==''?parseFloat($('mResid').value):0)||0;
     if(EDIT_IDX!=null){Object.assign(S.maquinas[EDIT_IDX],f);EDIT_IDX=null;}else S.maquinas.push(f);salvarAbaSB('maquinas',true);route();};
   if($('mCancel'))$('mCancel').onclick=()=>{EDIT_IDX=null;route();};
   document.querySelectorAll('[data-eidx]').forEach(b=>b.onclick=()=>{EDIT_IDX=+b.dataset.eidx;window.scrollTo(0,0);route();});
@@ -746,6 +808,8 @@ function implementosHTML(){
   return '<div class="cadwrap" style="margin-bottom:18px"><div class="cadhead"><h2>'+(e?'Editar implemento':'Novo implemento')+'</h2></div><div class="fcol">'
     +fichaForm('p',e,IMP_CATS,'IMP-001')
     +'<label>Largura de trabalho (m) <input type="number" id="pLarg" step="any" value="'+(e&&e.larguraTrab?e.larguraTrab:'')+'" placeholder="faixa de trabalho do implemento, ex.: 6.5"></label>'
+    +'<div class="sectit" style="margin-top:6px">Depreciação <span class="sub" style="font-weight:400">(alimenta o custo fixo — não-caixa)</span></div>'
+    +'<div class="three"><label>Valor de aquisição (R$) <input type="number" id="pValor" step="any" value="'+(e&&e.valorAquisicao!=null?e.valorAquisicao:'')+'" placeholder="opcional"></label><label>Vida útil (anos) <input type="number" id="pVida" step="any" value="'+(e&&e.vidaUtilAnos!=null?e.vidaUtilAnos:'')+'" placeholder="ex.: 10"></label><label>Residual (%) <input type="number" id="pResid" step="any" value="'+(e&&e.residualPct!=null&&e.residualPct!==''?e.residualPct:'')+'" placeholder="0"></label></div>'
     +'<div class="formactions"><button class="btn success sm" id="pSalvar">'+(e?'Salvar':'Adicionar')+'</button>'+(e?'<button class="btn ghost sm" id="pCancel">Cancelar</button>':'')+'<span class="fmsg" id="pMsg"></span></div>'
     +'</div></div>'
     +'<div class="toolbar"><span class="lbl">Categoria</span>'+filtroCats(S.implementos,IFILT,'if')+'</div>'
@@ -757,6 +821,7 @@ function bindImplementos(){
     delete f.chassi; // implemento usa chassi se houver; mantemos
     f.chassi=$('pChassi').value.trim();
     f.larguraTrab=parseFloat($('pLarg').value)||null;
+    f.valorAquisicao=parseFloat($('pValor').value)||null;f.vidaUtilAnos=parseFloat($('pVida').value)||null;f.residualPct=($('pResid').value!==''?parseFloat($('pResid').value):0)||0;
     if(EDIT_IDX!=null){Object.assign(S.implementos[EDIT_IDX],f);EDIT_IDX=null;}else S.implementos.push(f);salvarAbaSB('implementos',true);route();};
   if($('pCancel'))$('pCancel').onclick=()=>{EDIT_IDX=null;route();};
   document.querySelectorAll('[data-eidx]').forEach(b=>b.onclick=()=>{EDIT_IDX=+b.dataset.eidx;window.scrollTo(0,0);route();});
@@ -948,6 +1013,113 @@ function bindCulturas(){
     S.culturas.push({nome});salvarAbaSB('culturas',true);route();};
   document.querySelectorAll('[data-del-cul]').forEach(b=>b.onclick=()=>{S.culturas.splice(+b.dataset.delCul,1);salvarAbaSB('culturas',true);route();});
 }
+/* ----- TECNOLOGIAS DE SEMENTE (não é específica de cultura; vincula molécula(s) do herbicida tolerado) ----- */
+function _tecMolRender(){ const box=$('tecMolTags'); if(!box) return;
+  box.innerHTML=(FORM_TEC_MOL||[]).map((mm,i)=>'<span class="tag" style="display:inline-flex;align-items:center;gap:4px;background:var(--bg4,#162540);border:1px solid var(--border2,#2c4a78);border-radius:14px;padding:2px 8px;margin:2px 4px 2px 0;font-size:12px">'+esc(mm)+' <span data-rm-mol="'+i+'" title="remover" style="cursor:pointer;color:var(--err,#ff4444)">✕</span></span>').join('')||'<span class="sub">nenhuma (ex.: Bt não tolera herbicida)</span>';
+  box.querySelectorAll('[data-rm-mol]').forEach(b=>b.onclick=()=>{FORM_TEC_MOL.splice(+b.dataset.rmMol,1);_tecMolRender();}); }
+function _tecMolAdd(){ const inp=$('tecMolInput'); if(!inp) return; const v=inp.value.trim(); if(!v) return;
+  FORM_TEC_MOL=FORM_TEC_MOL||[];
+  if(!FORM_TEC_MOL.some(mm=>mm.toLowerCase()===v.toLowerCase())) FORM_TEC_MOL.push(v);
+  inp.value=''; _tecMolRender(); inp.focus(); }
+function tecnologiasHTML(){
+  S.tecnologias=S.tecnologias||[];
+  const q=SEARCH.toLowerCase();
+  const lista=S.tecnologias.map((t,idx)=>({t,idx})).filter(o=>!q||(o.t.nome+' '+(o.t.sigla||'')+' '+(o.t.obs||'')+' '+((o.t.moleculas||[]).join(' '))).toLowerCase().includes(q))
+    .sort((a,b)=>a.t.nome.localeCompare(b.t.nome,'pt',{sensitivity:'base'}));
+  const ed=(EDIT_TEC!=null)?S.tecnologias[EDIT_TEC]:null;
+  if(FORM_TEC_MOL===null) FORM_TEC_MOL = (ed&&Array.isArray(ed.moleculas)) ? ed.moleculas.slice() : [];
+  const dlPA='<datalist id="dlPAtec">'+(S.principios||[]).map(p=>'<option value="'+esc(p.nome)+'">').join('')+'</datalist>';
+  const molTags=(FORM_TEC_MOL||[]).map((mm,i)=>'<span class="tag" style="display:inline-flex;align-items:center;gap:4px;background:var(--bg4,#162540);border:1px solid var(--border2,#2c4a78);border-radius:14px;padding:2px 8px;margin:2px 4px 2px 0;font-size:12px">'+esc(mm)+' <span data-rm-mol="'+i+'" title="remover" style="cursor:pointer;color:var(--err,#ff4444)">✕</span></span>').join('')||'<span class="sub">nenhuma (ex.: Bt não tolera herbicida)</span>';
+  const rows=lista.map(({t,idx})=>{ const mols=(t.moleculas||[]); const molHtml=mols.length?mols.map(mm=>'<span class="sub" style="background:var(--bg4,#162540);border-radius:10px;padding:1px 6px;margin-right:3px">'+esc(mm)+'</span>').join(''):'<span class="sub">—</span>';
+    return '<tr'+(idx===EDIT_TEC?' style="outline:1px solid var(--ok,#00c896)"':'')+'><td class="nome">'+esc(t.nome)+(t.sigla?' <span class="sub">('+esc(t.sigla)+')</span>':'')+'</td><td class="sub">'+esc(t.tipo||'—')+'</td><td class="sub">'+esc(t.detentora||'—')+'</td><td>'+molHtml+'</td><td class="sub">'+esc(t.obs||'')+'</td><td style="white-space:nowrap"><span class="x" data-edit-tec="'+idx+'" title="editar" style="cursor:pointer;margin-right:8px">✎</span><span class="x xr" data-del-tec="'+idx+'">✕</span></td></tr>'; }).join('');
+  return dlPA+'<div class="regform"><div class="sectit">'+(ed?'Editar tecnologia':'Nova tecnologia de semente')+'</div><div class="formactions" style="flex-wrap:wrap;gap:8px">'
+    +'<input class="search" id="tecNome" placeholder="nome (ex.: Roundup Ready)" value="'+(ed?esc(ed.nome):'')+'" style="min-width:200px">'
+    +'<input class="search" id="tecSigla" placeholder="sigla (ex.: RR)" value="'+(ed?esc(ed.sigla||''):'')+'" style="min-width:90px">'
+    +'<select id="tecTipo" class="search" style="min-width:120px" title="tipo do trait"><option value="">tipo…</option>'+['herbicida','bt','nativo','convencional'].map(tp=>'<option'+(ed&&ed.tipo===tp?' selected':'')+'>'+tp+'</option>').join('')+'</select>'
+    +'<input class="search" id="tecDetentora" list="dlDetentora" placeholder="detentora" value="'+(ed?esc(ed.detentora||''):'')+'" style="min-width:130px">'
+    +'<datalist id="dlDetentora"><option value="Bayer"><option value="Corteva"><option value="BASF"><option value="Syngenta"><option value="TMG"><option value="Embrapa"></datalist>'
+    +'<input class="search" id="tecObs" placeholder="o que confere (opcional)" value="'+(ed?esc(ed.obs||''):'')+'" style="min-width:220px">'
+    +'</div>'
+    +'<div class="sectit" style="margin-top:8px">Moléculas de herbicida toleradas <span class="sub" style="font-weight:400">(a que a tecnologia é resistente — nenhuma, uma ou várias)</span></div>'
+    +'<div class="formactions" style="gap:8px"><input class="search" id="tecMolInput" list="dlPAtec" placeholder="ex.: Glifosato / Glufosinato de amônio / 2,4-D / Dicamba" style="min-width:280px"><button class="btn sm" id="tecMolAddBtn">+ molécula</button></div>'
+    +'<div id="tecMolTags" style="margin:4px 0 8px">'+molTags+'</div>'
+    +'<div class="formactions" style="gap:8px"><button class="btn success sm" id="tecAdd">'+(ed?'Salvar':'Adicionar')+'</button>'
+    +(ed?'<button class="btn sm" id="tecCancel">Cancelar</button>':'')
+    +'<span class="fmsg" id="tecMsg"></span></div></div>'
+    +'<div class="toolbar"><input class="search" id="qSearch" placeholder="🔎 buscar tecnologia / molécula…" value="'+esc(SEARCH)+'"></div>'
+    +'<table class="tbl"><thead><tr><th>Trait ('+lista.length+')</th><th>Tipo</th><th>Detentora</th><th>Molécula(s) tolerada(s)</th><th>Confere</th><th></th></tr></thead><tbody>'+(rows||'<tr><td colspan="6" class="empty">Nenhuma.</td></tr>')+'</tbody></table>';
+}
+function bindTecnologias(){
+  S.tecnologias=S.tecnologias||[];
+  if($('tecMolAddBtn'))$('tecMolAddBtn').onclick=_tecMolAdd;
+  if($('tecMolInput'))$('tecMolInput').addEventListener('keydown',ev=>{ if(ev.key==='Enter'){ev.preventDefault();_tecMolAdd();} });
+  document.querySelectorAll('[data-rm-mol]').forEach(b=>b.onclick=()=>{FORM_TEC_MOL.splice(+b.dataset.rmMol,1);_tecMolRender();});
+  $('tecAdd').onclick=()=>{const m=$('tecMsg');m.className='fmsg err';const nome=$('tecNome').value.trim();if(!nome){m.textContent='Informe o nome.';return;}
+    const dup=S.tecnologias.some((t,i)=>i!==EDIT_TEC&&t.nome.toLowerCase()===nome.toLowerCase());
+    if(dup){m.textContent='Já existe.';return;}
+    const mols=(FORM_TEC_MOL||[]).slice();
+    mols.forEach(mm=>{ if(!(S.principios||[]).some(p=>p.nome.toLowerCase()===mm.toLowerCase())){ S.principios=S.principios||[]; S.principios.push({nome:mm}); } });   // molécula nova entra nos princípios (fica vinculável)
+    const reg={nome,sigla:$('tecSigla').value.trim()||'',tipo:($('tecTipo')?$('tecTipo').value:'')||'',detentora:($('tecDetentora')?$('tecDetentora').value.trim():'')||'',moleculas:mols,obs:$('tecObs').value.trim()||''};
+    if(EDIT_TEC!=null){Object.assign(S.tecnologias[EDIT_TEC],reg);EDIT_TEC=null;} else {S.tecnologias.push(reg);}
+    FORM_TEC_MOL=null;
+    salvarAbaSB('tecnologias',true);
+    if(mols.length) salvarAbaSB('principios',true);   // persiste as moléculas novas
+    route();};
+  if($('tecCancel'))$('tecCancel').onclick=()=>{EDIT_TEC=null;FORM_TEC_MOL=null;route();};
+  document.querySelectorAll('[data-edit-tec]').forEach(b=>b.onclick=()=>{EDIT_TEC=+b.dataset.editTec;FORM_TEC_MOL=null;window.scrollTo(0,0);route();});
+  document.querySelectorAll('[data-del-tec]').forEach(b=>b.onclick=()=>{if(EDIT_TEC===+b.dataset.delTec){EDIT_TEC=null;FORM_TEC_MOL=null;}S.tecnologias.splice(+b.dataset.delTec,1);salvarAbaSB('tecnologias',true);route();});
+  bindSearch();
+}
+/* ----- SUFIXOS (pacotes comerciais: sigla -> traits; moléculas derivadas) ----- */
+function _sufMolPreview(){
+  const box=$('sufMolPrev'); if(!box) return;
+  const chosen=[...document.querySelectorAll('.sufTrait:checked')].map(x=>x.value);
+  const set=new Set(); chosen.forEach(tn=>{ const t=(S.tecnologias||[]).find(x=>x.nome===tn); if(t)(t.moleculas||[]).forEach(m=>set.add(m)); });
+  box.innerHTML='<b>Tolera (derivado dos traits):</b> '+([...set].map(esc).join(' · ')||'nenhum herbicida');
+}
+function sufixosHTML(){
+  S.sufixos=S.sufixos||[]; S.tecnologias=S.tecnologias||[];
+  const q=SEARCH.toLowerCase();
+  const ed=(EDIT_SUF!=null)?S.sufixos[EDIT_SUF]:null;
+  const curTraits=(ed&&Array.isArray(ed.traits))?ed.traits:[];
+  const curCult=(ed&&Array.isArray(ed.culturas))?ed.culturas:[];
+  const traitsSorted=(S.tecnologias||[]).slice().sort((a,b)=>((a.tipo||'').localeCompare(b.tipo||''))||a.nome.localeCompare(b.nome,'pt',{sensitivity:'base'}));
+  const traitChk=traitsSorted.map(t=>'<label style="display:inline-flex;align-items:center;gap:5px;font-weight:400;white-space:nowrap" title="'+esc(t.nome)+((t.moleculas||[]).length?' — '+esc((t.moleculas||[]).join(', ')):'')+'"><input type="checkbox" class="sufTrait" value="'+esc(t.nome)+'" '+(curTraits.includes(t.nome)?'checked':'')+'>'+esc(t.sigla||t.nome)+(t.tipo?' <span class="sub">·'+esc(t.tipo)+'</span>':'')+'</label>').join('') || '<span class="sub">Nenhum trait — cadastre na aba Traits.</span>';
+  const cultChk=(S.culturas||[]).map(c=>'<label style="display:inline-flex;align-items:center;gap:5px;font-weight:400"><input type="checkbox" class="sufCult" value="'+esc(c.nome)+'" '+(curCult.includes(c.nome)?'checked':'')+'>'+esc(c.nome)+'</label>').join('') || '<span class="sub">Cadastre culturas.</span>';
+  const lista=S.sufixos.map((s,idx)=>({s,idx})).filter(o=>!q||((o.s.sigla||'')+' '+(o.s.nome||'')+' '+(o.s.detentora||'')+' '+((o.s.traits||[]).join(' '))+' '+((o.s.culturas||[]).join(' '))).toLowerCase().includes(q));
+  const rows=lista.map(({s,idx})=>{ const set=new Set(); (s.traits||[]).forEach(tn=>{ const t=(S.tecnologias||[]).find(x=>x.nome===tn); if(t)(t.moleculas||[]).forEach(m=>set.add(m)); }); const mol=[...set];
+    return '<tr'+(idx===EDIT_SUF?' style="outline:1px solid var(--ok,#00c896)"':'')+'><td class="nome">'+esc(s.sigla)+(s.nome?' <span class="sub">'+esc(s.nome)+'</span>':'')+'</td><td class="sub">'+esc(s.detentora||'—')+'</td><td class="sub">'+esc((s.culturas||[]).join(', ')||'—')+'</td><td class="sub">'+esc((s.traits||[]).join(' · ')||'—')+'</td><td>'+(mol.length?mol.map(m=>'<span class="sub" style="background:var(--bg4,#162540);border-radius:10px;padding:1px 6px;margin-right:3px">'+esc(m)+'</span>').join(''):'<span class="sub">—</span>')+'</td><td style="white-space:nowrap"><span class="x" data-edit-suf="'+idx+'" title="editar" style="cursor:pointer;margin-right:8px">✎</span><span class="x xr" data-del-suf="'+idx+'">✕</span></td></tr>'; }).join('');
+  return '<div class="regform"><div class="sectit">'+(ed?'Editar sufixo':'Novo sufixo')+'</div>'
+    +'<div class="formactions" style="flex-wrap:wrap;gap:8px">'
+    +'<input class="search" id="sufSigla" placeholder="sigla (ex.: IPRO)" value="'+(ed?esc(ed.sigla||''):'')+'" style="min-width:110px">'
+    +'<input class="search" id="sufNome" placeholder="nome comercial (ex.: Intacta RR2 PRO)" value="'+(ed?esc(ed.nome||''):'')+'" style="min-width:230px">'
+    +'<input class="search" id="sufDetentora" list="dlDetSuf" placeholder="detentora" value="'+(ed?esc(ed.detentora||''):'')+'" style="min-width:130px">'
+    +'<datalist id="dlDetSuf"><option value="Bayer"><option value="Corteva"><option value="BASF"><option value="Syngenta"><option value="TMG"><option value="Embrapa"></datalist>'
+    +'<input class="search" id="sufObs" placeholder="obs (opcional)" value="'+(ed?esc(ed.obs||''):'')+'" style="min-width:180px"></div>'
+    +'<div class="sectit" style="margin-top:8px">Culturas</div><div style="display:flex;flex-wrap:wrap;gap:5px 14px;border:1px solid var(--border,#1f3354);border-radius:8px;padding:7px 9px">'+cultChk+'</div>'
+    +'<div class="sectit" style="margin-top:8px">Traits do pacote <span class="sub" style="font-weight:400">(marque os que compõem o sufixo — as moléculas vêm deles)</span></div>'
+    +'<div id="sufTraitBox" style="display:flex;flex-wrap:wrap;gap:5px 14px;border:1px solid var(--border,#1f3354);border-radius:8px;padding:7px 9px">'+traitChk+'</div>'
+    +'<div id="sufMolPrev" class="sub" style="margin:4px 0 8px"></div>'
+    +'<div class="formactions" style="gap:8px"><button class="btn success sm" id="sufAdd">'+(ed?'Salvar':'Adicionar')+'</button>'+(ed?'<button class="btn sm" id="sufCancel">Cancelar</button>':'')+'<span class="fmsg" id="sufMsg"></span></div></div>'
+    +'<div class="toolbar"><input class="search" id="qSearch" placeholder="🔎 buscar sufixo / detentora / trait…" value="'+esc(SEARCH)+'"></div>'
+    +'<table class="tbl"><thead><tr><th>Sufixo ('+lista.length+')</th><th>Detentora</th><th>Culturas</th><th>Traits (pacote)</th><th>Tolera</th><th></th></tr></thead><tbody>'+(rows||'<tr><td colspan="6" class="empty">Nenhum.</td></tr>')+'</tbody></table>';
+}
+function bindSufixos(){
+  S.sufixos=S.sufixos||[];
+  document.querySelectorAll('.sufTrait').forEach(c=>c.addEventListener('change',_sufMolPreview));
+  _sufMolPreview();
+  $('sufAdd').onclick=()=>{ const m=$('sufMsg'); m.className='fmsg err';
+    const sigla=$('sufSigla').value.trim(); if(!sigla){ m.textContent='Informe a sigla.'; return; }
+    const traits=[...document.querySelectorAll('.sufTrait:checked')].map(x=>x.value);
+    const culturas=[...document.querySelectorAll('.sufCult:checked')].map(x=>x.value);
+    const reg={sigla, nome:$('sufNome').value.trim()||'', detentora:$('sufDetentora').value.trim()||'', culturas, traits, obs:$('sufObs').value.trim()||''};
+    if(EDIT_SUF!=null){ Object.assign(S.sufixos[EDIT_SUF],reg); EDIT_SUF=null; } else { S.sufixos.push(reg); }
+    salvarAbaSB('sufixos',true); route(); };
+  if($('sufCancel')) $('sufCancel').onclick=()=>{ EDIT_SUF=null; route(); };
+  document.querySelectorAll('[data-edit-suf]').forEach(b=>b.onclick=()=>{ EDIT_SUF=+b.dataset.editSuf; window.scrollTo(0,0); route(); });
+  document.querySelectorAll('[data-del-suf]').forEach(b=>b.onclick=()=>{ if(EDIT_SUF===+b.dataset.delSuf) EDIT_SUF=null; S.sufixos.splice(+b.dataset.delSuf,1); salvarAbaSB('sufixos',true); route(); });
+  bindSearch();
+}
 /* ----- FABRICANTES ----- */
 function fabricantesHTML(){
   S.fabricantes=S.fabricantes||[];
@@ -1026,9 +1198,9 @@ function _regParaBanco(ent, r){
   const num=v=>{ if(v===''||v==null) return null; const s=String(v).indexOf(',')>=0?String(v).replace(/\./g,'').replace(',','.'):String(v); const n=parseFloat(s); return isNaN(n)?null:n; };
   switch(ent){
     case 'lotes': return {cod:r.cod??null, nome:r.nome, area:num(r.area)||0, base:!!r.base, partes:r.partes||[], geom:r.geom||null, disposicao:r.disposicao||'colados'};
-    case 'produtos': return {codigo:r.codigo??null, nome:r.nome, comp:r.compRaw||r.comp||null, formulacao:r.formCod||r.formulacao||null, tipo:r.tipo||null, classe:r.classe||null, unidade:r.unidade||null, preco:num(r.precoRef)||num(r.preco)||0, estoque:num(r.estoque)||0, estoque_min:num(r.estoqueMin), comp_texto:r.compTexto||null, ativos:r.ativos||[], garantias:r.garantias||[], comanda:r.comanda||null, semente_tipo:r.sementeTipo||null, cultura:r.cultura||null, semente_emb:r.sementeEmb||null, sementes_emb:num(r.sementesEmb), pms:num(r.pms), fabricante:r.fabricante||null, validade:r.validade||null};
-    case 'maquinas': return {id:(r.id!=null?r.id:undefined), id_frota:r.idFrota||r.id_frota||null, nome:r.nome||null, categoria:r.categoria||null, marca:r.marca||null, modelo:r.modelo||null, chassi:r.chassi||null, cor:r.cor||null, ano:r.ano||null, estado:r.estado||null, consumo_ref:num(r.consumoRef), faixa_m:num(r.faixaM!=null?r.faixaM:r.faixa_m)};
-    case 'implementos': return {id:(r.id!=null?r.id:undefined), id_frota:r.idFrota||r.id_frota||null, nome:r.nome||null, categoria:r.categoria||null, marca:r.marca||null, modelo:r.modelo||null, chassi:r.chassi||null, cor:r.cor||null, ano:r.ano||null, estado:r.estado||null, largura_trabalho:num(r.larguraTrab!=null?r.larguraTrab:r.largura_trabalho)};
+    case 'produtos': return {codigo:r.codigo??null, nome:r.nome, comp:r.compRaw||r.comp||null, formulacao:r.formCod||r.formulacao||null, tipo:r.tipo||null, classe:r.classe||null, unidade:r.unidade||null, preco:num(r.precoRef)||num(r.preco)||0, estoque:num(r.estoque)||0, estoque_min:num(r.estoqueMin), comp_texto:r.compTexto||null, ativos:r.ativos||[], garantias:r.garantias||[], comanda:r.comanda||null, semente_tipo:r.sementeTipo||null, cultura:r.cultura||null, semente_emb:r.sementeEmb||null, sementes_emb:num(r.sementesEmb), pms:num(r.pms), tecnologias:r.tecnologias||[], sufixo:r.sufixo||null, fabricante:r.fabricante||null, validade:r.validade||null};
+    case 'maquinas': return {id:(r.id!=null?r.id:undefined), id_frota:r.idFrota||r.id_frota||null, nome:r.nome||null, categoria:r.categoria||null, marca:r.marca||null, modelo:r.modelo||null, chassi:r.chassi||null, cor:r.cor||null, ano:r.ano||null, estado:r.estado||null, consumo_ref:num(r.consumoRef), faixa_m:num(r.faixaM!=null?r.faixaM:r.faixa_m), valor_aquisicao:num(r.valorAquisicao), vida_util_anos:num(r.vidaUtilAnos), residual_pct:num(r.residualPct)};
+    case 'implementos': return {id:(r.id!=null?r.id:undefined), id_frota:r.idFrota||r.id_frota||null, nome:r.nome||null, categoria:r.categoria||null, marca:r.marca||null, modelo:r.modelo||null, chassi:r.chassi||null, cor:r.cor||null, ano:r.ano||null, estado:r.estado||null, largura_trabalho:num(r.larguraTrab!=null?r.larguraTrab:r.largura_trabalho), valor_aquisicao:num(r.valorAquisicao), vida_util_anos:num(r.vidaUtilAnos), residual_pct:num(r.residualPct)};
     case 'tiposAtiv': return {nome:r.nome, perfil:r.perfil||null, diario:r.diario||null, contador:r.contador||0, img:r.img||null};
     case 'colaboradores': return {nome:r.nome, funcao:r.funcao||null, vinculo:r.vinculo||null, periodo:r.periodo||null};
     case 'fornecedores': return {nome:r.nome, razao_social:r.razao_social||null, cnpj:r.cnpj||null, contato:r.contato||null, fone:r.fone||null};
@@ -1036,13 +1208,15 @@ function _regParaBanco(ent, r){
     case 'formulacoes': return {cod:r.cod, nome:r.nome||null, grupo:r.grupo||null};
     case 'principios': return {nome:(typeof r==='string'?r:r.nome)};
     case 'culturas': return {nome:r.nome};
+    case 'tecnologias': return {nome:r.nome, sigla:r.sigla||null, tipo:r.tipo||null, detentora:r.detentora||null, moleculas:r.moleculas||[], obs:r.obs||null};
+    case 'sufixos': return {sigla:r.sigla, nome:r.nome||null, detentora:r.detentora||null, culturas:r.culturas||[], traits:r.traits||[], obs:r.obs||null};
     case 'fabricantes': return {nome:r.nome};
     case 'safras': return {nome:r.nome, ano:r.ano||null};
     case 'referencias': return {nome:r.nome||null, tipo:r.tipo||null, e:num(r.e), n:num(r.n)};
     default: return r;
   }
 }
-const _ENT_TAB={lotes:'lotes',produtos:'produtos',maquinas:'maquinas',implementos:'implementos',tiposAtiv:'tipos_atividade',colaboradores:'colaboradores',fornecedores:'fornecedores',unidades:'unidades',formulacoes:'formulacoes',principios:'principios',culturas:'culturas',fabricantes:'fabricantes',safras:'safras',referencias:'referencias'};
+const _ENT_TAB={lotes:'lotes',produtos:'produtos',maquinas:'maquinas',implementos:'implementos',tiposAtiv:'tipos_atividade',colaboradores:'colaboradores',fornecedores:'fornecedores',unidades:'unidades',formulacoes:'formulacoes',principios:'principios',culturas:'culturas',tecnologias:'tecnologias_semente',sufixos:'sufixos_semente',fabricantes:'fabricantes',safras:'safras',referencias:'referencias'};
 
 async function salvarAbaSB(ent, silencioso){
   if(!SB){ _statusSB('⚠️ Sem conexão','#e67e22'); return; }
@@ -1255,14 +1429,16 @@ function _statusSB(txt,cor){ let el=document.getElementById('sbStatus'); if(!el)
 /* mapeamento coleção(app) -> tabela(banco) e conversões */
 const _MAPA_CAD=[
   {col:'lotes', tab:'lotes', toApp:r=>({cod:r.cod,nome:r.nome,area:r.area,base:!!r.base,partes:r.partes||[],geom:r.geom||null,disposicao:r.disposicao||'colados'})},
-  {col:'produtos', tab:'produtos', toApp:r=>({id:r.id,codigo:r.codigo,nome:r.nome,tipo:r.tipo,classe:r.classe,unidade:r.unidade,perfil:perfilDe(r.tipo),precoRef:r.preco,estoque:r.estoque,estoqueMin:r.estoque_min,formCod:r.formulacao||'',compRaw:r.comp||'',compTexto:r.comp_texto||'',ativos:r.ativos||[],garantias:r.garantias||[],comanda:r.comanda||'',sementeTipo:r.semente_tipo||'',cultura:r.cultura||'',sementeEmb:r.semente_emb||'',sementesEmb:r.sementes_emb,pms:r.pms,fabricante:r.fabricante||'',validade:r.validade||null})},
-  {col:'maquinas', tab:'maquinas', toApp:r=>Object.assign({},r,{idFrota:r.id_frota!=null?r.id_frota:r.idFrota, faixaM:(r.faixa_m!=null?r.faixa_m:r.faixaM)})},
-  {col:'implementos', tab:'implementos', toApp:r=>Object.assign({},r,{idFrota:r.id_frota,larguraTrab:r.largura_trabalho})},
+  {col:'produtos', tab:'produtos', toApp:r=>({id:r.id,codigo:r.codigo,nome:r.nome,tipo:r.tipo,classe:r.classe,unidade:r.unidade,perfil:perfilDe(r.tipo),precoRef:r.preco,estoque:r.estoque,estoqueMin:r.estoque_min,formCod:r.formulacao||'',compRaw:r.comp||'',compTexto:r.comp_texto||'',ativos:r.ativos||[],garantias:r.garantias||[],comanda:r.comanda||'',sementeTipo:r.semente_tipo||'',cultura:r.cultura||'',sementeEmb:r.semente_emb||'',sementesEmb:r.sementes_emb,pms:r.pms,tecnologias:r.tecnologias||[],sufixo:r.sufixo||'',fabricante:r.fabricante||'',validade:r.validade||null})},
+  {col:'maquinas', tab:'maquinas', toApp:r=>Object.assign({},r,{idFrota:r.id_frota!=null?r.id_frota:r.idFrota, faixaM:(r.faixa_m!=null?r.faixa_m:r.faixaM), valorAquisicao:r.valor_aquisicao, vidaUtilAnos:r.vida_util_anos, residualPct:r.residual_pct})},
+  {col:'implementos', tab:'implementos', toApp:r=>Object.assign({},r,{idFrota:r.id_frota,larguraTrab:r.largura_trabalho, valorAquisicao:r.valor_aquisicao, vidaUtilAnos:r.vida_util_anos, residualPct:r.residual_pct})},
   {col:'colaboradores', tab:'colaboradores', toApp:r=>r},
   {col:'fornecedores', tab:'fornecedores', toApp:r=>r},
   {col:'unidades', tab:'unidades', toApp:r=>r},
   {col:'formulacoes', tab:'formulacoes', toApp:r=>r},
   {col:'culturas', tab:'culturas', toApp:r=>r},
+  {col:'tecnologias', tab:'tecnologias_semente', toApp:r=>({...r, moleculas:r.moleculas||[], tipo:r.tipo||'', detentora:r.detentora||''})},
+  {col:'sufixos', tab:'sufixos_semente', toApp:r=>({...r, culturas:r.culturas||[], traits:r.traits||[]})},
   {col:'fabricantes', tab:'fabricantes', toApp:r=>r},
   {col:'safras', tab:'safras', toApp:r=>r},
   {col:'referencias', tab:'referencias', toApp:r=>r},

@@ -84,7 +84,7 @@ async function boot(){
 async function entrar(){
   try{ const {data:c}=await SB.from('rh_config').select('*').eq('id','main').limit(1); if(c&&c[0]) CFG=c[0]; }catch(e){}
   if(!CFG.jornada) CFG.jornada={"1":[["07:00","12:00"],["13:30","18:00"]],"2":[["07:00","12:00"],["13:30","18:00"]],"3":[["07:00","12:00"],["13:30","18:00"]],"4":[["07:00","12:00"],["13:30","18:00"]],"5":[["07:00","12:00"],["13:30","18:00"]],"6":[["07:00","12:00"]],"0":[]};
-  try{ const {data:f}=await SB.from('funcionarios').select('id,nome,tipo,ativo').order('nome'); FUNCS=(f||[]).filter(x=>x.ativo!==false); }catch(e){ FUNCS=[]; }
+  try{ const {data:f}=await SB.from('funcionarios').select('id,nome,tipo,ativo,visivel_coleta').order('nome'); FUNCS=(f||[]).filter(x=>x.ativo!==false && x.visivel_coleta!==false); }catch(e){ FUNCS=[]; }
   try{ const {data:u}=await SB.auth.getUser(); USER_EMAIL=(u&&u.user&&u.user.email)||''; }catch(e){}
   STEP='data'; DATA=(()=>{const d=new Date();return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');})(); render();
 }
