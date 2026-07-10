@@ -3095,14 +3095,22 @@ function _rhFixoItens(){ const out=[];
     if(!(mes>0)) return;
     out.push({nome:f.nome, tipo:(f.tipo==='prolabore'?'Pró-labore':(f.tipo==='mensalista'?'Mensalista':'Registrado')), empregador:f.empregador||'', carteira, porFora:pfShow, encargos:enc, mes, ano:mes*12}); });
   return out.sort((a,b)=>b.ano-a.ano); }
+/* 13º (1 salário) + férias (1/3) = 4/3 da carteira/ano, com encargos. Só registrados (CLT). Provisão diluída. */
+function _rh13FeriasItens(){ const out=[];
+  (S.funcRh||[]).forEach(f=>{ if(f.ativo===false) return; if(f.tipo!=='registrado') return; if(f.custoFixo===false) return;
+    const carteira=(f.carteira!=null?+f.carteira:(+f.salario||0)); if(!(carteira>0)) return;
+    const encEmp=_encEmpregador(f.empregador); const enc=Math.max(0,(encEmp!=null?encEmp:(+f.encargosPct||0)));
+    const ano=carteira*(4/3)*(1+enc/100); out.push({nome:f.nome, empregador:f.empregador||'', carteira, encargos:enc, mes:ano/12, ano}); });
+  return out.sort((a,b)=>b.ano-a.ano); }
 function _cfTotais(){ let caixaManual=0, ncManual=0;
   (S.custosFixos||[]).forEach(c=>{ const a=_cfAnual(c); if(c.tipo==='nao_caixa') ncManual+=a; else caixaManual+=a; });
   const deprec=_deprecItens().reduce((s,i)=>s+i.valAno,0);
   const rh=_rhFixoItens().reduce((s,i)=>s+i.ano,0);
-  const caixa=caixaManual+rh;
-  return {caixa, caixaManual, rh, ncManual, deprec, naoCaixa:ncManual+deprec, total:caixa+ncManual+deprec}; }
+  const prov13fer=_rh13FeriasItens().reduce((s,i)=>s+i.ano,0);
+  const caixa=caixaManual+rh+prov13fer;
+  return {caixa, caixaManual, rh, prov13fer, ncManual, deprec, naoCaixa:ncManual+deprec, total:caixa+ncManual+deprec}; }
 function _planCustoFixoHTML(){
-  const T=_cfTotais(); const dep=_deprecItens(); const rh=_rhFixoItens(); const itens=(S.custosFixos||[]).slice();
+  const T=_cfTotais(); const dep=_deprecItens(); const rh=_rhFixoItens(); const p13=_rh13FeriasItens(); const itens=(S.custosFixos||[]).slice();
   const ed=_cfEdit!=null?(S.custosFixos||[]).find(c=>c.id===_cfEdit):null;
   const optCat=CF_CATS.map(c=>`<option${ed&&ed.categoria===c?' selected':''}>${esc(c)}</option>`).join('');
   const per=p=>['mensal','anual','safra'].map(x=>`<option value="${x}"${(ed?ed.periodicidade:'anual')===x?' selected':''}>${x==='mensal'?'Mensal':x==='anual'?'Anual':'Safra'}</option>`).join('');
@@ -3114,6 +3122,7 @@ function _planCustoFixoHTML(){
     <div class="sub" style="margin-bottom:10px">Monte aqui o custo fixo da fazenda. O rateio por hectare/cultura entra depois, por cima deste total.</div>
     <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px">
       ${card('RH fixo / ano', T.rh, 'var(--ok,#37d67a)')}
+      ${card('13º + férias / ano', T.prov13fer, 'var(--ok,#37d67a)')}
       ${card('Custo-caixa / ano', T.caixa, 'var(--ok,#37d67a)')}
       ${card('Depreciação / ano', T.deprec, 'var(--gold,#e0b34a)')}
       ${card('Não-caixa / ano', T.naoCaixa, 'var(--gold,#e0b34a)')}
@@ -3134,6 +3143,8 @@ function _planCustoFixoHTML(){
     <table class="ptbl"><thead><tr><th>Categoria</th><th>Descrição</th><th style="text-align:right">Valor</th><th>Periodic.</th><th>Tipo</th><th style="text-align:right">R$/ano</th><th></th></tr></thead><tbody>${rowsItens}</tbody></table>
     <div class="sec" style="margin-top:14px">RH fixo (derivado dos funcionários) <span class="sub">— registrados e pró-labores marcados; caixa, ao vivo</span></div>
     <table class="ptbl"><thead><tr><th>Funcionário</th><th>Empregador</th><th>Tipo</th><th style="text-align:right">Carteira</th><th style="text-align:right">Por fora</th><th style="text-align:right">Enc.</th><th style="text-align:right">Custo/mês</th><th style="text-align:right">Custo/ano</th></tr></thead><tbody>${rh.length?rh.map(r=>`<tr><td>${esc(r.nome)}</td><td class="sub">${esc(r.empregador||'—')}</td><td class="sub">${esc(r.tipo)}</td><td style="text-align:right">${fmtR$(r.carteira)}</td><td style="text-align:right">${fmtR$(r.porFora)}</td><td style="text-align:right" class="sub">${fmt1(r.encargos)}%</td><td style="text-align:right">${fmtR$(r.mes)}</td><td style="text-align:right">${fmtR$(r.ano)}</td></tr>`).join(''):'<tr><td colspan="8" class="sub" style="padding:10px">Nenhum registrado/pró-labore no custo fixo. Cadastre em Funcionários (carteira + encargos).</td></tr>'}</tbody><tfoot><tr><td colspan="7" style="text-align:right"><b>Subtotal RH fixo</b></td><td style="text-align:right"><b>${fmtR$(T.rh)}/ano</b></td></tr></tfoot></table>
+    <div class="sec" style="margin-top:14px">Provisão 13º + férias (derivada) <span class="sub">— só registrados; 1,333× carteira × (1+encargo)/ano; caixa (13º nov/dez, férias diluída)</span></div>
+    <table class="ptbl"><thead><tr><th>Funcionário</th><th>Empregador</th><th style="text-align:right">Carteira</th><th style="text-align:right">Enc.</th><th style="text-align:right">Prov./mês</th><th style="text-align:right">Prov./ano</th></tr></thead><tbody>${p13.length?p13.map(r=>`<tr><td>${esc(r.nome)}</td><td class="sub">${esc(r.empregador||'—')}</td><td style="text-align:right">${fmtR$(r.carteira)}</td><td style="text-align:right" class="sub">${fmt1(r.encargos)}%</td><td style="text-align:right">${fmtR$(r.mes)}</td><td style="text-align:right">${fmtR$(r.ano)}</td></tr>`).join(''):'<tr><td colspan="6" class="sub" style="padding:10px">Sem registrados com carteira (13º/férias só p/ CLT).</td></tr>'}</tbody><tfoot><tr><td colspan="5" style="text-align:right"><b>Subtotal 13º + férias</b></td><td style="text-align:right"><b>${fmtR$(T.prov13fer)}/ano</b></td></tr></tfoot></table>
     <div class="sec" style="margin-top:14px">Depreciação (derivada das máquinas/implementos) <span class="sub">— não-caixa, ao vivo do Cadastros</span></div>
     <table class="ptbl"><thead><tr><th>Item</th><th>Tipo</th><th style="text-align:right">Depreciação</th></tr></thead><tbody>${rowsDep}</tbody><tfoot><tr><td colspan="2" style="text-align:right"><b>Subtotal depreciação</b></td><td style="text-align:right"><b>${fmtR$(T.deprec)}/ano</b></td></tr></tfoot></table>`;
 }
