@@ -92,7 +92,7 @@ let PF=null;                 // funcionário selecionado no Ponto
 let MES=null;                // 'AAAA-MM'
 
 /* ---------- helpers de tempo ---------- */
-const TIPO_NOME={registrado:'Registrado',diarista:'Diarista',temporario:'Temporário',prolabore:'Pró-labore'};
+const TIPO_NOME={registrado:'Registrado',mensalista:'Mensalista',diarista:'Diarista',temporario:'Temporário',prolabore:'Pró-labore'};
 function t2m(s){ if(!s) return null; const m=String(s).match(/^(\d{1,2}):(\d{2})$/); if(!m) return null; return (+m[1])*60+(+m[2]); }
 function m2hm(min){ if(min==null) return '—'; const neg=min<0; min=Math.abs(Math.round(min)); const h=Math.floor(min/60), mm=min%60; return (neg?'-':'')+h+'h'+(mm?(' '+String(mm).padStart(2,'0')):''); }
 function m2dec(min){ return (min/60); }
@@ -230,7 +230,7 @@ function funcHTML(){
   return `<div class="box"><h2 style="font-size:15px">${e?'Editar funcionário':'Novo funcionário'}</h2>
     <div class="row" style="margin-top:8px">
       <div class="fcol" style="flex:1;min-width:180px"><label>Nome</label><input id="f_nome" value="${e?esc(e.nome):''}" placeholder="nome"></div>
-      <div class="fcol"><label>Tipo</label><select id="f_tipo" onchange="EDIT_TP=this.value;_funcCampos()">${['registrado','diarista','temporario','prolabore'].map(t=>`<option value="${t}" ${tp===t?'selected':''}>${TIPO_NOME[t]}</option>`).join('')}</select></div>
+      <div class="fcol"><label>Tipo</label><select id="f_tipo" onchange="EDIT_TP=this.value;_funcCampos()">${['registrado','mensalista','diarista','temporario','prolabore'].map(t=>`<option value="${t}" ${tp===t?'selected':''}>${TIPO_NOME[t]}</option>`).join('')}</select></div>
       <div class="fcol"><label>Função</label><input id="f_funcao" value="${e?esc(e.funcao||''):''}" placeholder="ex.: tratorista"></div>
       <div class="fcol"><label>CPF</label><input id="f_cpf" value="${e?esc(e.cpf||''):''}" placeholder="—"></div>
     </div>
@@ -256,7 +256,7 @@ let EDIT_TP='registrado';
 function _funcCampos(){
   const e=EDIT?S.funcs.find(f=>f.id===EDIT):null; const tp=EDIT_TP||'registrado'; const box=$('f_campos'); if(!box) return;
   const cf=`<div class="fcol"><label title="Entra no RH fixo (custo fixo da fazenda)">Custo fixo</label><select id="f_cfixo"><option value="1" ${(!e||e.custo_fixo!==false)?'selected':''}>Sim</option><option value="0" ${(e&&e.custo_fixo===false)?'selected':''}>Não</option></select></div>
-    <div class="fcol"><label title="FGTS/INSS/13º/férias sobre o salário">Encargos (%)</label><input type="number" step="any" id="f_enc" value="${e&&e.encargos_pct!=null?e.encargos_pct:''}" placeholder="${tp==='prolabore'?'11':'70'}"></div>`;
+    <div class="fcol"><label title="FGTS/INSS/13º/férias sobre o salário">Encargos (%)</label><input type="number" step="any" id="f_enc" value="${e&&e.encargos_pct!=null?e.encargos_pct:''}" placeholder="${tp==='prolabore'?'11':(tp==='mensalista'?'0':'70')}"></div>`;
   const empF=`<div class="fcol" style="min-width:180px"><label>Empregador</label><input id="f_emp" list="dlEmp" value="${e&&e.empregador?esc(e.empregador):''}" placeholder="fazenda/entidade"><datalist id="dlEmp">${(S.empregadores||[]).map(x=>'<option value="'+esc(x.nome)+'">').join('')}</datalist></div>`;
   const descF=`<div class="fcol"><label>Outros (R$)</label><input type="number" step="any" id="f_out" value="${e&&e.outros_prov!=null?e.outros_prov:''}" placeholder="0,00"></div>
     <div class="fcol"><label>INSS (R$)</label><input type="number" step="any" id="f_inss" value="${e&&e.desc_inss!=null?e.desc_inss:''}" placeholder="0,00"></div>
@@ -268,6 +268,7 @@ function _funcCampos(){
     <div class="fcol"><label>Hora extra (R$/h)</label><input type="number" step="any" id="f_he" value="${e&&e.valor_he!=null?e.valor_he:''}" placeholder="${S.cfg.valor_he_registrado||10}"></div>`+cf+descF;
   else if(tp==='diarista') h=`<div class="fcol"><label>Valor da diária (R$)</label><input type="number" step="any" id="f_dia" value="${e&&e.valor_diaria!=null?e.valor_diaria:''}" placeholder="${S.cfg.valor_diaria||100}"></div>
     <div class="fcol"><label>Hora extra (R$/h)</label><input type="number" step="any" id="f_he" value="${e&&e.valor_he!=null?e.valor_he:''}" placeholder="${S.cfg.valor_he_diarista||7}"></div>`;
+  else if(tp==='mensalista') h=empF+`<div class="fcol"><label>Salário mensal (R$) <span class="sub">por fora</span></label><input type="number" step="any" id="f_sal" value="${e&&e.salario!=null?e.salario:''}" placeholder="0,00"></div>`+cf;
   else if(tp==='prolabore') h=empF+`<div class="fcol"><label>Pró-labore mensal (R$)</label><input type="number" step="any" id="f_pf" value="${e&&e.por_fora!=null?e.por_fora:(e&&e.salario!=null?e.salario:'')}" placeholder="0,00"></div>`+cf;
   else h=`<div class="fcol"><label>Modo</label><select id="f_tmodo">${['mensal','hora','hectare'].map(x=>`<option ${e&&e.temp_modo===x?'selected':''}>${x}</option>`).join('')}</select></div>
     <div class="fcol"><label>Valor base (R$ por mês/ha/hora)</label><input type="number" step="any" id="f_tval" value="${e&&e.temp_valor!=null?e.temp_valor:''}" placeholder="0,00"></div>
@@ -291,19 +292,19 @@ async function salvarFunc(){
   const num=id=>{ const v=$(id); return v&&v.value!==''?parseFloat(v.value):null; };
   const _sit=($('f_situacao')&&$('f_situacao').value)||'ativo';
   const _cart=num('f_cart'), _pf=num('f_pf');   // carteira + por fora (folha)
-  const _sal=tp==='registrado'?((_cart||0)+(_pf||0)):(tp==='prolabore'?(_pf||0):(tp==='temporario'&&$('f_tmodo')&&$('f_tmodo').value==='mensal'?num('f_tval'):null));
+  const _sal=tp==='registrado'?((_cart||0)+(_pf||0)):(tp==='mensalista'?num('f_sal'):(tp==='prolabore'?(_pf||0):(tp==='temporario'&&$('f_tmodo')&&$('f_tmodo').value==='mensal'?num('f_tval'):null)));
   const reg={ nome, tipo:tp, funcao:$('f_funcao').value.trim()||null, cpf:$('f_cpf').value.trim()||null, pin:pinRaw||null,
     admissao:$('f_adm').value||null, fim_contrato:$('f_fim').value||null, situacao:_sit, ativo:(_sit==='ativo'), visivel_coleta:($('f_vcol')?$('f_vcol').value==='1':true), operador_melosa:($('f_melosa')&&$('f_melosa').value==='1')||false,
     meio_pgto:($('f_meio')&&$('f_meio').value)||null, chave_pix:($('f_chave')&&$('f_chave').value.trim())||null, titular:($('f_titular')&&$('f_titular').value.trim())||null,
     salario:_sal,
-    empregador:(tp==='registrado'||tp==='prolabore')?(($('f_emp')&&$('f_emp').value.trim())||null):null,
+    empregador:(tp==='registrado'||tp==='prolabore'||tp==='mensalista')?(($('f_emp')&&$('f_emp').value.trim())||null):null,
     carteira:tp==='registrado'?_cart:null, por_fora:(tp==='registrado'||tp==='prolabore')?_pf:null,
     outros_prov:tp==='registrado'?num('f_out'):null, desc_inss:tp==='registrado'?num('f_inss'):null,
     desc_sind_irrf:tp==='registrado'?num('f_sind'):null, holerite:tp==='registrado'?num('f_hol'):null,
     valor_diaria:tp==='diarista'?num('f_dia'):null,
     valor_he:num('f_he'),
-    custo_fixo:(tp==='registrado'||tp==='prolabore')?(($('f_cfixo')&&$('f_cfixo').value)==='1'):false,
-    encargos_pct:(tp==='registrado'||tp==='prolabore')?num('f_enc'):null,
+    custo_fixo:(tp==='registrado'||tp==='prolabore'||tp==='mensalista')?(($('f_cfixo')&&$('f_cfixo').value)==='1'):false,
+    encargos_pct:(tp==='registrado'||tp==='prolabore'||tp==='mensalista')?num('f_enc'):null,
     temp_modo:tp==='temporario'?($('f_tmodo')?$('f_tmodo').value:null):null,
     temp_valor:tp==='temporario'?num('f_tval'):null };
   try{

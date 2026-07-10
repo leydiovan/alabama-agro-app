@@ -3087,13 +3087,13 @@ function _deprecItens(){ const out=[];
   return out.sort((a,b)=>b.valAno-a.valAno); }
 function _encEmpregador(nome){ const e=(S.empregadores||[]).find(x=>x.nome===nome); return e?(e.inss+e.sat+e.terceiros+e.fgts):null; }
 function _rhFixoItens(){ const out=[];
-  (S.funcRh||[]).forEach(f=>{ if(f.ativo===false) return; if(!(f.tipo==='registrado'||f.tipo==='prolabore')) return; if(f.custoFixo===false) return;
+  (S.funcRh||[]).forEach(f=>{ if(f.ativo===false) return; if(!(f.tipo==='registrado'||f.tipo==='prolabore'||f.tipo==='mensalista')) return; if(f.custoFixo===false) return;
     const encEmp=_encEmpregador(f.empregador); const enc=Math.max(0,(encEmp!=null?encEmp:(+f.encargosPct||0))); const pf=+f.porFora||0;
-    let carteira, mes;
-    if(f.tipo==='prolabore'){ carteira=0; const amt=(f.porFora!=null?pf:(+f.salario||0)); mes=amt*(1+enc/100); }
-    else { carteira=(f.carteira!=null?+f.carteira:(+f.salario||0)); mes=carteira*(1+enc/100)+pf; }
+    let carteira, mes, pfShow;
+    if(f.tipo==='prolabore'||f.tipo==='mensalista'){ carteira=0; const amt=(f.tipo==='prolabore'&&f.porFora!=null?pf:(+f.salario||0)); mes=amt*(1+enc/100); pfShow=amt; }
+    else { carteira=(f.carteira!=null?+f.carteira:(+f.salario||0)); mes=carteira*(1+enc/100)+pf; pfShow=pf; }
     if(!(mes>0)) return;
-    out.push({nome:f.nome, tipo:(f.tipo==='prolabore'?'Pró-labore':'Registrado'), empregador:f.empregador||'', carteira, porFora:(f.tipo==='prolabore'?(f.porFora!=null?pf:(+f.salario||0)):pf), encargos:enc, mes, ano:mes*12}); });
+    out.push({nome:f.nome, tipo:(f.tipo==='prolabore'?'Pró-labore':(f.tipo==='mensalista'?'Mensalista':'Registrado')), empregador:f.empregador||'', carteira, porFora:pfShow, encargos:enc, mes, ano:mes*12}); });
   return out.sort((a,b)=>b.ano-a.ano); }
 function _cfTotais(){ let caixaManual=0, ncManual=0;
   (S.custosFixos||[]).forEach(c=>{ const a=_cfAnual(c); if(c.tipo==='nao_caixa') ncManual+=a; else caixaManual+=a; });

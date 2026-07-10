@@ -1,0 +1,14 @@
+Deploy: sufixo semente + custos fixos/depreciacao + RH fixo (folha real
++ encargos por empregador GPS) + situacao/visivel-coleta
+
+- coleta.html: filtra visivel_coleta (so quem esta marcado aparece).
+- Cadastros: tecnologia por sufixo (semente=variedade+sufixo), aba
+  Sufixos, traits tipo/detentora, depreciacao nas maquinas/implementos.
+- Atividades: aba Custos fixos (itens + depreciacao + RH fixo derivado),
+  parcela por poligono no mapa de satelite (Sentinel-2 por data).
+- Funcionarios: situacao/visivel-coleta, tipo pro-labore, campos da
+  folha (carteira/por fora/descontos), aba Empregadores (encargos).
+
+Backend: migracoes 60-65 ja aplicadas no Supabase.
+
+Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>
