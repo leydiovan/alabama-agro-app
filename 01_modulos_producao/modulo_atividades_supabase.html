@@ -1390,9 +1390,9 @@ function renderMapa(){
     const multi=rat.length>1; const entry=ctxMat?rat.find(x=>x.matricula===ctxMat):null; const pct=entry?entry.pct:(rat.length===1?rat[0].pct:100);
     const pos=b.geom?('<span style="color:#7fe0a0">'+(b.geomTipo==='poligono'?'▰ contorno':'📍 posicionado')+'</span>'):'<span style="color:var(--warn,#e0a33a)">⚠ sem posição</span>';
     const meta=esc(b.tipo||'—')+(b.categoria?' · <span style="color:#8ab6ff">'+esc(b.categoria)+'</span>':'')+' · '+pos;
-    const modo=b.rateioModo==='geografico'?' <span style="opacity:.65">geo</span>':'';
-    const ratLine=multi?rat.map(x=>{const n=esc(_matNumById(x.matricula)); return x.matricula===ctxMat?('<b style="color:#ffd24a">'+n+' '+x.pct+'%</b>'):(n+' '+x.pct+'%');}).join(' · ')+modo:'';
-    const ratTitle=multi?rat.map(x=>esc(x.matricula)+': '+x.pct+'%'+(b.valor?' · '+fmtR$((+b.valor)*x.pct/100):'')).join('\n'):'';
+    const modo=b.rateioModo==='geografico'?'geo':'man';
+    const ratLine=multi?('📊 <b style="color:#ffd24a">'+pct+'%</b> nesta matríc. <span style="opacity:.55">· '+rat.length+' matríc. ('+modo+')</span>'):'';
+    const ratTitle=multi?('Rateio ('+modo+'):\n'+rat.map(x=>(x.matricula===ctxMat?'▶ ':'   ')+esc(x.matricula)+': '+x.pct+'%'+(b.valor?' · '+fmtR$((+b.valor)*x.pct/100):'')).join('\n')):'';
     const valTot=+b.valor||0; const valPart=multi?Math.round(valTot*pct/100):valTot;
     const valHtml=b.valor?(multi?(fmtR$(valPart)+'<div class="sub" style="font-size:9px;font-weight:400;line-height:1.1">'+pct+'% de '+fmtR$(valTot)+'</div>'):fmtR$(valTot)):'<span class="sub" style="font-weight:400">—</span>';
     const btns=`${_bt('_benfEdit('+b.id+')','editar / posicionar no mapa')}✎</span> ${_bt('_benfDel('+b.id+')','excluir','danger')}✕</span>`;
