@@ -1341,6 +1341,7 @@ function salvarNova(){
 /* ====================== BENFEITORIAS (mapa georreferenciado) ====================== */
 const BENF_TIPOS=['Galpão','Silo','Armazém','Casa','Escritório','Oficina','Balança','Barracão','Curral','Poço','Estrutura','Outro'];
 let _benfMap=null, _benfBases=[], _benfDraw=null, _benfVerts=[], _benfLayer=null, _benfMk=[], _benfEditSede=null, _benfEditBenf=null;
+let _benfMeasure=false, _benfMeasPts=[], _benfMeasLayer=[];   // medição (base)
 const _benfCor=(sede)=>{ const p=['#ff8a3d','#3dd6ff','#b98bff','#ffd24a','#7fe0a0','#ff6b9d','#8ab6ff','#e0b34a']; let h=0; for(const c of String(sede||'')) h=(h*31+c.charCodeAt(0))>>>0; return p[h%p.length]; };
 function renderMapa(){
   const sedes=(S.sedes||[]), benf=(S.benfeitorias||[]);
@@ -1387,6 +1388,7 @@ function renderMapa(){
       </div>
       <div style="flex:1;min-width:360px">
         <div class="actions" id="bf_toolbar" style="gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:6px">
+          <button type="button" class="btn sm" id="bf_measure" title="Medir distância/área">📏 Medir</button>
           <span class="hint" id="bf_hint">Cadastre sedes/benfeitorias e clique em 📍 (posicionar) ou 🖊️ (perímetro da sede).</span>
           <button type="button" class="btn sm success" id="bf_finish" style="display:none">✔ Finalizar polígono</button>
           <button type="button" class="btn sm" id="bf_cancelDraw" style="display:none">✕ Cancelar</button>
@@ -1405,7 +1407,8 @@ function bindMapa(){
   const g=(id,fn)=>{ const e=$('#'+id); if(e) e.onclick=fn; };
   g('bf_sede_add',_benfSaveSede); g('bf_sede_cancel',()=>{_benfEditSede=null;render();});
   g('bf_add',_benfSaveBenf); g('bf_cancel',()=>{_benfEditBenf=null;render();});
-  g('bf_finish',_benfFinish); g('bf_cancelDraw',_benfCancelDraw);
+  g('bf_finish',_benfFinish); g('bf_cancelDraw',_benfCancelDraw); g('bf_measure',_benfMeasToggle);
+  _benfMeasure=false; _benfMeasPts=[]; _benfMeasLayer=[];
   _benfMapInit();
 }
 async function _benfSaveSede(){ const nome=($('#bf_sede_nome')?.value||'').trim(); if(!nome) return;
@@ -1427,17 +1430,22 @@ function _benfMapInit(){ const el=$('#benf_map'); if(!el) return;
     const croqui=L.tileLayer('data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==',{attribution:'Croqui'});
     esri.addTo(_benfMap);
     L.control.layers({'Satélite (Esri)':esri,'Sentinel-2 recente':s2,'Croqui (limpo)':croqui},null,{position:'topright',collapsed:true}).addTo(_benfMap);
-    _benfMap.on('click',e=>{ if(!_benfDraw) return; const ll=[e.latlng.lat,e.latlng.lng]; if(_benfDraw.kind==='ponto'){ _benfVerts=[ll]; _benfCommitGeom(); } else { _benfVerts.push(ll); _benfRedrawDraw(); } });
-    _benfDrawAll();
+    _benfMap.on('click',e=>{ const ll=[e.latlng.lat,e.latlng.lng];
+      if(_benfMeasure){ _benfMeasPts.push(ll); _benfMeasRedraw(); return; }
+      if(!_benfDraw) return; if(_benfDraw.kind==='ponto'){ _benfVerts=[ll]; _benfCommitGeom(); } else { _benfVerts.push(ll); _benfRedrawDraw(); } });
+    _benfMap.on('zoomend', _benfZoomScale);
+    _benfDrawAll(); _benfZoomScale();
     const pts=[]; (S.sedes||[]).forEach(s=>{ if(s.geom&&s.geom.ring) s.geom.ring.forEach(([E,N])=>pts.push(_utmToLatLon(E,N,23))); });
     (S.benfeitorias||[]).forEach(b=>{ if(b.geom){ if(b.geom.ponto) pts.push(_utmToLatLon(b.geom.ponto[0],b.geom.ponto[1],23)); else if(b.geom.ring) b.geom.ring.forEach(([E,N])=>pts.push(_utmToLatLon(E,N,23))); } });
     setTimeout(()=>{ _benfMap.invalidateSize(); if(pts.length){ try{_benfMap.fitBounds(L.latLngBounds(pts),{padding:[30,30],maxZoom:17});}catch(e){} } else _benfMap.setView([-12.6,-44.7],12); },80);
   });
 }
 function _benfDrawAll(){ if(!_benfMap) return; _benfMk.forEach(m=>_benfMap.removeLayer(m)); _benfMk=[];
+  // BASE: lotes (só base, agrupamentos não) — o mapa mostrando o banco
+  (S.lotes||[]).forEach(l=>{ if(l.base && l.geom && Array.isArray(l.geom.ring) && l.geom.ring.length>=3){ const ll=l.geom.ring.map(([E,N])=>_utmToLatLon(E,N,23)); const poly=L.polygon(ll,{color:'#6fae7a',weight:1,fill:false,opacity:.55}).addTo(_benfMap); poly.bindTooltip('Lote '+String(l.nome).replace(/^Lote ?/i,'')); _benfMk.push(poly); } });
   (S.sedes||[]).forEach(s=>{ if(s.geom&&Array.isArray(s.geom.ring)&&s.geom.ring.length>=3){ const ll=s.geom.ring.map(([E,N])=>_utmToLatLon(E,N,23)); const poly=L.polygon(ll,{color:_benfCor(s.nome),weight:2,fill:true,fillOpacity:.05,dashArray:'6 4'}).addTo(_benfMap); poly.bindTooltip('Sede: '+s.nome); poly.on('click',()=>_benfSedeEdit(s.id)); _benfMk.push(poly); } });
   (S.benfeitorias||[]).forEach(b=>{ if(!b.geom) return; const cor=_benfCor(b.sede);
-    if(b.geom.ponto){ const [lat,lon]=_utmToLatLon(b.geom.ponto[0],b.geom.ponto[1],23); const mk=L.marker([lat,lon],{icon:L.divIcon({className:'',iconSize:[18,18],iconAnchor:[9,9],html:'<div style="width:18px;height:18px;border-radius:50%;background:'+cor+';border:2px solid #fff;box-shadow:0 0 0 1px rgba(0,0,0,.5)"></div>'})}).addTo(_benfMap); mk.bindTooltip(b.nome+(b.tipo?' ('+b.tipo+')':'')); mk.on('click',()=>_benfEdit(b.id)); _benfMk.push(mk); }
+    if(b.geom.ponto){ const [lat,lon]=_utmToLatLon(b.geom.ponto[0],b.geom.ponto[1],23); const mk=L.marker([lat,lon],{icon:_benfPinIcon(cor,18)}).addTo(_benfMap); mk._benfPin=cor; mk.bindTooltip(b.nome+(b.tipo?' ('+b.tipo+')':'')); mk.on('click',()=>_benfEdit(b.id)); _benfMk.push(mk); }
     else if(Array.isArray(b.geom.ring)&&b.geom.ring.length>=3){ const ll=b.geom.ring.map(([E,N])=>_utmToLatLon(E,N,23)); const poly=L.polygon(ll,{color:cor,weight:2,fillColor:cor,fillOpacity:.35}).addTo(_benfMap); poly.bindTooltip(b.nome+(b.tipo?' ('+b.tipo+')':'')); poly.on('click',()=>_benfEdit(b.id)); _benfMk.push(poly); } });
 }
 function _benfStartDraw(kind,target,id){ _benfDraw={kind,target,id}; _benfVerts=[]; _benfRedrawDraw();
@@ -1459,6 +1467,22 @@ function _benfFinish(){ if(_benfDraw&&_benfDraw.kind==='poligono') _benfCommitGe
 function _benfCancelDraw(){ _benfDraw=null; _benfVerts=[]; if(_benfMap) _benfMap.getContainer().style.cursor=''; render(); }
 function _benfPos(id){ const b=(S.benfeitorias||[]).find(x=>x.id===id); if(!b) return; _benfStartDraw(b.geomTipo==='poligono'?'poligono':'ponto','benf',id); }
 function _benfSedePerim(id){ _benfStartDraw('poligono','sede',id); }
+/* ---- BASE: escala adaptativa (pino maior longe, tamanho real perto) ---- */
+function _benfPinIcon(cor,size){ return L.divIcon({className:'',iconSize:[size,size],iconAnchor:[size/2,size/2],html:'<div style="width:'+size+'px;height:'+size+'px;border-radius:50%;background:'+cor+';border:2px solid #fff;box-shadow:0 0 0 1px rgba(0,0,0,.5)"></div>'}); }
+function _benfZoomScale(){ if(!_benfMap) return; const z=_benfMap.getZoom(); const size=Math.max(9,Math.min(26,Math.round(26-(z-12)*2.5)));   // longe(z~12)=26px · perto(z>=18)=~11px
+  _benfMk.forEach(m=>{ if(m._benfPin) m.setIcon(_benfPinIcon(m._benfPin,size)); }); }
+/* ---- BASE: medição (distância + área), não interage com o módulo ---- */
+function _benfMeasToggle(){ _benfMeasure=!_benfMeasure; const b=$('#bf_measure'); if(b) b.classList.toggle('success',_benfMeasure);
+  if(!_benfMeasure) _benfMeasClear(); else { const h=$('#bf_hint'); if(h) h.textContent='📏 Modo medição: clique os pontos.'; }
+  if(_benfMap) _benfMap.getContainer().style.cursor=_benfMeasure?'crosshair':''; }
+function _benfMeasRedraw(){ if(!_benfMap) return; _benfMeasLayer.forEach(l=>_benfMap.removeLayer(l)); _benfMeasLayer=[];
+  const pts=_benfMeasPts;
+  if(pts.length>=2){ _benfMeasLayer.push(L.polyline(pts,{color:'#ffd24a',weight:2,dashArray:'4 3'}).addTo(_benfMap)); }
+  pts.forEach(p=>_benfMeasLayer.push(L.circleMarker(p,{radius:4,color:'#ffd24a',fillColor:'#ffd24a',fillOpacity:1}).addTo(_benfMap)));
+  let dist=0; for(let i=1;i<pts.length;i++) dist+=_benfMap.distance(pts[i-1],pts[i]);
+  let area=null; if(pts.length>=3){ area=_ringAreaHa(pts.map(([lat,lon])=>_apcUTM(lat,lon,23))); }
+  const h=$('#bf_hint'); if(h) h.innerHTML='📏 '+(pts.length<2?'clique os pontos':('Distância <b>'+(dist>=1000?(dist/1000).toFixed(2)+' km':Math.round(dist)+' m')+'</b>'+(area!=null?' · Área <b>'+fmt1(area)+' ha</b>':'')))+' <span class="btn sm" style="cursor:pointer" onclick="_benfMeasClear()">limpar</span>'; }
+function _benfMeasClear(){ if(_benfMap) _benfMeasLayer.forEach(l=>_benfMap.removeLayer(l)); _benfMeasLayer=[]; _benfMeasPts=[]; const h=$('#bf_hint'); if(h) h.textContent=''; }
 
 /* ====================== FICHA (modal) ====================== */
 let fichaCod=null;
