@@ -531,6 +531,23 @@ function bindLotes(){
 
 /* ----- MATRÍCULAS (parcela legal georreferenciada — igual lote, com upload KML/DXF) ----- */
 function _matAreaHa(ring){ if(!Array.isArray(ring)||ring.length<3) return null; let s=0; for(let i=0,n=ring.length;i<n;i++){ const a=ring[i],b=ring[(i+1)%n]; s+=a[0]*b[1]-b[0]*a[1]; } return Math.abs(s)/2/10000; }
+function _matMemorialHTML(e){
+  const mem=(e&&e.memorial)||{};
+  const props=(mem.proprietarios||[]).map(p=>'<li>'+esc(p.nome||'')+(p.cpf?' — CPF '+esc(p.cpf):'')+(p.conjuge?' <span class="sub">(cônjuge — '+esc(p.regime||'')+')</span>':'')+'</li>').join('');
+  const onus=(mem.onus||[]).map(o=>'<li>'+esc(o.tipo||'')+(o.credora?' — '+esc(o.credora):'')+(o.valor?' · R$ '+nf(o.valor):'')+(o.vencimento?' · venc. '+esc(o.vencimento):'')+(o.garantia?' · '+esc(o.garantia):'')+'</li>').join('');
+  const t=mem.titulo||{}; const titulo=(t.forma||t.registro)?('<div class="sub" style="margin-top:2px"><b>Título:</b> '+esc(t.forma||'')+(t.cartorio?' · '+esc(t.cartorio):'')+(t.registro?' · reg. '+esc(t.registro):'')+'</div>'):'';
+  const vs=mem.vertices||[];
+  let vhtml;
+  if(vs.length){ vhtml='<div style="overflow:auto"><table class="tbl" style="margin-top:4px"><thead><tr><th>Vért.</th><th>Longitude</th><th>Latitude</th><th class="num">Azimute</th><th class="num">Dist.</th><th>Confrontante</th></tr></thead><tbody>'
+      +vs.map(v=>'<tr><td>'+esc(v.cod||'')+'</td><td class="sub">'+esc(v.lon||'')+'</td><td class="sub">'+esc(v.lat||'')+'</td><td class="num">'+esc(v.az||'')+'</td><td class="num">'+esc(v.dist||'')+'</td><td class="sub">'+esc(v.conf||'')+'</td></tr>').join('')+'</tbody></table></div>'; }
+  else vhtml='<div class="hint" style="color:var(--warn);margin-top:2px">Vértices pendentes — importe o arquivo SIGEF/KML/DXF (a poligonal também).</div>';
+  return '<div class="sectit" style="margin-top:12px">📜 Memorial descritivo</div>'
+    +(props?'<div class="sub" style="margin-top:2px"><b>Proprietário(s):</b></div><ul style="margin:2px 0 6px 18px;padding:0">'+props+'</ul>':'')
+    +(onus?'<div class="sub"><b>Ônus / gravames:</b></div><ul style="margin:2px 0 6px 18px;padding:0">'+onus+'</ul>':'')
+    +titulo
+    +'<div class="sub" style="margin-top:6px"><b>Perímetro / vértices</b> ('+vs.length+')</div>'+vhtml
+    +'<label style="margin-top:8px">Texto do memorial / observações <textarea id="mMemTexto" rows="3" style="width:100%;box-sizing:border-box">'+esc(mem.texto||'')+'</textarea></label>';
+}
 function matriculasHTML(){
   const e=EDIT_IDX!=null?(S.matriculas||[])[EDIT_IDX]:null;
   const q=SEARCH.toLowerCase();
@@ -556,7 +573,7 @@ function matriculasHTML(){
     +'<div class="two"><label>Certificação INCRA (SIGEF) <input id="mCert" value="'+(e?esc(e.certificacao||''):'')+'"></label>'
     +'<label>Responsável técnico (RT) <input id="mRT" value="'+(e?esc(e.respTecnico||''):'')+'"></label></div>'
     +'<label>Observação <input id="mObs" value="'+(e?esc(e.obs||''):'')+'" placeholder="opcional"></label>'
-    +((e&&e.memorial)?('<div class="hint" style="margin-top:6px">Memorial: <b>'+((e.memorial.vertices||[]).length)+'</b> vértices · <b>'+((e.memorial.proprietarios||[]).length)+'</b> proprietário(s) · <b>'+((e.memorial.onus||[]).length)+'</b> ônus'+((e.memorial.vertices||[]).length?'':' <span style="color:var(--warn)">(vértices pendentes — importe o SIGEF/KML)</span>')+'</div>'):'')
+    +_matMemorialHTML(e)
     +(e&&e.geom?('<div class="sectit" style="margin-top:6px">Geometria (mapa real)</div>'
       +'<div class="hint">Fonte: <b>'+esc(e.geom.fonte||'—')+'</b> · '+esc(e.geom.crs||'UTM23S')+' · '+(e.geom.ring?e.geom.ring.length:0)+' pontos'
       +(am!=null?' · Área medida: <b>'+nf(am)+' ha</b>':'')
@@ -582,8 +599,9 @@ function bindMatriculas(){
       area:nnum('mArea'), perimetroM:nnum('mPerim'), reservaLegalHa:nnum('mRL'),
       incraCod:$('mIncra').value.trim(), nirf:$('mNirf').value.trim(), car:$('mCar').value.trim(),
       certificacao:$('mCert').value.trim(), respTecnico:$('mRT').value.trim(), obs:$('mObs').value.trim() };
-    if(EDIT_IDX!=null){ const ex=S.matriculas[EDIT_IDX]; const geom=_kmlGeomTmp||ex.geom||null; Object.assign(ex,{nome,geom,memorial:ex.memorial||null},extra); EDIT_IDX=null; }
-    else { S.matriculas.push(Object.assign({nome,geom:(_kmlGeomTmp||null),memorial:null},extra)); }
+    const memTxt=$('mMemTexto')?$('mMemTexto').value:null;
+    if(EDIT_IDX!=null){ const ex=S.matriculas[EDIT_IDX]; const geom=_kmlGeomTmp||ex.geom||null; const memorial=Object.assign({},ex.memorial||{},{texto:(memTxt!=null?memTxt:((ex.memorial||{}).texto||''))}); Object.assign(ex,{nome,geom,memorial},extra); EDIT_IDX=null; }
+    else { const memorial=memTxt?{texto:memTxt}:null; S.matriculas.push(Object.assign({nome,geom:(_kmlGeomTmp||null),memorial},extra)); }
     _kmlGeomTmp=null; _kmlPolys=[];
     salvarAbaSB('matriculas',true); route(); };
   if($('lKml')) $('lKml').onchange=(ev)=>{ const f=ev.target.files&&ev.target.files[0]; if(f) _onKmlFile(f); };
@@ -1447,6 +1465,7 @@ function _parseKML(txt){
       return [lon,lat];
     }).filter(p=>!isNaN(p[0])&&!isNaN(p[1]));
   };
+  const pontos=[];   // waypoints soltos (Placemark com 1 ponto) — vira polígono se não houver Polygon/linha
   for(const pm of places){
     const nameEl=pm.getElementsByTagName('name')[0];
     const nome=nameEl?nameEl.textContent.trim():('Polígono '+(pols.length+1));
@@ -1460,8 +1479,11 @@ function _parseKML(txt){
     } else {
       const ring=pegaCoords(pm);
       if(ring&&ring.length>=3) pols.push({nome, ring});
+      else if(ring&&ring.length===1) pontos.push(ring[0]);   // waypoint (vértice)
     }
   }
+  // KML só de waypoints (vértices) — monta 1 polígono na ordem do arquivo
+  if(!pols.length && pontos.length>=3) pols.push({nome:'Vértices → polígono ('+pontos.length+' pontos)', ring:pontos});
   return pols;
 }
 let _kmlPolys=[];
