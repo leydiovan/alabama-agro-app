@@ -1362,8 +1362,8 @@ function renderMapa(){
         +`<div style="font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="${esc(b.nome)}">${esc(b.nome)}</div>`
         +`<div class="sub" style="font-size:11.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:1px">${meta}</div>`
       +`</div>`
-      +`<div class="sub" style="flex:0 0 230px;min-width:0;font-size:10.5px;line-height:1.38;padding-left:12px;border-left:1px solid ${cor}22;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden;white-space:normal" title="${esc(b.obs||'')}">${b.obs?esc(b.obs):'<span style="opacity:.5">sem descrição</span>'}</div>`
-      +`<div style="font-weight:800;color:var(--gold,#e0b34a);font-size:13px;flex:0 0 auto;white-space:nowrap;text-align:right;margin-left:auto">${b.valor?fmtR$(b.valor):'<span class="sub" style="font-weight:400">—</span>'}</div>`
+      +`<div class="sub" style="flex:1;min-width:0;font-size:10.5px;line-height:1.38;padding:0 16px;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden;white-space:normal" title="${esc(b.obs||'')}">${b.obs?esc(b.obs):'<span style="opacity:.5">sem descrição</span>'}</div>`
+      +`<div style="font-weight:800;color:var(--gold,#e0b34a);font-size:13px;flex:0 0 auto;white-space:nowrap;text-align:right">${b.valor?fmtR$(b.valor):'<span class="sub" style="font-weight:400">—</span>'}</div>`
       +`<div style="display:flex;gap:3px;flex:0 0 auto">${btns}</div></div>`; };
   const _grid=(cards)=>`<div style="display:flex;flex-direction:column;gap:6px;margin:0 0 6px">${cards}</div>`;
   const _sedeHead=(s)=>{ const cor=_benfCor(s.nome); const sel=(_benfEditSede===s.id);
