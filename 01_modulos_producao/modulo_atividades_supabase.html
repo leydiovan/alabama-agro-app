@@ -1346,6 +1346,7 @@ let _benfMap=null, _benfBases=[], _benfDraw=null, _benfVerts=[], _benfLayer=null
 let _benfMeasure=false, _benfMeasPts=[], _benfMeasLayer=[];   // medição (base)
 let _benfView=null, _benfBaseName='Satélite (Google)';        // preserva centro/zoom e camada ativa entre re-renders
 let _benfFormTab='benf', _matGeomTmp=null, _matPolysTmp=null;  // aba do formulário + polígono importado (KML/DXF) pendente
+let _benfCircCenter=null, _benfCircMeta=null, _benfImportId=null;  // desenho de círculo (pivô) + import de poligonal
 const _benfCor=(sede)=>{ const p=['#ff8a3d','#3dd6ff','#b98bff','#ffd24a','#7fe0a0','#ff6b9d','#8ab6ff','#e0b34a']; let h=0; for(const c of String(sede||'')) h=(h*31+c.charCodeAt(0))>>>0; return p[h%p.length]; };
 function renderMapa(){
   const sedes=(S.sedes||[]), benf=(S.benfeitorias||[]), mats=(S.matriculas||[]);
@@ -1360,7 +1361,7 @@ function renderMapa(){
   const _card=(b)=>{ const sel=(_benfEditBenf===b.id); const icon=BENF_ICON[b.tipo]||'📦'; const cor=_benfCor(b.matricula||b.sede||'');
     const pos=b.geom?('<span style="color:#7fe0a0">'+(b.geomTipo==='poligono'?'▰ contorno':'📍 posicionado')+'</span>'):'<span style="color:var(--warn,#e0a33a)">⚠ sem posição</span>';
     const meta=esc(b.tipo||'—')+(b.categoria?' · <span style="color:#8ab6ff">'+esc(b.categoria)+'</span>':'')+' · '+pos;
-    const btns=`${_bt('_benfPosPoly('+b.id+')','desenhar/ajustar contorno')}▰</span> ${_bt('_benfPos('+b.id+')','posicionar pino')}📍</span> ${_bt('_benfEdit('+b.id+')','editar dados')}✎</span> ${_bt('_benfDel('+b.id+')','excluir','danger')}✕</span>`;
+    const btns=`${_bt('_benfPosPoly('+b.id+')','desenhar/ajustar contorno')}▰</span> ${_bt('_benfCircle('+b.id+')','desenhar círculo (pivô)')}⭕</span> ${_bt('_benfImport('+b.id+')','carregar poligonal (KML)')}📄</span> ${_bt('_benfPos('+b.id+')','posicionar pino')}📍</span> ${_bt('_benfEdit('+b.id+')','editar dados')}✎</span> ${_bt('_benfDel('+b.id+')','excluir','danger')}✕</span>`;
     return `<div class="bfcard" style="flex-direction:row;align-items:center;gap:14px;border:1px solid ${cor}55;border-left:4px solid ${cor}${sel?';box-shadow:0 0 0 2px #ffd24a':''}">`
       +`<div style="font-size:22px;flex:0 0 auto;line-height:1.1">${icon}</div>`
       +`<div style="flex:0 0 190px;min-width:0">`
@@ -1434,6 +1435,7 @@ function renderMapa(){
     <div style="flex:0 0 50%;max-width:50%;position:relative">
       <div id="benf_map" style="position:absolute;inset:0;background:#0e1830"></div>
       <div id="bf_toolbar" style="position:absolute;left:10px;right:10px;bottom:10px;z-index:1000;background:rgba(9,16,34,.93);border:1px solid #2c4a78;border-radius:10px;padding:8px 12px;display:flex;gap:8px;flex-wrap:wrap;align-items:center;box-shadow:0 6px 18px rgba(0,0,0,.45)"></div>
+      <input type="file" id="bf_importfile" accept=".kml,.kmz,application/vnd.google-earth.kml+xml" style="display:none">
     </div>
   </div>`;
 }
@@ -1447,7 +1449,8 @@ function bindMapa(){
   const g=(id,fn)=>{ const e=$('#'+id); if(e) e.onclick=fn; };
   g('bf_sede_add',_benfSaveSede); g('bf_sede_cancel',()=>{_benfEditSede=null;render();});
   g('bf_add',_benfSaveBenf); g('bf_cancel',()=>{_benfEditBenf=null;render();});
-  _benfDraw=null; _benfVerts=[]; _benfMeasure=false; _benfMeasPts=[]; _benfMeasLayer=[]; _benfHandles=[];
+  const imp=$('#bf_importfile'); if(imp) imp.onchange=e=>{ const f=e.target.files&&e.target.files[0]; if(f) _benfImportFile(f); };
+  _benfDraw=null; _benfVerts=[]; _benfMeasure=false; _benfMeasPts=[]; _benfMeasLayer=[]; _benfHandles=[]; _benfCircCenter=null; _benfCircMeta=null;
   _benfMapInit(); setTimeout(_benfAjustaAltura,90);
   if(!window._benfResizeBound){ window._benfResizeBound=true; window.addEventListener('resize',_benfAjustaAltura); }
 }
@@ -1506,21 +1509,30 @@ function _benfClickAt(latlng){
   if(_benfMeasure){ _benfMeasPts.push([latlng.lat,latlng.lng]); _benfMeasRedraw(); _benfUpdateToolbar(); return true; }
   if(_benfDraw){
     if(_benfDraw.kind==='ponto'){ _benfVerts=[[latlng.lat,latlng.lng]]; }
+    else if(_benfDraw.kind==='circulo'){
+      if(!_benfCircCenter){ _benfCircCenter=[latlng.lat,latlng.lng]; }
+      else { const R=_benfMap.distance(_benfCircCenter,latlng); _benfSetCircle(R); }
+    }
     else { _benfVerts.push([latlng.lat,latlng.lng]); }
     _benfRedrawDraw(); _benfUpdateToolbar();
     return true;
   }
   return false;
 }
+/* gera o anel do círculo (60 pts) a partir do centro atual + raio (m) */
+function _benfSetCircle(R){ if(!_benfCircCenter||!(R>0)) return; const [clat,clon]=_benfCircCenter; const [cE,cN]=_apcUTM(clat,clon,23);
+  const ring=[]; for(let i=0;i<60;i++){ const a=i*Math.PI/30; ring.push(_utmToLatLon(cE+R*Math.sin(a), cN+R*Math.cos(a), 23)); }
+  _benfVerts=ring; _benfCircMeta={centro:[Math.round(cE*100)/100,Math.round(cN*100)/100], raio:Math.round(R*100)/100}; }
 function _benfTargArr(t){ return t==='sede'?(S.sedes||[]):t==='matricula'?(S.matriculas||[]):(S.benfeitorias||[]); }
 function _benfTargTab(t){ return t==='sede'?'sedes':t==='matricula'?'matriculas':'benfeitorias'; }
 function _benfDrawName(){ if(!_benfDraw) return ''; const it=_benfTargArr(_benfDraw.target).find(x=>x.id===_benfDraw.id); return it?it.nome:''; }
 function _benfStartDraw(kind,target,id){ _benfMeasure=false; _benfMeasClear();
   // pré-carrega a geometria existente → permite AJUSTAR (arrastar/adicionar), não só recriar
   const arr=_benfTargArr(target); const it=arr.find(x=>x.id===id);
-  _benfVerts=[]; _benfDraw={kind,target,id,edit:false};
+  _benfVerts=[]; _benfCircCenter=null; _benfCircMeta=null; _benfDraw={kind,target,id,edit:false};
   if(it&&it.geom){
     if(kind==='ponto'&&it.geom.ponto){ _benfVerts=[_utmToLatLon(it.geom.ponto[0],it.geom.ponto[1],23)]; _benfDraw.edit=true; }
+    else if(kind==='circulo'&&it.geom.circulo&&Array.isArray(it.geom.circulo.centro)){ _benfCircCenter=_utmToLatLon(it.geom.circulo.centro[0],it.geom.circulo.centro[1],23); _benfSetCircle(it.geom.circulo.raio); _benfDraw.edit=true; }
     else if(kind==='poligono'&&Array.isArray(it.geom.ring)&&it.geom.ring.length>=3){ _benfVerts=it.geom.ring.map(([E,N])=>_utmToLatLon(E,N,23)); _benfDraw.edit=true; }
   }
   _benfRedrawDraw(); _benfUpdateToolbar();
@@ -1535,6 +1547,7 @@ function _benfRedrawOutline(){ if(!_benfMap) return; if(_benfLayer){ _benfMap.re
 function _benfRedrawDraw(){ if(!_benfMap) return;
   _benfRedrawOutline();
   _benfHandles.forEach(h=>_benfMap.removeLayer(h)); _benfHandles=[];
+  if(_benfDraw&&_benfDraw.kind==='circulo'){ if(_benfCircCenter){ const c=L.circleMarker(_benfCircCenter,{radius:5,color:'#fff',weight:2,fillColor:'#ffd24a',fillOpacity:1}).addTo(_benfMap); _benfHandles.push(c); } return; }
   const poly=(_benfDraw&&_benfDraw.kind==='poligono');
   _benfVerts.forEach((p,i)=>{ const last=(i===_benfVerts.length-1);
     const mk=L.marker(p,{draggable:true,icon:_benfVertIcon(poly&&last),zIndexOffset:1000}).addTo(_benfMap);
@@ -1551,6 +1564,12 @@ function _benfUpdateToolbar(){ const tb=$('#bf_toolbar'); if(!tb) return; let ht
       html='<b style="color:#ffd24a">📍 '+(ed?'Ajustando':'Posicionando')+' '+(nm||'benfeitoria')+'</b> <span class="hint">— '+(has?'arraste o pino ou clique p/ mover.':'clique no mapa para fixar o pino.')+'</span>'
         +' <button type="button" class="btn sm success" id="bf_finish"'+(has?'':' disabled')+'>✔ Concluir</button>'
         +' <button type="button" class="btn sm danger" id="bf_cancelDraw">✕ Cancelar</button>';
+    } else if(_benfDraw.kind==='circulo'){ const has=_benfVerts.length>0; const r=_benfCircMeta?_benfCircMeta.raio:0; const ar=has?_ringAreaHa(_benfVerts.map(([la,lo])=>_apcUTM(la,lo,23))):null;
+      html='<b style="color:#ffd24a">⭕ '+(ed?'Ajustando':'Desenhando')+' círculo '+(nm||'')+'</b> <span class="hint">— '+(!_benfCircCenter?'clique o <b>centro</b> do pivô.':(has?'raio <b>'+Math.round(r)+' m</b>'+(ar!=null?' · '+_benfFmtArea(ar):'')+' · clique p/ mudar o raio.':'clique a <b>borda</b> p/ definir o raio.'))+'</span>'
+        +' <input type="number" id="bf_circR" placeholder="raio m" value="'+(r?Math.round(r):'')+'" style="width:74px" '+(_benfCircCenter?'':'disabled')+'>'
+        +' <button type="button" class="btn sm" id="bf_circApply"'+(_benfCircCenter?'':' disabled')+'>raio</button>'
+        +' <button type="button" class="btn sm success" id="bf_finish"'+(has?'':' disabled')+'>✔ Concluir</button>'
+        +' <button type="button" class="btn sm danger" id="bf_cancelDraw">✕ Cancelar</button>';
     } else { const n=_benfVerts.length; let area=null; if(n>=3){ try{ area=_ringAreaHa(_benfVerts.map(([la,lo])=>_apcUTM(la,lo,23))); }catch(e){} }
       html='<b style="color:#ffd24a">▰ '+(ed?'Ajustando':'Desenhando')+' '+(nm||(_benfDraw.target==='sede'?'perímetro':_benfDraw.target==='matricula'?'polígono da matrícula':'contorno'))+'</b> <span class="hint">— clique p/ novo canto · arraste as alças · duplo-clique numa alça remove'+(n?(' <b>('+n+' '+(n===1?'ponto':'pontos')+(area!=null?' · '+_benfFmtArea(area):'')+')</b>'):'')+'.</span>'
         +' <button type="button" class="btn sm success" id="bf_finish"'+(n<3?' disabled title="mínimo 3 pontos"':'')+'>✔ Concluir</button>'
@@ -1565,22 +1584,35 @@ function _benfUpdateToolbar(){ const tb=$('#bf_toolbar'); if(!tb) return; let ht
   tb.innerHTML=html;
   const w=(id,fn)=>{ const e=$('#'+id); if(e) e.onclick=fn; };
   w('bf_measure',_benfMeasToggle); w('bf_measClear',_benfMeasClear); w('bf_finish',_benfFinish); w('bf_undo',_benfUndoVert); w('bf_cancelDraw',_benfCancelDraw);
+  w('bf_circApply',()=>{ const R=parseFloat($('#bf_circR')?.value); if(R>0){ _benfSetCircle(R); _benfRedrawDraw(); _benfUpdateToolbar(); } });
 }
-async function _benfCommitGeom(){ if(!_benfDraw) return; let geom=null;
-  if(_benfDraw.kind==='ponto'){ if(!_benfVerts.length) return; const [lat,lon]=_benfVerts[0]; geom={crs:'UTM23S',ponto:_apcUTM(lat,lon,23)}; }
-  else { if(_benfVerts.length<3){ alert('Marque ao menos 3 vértices.'); return; } geom={crs:'UTM23S',ring:_benfVerts.map(([lat,lon])=>_apcUTM(lat,lon,23))}; }
-  const tab=_benfTargTab(_benfDraw.target); const id=_benfDraw.id; const kind=_benfDraw.kind;
-  _benfDraw=null; _benfVerts=[];
-  const upd=(tab==='benfeitorias')?{geom, geom_tipo:(kind==='poligono'?'poligono':'ponto')}:{geom};
+async function _benfCommitGeom(){ if(!_benfDraw) return; let geom=null; const kind=_benfDraw.kind;
+  if(kind==='ponto'){ if(!_benfVerts.length) return; const [lat,lon]=_benfVerts[0]; geom={crs:'UTM23S',ponto:_apcUTM(lat,lon,23)}; }
+  else { if(_benfVerts.length<3){ alert('Geometria incompleta.'); return; } geom={crs:'UTM23S',ring:_benfVerts.map(([lat,lon])=>_apcUTM(lat,lon,23))}; if(kind==='circulo'&&_benfCircMeta) geom.circulo=_benfCircMeta; }
+  const tab=_benfTargTab(_benfDraw.target); const id=_benfDraw.id;
+  _benfDraw=null; _benfVerts=[]; _benfCircCenter=null; _benfCircMeta=null;
+  const upd=(tab==='benfeitorias')?{geom, geom_tipo:(kind==='ponto'?'ponto':'poligono')}:{geom};
   try{ await SB.from(tab).update(upd).eq('id',id); }catch(e){ alert('Erro ao salvar posição: '+e.message); }
   await _benfReload(); render(); }
 function _benfFinish(){ if(!_benfDraw) return;
-  if(_benfDraw.kind==='poligono'){ if(_benfVerts.length<3){ alert('Marque ao menos 3 cantos.'); return; } }
+  if(_benfDraw.kind==='poligono'||_benfDraw.kind==='circulo'){ if(_benfVerts.length<3){ alert(_benfDraw.kind==='circulo'?'Defina o centro e o raio.':'Marque ao menos 3 cantos.'); return; } }
   else if(!_benfVerts.length){ alert('Clique no mapa para posicionar o pino.'); return; }
   _benfCommitGeom(); }
-function _benfCancelDraw(){ _benfDraw=null; _benfVerts=[]; _benfRedrawDraw(); if(_benfMap) _benfMap.getContainer().style.cursor=''; _benfUpdateToolbar(); }
+function _benfCancelDraw(){ _benfDraw=null; _benfVerts=[]; _benfCircCenter=null; _benfCircMeta=null; _benfRedrawDraw(); if(_benfMap) _benfMap.getContainer().style.cursor=''; _benfUpdateToolbar(); }
 function _benfPos(id){ _benfStartDraw('ponto','benf',id); }
 function _benfPosPoly(id){ _benfStartDraw('poligono','benf',id); }
+function _benfCircle(id){ _benfStartDraw('circulo','benf',id); }
+/* carregar poligonal (KML) para a benfeitoria */
+function _benfImport(id){ _benfImportId=id; const inp=$('#bf_importfile'); if(inp){ inp.value=''; inp.click(); } }
+function _benfImportFile(file){ if(!file||_benfImportId==null) return; const r=new FileReader();
+  r.onload=async()=>{ try{ const pols=_parcParseKML(r.result); if(!pols.length){ alert('Nenhum polígono encontrado no KML.'); return; }
+    let p=pols[0]; if(pols.length>1) p=pols.reduce((a,b)=>b.ring.length>a.ring.length?b:a,pols[0]);   // maior polígono
+    const ring=p.ring.map(([lon,lat])=>_apcUTM(lat,lon,23));
+    if(ring.length<3){ alert('Polígono inválido.'); return; }
+    await SB.from('benfeitorias').update({geom:{crs:'UTM23S',fonte:'KML',ring}, geom_tipo:'poligono'}).eq('id',_benfImportId);
+    _benfImportId=null; await _benfReload(); render();
+  }catch(e){ alert('Erro ao ler KML: '+e.message); } };
+  r.readAsText(file); }
 function _benfSedePerim(id){ _benfStartDraw('poligono','sede',id); }
 /* ---- BASE: escala adaptativa (pino maior longe, tamanho real perto) ---- */
 function _benfPinIcon(cor,size,sel){ const brd=sel?'3px solid #ffd24a':'2px solid #fff'; const glow=sel?';box-shadow:0 0 0 2px rgba(255,210,74,.6),0 0 8px rgba(255,210,74,.8)':';box-shadow:0 0 0 1px rgba(0,0,0,.5)'; return L.divIcon({className:'',iconSize:[size,size],iconAnchor:[size/2,size/2],html:'<div style="width:'+size+'px;height:'+size+'px;border-radius:50%;background:'+cor+';border:'+brd+glow+'"></div>'}); }
