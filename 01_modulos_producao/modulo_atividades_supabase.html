@@ -1350,45 +1350,57 @@ function renderMapa(){
   const totVal=benf.reduce((s,b)=>s+(+b.valor||0),0);
   const depAno=benf.reduce((s,b)=>s+_deprecAno({valorAquisicao:b.valor,vidaUtilAnos:b.vidaUtilAnos,residualPct:b.residualPct}),0);
   const sedeOpts=sedes.map(s=>`<option value="${esc(s.nome)}" ${eB&&eB.sede===s.nome?'selected':''}>${esc(s.nome)}</option>`).join('');
-  const benfBySede={}; benf.forEach(b=>{ (benfBySede[b.sede||'— sem sede —']=benfBySede[b.sede||'— sem sede —']||[]).push(b); });
-  const listaBenf=Object.keys(benfBySede).sort().map(sn=>`<div class="sub" style="margin-top:6px;font-weight:700;color:${_benfCor(sn)}">${esc(sn)}</div>`+benfBySede[sn].map(b=>{
-    const geo=b.geom?(b.geomTipo==='poligono'?'▰':'📍'):'<span style="color:var(--warn)">sem posição</span>';
-    return `<div class="prow" style="justify-content:space-between"><span>${esc(b.nome)} <span class="sub">· ${esc(b.tipo||'—')}${b.valor?' · '+fmtR$(b.valor):''}</span></span><span style="white-space:nowrap">${geo} <span class="btn sm" style="cursor:pointer" onclick="_benfPos(${b.id})" title="posicionar como ponto">📍</span> <span class="btn sm" style="cursor:pointer" onclick="_benfPosPoly(${b.id})" title="desenhar contorno (polígono)">▰</span> <span class="btn sm" style="cursor:pointer" onclick="_benfEdit(${b.id})">✎</span> <span class="btn sm danger" style="cursor:pointer" onclick="_benfDel(${b.id})">✕</span></span></div>`; }).join('')).join('')||'<div class="sub" style="padding:6px">Nenhuma benfeitoria.</div>';
-  const listaSede=sedes.map(s=>`<div class="prow" style="justify-content:space-between"><span style="color:${_benfCor(s.nome)};font-weight:700">${esc(s.nome)}</span><span style="white-space:nowrap">${s.geom?'▰':'<span class="sub" style="color:var(--warn)">sem perímetro</span>'} <span class="btn sm" style="cursor:pointer" onclick="_benfSedePerim(${s.id})" title="desenhar perímetro">🖊️</span> <span class="btn sm" style="cursor:pointer" onclick="_benfSedeEdit(${s.id})">✎</span> <span class="btn sm danger" style="cursor:pointer" onclick="_benfSedeDel(${s.id})">✕</span></span></div>`).join('')||'<div class="sub" style="padding:6px">Nenhuma sede.</div>';
-  return `<style>#main{padding-bottom:10px!important} #benf_map .leaflet-interactive:focus,#benf_map path:focus,#benf_map svg:focus{outline:none!important} #benf_map .leaflet-container{outline:none} .benf-vtx{background:#fff;border:2px solid #ffd24a;border-radius:50%;box-shadow:0 0 4px rgba(0,0,0,.6);cursor:grab} .benf-vtx.last{background:#ffd24a;box-shadow:0 0 6px rgba(255,210,74,.9)}</style>
-  <div class="wrap" style="max-width:none;padding-bottom:0">
-    <div class="row" style="gap:10px;flex-wrap:wrap;margin-bottom:10px;align-items:stretch">
-      <div style="background:var(--bg3,#111a2e);border:1px solid var(--border,#22345a);border-radius:10px;padding:8px 14px"><div class="sub">Benfeitorias</div><div style="font-size:18px;font-weight:800">${benf.length}</div></div>
-      <div style="background:var(--bg3,#111a2e);border:1px solid var(--border,#22345a);border-radius:10px;padding:8px 14px"><div class="sub">Valor total</div><div style="font-size:18px;font-weight:800">${fmtR$(totVal)}</div></div>
-      <div style="background:var(--bg3,#111a2e);border:1px solid var(--border,#22345a);border-radius:10px;padding:8px 14px"><div class="sub">Depreciação/ano</div><div style="font-size:18px;font-weight:800;color:var(--gold,#e0b34a)">${fmtR$(depAno)}</div></div>
-      <div style="flex:1"></div>
-      <div class="row" style="gap:6px;align-items:flex-end;background:var(--bg3,#111a2e);border:1px solid var(--border,#22345a);border-radius:10px;padding:6px 12px">
-        <div class="fcol" style="min-width:150px"><label>${eS?'✎ Editar sede':'Nova sede'}</label><input id="bf_sede_nome" value="${eS?esc(eS.nome):''}" placeholder="ex.: Sede Guiomar"></div>
-        <button class="btn success" id="bf_sede_add" title="${eS?'Salvar sede':'Adicionar sede'}">${eS?'💾':'+'}</button>${eS?'<button class="btn" id="bf_sede_cancel" title="Cancelar">✕</button>':''}
+  const BENF_ICON={'Galpão':'🏭','Silo':'🌾','Armazém':'🏬','Casa':'🏠','Escritório':'🏢','Oficina':'🔧','Balança':'⚖️','Barracão':'🏚️','Curral':'🐄','Poço':'💧','Estrutura':'🏗️','Outro':'📦'};
+  const _bt=(oc,t,cls)=>`<span class="btn sm${cls?' '+cls:''}" style="cursor:pointer;padding:2px 7px;font-size:12px" onclick="${oc}" title="${t}">`;
+  const _card=(b,cor)=>{ const sel=(_benfEditBenf===b.id); const icon=BENF_ICON[b.tipo]||'📦';
+    const pos=b.geom?('<span style="color:#7fe0a0">'+(b.geomTipo==='poligono'?'▰ contorno':'📍 posicionado')+'</span>'):'<span style="color:var(--warn,#e0a33a)">⚠ sem posição</span>';
+    const btns=`${_bt('_benfPosPoly('+b.id+')','desenhar/ajustar contorno')}▰</span> ${_bt('_benfPos('+b.id+')','posicionar pino')}📍</span> ${_bt('_benfEdit('+b.id+')','editar dados')}✎</span> ${_bt('_benfDel('+b.id+')','excluir','danger')}✕</span>`;
+    return `<div class="bfcard" style="border:1px solid ${cor}55;border-left:3px solid ${cor}${sel?';box-shadow:0 0 0 2px #ffd24a':''}">`
+      +`<div style="font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="${esc(b.nome)}">${esc(b.nome)}</div>`
+      +`<div class="sub" style="font-size:11.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${icon} ${esc(b.tipo||'—')}</div>`
+      +`<div style="font-weight:700;color:var(--gold,#e0b34a);font-size:12.5px">${b.valor?fmtR$(b.valor):'<span class="sub" style="font-weight:400">sem valor</span>'}</div>`
+      +`<div style="font-size:11px">${pos}</div>`
+      +`<div style="display:flex;gap:3px;margin-top:3px">${btns}</div></div>`; };
+  const _grid=(cards)=>`<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(168px,1fr));gap:8px;margin:0 0 6px">${cards}</div>`;
+  const _sedeHead=(s)=>{ const cor=_benfCor(s.nome); const sel=(_benfEditSede===s.id);
+    const st=s.geom?'<span style="color:#7fe0a0">▰ com perímetro</span>':'<span style="color:var(--warn,#e0a33a)">sem perímetro</span>';
+    const btns=`${_bt('_benfSedePerim('+s.id+')','desenhar/ajustar perímetro')}🖊️</span> ${_bt('_benfSedeEdit('+s.id+')','editar')}✎</span> ${_bt('_benfSedeDel('+s.id+')','excluir','danger')}✕</span>`;
+    return `<div style="display:flex;align-items:center;gap:8px;margin:12px 0 6px;padding-bottom:5px;border-bottom:2px solid ${cor}55"><span style="width:11px;height:11px;border-radius:50%;background:${cor};display:inline-block;flex:0 0 auto${sel?';box-shadow:0 0 0 2px #ffd24a':''}"></span><span style="font-weight:800;color:${cor};font-size:13.5px">${esc(s.nome)}</span><span class="sub" style="font-size:11px">${st}</span><span style="flex:1"></span>${btns}</div>`; };
+  const sedeSet=new Set(sedes.map(s=>s.nome));
+  const bySede={}; benf.forEach(b=>{ const k=(b.sede&&sedeSet.has(b.sede))?b.sede:'—sem—'; (bySede[k]=bySede[k]||[]).push(b); });
+  let listaCards=sedes.map(s=>{ const cor=_benfCor(s.nome); const cs=bySede[s.nome]||[]; return _sedeHead(s)+(cs.length?_grid(cs.map(b=>_card(b,cor)).join('')):'<div class="sub" style="padding:0 2px 6px">— nenhuma benfeitoria nesta sede —</div>'); }).join('');
+  const orphan=bySede['—sem—']||[];
+  if(orphan.length) listaCards+=`<div style="display:flex;align-items:center;gap:8px;margin:12px 0 6px;padding-bottom:5px;border-bottom:2px solid #55607a"><span style="font-weight:800;color:#9aa6bd;font-size:13.5px">— sem sede —</span></div>`+_grid(orphan.map(b=>_card(b,'#7a869a')).join(''));
+  if(!listaCards) listaCards='<div class="sub" style="padding:12px">Cadastre uma sede e uma benfeitoria nos campos acima. As benfeitorias aparecem aqui como cartões, agrupadas por sede.</div>';
+  const cardTot=(rot,val,cor)=>`<div style="flex:1;min-width:120px;background:var(--bg3,#111a2e);border:1px solid var(--border,#22345a);border-radius:10px;padding:8px 14px"><div class="sub">${rot}</div><div style="font-size:18px;font-weight:800${cor?';color:'+cor:''}">${val}</div></div>`;
+  return `<style>#main{padding:0!important;overflow:hidden} #benf_root{display:flex;align-items:stretch;overflow:hidden;background:var(--bg2,#0b1428)} #benf_map .leaflet-interactive:focus,#benf_map path:focus,#benf_map svg:focus{outline:none!important} #benf_map .leaflet-container{outline:none} .benf-vtx{background:#fff;border:2px solid #ffd24a;border-radius:50%;box-shadow:0 0 4px rgba(0,0,0,.6);cursor:grab} .benf-vtx.last{background:#ffd24a;box-shadow:0 0 6px rgba(255,210,74,.9)} .bfcard{border-radius:10px;background:var(--bg4,#0f1830);padding:8px 10px;display:flex;flex-direction:column;gap:2px;transition:.12s} .bfcard:hover{background:var(--bg5,#15223d)}</style>
+  <div id="benf_root">
+    <div id="benf_left" style="flex:0 0 50%;max-width:50%;display:flex;flex-direction:column;min-height:0;overflow:hidden;padding:14px 16px;box-sizing:border-box">
+      <div class="row" style="gap:10px;flex-wrap:wrap;align-items:stretch;flex:0 0 auto;margin-bottom:12px">
+        ${cardTot('Benfeitorias',benf.length)}${cardTot('Valor total',fmtR$(totVal))}${cardTot('Depreciação/ano',fmtR$(depAno),'var(--gold,#e0b34a)')}
       </div>
+      <div style="background:var(--bg3,#111a2e);border:1px solid var(--border,#22345a);border-radius:10px;padding:10px 12px;margin-bottom:12px;flex:0 0 auto">
+        <div style="display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap;padding-bottom:9px;margin-bottom:9px;border-bottom:1px solid var(--border,#22345a)">
+          <div class="fcol" style="flex:1;min-width:170px"><label>${eS?'✎ Editar sede':'Nova sede'}</label><input id="bf_sede_nome" value="${eS?esc(eS.nome):''}" placeholder="ex.: Sede Guiomar"></div>
+          <button class="btn success" id="bf_sede_add" title="${eS?'Salvar sede':'Adicionar sede'}">${eS?'💾 Salvar':'+ Sede'}</button>${eS?'<button class="btn" id="bf_sede_cancel" title="Cancelar">✕</button>':''}
+        </div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end">
+          <div class="fcol" style="flex:2;min-width:150px"><label>${eB?'✎ Nome (editando)':'Nome da benfeitoria'}</label><input id="bf_nome" value="${eB?esc(eB.nome):''}" placeholder="ex.: Galpão 1"></div>
+          <div class="fcol" style="min-width:118px"><label>Tipo</label><select id="bf_tipo">${BENF_TIPOS.map(t=>`<option ${eB&&eB.tipo===t?'selected':''}>${t}</option>`).join('')}</select></div>
+          <div class="fcol" style="min-width:118px"><label>Sede</label><select id="bf_sede"><option value="">—</option>${sedeOpts}</select></div>
+          <div class="fcol" style="flex:3;min-width:170px"><label>Descrição</label><input id="bf_desc" value="${eB&&eB.obs?esc(eB.obs):''}" placeholder="ex.: galpão de máquinas, ~400 m²"></div>
+          <div class="fcol" style="max-width:118px"><label>Valor (R$)</label><input id="bf_valor" type="number" step="any" value="${eB&&eB.valor!=null?eB.valor:''}"></div>
+          <div class="fcol" style="max-width:78px"><label>Vida útil</label><input id="bf_vida" type="number" step="any" value="${eB&&eB.vidaUtilAnos!=null?eB.vidaUtilAnos:20}"></div>
+          <div class="fcol" style="max-width:138px"><label>Marca no mapa</label><select id="bf_geotipo"><option value="ponto" ${eB&&eB.geomTipo==='ponto'?'selected':''}>Ponto (pino)</option><option value="poligono" ${eB&&eB.geomTipo==='poligono'?'selected':''}>Polígono</option></select></div>
+          <button class="btn success" id="bf_add">${eB?'💾 Salvar':'+ Adicionar'}</button>${eB?'<button class="btn" id="bf_cancel">Cancelar</button>':''}
+          <span class="fmsg" id="bf_msg"></span>
+        </div>
+      </div>
+      <div style="flex:1;overflow:auto;min-height:0;padding-right:2px">${listaCards}</div>
     </div>
-    <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;background:var(--bg3,#111a2e);border:1px solid var(--border,#22345a);border-radius:10px;padding:10px 12px;margin-bottom:10px">
-      <div class="fcol" style="flex:2;min-width:150px"><label>${eB?'✎ Nome (editando)':'Nome da benfeitoria'}</label><input id="bf_nome" value="${eB?esc(eB.nome):''}" placeholder="ex.: Galpão 1"></div>
-      <div class="fcol" style="min-width:120px"><label>Tipo</label><select id="bf_tipo">${BENF_TIPOS.map(t=>`<option ${eB&&eB.tipo===t?'selected':''}>${t}</option>`).join('')}</select></div>
-      <div class="fcol" style="min-width:120px"><label>Sede</label><select id="bf_sede"><option value="">—</option>${sedeOpts}</select></div>
-      <div class="fcol" style="flex:3;min-width:180px"><label>Descrição</label><input id="bf_desc" value="${eB&&eB.obs?esc(eB.obs):''}" placeholder="ex.: galpão de máquinas, ~400 m²"></div>
-      <div class="fcol" style="max-width:120px"><label>Valor (R$)</label><input id="bf_valor" type="number" step="any" value="${eB&&eB.valor!=null?eB.valor:''}"></div>
-      <div class="fcol" style="max-width:80px"><label>Vida útil</label><input id="bf_vida" type="number" step="any" value="${eB&&eB.vidaUtilAnos!=null?eB.vidaUtilAnos:20}"></div>
-      <div class="fcol" style="max-width:140px"><label>Marca no mapa</label><select id="bf_geotipo"><option value="ponto" ${eB&&eB.geomTipo==='ponto'?'selected':''}>Ponto (pino)</option><option value="poligono" ${eB&&eB.geomTipo==='poligono'?'selected':''}>Polígono</option></select></div>
-      <button class="btn success" id="bf_add">${eB?'💾 Salvar':'+ Adicionar'}</button>${eB?'<button class="btn" id="bf_cancel">Cancelar</button>':''}
-      <span class="fmsg" id="bf_msg"></span>
-    </div>
-    <div class="benf-flex" style="display:flex;gap:12px;align-items:stretch">
-      <div style="flex:0 0 300px;min-width:240px;display:flex;flex-direction:column;min-height:0">
-        <div class="sec" style="margin-top:0">Sedes</div>
-        <div style="max-height:150px;overflow:auto;margin-bottom:8px">${listaSede}</div>
-        <div class="sec">Benfeitorias</div>
-        <div style="flex:1;overflow:auto;min-height:0">${listaBenf}</div>
-      </div>
-      <div style="flex:1;min-width:360px;display:flex;flex-direction:column;min-height:0">
-        <div class="actions" id="bf_toolbar" style="gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:6px;min-height:34px"></div>
-        <div id="benf_map" style="flex:1;min-height:300px;border:1px solid #2c4a78;border-radius:8px;background:#0e1830"></div>
-      </div>
+    <div style="flex:0 0 50%;max-width:50%;position:relative">
+      <div id="benf_map" style="position:absolute;inset:0;background:#0e1830"></div>
+      <div id="bf_toolbar" style="position:absolute;left:10px;right:10px;bottom:10px;z-index:1000;background:rgba(9,16,34,.93);border:1px solid #2c4a78;border-radius:10px;padding:8px 12px;display:flex;gap:8px;flex-wrap:wrap;align-items:center;box-shadow:0 6px 18px rgba(0,0,0,.45)"></div>
     </div>
   </div>`;
 }
@@ -1405,7 +1417,7 @@ function bindMapa(){
   _benfMapInit(); setTimeout(_benfAjustaAltura,90);
   if(!window._benfResizeBound){ window._benfResizeBound=true; window.addEventListener('resize',_benfAjustaAltura); }
 }
-function _benfAjustaAltura(){ const f=document.querySelector('#main .benf-flex'); if(!f) return; const t=f.getBoundingClientRect().top; f.style.height=Math.max(320, window.innerHeight - t - 14)+'px'; if(_benfMap){ try{_benfMap.invalidateSize();}catch(e){} } }
+function _benfAjustaAltura(){ const r=document.getElementById('benf_root'); if(!r) return; const t=r.getBoundingClientRect().top; r.style.height=Math.max(360, window.innerHeight - t)+'px'; if(_benfMap){ try{_benfMap.invalidateSize();}catch(e){} } }
 async function _benfSaveSede(){ const nome=($('#bf_sede_nome')?.value||'').trim(); if(!nome) return;
   try{ if(_benfEditSede!=null){ await SB.from('sedes').update({nome}).eq('id',_benfEditSede); _benfEditSede=null; } else { await SB.from('sedes').insert({nome}); } await _benfReload(); render(); }catch(e){ alert('Erro: '+e.message); } }
 function _benfSedeEdit(id){ _benfEditSede=id; _benfEditBenf=null; render(); }
