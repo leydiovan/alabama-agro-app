@@ -1361,7 +1361,7 @@ function renderMapa(){
   const _card=(b)=>{ const sel=(_benfEditBenf===b.id); const icon=BENF_ICON[b.tipo]||'📦'; const cor=_benfCor(b.matricula||b.sede||'');
     const pos=b.geom?('<span style="color:#7fe0a0">'+(b.geomTipo==='poligono'?'▰ contorno':'📍 posicionado')+'</span>'):'<span style="color:var(--warn,#e0a33a)">⚠ sem posição</span>';
     const meta=esc(b.tipo||'—')+(b.categoria?' · <span style="color:#8ab6ff">'+esc(b.categoria)+'</span>':'')+' · '+pos;
-    const btns=`${_bt('_benfPosPoly('+b.id+')','desenhar/ajustar contorno')}▰</span> ${_bt('_benfCircle('+b.id+')','desenhar círculo (pivô)')}⭕</span> ${_bt('_benfImport('+b.id+')','carregar poligonal (KML)')}📄</span> ${_bt('_benfPos('+b.id+')','posicionar pino')}📍</span> ${_bt('_benfEdit('+b.id+')','editar dados')}✎</span> ${_bt('_benfDel('+b.id+')','excluir','danger')}✕</span>`;
+    const btns=`${_bt('_benfEdit('+b.id+')','editar / posicionar no mapa')}✎</span> ${_bt('_benfDel('+b.id+')','excluir','danger')}✕</span>`;
     return `<div class="bfcard" style="flex-direction:row;align-items:center;gap:14px;border:1px solid ${cor}55;border-left:4px solid ${cor}${sel?';box-shadow:0 0 0 2px #ffd24a':''}">`
       +`<div style="font-size:22px;flex:0 0 auto;line-height:1.1">${icon}</div>`
       +`<div style="flex:0 0 190px;min-width:0">`
@@ -1378,7 +1378,7 @@ function renderMapa(){
     return `<div style="display:flex;align-items:center;gap:8px;margin:14px 0 8px;padding:7px 9px;border-radius:9px;background:${cor}1f;border-left:4px solid ${cor}${sel?';box-shadow:0 0 0 2px #ffd24a':''}"><span style="font-size:16px">🗂️</span><div style="flex:1;min-width:0"><div style="font-weight:800;color:${cor};font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(m.nome)}</div><div class="sub" style="font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${st}${info?' · '+info:''}</div></div><span class="sub" style="font-size:10px;opacity:.7">cadastro em Cadastros</span></div>`; };
   const _sedeHead=(s)=>{ const cor=_benfCor(s.matricula||s.nome); const sel=(_benfEditSede===s.id);
     const st=s.geom?'<span style="color:#7fe0a0">▰ perímetro</span>':'<span style="color:var(--warn,#e0a33a)">sem perímetro</span>';
-    const btns=`${_bt('_benfSedePerim('+s.id+')','desenhar/ajustar perímetro')}🖊️</span> ${_bt('_benfSedeEdit('+s.id+')','editar')}✎</span> ${_bt('_benfSedeDel('+s.id+')','excluir','danger')}✕</span>`;
+    const btns=`${_bt('_benfSedeEdit('+s.id+')','editar / perímetro no mapa')}✎</span> ${_bt('_benfSedeDel('+s.id+')','excluir','danger')}✕</span>`;
     return `<div style="display:flex;align-items:center;gap:7px;margin:8px 0 5px 14px;padding-bottom:4px;border-bottom:1px solid ${cor}55"><span>🏠</span><span style="font-weight:700;color:${cor};font-size:12.5px${sel?';text-shadow:0 0 6px '+cor:''}">${esc(s.nome)}</span><span class="sub" style="font-size:10.5px">${st}</span><span style="flex:1"></span>${btns}</div>`; };
   const _campoHead=`<div style="display:flex;align-items:center;gap:6px;margin:8px 0 5px 14px;padding-bottom:4px;border-bottom:1px dashed #55607a"><span>🌱</span><span style="font-weight:700;color:#9aa6bd;font-size:12.5px">Campo / Infraestrutura</span></div>`;
   const validMat=new Set(mats.map(m=>m.nome));
@@ -1547,7 +1547,12 @@ function _benfRedrawOutline(){ if(!_benfMap) return; if(_benfLayer){ _benfMap.re
 function _benfRedrawDraw(){ if(!_benfMap) return;
   _benfRedrawOutline();
   _benfHandles.forEach(h=>_benfMap.removeLayer(h)); _benfHandles=[];
-  if(_benfDraw&&_benfDraw.kind==='circulo'){ if(_benfCircCenter){ const c=L.circleMarker(_benfCircCenter,{radius:5,color:'#fff',weight:2,fillColor:'#ffd24a',fillOpacity:1}).addTo(_benfMap); _benfHandles.push(c); } return; }
+  if(_benfDraw&&_benfDraw.kind==='circulo'){ if(_benfCircCenter){
+      const mk=L.marker(_benfCircCenter,{draggable:true,icon:_benfVertIcon(true),zIndexOffset:1000}).addTo(_benfMap);
+      mk.on('drag',ev=>{ const ll=ev.target.getLatLng(); _benfCircCenter=[ll.lat,ll.lng]; if(_benfCircMeta&&_benfCircMeta.raio>0) _benfSetCircle(_benfCircMeta.raio); _benfRedrawOutline(); });
+      mk.on('dragend',()=>_benfUpdateToolbar());
+      mk.bindTooltip('arraste p/ mover o centro',{direction:'top',offset:[0,-8]});
+      _benfHandles.push(mk); } return; }
   const poly=(_benfDraw&&_benfDraw.kind==='poligono');
   _benfVerts.forEach((p,i)=>{ const last=(i===_benfVerts.length-1);
     const mk=L.marker(p,{draggable:true,icon:_benfVertIcon(poly&&last),zIndexOffset:1000}).addTo(_benfMap);
@@ -1579,12 +1584,31 @@ function _benfUpdateToolbar(){ const tb=$('#bf_toolbar'); if(!tb) return; let ht
   } else if(_benfMeasure){ const pts=_benfMeasPts; let dist=0; for(let i=1;i<pts.length;i++) dist+=_benfMap.distance(pts[i-1],pts[i]); let area=null; if(pts.length>=3){ try{ area=_ringAreaHa(pts.map(([la,lo])=>_apcUTM(la,lo,23))); }catch(e){} }
     html='<b style="color:#ffd24a">📏 Medindo</b> <span class="hint">clique os pontos'+(pts.length>=2?(' — <b>'+(dist>=1000?(dist/1000).toFixed(2)+' km':Math.round(dist)+' m')+'</b>'+(area!=null?' · <b>'+_benfFmtArea(area)+'</b>':'')):'')+'.</span> <button type="button" class="btn sm" id="bf_measClear">🧹 Limpar</button> <button type="button" class="btn sm" id="bf_measure">✕ Parar</button>';
   } else {
-    html='<button type="button" class="btn sm" id="bf_measure" title="Medir distância/área">📏 Medir</button> <span class="hint">Clique 📍/▰ numa benfeitoria (posicionar) ou 🖊️ numa sede (perímetro) para desenhar no mapa.</span>';
+    const selB=_benfEditBenf!=null?(S.benfeitorias||[]).find(b=>b.id===_benfEditBenf):null;
+    const selS=_benfEditSede!=null?(S.sedes||[]).find(s=>s.id===_benfEditSede):null;
+    if(selB){ const st=selB.geom?('<span style="color:#7fe0a0">'+(selB.geomTipo==='poligono'?'▰ com contorno':'📍 posicionada')+'</span>'):'<span style="color:var(--warn,#e0a33a)">⚠ sem posição</span>';
+      html='<b style="color:#ffd24a">✎ '+esc(selB.nome)+'</b> '+st+' <span class="hint">posicionar:</span>'
+        +' <button type="button" class="btn sm" id="bf_tPino">📍 Pino</button>'
+        +' <button type="button" class="btn sm" id="bf_tPoly">▰ Contorno</button>'
+        +' <button type="button" class="btn sm" id="bf_tCirc">⭕ Círculo</button>'
+        +' <button type="button" class="btn sm" id="bf_tImp">📄 KML</button>'
+        +' <button type="button" class="btn sm" id="bf_measure">📏 Medir</button>'
+        +' <button type="button" class="btn sm danger" id="bf_desel">✕ Fechar</button>';
+    } else if(selS){ const st=selS.geom?'<span style="color:#7fe0a0">▰ com perímetro</span>':'<span style="color:var(--warn,#e0a33a)">⚠ sem perímetro</span>';
+      html='<b style="color:#ffd24a">🏠 '+esc(selS.nome)+'</b> '+st
+        +' <button type="button" class="btn sm" id="bf_tSedePer">🖊️ Perímetro</button>'
+        +' <button type="button" class="btn sm" id="bf_measure">📏 Medir</button>'
+        +' <button type="button" class="btn sm danger" id="bf_desel">✕ Fechar</button>';
+    } else {
+      html='<button type="button" class="btn sm" id="bf_measure" title="Medir distância/área">📏 Medir</button> <span class="hint">Clique numa benfeitoria (na lista ✎ ou no mapa) para posicioná-la; ou numa sede para o perímetro.</span>';
+    }
   }
   tb.innerHTML=html;
   const w=(id,fn)=>{ const e=$('#'+id); if(e) e.onclick=fn; };
   w('bf_measure',_benfMeasToggle); w('bf_measClear',_benfMeasClear); w('bf_finish',_benfFinish); w('bf_undo',_benfUndoVert); w('bf_cancelDraw',_benfCancelDraw);
   w('bf_circApply',()=>{ const R=parseFloat($('#bf_circR')?.value); if(R>0){ _benfSetCircle(R); _benfRedrawDraw(); _benfUpdateToolbar(); } });
+  w('bf_tPino',()=>_benfPos(_benfEditBenf)); w('bf_tPoly',()=>_benfPosPoly(_benfEditBenf)); w('bf_tCirc',()=>_benfCircle(_benfEditBenf)); w('bf_tImp',()=>_benfImport(_benfEditBenf));
+  w('bf_tSedePer',()=>_benfSedePerim(_benfEditSede)); w('bf_desel',()=>{ _benfEditBenf=null; _benfEditSede=null; render(); });
 }
 async function _benfCommitGeom(){ if(!_benfDraw) return; let geom=null; const kind=_benfDraw.kind;
   if(kind==='ponto'){ if(!_benfVerts.length) return; const [lat,lon]=_benfVerts[0]; geom={crs:'UTM23S',ponto:_apcUTM(lat,lon,23)}; }
