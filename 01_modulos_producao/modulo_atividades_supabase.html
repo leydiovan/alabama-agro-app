@@ -1358,11 +1358,11 @@ function renderMapa(){
     const btns=`${_bt('_benfPosPoly('+b.id+')','desenhar/ajustar contorno')}▰</span> ${_bt('_benfPos('+b.id+')','posicionar pino')}📍</span> ${_bt('_benfEdit('+b.id+')','editar dados')}✎</span> ${_bt('_benfDel('+b.id+')','excluir','danger')}✕</span>`;
     return `<div class="bfcard" style="flex-direction:row;align-items:center;gap:14px;border:1px solid ${cor}55;border-left:4px solid ${cor}${sel?';box-shadow:0 0 0 2px #ffd24a':''}">`
       +`<div style="font-size:22px;flex:0 0 auto;line-height:1.1">${icon}</div>`
-      +`<div style="flex:0 0 34%;min-width:110px;max-width:38%">`
+      +`<div style="flex:1;min-width:0">`
         +`<div style="font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="${esc(b.nome)}">${esc(b.nome)}</div>`
         +`<div class="sub" style="font-size:11.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:1px">${meta}</div>`
       +`</div>`
-      +`<div class="sub" style="flex:1;min-width:0;font-size:10.5px;line-height:1.38;padding:0 10px;border-left:1px solid ${cor}33;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden;white-space:normal" title="${esc(b.obs||'')}">${b.obs?esc(b.obs):'<span style="opacity:.5">sem descrição</span>'}</div>`
+      +`<div class="sub" style="flex:0 0 27%;min-width:0;max-width:210px;font-size:10.5px;line-height:1.38;padding:0 10px;border-left:1px solid ${cor}33;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden;white-space:normal" title="${esc(b.obs||'')}">${b.obs?esc(b.obs):'<span style="opacity:.5">sem descrição</span>'}</div>`
       +`<div style="font-weight:800;color:var(--gold,#e0b34a);font-size:13px;flex:0 0 auto;white-space:nowrap;text-align:right">${b.valor?fmtR$(b.valor):'<span class="sub" style="font-weight:400">—</span>'}</div>`
       +`<div style="display:flex;gap:3px;flex:0 0 auto">${btns}</div></div>`; };
   const _grid=(cards)=>`<div style="display:flex;flex-direction:column;gap:6px;margin:0 0 6px">${cards}</div>`;
