@@ -1348,6 +1348,20 @@ let _benfView=null, _benfBaseName='Satélite (Google)';        // preserva centr
 let _benfFormTab='benf', _matGeomTmp=null, _matPolysTmp=null;  // aba do formulário + polígono importado (KML/DXF) pendente
 let _benfCircCenter=null, _benfCircMeta=null, _benfImportId=null;  // desenho de círculo (pivô) + import de poligonal
 const _benfCor=(sede)=>{ const p=['#ff8a3d','#3dd6ff','#b98bff','#ffd24a','#7fe0a0','#ff6b9d','#8ab6ff','#e0b34a']; let h=0; for(const c of String(sede||'')) h=(h*31+c.charCodeAt(0))>>>0; return p[h%p.length]; };
+/* ponto dentro do anel (ray-casting em UTM) */
+function _benfPtInRing(pt,ring){ let inside=false; const x=pt[0],y=pt[1]; for(let i=0,j=ring.length-1;i<ring.length;j=i++){ const xi=ring[i][0],yi=ring[i][1],xj=ring[j][0],yj=ring[j][1]; if(((yi>y)!==(yj>y)) && (x<(xj-xi)*(y-yi)/(yj-yi)+xi)) inside=!inside; } return inside; }
+/* RATEIO geométrico: quanto da poligonal da benfeitoria cai em cada matrícula (amostragem 70x70) */
+function _benfRateio(b){ if(!b||!b.geom||!Array.isArray(b.geom.ring)||b.geom.ring.length<3) return null;
+  const ring=b.geom.ring; let minE=1e18,maxE=-1e18,minN=1e18,maxN=-1e18; ring.forEach(([E,N])=>{if(E<minE)minE=E;if(E>maxE)maxE=E;if(N<minN)minN=N;if(N>maxN)maxN=N;});
+  const mats=(S.matriculas||[]).filter(m=>m.geom&&Array.isArray(m.geom.ring)&&m.geom.ring.length>=3);
+  if(!mats.length) return null;
+  const G=70, dx=(maxE-minE)/G, dy=(maxN-minN)/G; const tally={}; let inTot=0;
+  for(let i=0;i<G;i++)for(let j=0;j<G;j++){ const p=[minE+(i+0.5)*dx,minN+(j+0.5)*dy]; if(!_benfPtInRing(p,ring))continue; inTot++; let f=null; for(const m of mats){ if(_benfPtInRing(p,m.geom.ring)){f=m.nome;break;} } const k=f||'__fora__'; tally[k]=(tally[k]||0)+1; }
+  if(!inTot) return null;
+  const totHa=_ringAreaHa(ring)||0;
+  const itens=Object.keys(tally).map(k=>({matricula:k,pct:tally[k]/inTot,areaHa:tally[k]/inTot*totHa})).sort((a,b)=>b.pct-a.pct);
+  return {totHa,itens}; }
+function _matNumById(nome){ const m=(S.matriculas||[]).find(x=>x.nome===nome); return m?(m.numero||m.nome):nome; }
 function renderMapa(){
   const sedes=(S.sedes||[]), benf=(S.benfeitorias||[]), mats=(S.matriculas||[]);
   const eS=_benfEditSede!=null?sedes.find(s=>s.id===_benfEditSede):null;
@@ -1361,12 +1375,17 @@ function renderMapa(){
   const _card=(b)=>{ const sel=(_benfEditBenf===b.id); const icon=BENF_ICON[b.tipo]||'📦'; const cor=_benfCor(b.matricula||b.sede||'');
     const pos=b.geom?('<span style="color:#7fe0a0">'+(b.geomTipo==='poligono'?'▰ contorno':'📍 posicionado')+'</span>'):'<span style="color:var(--warn,#e0a33a)">⚠ sem posição</span>';
     const meta=esc(b.tipo||'—')+(b.categoria?' · <span style="color:#8ab6ff">'+esc(b.categoria)+'</span>':'')+' · '+pos;
+    const rat=(b.geomTipo==='poligono')?_benfRateio(b):null;
+    const ratI=rat?rat.itens.filter(x=>x.pct>=0.005):[];
+    const ratLine=ratI.length?ratI.map(x=>(x.matricula==='__fora__'?'fora':esc(_matNumById(x.matricula)))+' '+Math.round(x.pct*100)+'%').join(' · '):'';
+    const ratTitle=ratI.map(x=>(x.matricula==='__fora__'?'fora das matrículas':esc(x.matricula))+': '+Math.round(x.pct*100)+'% · '+fmt1(x.areaHa)+' ha'+(b.valor?' · '+fmtR$(b.valor*x.pct):'')).join('\n');
     const btns=`${_bt('_benfEdit('+b.id+')','editar / posicionar no mapa')}✎</span> ${_bt('_benfDel('+b.id+')','excluir','danger')}✕</span>`;
     return `<div class="bfcard" style="flex-direction:row;align-items:center;gap:14px;border:1px solid ${cor}55;border-left:4px solid ${cor}${sel?';box-shadow:0 0 0 2px #ffd24a':''}">`
       +`<div style="font-size:22px;flex:0 0 auto;line-height:1.1">${icon}</div>`
       +`<div style="flex:0 0 190px;min-width:0">`
         +`<div style="font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="${esc(b.nome)}">${esc(b.nome)}</div>`
         +`<div class="sub" style="font-size:11.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:1px">${meta}</div>`
+        +(ratLine?`<div class="sub" style="font-size:10px;margin-top:1px;color:#8ab6ff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="${ratTitle}">📊 ${ratLine}</div>`:'')
       +`</div>`
       +`<div class="sub" style="flex:1;min-width:0;font-size:10.5px;line-height:1.38;padding:0 16px;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden;white-space:normal" title="${esc(b.obs||'')}">${b.obs?esc(b.obs):'<span style="opacity:.5">sem descrição</span>'}</div>`
       +`<div style="font-weight:800;color:var(--gold,#e0b34a);font-size:13px;flex:0 0 auto;white-space:nowrap;text-align:right">${b.valor?fmtR$(b.valor):'<span class="sub" style="font-weight:400">—</span>'}</div>`
