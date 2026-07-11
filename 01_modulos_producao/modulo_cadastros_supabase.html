@@ -177,6 +177,7 @@ const S={
   implementos: IMP_SEED.map(x=>Object.assign({},x)),
   referencias:[],
   matriculas:[],
+  proprietarios:[],
   colaboradores:[],
   fornecedores:[{nome:'Agro Insumos LTDA',cnpj:'',contato:'',fone:''},{nome:'Casa do Produtor',cnpj:'',contato:'',fone:''},
     {nome:'Posto Fazenda',cnpj:'',contato:'',fone:''},{nome:'SolarTech Brasil',cnpj:'',contato:'',fone:''},
@@ -343,6 +344,7 @@ let EDIT_SUF=null, FORM_SUF_TRAITS=null, FORM_SUF_CULT=null;
 const ENTIDADES=[
   ['lotes','Lotes',()=>S.lotes.length],
   ['matriculas','Matrículas',()=>(S.matriculas||[]).length],
+  ['proprietarios','Proprietários',()=>(S.proprietarios||[]).length],
   ['produtos','Produtos',()=>S.produtos.length],
   ['tiposAtiv','Tipos de atividade',()=>S.tiposAtiv.length],
   ['maquinas','Máquinas',()=>S.maquinas.length],
@@ -415,6 +417,7 @@ function cadHTML(){
   let body='';
   if(TAB==='lotes') body=lotesHTML();
   else if(TAB==='matriculas') body=matriculasHTML();
+  else if(TAB==='proprietarios') body=proprietariosHTML();
   else if(TAB==='produtos') body=produtosHTML();
   else if(TAB==='tiposAtiv') body=tiposHTML();
   else if(TAB==='maquinas') body=maquinasHTML();
@@ -436,6 +439,7 @@ function bindTab(){
   document.querySelectorAll('[data-tab]').forEach(b=>b.onclick=()=>{TAB=b.dataset.tab;SEARCH='';EDIT_PROD=null;EDIT_IDX=null;EDIT_TEC=null;FORM_TEC_MOL=null;EDIT_SUF=null;FORM_SUF_TRAITS=null;FORM_SUF_CULT=null;route();});
   if(TAB==='lotes') bindLotes();
   else if(TAB==='matriculas') bindMatriculas();
+  else if(TAB==='proprietarios') bindProprietarios();
   else if(TAB==='produtos') bindProdutos();
   else if(TAB==='tiposAtiv') bindTipos();
   else if(TAB==='maquinas') bindMaquinas();
@@ -554,10 +558,15 @@ function _matMemorialHTML(e){
 }
 function matriculasHTML(){
   const e=EDIT_IDX!=null?(S.matriculas||[])[EDIT_IDX]:null;
+  const _props=(S.proprietarios||[]).slice().sort((a,b)=>String(a.nome).localeCompare(String(b.nome)));
+  const _sel=new Set((e&&e.proprietarios)||[]);
+  const _propsChk=_props.length?_props.map(p=>'<label><input type="checkbox" class="mProp" value="'+esc(p.nome)+'" '+(_sel.has(p.nome)?'checked':'')+'>'+esc(p.nome)+(p.grupo?' <span class="sub" style="color:var(--ok-l)">·grupo</span>':'')+'</label>').join(''):'<span class="hint">Cadastre pessoas na aba <b>Proprietários</b> primeiro.</span>';
+  const _doGrupo=[..._sel].some(n=>{const p=(S.proprietarios||[]).find(x=>x.nome===n);return p&&p.grupo;});
+  const _grpBadge=_sel.size?(_doGrupo?'<span class="grp" style="color:var(--ok-l);background:rgba(0,200,150,.10)">🏢 do grupo</span>':'<span class="grp">terceiros</span>'):'';
   const q=SEARCH.toLowerCase();
   const lista=(S.matriculas||[]).map((m,idx)=>({m,idx})).filter(o=>!q||String(o.m.nome||'').toLowerCase().includes(q)).sort((a,b)=>String(a.m.nome).localeCompare(String(b.m.nome)));
   const rows=lista.map(({m,idx})=>{ const am=m.geom&&m.geom.ring?_matAreaHa(m.geom.ring):null;
-    return '<tr><td><span class="nome">'+esc(m.nome)+'</span>'+(m.numero?'<span class="grp">nº '+esc(m.numero)+'</span>':'')+(m.geom?'<span class="grp" style="color:var(--ok-l);background:rgba(0,200,150,.10)">🗺️</span>':'')+(m.alienada?'<span class="grp" style="color:#e0a33a;background:rgba(224,163,58,.12)" title="'+esc(m.alienacao||'Alienada / com ônus')+'">🔒 alienada</span>':'')+'</td>'
+    return '<tr><td><span class="nome">'+esc(m.nome)+'</span>'+(m.numero?'<span class="grp">nº '+esc(m.numero)+'</span>':'')+(m.geom?'<span class="grp" style="color:var(--ok-l);background:rgba(0,200,150,.10)">🗺️</span>':'')+(m.alienada?'<span class="grp" style="color:#e0a33a;background:rgba(224,163,58,.12)" title="'+esc(m.alienacao||'Alienada / com ônus')+'">🔒 alienada</span>':'')+((m.proprietarios||[]).some(n=>{const p=(S.proprietarios||[]).find(x=>x.nome===n);return p&&p.grupo;})?'<span class="grp" style="color:var(--ok-l);background:rgba(0,200,150,.10)">🏢 grupo</span>':'')+'</td>'
      +'<td class="num">'+(m.area!=null?nf(m.area)+' <span class="sub">ha</span>':'—')+'</td>'
      +'<td class="sub">'+(am!=null?nf(am)+' ha medida':'sem polígono')+'</td>'
      +'<td><span class="x" data-eidx="'+idx+'" title="Editar">✎</span><span class="x xr" data-didx="'+idx+'" title="Remover">✕</span></td></tr>'; }).join('');
@@ -579,6 +588,9 @@ function matriculasHTML(){
     +'<div class="two"><label>Alienada / com ônus? <select id="mAlienada"><option value="nao"'+((e&&e.alienada)?'':' selected')+'>Não</option><option value="sim"'+((e&&e.alienada)?' selected':'')+'>Sim</option></select></label>'
     +'<label>Descrição da alienação / ônus <input id="mAlienacao" value="'+(e?esc(e.alienacao||''):'')+'" placeholder="ex.: Alienação Fiduciária — credora, R$…, venc.…"></label></div>'
     +'<label>Observação <input id="mObs" value="'+(e?esc(e.obs||''):'')+'" placeholder="opcional"></label>'
+    +'<div class="sectit" style="margin-top:10px">👤 Proprietário(s) '+_grpBadge+'</div>'
+    +'<div class="hint" style="margin-bottom:4px">Marque quem é dono desta matrícula (cadastro na aba <b>Proprietários</b>). "Do grupo" é derivado automaticamente.</div>'
+    +'<div class="partsel" id="mProps">'+_propsChk+'</div>'
     +_matMemorialHTML(e)
     +(e&&e.geom?('<div class="sectit" style="margin-top:6px">Geometria (mapa real)</div>'
       +'<div class="hint">Fonte: <b>'+esc(e.geom.fonte||'—')+'</b> · '+esc(e.geom.crs||'UTM23S')+' · '+(e.geom.ring?e.geom.ring.length:0)+' pontos'
@@ -607,6 +619,8 @@ function bindMatriculas(){
       certificacao:$('mCert').value.trim(), respTecnico:$('mRT').value.trim(),
       alienada:($('mAlienada')&&$('mAlienada').value==='sim'), alienacao:($('mAlienacao')?$('mAlienacao').value.trim():''), obs:$('mObs').value.trim() };
     const memTxt=$('mMemTexto')?$('mMemTexto').value:null;
+    const props=[...document.querySelectorAll('.mProp:checked')].map(c=>c.value);
+    extra.proprietarios=props;
     if(EDIT_IDX!=null){ const ex=S.matriculas[EDIT_IDX]; const geom=_kmlGeomTmp||ex.geom||null; const memorial=Object.assign({},ex.memorial||{},{texto:(memTxt!=null?memTxt:((ex.memorial||{}).texto||''))}); Object.assign(ex,{nome,geom,memorial},extra); EDIT_IDX=null; }
     else { const memorial=memTxt?{texto:memTxt}:null; S.matriculas.push(Object.assign({nome,geom:(_kmlGeomTmp||null),memorial},extra)); }
     _kmlGeomTmp=null; _kmlPolys=[];
@@ -616,6 +630,41 @@ function bindMatriculas(){
   if($('mCancel')) $('mCancel').onclick=()=>{ EDIT_IDX=null; _kmlGeomTmp=null; route(); };
   document.querySelectorAll('[data-eidx]').forEach(b=>b.onclick=()=>{ EDIT_IDX=+b.dataset.eidx; window.scrollTo(0,0); route(); });
   document.querySelectorAll('[data-didx]').forEach(b=>b.onclick=()=>{ const i=+b.dataset.didx; const x=S.matriculas[i]; if(confirm('Remover a matrícula "'+(x?x.nome:'')+'"?\n(sedes/benfeitorias ligadas ficam sem matrícula)')){ S.matriculas.splice(i,1); salvarAbaSB('matriculas',true); route(); } });
+  bindSearch();
+}
+/* ----- PROPRIETÁRIOS (entidade p/ cruzar matrículas · do grupo x terceiros) ----- */
+function proprietariosHTML(){
+  const e=EDIT_IDX!=null?(S.proprietarios||[])[EDIT_IDX]:null;
+  const q=SEARCH.toLowerCase();
+  const lista=(S.proprietarios||[]).map((p,idx)=>({p,idx})).filter(o=>!q||String(o.p.nome||'').toLowerCase().includes(q)).sort((a,b)=>String(a.p.nome).localeCompare(String(b.p.nome)));
+  const nMat=nome=>(S.matriculas||[]).filter(m=>(m.proprietarios||[]).includes(nome)).length;
+  const rows=lista.map(({p,idx})=>'<tr><td><span class="nome">'+esc(p.nome)+'</span>'+(p.grupo?'<span class="grp" style="color:var(--ok-l);background:rgba(0,200,150,.10)">grupo</span>':'<span class="grp">terceiro</span>')+'</td>'
+    +'<td class="sub">'+esc(p.tipo||'PF')+(p.cpfCnpj?' · '+esc(p.cpfCnpj):'')+'</td>'
+    +'<td class="num">'+nMat(p.nome)+' <span class="sub">matríc.</span></td>'
+    +'<td><span class="x" data-eidx="'+idx+'" title="Editar">✎</span><span class="x xr" data-didx="'+idx+'" title="Remover">✕</span></td></tr>').join('');
+  return '<div class="cadwrap" style="margin-bottom:18px"><div class="cadhead"><h2>'+(e?'Editar proprietário':'Novo proprietário')+'</h2></div>'
+    +'<div class="fcol">'
+    +'<div class="two"><label>Nome <input id="pNome" value="'+(e?esc(e.nome):'')+'" placeholder="ex.: Guiomar de Souza"></label>'
+    +'<label>CPF / CNPJ <input id="pDoc" value="'+(e?esc(e.cpfCnpj||''):'')+'"></label></div>'
+    +'<div class="two"><label>Tipo <select id="pTipo"><option value="PF"'+((e&&e.tipo==='PJ')?'':' selected')+'>Pessoa Física</option><option value="PJ"'+((e&&e.tipo==='PJ')?' selected':'')+'>Pessoa Jurídica</option></select></label>'
+    +'<label>Faz parte do grupo? <select id="pGrupo"><option value="nao"'+((e&&e.grupo)?'':' selected')+'>Não (terceiro)</option><option value="sim"'+((e&&e.grupo)?' selected':'')+'>Sim (grupo)</option></select></label></div>'
+    +'<label>Observação <input id="pObs" value="'+(e?esc(e.obs||''):'')+'" placeholder="opcional"></label>'
+    +'<div class="formactions"><button class="btn success" id="pSalvar">'+(e?'Salvar alterações':'Cadastrar proprietário')+'</button>'+(e?'<button class="btn ghost" id="pCancel">Cancelar</button>':'')+'<span class="fmsg" id="pMsg"></span></div>'
+    +'</div></div>'
+    +'<div class="toolbar"><input class="search" id="qSearch" placeholder="🔎 buscar proprietário…" value="'+esc(SEARCH)+'"></div>'
+    +'<table class="tbl"><thead><tr><th>Proprietário ('+lista.length+')</th><th>Tipo / documento</th><th class="num">Matríc.</th><th></th></tr></thead><tbody>'+(rows||'<tr><td colspan="4" class="empty">Nenhum proprietário.</td></tr>')+'</tbody></table>';
+}
+function bindProprietarios(){
+  $('pSalvar').onclick=()=>{ const m=$('pMsg'); m.className='fmsg err';
+    const nome=$('pNome').value.trim(); if(!nome){ m.textContent='Informe o nome.'; return; }
+    const dup=(S.proprietarios||[]).find((x,i)=>String(x.nome||'').toLowerCase()===nome.toLowerCase()&&i!==EDIT_IDX);
+    if(dup){ m.textContent='Já existe um proprietário com esse nome.'; return; }
+    const rec={ nome, cpfCnpj:$('pDoc').value.trim(), tipo:$('pTipo').value, grupo:$('pGrupo').value==='sim', obs:$('pObs').value.trim() };
+    if(EDIT_IDX!=null){ Object.assign(S.proprietarios[EDIT_IDX],rec); EDIT_IDX=null; } else { S.proprietarios.push(rec); }
+    salvarAbaSB('proprietarios',true); route(); };
+  if($('pCancel')) $('pCancel').onclick=()=>{ EDIT_IDX=null; route(); };
+  document.querySelectorAll('[data-eidx]').forEach(b=>b.onclick=()=>{ EDIT_IDX=+b.dataset.eidx; window.scrollTo(0,0); route(); });
+  document.querySelectorAll('[data-didx]').forEach(b=>b.onclick=()=>{ const i=+b.dataset.didx; const x=S.proprietarios[i]; if(confirm('Remover o proprietário "'+(x?x.nome:'')+'"?')){ S.proprietarios.splice(i,1); salvarAbaSB('proprietarios',true); route(); } });
   bindSearch();
 }
 /* ----- PRODUTOS (editor completo + composição estruturada) ----- */
@@ -1291,7 +1340,8 @@ function _regParaBanco(ent, r){
   const num=v=>{ if(v===''||v==null) return null; const s=String(v).indexOf(',')>=0?String(v).replace(/\./g,'').replace(',','.'):String(v); const n=parseFloat(s); return isNaN(n)?null:n; };
   switch(ent){
     case 'lotes': return {cod:r.cod??null, nome:r.nome, area:num(r.area)||0, base:!!r.base, partes:r.partes||[], geom:r.geom||null, disposicao:r.disposicao||'colados'};
-    case 'matriculas': return {nome:r.nome, numero:r.numero||null, denominacao:r.denominacao||null, municipio:r.municipio||null, area:num(r.area), perimetro_m:num(r.perimetroM), reserva_legal_ha:num(r.reservaLegalHa), incra_cod:r.incraCod||null, nirf:r.nirf||null, car:r.car||null, certificacao:r.certificacao||null, resp_tecnico:r.respTecnico||null, alienada:!!r.alienada, alienacao:r.alienacao||null, geom:r.geom||null, memorial:r.memorial||null, obs:r.obs||null};
+    case 'matriculas': return {nome:r.nome, numero:r.numero||null, denominacao:r.denominacao||null, municipio:r.municipio||null, area:num(r.area), perimetro_m:num(r.perimetroM), reserva_legal_ha:num(r.reservaLegalHa), incra_cod:r.incraCod||null, nirf:r.nirf||null, car:r.car||null, certificacao:r.certificacao||null, resp_tecnico:r.respTecnico||null, alienada:!!r.alienada, alienacao:r.alienacao||null, proprietarios:r.proprietarios||[], geom:r.geom||null, memorial:r.memorial||null, obs:r.obs||null};
+    case 'proprietarios': return {nome:r.nome, cpf_cnpj:r.cpfCnpj||null, tipo:r.tipo||'PF', grupo:!!r.grupo, obs:r.obs||null};
     case 'produtos': return {codigo:r.codigo??null, nome:r.nome, comp:r.compRaw||r.comp||null, formulacao:r.formCod||r.formulacao||null, tipo:r.tipo||null, classe:r.classe||null, unidade:r.unidade||null, preco:num(r.precoRef)||num(r.preco)||0, estoque:num(r.estoque)||0, estoque_min:num(r.estoqueMin), comp_texto:r.compTexto||null, ativos:r.ativos||[], garantias:r.garantias||[], comanda:r.comanda||null, semente_tipo:r.sementeTipo||null, cultura:r.cultura||null, semente_emb:r.sementeEmb||null, sementes_emb:num(r.sementesEmb), pms:num(r.pms), tecnologias:r.tecnologias||[], sufixo:r.sufixo||null, fabricante:r.fabricante||null, validade:r.validade||null};
     case 'maquinas': return {id:(r.id!=null?r.id:undefined), id_frota:r.idFrota||r.id_frota||null, nome:r.nome||null, categoria:r.categoria||null, marca:r.marca||null, modelo:r.modelo||null, chassi:r.chassi||null, cor:r.cor||null, ano:r.ano||null, estado:r.estado||null, consumo_ref:num(r.consumoRef), faixa_m:num(r.faixaM!=null?r.faixaM:r.faixa_m), valor_aquisicao:num(r.valorAquisicao), vida_util_anos:num(r.vidaUtilAnos), residual_pct:num(r.residualPct)};
     case 'implementos': return {id:(r.id!=null?r.id:undefined), id_frota:r.idFrota||r.id_frota||null, nome:r.nome||null, categoria:r.categoria||null, marca:r.marca||null, modelo:r.modelo||null, chassi:r.chassi||null, cor:r.cor||null, ano:r.ano||null, estado:r.estado||null, largura_trabalho:num(r.larguraTrab!=null?r.larguraTrab:r.largura_trabalho), valor_aquisicao:num(r.valorAquisicao), vida_util_anos:num(r.vidaUtilAnos), residual_pct:num(r.residualPct)};
@@ -1310,13 +1360,13 @@ function _regParaBanco(ent, r){
     default: return r;
   }
 }
-const _ENT_TAB={lotes:'lotes',matriculas:'matriculas',produtos:'produtos',maquinas:'maquinas',implementos:'implementos',tiposAtiv:'tipos_atividade',colaboradores:'colaboradores',fornecedores:'fornecedores',unidades:'unidades',formulacoes:'formulacoes',principios:'principios',culturas:'culturas',tecnologias:'tecnologias_semente',sufixos:'sufixos_semente',fabricantes:'fabricantes',safras:'safras',referencias:'referencias'};
+const _ENT_TAB={lotes:'lotes',matriculas:'matriculas',proprietarios:'proprietarios',produtos:'produtos',maquinas:'maquinas',implementos:'implementos',tiposAtiv:'tipos_atividade',colaboradores:'colaboradores',fornecedores:'fornecedores',unidades:'unidades',formulacoes:'formulacoes',principios:'principios',culturas:'culturas',tecnologias:'tecnologias_semente',sufixos:'sufixos_semente',fabricantes:'fabricantes',safras:'safras',referencias:'referencias'};
 
 async function salvarAbaSB(ent, silencioso){
   if(!SB){ _statusSB('⚠️ Sem conexão','#e67e22'); return; }
   const tab=_ENT_TAB[ent]; if(!tab){ _statusSB('Entidade desconhecida','#c0392b'); return; }
   let arr=S[ent]||[];
-  if(['maquinas','implementos','produtos','lotes','matriculas','tiposAtiv','colaboradores','fornecedores'].includes(ent)) arr=arr.filter(r=>r && String(r.nome||'').trim());   // não reinsere linhas-lixo sem nome (senão o INSERT falha e a tabela fica vazia)
+  if(['maquinas','implementos','produtos','lotes','matriculas','proprietarios','tiposAtiv','colaboradores','fornecedores'].includes(ent)) arr=arr.filter(r=>r && String(r.nome||'').trim());   // não reinsere linhas-lixo sem nome (senão o INSERT falha e a tabela fica vazia)
   if(!silencioso && !confirm('Salvar a aba "'+ent+'" no banco?\nIsto substitui o conteúdo dessa tabela pelo que está na tela ('+arr.length+' registros).')) return;
   try{
     _statusSB('⏳ Salvando '+ent+'…','#2c3e50');
@@ -1527,7 +1577,8 @@ function _statusSB(txt,cor){ let el=document.getElementById('sbStatus'); if(!el)
 /* mapeamento coleção(app) -> tabela(banco) e conversões */
 const _MAPA_CAD=[
   {col:'lotes', tab:'lotes', toApp:r=>({cod:r.cod,nome:r.nome,area:r.area,base:!!r.base,partes:r.partes||[],geom:r.geom||null,disposicao:r.disposicao||'colados'})},
-  {col:'matriculas', tab:'matriculas', toApp:r=>({id:r.id,nome:r.nome,numero:r.numero||'',denominacao:r.denominacao||'',municipio:r.municipio||'',area:r.area,perimetroM:r.perimetro_m,reservaLegalHa:r.reserva_legal_ha,incraCod:r.incra_cod||'',nirf:r.nirf||'',car:r.car||'',certificacao:r.certificacao||'',respTecnico:r.resp_tecnico||'',alienada:!!r.alienada,alienacao:r.alienacao||'',geom:r.geom||null,memorial:r.memorial||null,obs:r.obs||''})},
+  {col:'matriculas', tab:'matriculas', toApp:r=>({id:r.id,nome:r.nome,numero:r.numero||'',denominacao:r.denominacao||'',municipio:r.municipio||'',area:r.area,perimetroM:r.perimetro_m,reservaLegalHa:r.reserva_legal_ha,incraCod:r.incra_cod||'',nirf:r.nirf||'',car:r.car||'',certificacao:r.certificacao||'',respTecnico:r.resp_tecnico||'',alienada:!!r.alienada,alienacao:r.alienacao||'',proprietarios:r.proprietarios||[],geom:r.geom||null,memorial:r.memorial||null,obs:r.obs||''})},
+  {col:'proprietarios', tab:'proprietarios', toApp:r=>({id:r.id,nome:r.nome,cpfCnpj:r.cpf_cnpj||'',tipo:r.tipo||'PF',grupo:!!r.grupo,obs:r.obs||''})},
   {col:'produtos', tab:'produtos', toApp:r=>({id:r.id,codigo:r.codigo,nome:r.nome,tipo:r.tipo,classe:r.classe,unidade:r.unidade,perfil:perfilDe(r.tipo),precoRef:r.preco,estoque:r.estoque,estoqueMin:r.estoque_min,formCod:r.formulacao||'',compRaw:r.comp||'',compTexto:r.comp_texto||'',ativos:r.ativos||[],garantias:r.garantias||[],comanda:r.comanda||'',sementeTipo:r.semente_tipo||'',cultura:r.cultura||'',sementeEmb:r.semente_emb||'',sementesEmb:r.sementes_emb,pms:r.pms,tecnologias:r.tecnologias||[],sufixo:r.sufixo||'',fabricante:r.fabricante||'',validade:r.validade||null})},
   {col:'maquinas', tab:'maquinas', toApp:r=>Object.assign({},r,{idFrota:r.id_frota!=null?r.id_frota:r.idFrota, faixaM:(r.faixa_m!=null?r.faixa_m:r.faixaM), valorAquisicao:r.valor_aquisicao, vidaUtilAnos:r.vida_util_anos, residualPct:r.residual_pct})},
   {col:'implementos', tab:'implementos', toApp:r=>Object.assign({},r,{idFrota:r.id_frota,larguraTrab:r.largura_trabalho, valorAquisicao:r.valor_aquisicao, vidaUtilAnos:r.vida_util_anos, residualPct:r.residual_pct})},
