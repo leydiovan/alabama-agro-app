@@ -1354,14 +1354,17 @@ function renderMapa(){
   const _bt=(oc,t,cls)=>`<span class="btn sm${cls?' '+cls:''}" style="cursor:pointer;padding:2px 7px;font-size:12px" onclick="${oc}" title="${t}">`;
   const _card=(b,cor)=>{ const sel=(_benfEditBenf===b.id); const icon=BENF_ICON[b.tipo]||'📦';
     const pos=b.geom?('<span style="color:#7fe0a0">'+(b.geomTipo==='poligono'?'▰ contorno':'📍 posicionado')+'</span>'):'<span style="color:var(--warn,#e0a33a)">⚠ sem posição</span>';
+    const meta=esc(b.tipo||'—')+' · '+pos+(b.obs?' · '+esc(b.obs):'');
     const btns=`${_bt('_benfPosPoly('+b.id+')','desenhar/ajustar contorno')}▰</span> ${_bt('_benfPos('+b.id+')','posicionar pino')}📍</span> ${_bt('_benfEdit('+b.id+')','editar dados')}✎</span> ${_bt('_benfDel('+b.id+')','excluir','danger')}✕</span>`;
-    return `<div class="bfcard" style="border:1px solid ${cor}55;border-left:3px solid ${cor}${sel?';box-shadow:0 0 0 2px #ffd24a':''}">`
-      +`<div style="font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="${esc(b.nome)}">${esc(b.nome)}</div>`
-      +`<div class="sub" style="font-size:11.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${icon} ${esc(b.tipo||'—')}</div>`
-      +`<div style="font-weight:700;color:var(--gold,#e0b34a);font-size:12.5px">${b.valor?fmtR$(b.valor):'<span class="sub" style="font-weight:400">sem valor</span>'}</div>`
-      +`<div style="font-size:11px">${pos}</div>`
-      +`<div style="display:flex;gap:3px;margin-top:3px">${btns}</div></div>`; };
-  const _grid=(cards)=>`<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(168px,1fr));gap:8px;margin:0 0 6px">${cards}</div>`;
+    return `<div class="bfcard" style="flex-direction:row;align-items:center;gap:10px;border:1px solid ${cor}55;border-left:4px solid ${cor}${sel?';box-shadow:0 0 0 2px #ffd24a':''}">`
+      +`<div style="font-size:22px;flex:0 0 auto;line-height:1">${icon}</div>`
+      +`<div style="flex:1;min-width:0">`
+        +`<div style="font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="${esc(b.nome)}">${esc(b.nome)}</div>`
+        +`<div class="sub" style="font-size:11.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="${esc(b.obs||'')}">${meta}</div>`
+      +`</div>`
+      +`<div style="font-weight:800;color:var(--gold,#e0b34a);font-size:13px;flex:0 0 auto;white-space:nowrap;text-align:right">${b.valor?fmtR$(b.valor):'<span class="sub" style="font-weight:400">—</span>'}</div>`
+      +`<div style="display:flex;gap:3px;flex:0 0 auto">${btns}</div></div>`; };
+  const _grid=(cards)=>`<div style="display:flex;flex-direction:column;gap:6px;margin:0 0 6px">${cards}</div>`;
   const _sedeHead=(s)=>{ const cor=_benfCor(s.nome); const sel=(_benfEditSede===s.id);
     const st=s.geom?'<span style="color:#7fe0a0">▰ com perímetro</span>':'<span style="color:var(--warn,#e0a33a)">sem perímetro</span>';
     const btns=`${_bt('_benfSedePerim('+s.id+')','desenhar/ajustar perímetro')}🖊️</span> ${_bt('_benfSedeEdit('+s.id+')','editar')}✎</span> ${_bt('_benfSedeDel('+s.id+')','excluir','danger')}✕</span>`;
