@@ -543,10 +543,20 @@ function matriculasHTML(){
   const am=e&&e.geom&&e.geom.ring?_matAreaHa(e.geom.ring):null;
   return '<div class="cadwrap" style="margin-bottom:18px"><div class="cadhead"><h2>'+(e?'Editar matrícula':'Nova matrícula')+'</h2><span class="pf-big" id="mSoma">—</span></div>'
     +'<div class="fcol">'
-    +'<div class="two"><label>Nome/identificação <input id="mNome" value="'+(e?esc(e.nome):'')+'" placeholder="ex.: Faz. Alabama — Mat. 12.345"></label>'
-    +'<label>Nº matrícula (CRI) <input id="mNum" value="'+(e?esc(e.numero||''):'')+'" placeholder="12.345"></label></div>'
+    +'<div class="two"><label>Nome/identificação <input id="mNome" value="'+(e?esc(e.nome):'')+'" placeholder="ex.: Faz. Alabama VII — Mat. 9.996"></label>'
+    +'<label>Nº matrícula (CRI) <input id="mNum" value="'+(e?esc(e.numero||''):'')+'" placeholder="9.996"></label></div>'
+    +'<div class="two"><label>Denominação do imóvel <input id="mDenom" value="'+(e?esc(e.denominacao||''):'')+'" placeholder="ex.: FAZENDA ALABAMA VII"></label>'
+    +'<label>Município/UF <input id="mMun" value="'+(e?esc(e.municipio||''):'')+'" placeholder="ex.: São Desidério - BA"></label></div>'
     +'<div class="two"><label>Área oficial (ha) <input type="number" id="mArea" step="any" min="0" value="'+(e&&e.area!=null?e.area:'')+'" placeholder="0"></label>'
-    +'<label>Observação <input id="mObs" value="'+(e?esc(e.obs||''):'')+'" placeholder="opcional"></label></div>'
+    +'<label>Perímetro (m) <input type="number" id="mPerim" step="any" min="0" value="'+(e&&e.perimetroM!=null?e.perimetroM:'')+'" placeholder="0"></label></div>'
+    +'<div class="two"><label>Reserva Legal (ha) <input type="number" id="mRL" step="any" min="0" value="'+(e&&e.reservaLegalHa!=null?e.reservaLegalHa:'')+'"></label>'
+    +'<label>Cód. INCRA <input id="mIncra" value="'+(e?esc(e.incraCod||''):'')+'"></label></div>'
+    +'<div class="two"><label>NIRF <input id="mNirf" value="'+(e?esc(e.nirf||''):'')+'"></label>'
+    +'<label>CAR <input id="mCar" value="'+(e?esc(e.car||''):'')+'"></label></div>'
+    +'<div class="two"><label>Certificação INCRA (SIGEF) <input id="mCert" value="'+(e?esc(e.certificacao||''):'')+'"></label>'
+    +'<label>Responsável técnico (RT) <input id="mRT" value="'+(e?esc(e.respTecnico||''):'')+'"></label></div>'
+    +'<label>Observação <input id="mObs" value="'+(e?esc(e.obs||''):'')+'" placeholder="opcional"></label>'
+    +((e&&e.memorial)?('<div class="hint" style="margin-top:6px">Memorial: <b>'+((e.memorial.vertices||[]).length)+'</b> vértices · <b>'+((e.memorial.proprietarios||[]).length)+'</b> proprietário(s) · <b>'+((e.memorial.onus||[]).length)+'</b> ônus'+((e.memorial.vertices||[]).length?'':' <span style="color:var(--warn)">(vértices pendentes — importe o SIGEF/KML)</span>')+'</div>'):'')
     +(e&&e.geom?('<div class="sectit" style="margin-top:6px">Geometria (mapa real)</div>'
       +'<div class="hint">Fonte: <b>'+esc(e.geom.fonte||'—')+'</b> · '+esc(e.geom.crs||'UTM23S')+' · '+(e.geom.ring?e.geom.ring.length:0)+' pontos'
       +(am!=null?' · Área medida: <b>'+nf(am)+' ha</b>':'')
@@ -567,10 +577,13 @@ function bindMatriculas(){
     const nome=$('mNome').value.trim(); if(!nome){ m.textContent='Informe o nome/identificação.'; return; }
     const dup=(S.matriculas||[]).find((x,i)=>String(x.nome||'').toLowerCase()===nome.toLowerCase()&&i!==EDIT_IDX);
     if(dup){ m.textContent='Já existe uma matrícula com esse nome.'; return; }
-    const area=$('mArea').value!==''?parseFloat($('mArea').value):null;
-    const numero=$('mNum').value.trim(); const obs=$('mObs').value.trim();
-    if(EDIT_IDX!=null){ const ex=S.matriculas[EDIT_IDX]; const geom=_kmlGeomTmp||ex.geom||null; Object.assign(ex,{nome,numero,area,obs,geom}); EDIT_IDX=null; }
-    else { S.matriculas.push({nome,numero,area,obs,geom:(_kmlGeomTmp||null)}); }
+    const nnum=id=>{ const v=$(id)&&$(id).value; return (v!==''&&v!=null)?parseFloat(v):null; };
+    const extra={ numero:$('mNum').value.trim(), denominacao:$('mDenom').value.trim(), municipio:$('mMun').value.trim(),
+      area:nnum('mArea'), perimetroM:nnum('mPerim'), reservaLegalHa:nnum('mRL'),
+      incraCod:$('mIncra').value.trim(), nirf:$('mNirf').value.trim(), car:$('mCar').value.trim(),
+      certificacao:$('mCert').value.trim(), respTecnico:$('mRT').value.trim(), obs:$('mObs').value.trim() };
+    if(EDIT_IDX!=null){ const ex=S.matriculas[EDIT_IDX]; const geom=_kmlGeomTmp||ex.geom||null; Object.assign(ex,{nome,geom,memorial:ex.memorial||null},extra); EDIT_IDX=null; }
+    else { S.matriculas.push(Object.assign({nome,geom:(_kmlGeomTmp||null),memorial:null},extra)); }
     _kmlGeomTmp=null; _kmlPolys=[];
     salvarAbaSB('matriculas',true); route(); };
   if($('lKml')) $('lKml').onchange=(ev)=>{ const f=ev.target.files&&ev.target.files[0]; if(f) _onKmlFile(f); };
@@ -1253,7 +1266,7 @@ function _regParaBanco(ent, r){
   const num=v=>{ if(v===''||v==null) return null; const s=String(v).indexOf(',')>=0?String(v).replace(/\./g,'').replace(',','.'):String(v); const n=parseFloat(s); return isNaN(n)?null:n; };
   switch(ent){
     case 'lotes': return {cod:r.cod??null, nome:r.nome, area:num(r.area)||0, base:!!r.base, partes:r.partes||[], geom:r.geom||null, disposicao:r.disposicao||'colados'};
-    case 'matriculas': return {nome:r.nome, numero:r.numero||null, area:num(r.area), geom:r.geom||null, obs:r.obs||null};
+    case 'matriculas': return {nome:r.nome, numero:r.numero||null, denominacao:r.denominacao||null, municipio:r.municipio||null, area:num(r.area), perimetro_m:num(r.perimetroM), reserva_legal_ha:num(r.reservaLegalHa), incra_cod:r.incraCod||null, nirf:r.nirf||null, car:r.car||null, certificacao:r.certificacao||null, resp_tecnico:r.respTecnico||null, geom:r.geom||null, memorial:r.memorial||null, obs:r.obs||null};
     case 'produtos': return {codigo:r.codigo??null, nome:r.nome, comp:r.compRaw||r.comp||null, formulacao:r.formCod||r.formulacao||null, tipo:r.tipo||null, classe:r.classe||null, unidade:r.unidade||null, preco:num(r.precoRef)||num(r.preco)||0, estoque:num(r.estoque)||0, estoque_min:num(r.estoqueMin), comp_texto:r.compTexto||null, ativos:r.ativos||[], garantias:r.garantias||[], comanda:r.comanda||null, semente_tipo:r.sementeTipo||null, cultura:r.cultura||null, semente_emb:r.sementeEmb||null, sementes_emb:num(r.sementesEmb), pms:num(r.pms), tecnologias:r.tecnologias||[], sufixo:r.sufixo||null, fabricante:r.fabricante||null, validade:r.validade||null};
     case 'maquinas': return {id:(r.id!=null?r.id:undefined), id_frota:r.idFrota||r.id_frota||null, nome:r.nome||null, categoria:r.categoria||null, marca:r.marca||null, modelo:r.modelo||null, chassi:r.chassi||null, cor:r.cor||null, ano:r.ano||null, estado:r.estado||null, consumo_ref:num(r.consumoRef), faixa_m:num(r.faixaM!=null?r.faixaM:r.faixa_m), valor_aquisicao:num(r.valorAquisicao), vida_util_anos:num(r.vidaUtilAnos), residual_pct:num(r.residualPct)};
     case 'implementos': return {id:(r.id!=null?r.id:undefined), id_frota:r.idFrota||r.id_frota||null, nome:r.nome||null, categoria:r.categoria||null, marca:r.marca||null, modelo:r.modelo||null, chassi:r.chassi||null, cor:r.cor||null, ano:r.ano||null, estado:r.estado||null, largura_trabalho:num(r.larguraTrab!=null?r.larguraTrab:r.largura_trabalho), valor_aquisicao:num(r.valorAquisicao), vida_util_anos:num(r.vidaUtilAnos), residual_pct:num(r.residualPct)};
@@ -1485,7 +1498,7 @@ function _statusSB(txt,cor){ let el=document.getElementById('sbStatus'); if(!el)
 /* mapeamento coleção(app) -> tabela(banco) e conversões */
 const _MAPA_CAD=[
   {col:'lotes', tab:'lotes', toApp:r=>({cod:r.cod,nome:r.nome,area:r.area,base:!!r.base,partes:r.partes||[],geom:r.geom||null,disposicao:r.disposicao||'colados'})},
-  {col:'matriculas', tab:'matriculas', toApp:r=>({id:r.id,nome:r.nome,numero:r.numero||'',area:r.area,geom:r.geom||null,obs:r.obs||''})},
+  {col:'matriculas', tab:'matriculas', toApp:r=>({id:r.id,nome:r.nome,numero:r.numero||'',denominacao:r.denominacao||'',municipio:r.municipio||'',area:r.area,perimetroM:r.perimetro_m,reservaLegalHa:r.reserva_legal_ha,incraCod:r.incra_cod||'',nirf:r.nirf||'',car:r.car||'',certificacao:r.certificacao||'',respTecnico:r.resp_tecnico||'',geom:r.geom||null,memorial:r.memorial||null,obs:r.obs||''})},
   {col:'produtos', tab:'produtos', toApp:r=>({id:r.id,codigo:r.codigo,nome:r.nome,tipo:r.tipo,classe:r.classe,unidade:r.unidade,perfil:perfilDe(r.tipo),precoRef:r.preco,estoque:r.estoque,estoqueMin:r.estoque_min,formCod:r.formulacao||'',compRaw:r.comp||'',compTexto:r.comp_texto||'',ativos:r.ativos||[],garantias:r.garantias||[],comanda:r.comanda||'',sementeTipo:r.semente_tipo||'',cultura:r.cultura||'',sementeEmb:r.semente_emb||'',sementesEmb:r.sementes_emb,pms:r.pms,tecnologias:r.tecnologias||[],sufixo:r.sufixo||'',fabricante:r.fabricante||'',validade:r.validade||null})},
   {col:'maquinas', tab:'maquinas', toApp:r=>Object.assign({},r,{idFrota:r.id_frota!=null?r.id_frota:r.idFrota, faixaM:(r.faixa_m!=null?r.faixa_m:r.faixaM), valorAquisicao:r.valor_aquisicao, vidaUtilAnos:r.vida_util_anos, residualPct:r.residual_pct})},
   {col:'implementos', tab:'implementos', toApp:r=>Object.assign({},r,{idFrota:r.id_frota,larguraTrab:r.largura_trabalho, valorAquisicao:r.valor_aquisicao, vidaUtilAnos:r.vida_util_anos, residualPct:r.residual_pct})},
