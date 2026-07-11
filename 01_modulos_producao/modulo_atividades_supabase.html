@@ -1509,13 +1509,13 @@ function _benfUpdateToolbar(){ const tb=$('#bf_toolbar'); if(!tb) return; let ht
         +' <button type="button" class="btn sm success" id="bf_finish"'+(has?'':' disabled')+'>✔ Concluir</button>'
         +' <button type="button" class="btn sm danger" id="bf_cancelDraw">✕ Cancelar</button>';
     } else { const n=_benfVerts.length; let area=null; if(n>=3){ try{ area=_ringAreaHa(_benfVerts.map(([la,lo])=>_apcUTM(la,lo,23))); }catch(e){} }
-      html='<b style="color:#ffd24a">▰ '+(ed?'Ajustando':'Desenhando')+' '+(nm||(_benfDraw.target==='sede'?'perímetro':'contorno'))+'</b> <span class="hint">— clique p/ novo canto · arraste as alças · duplo-clique numa alça remove'+(n?(' <b>('+n+' '+(n===1?'ponto':'pontos')+(area!=null?' · '+fmt1(area)+' ha':'')+')</b>'):'')+'.</span>'
+      html='<b style="color:#ffd24a">▰ '+(ed?'Ajustando':'Desenhando')+' '+(nm||(_benfDraw.target==='sede'?'perímetro':'contorno'))+'</b> <span class="hint">— clique p/ novo canto · arraste as alças · duplo-clique numa alça remove'+(n?(' <b>('+n+' '+(n===1?'ponto':'pontos')+(area!=null?' · '+_benfFmtArea(area):'')+')</b>'):'')+'.</span>'
         +' <button type="button" class="btn sm success" id="bf_finish"'+(n<3?' disabled title="mínimo 3 pontos"':'')+'>✔ Concluir</button>'
         +' <button type="button" class="btn sm" id="bf_undo"'+(n?'':' disabled')+'>↩ Desfazer</button>'
         +' <button type="button" class="btn sm danger" id="bf_cancelDraw">✕ Cancelar</button>';
     }
   } else if(_benfMeasure){ const pts=_benfMeasPts; let dist=0; for(let i=1;i<pts.length;i++) dist+=_benfMap.distance(pts[i-1],pts[i]); let area=null; if(pts.length>=3){ try{ area=_ringAreaHa(pts.map(([la,lo])=>_apcUTM(la,lo,23))); }catch(e){} }
-    html='<b style="color:#ffd24a">📏 Medindo</b> <span class="hint">clique os pontos'+(pts.length>=2?(' — <b>'+(dist>=1000?(dist/1000).toFixed(2)+' km':Math.round(dist)+' m')+'</b>'+(area!=null?' · <b>'+fmt1(area)+' ha</b>':'')):'')+'.</span> <button type="button" class="btn sm" id="bf_measClear">🧹 Limpar</button> <button type="button" class="btn sm" id="bf_measure">✕ Parar</button>';
+    html='<b style="color:#ffd24a">📏 Medindo</b> <span class="hint">clique os pontos'+(pts.length>=2?(' — <b>'+(dist>=1000?(dist/1000).toFixed(2)+' km':Math.round(dist)+' m')+'</b>'+(area!=null?' · <b>'+_benfFmtArea(area)+'</b>':'')):'')+'.</span> <button type="button" class="btn sm" id="bf_measClear">🧹 Limpar</button> <button type="button" class="btn sm" id="bf_measure">✕ Parar</button>';
   } else {
     html='<button type="button" class="btn sm" id="bf_measure" title="Medir distância/área">📏 Medir</button> <span class="hint">Clique 📍/▰ numa benfeitoria (posicionar) ou 🖊️ numa sede (perímetro) para desenhar no mapa.</span>';
   }
@@ -1552,6 +1552,8 @@ function _benfMeasRedraw(){ if(!_benfMap) return; _benfMeasLayer.forEach(l=>_ben
   if(pts.length>=2){ _benfMeasLayer.push(L.polyline(pts,{color:'#ffd24a',weight:2,dashArray:'4 3'}).addTo(_benfMap)); }
   pts.forEach(p=>_benfMeasLayer.push(L.circleMarker(p,{radius:4,color:'#ffd24a',fillColor:'#ffd24a',fillOpacity:1}).addTo(_benfMap))); }
 function _benfMeasClear(){ if(_benfMap) _benfMeasLayer.forEach(l=>_benfMap.removeLayer(l)); _benfMeasLayer=[]; _benfMeasPts=[]; if(_benfMeasure) _benfUpdateToolbar(); }
+/* área adaptativa: < 0,1 ha mostra em m² (senão arredondaria p/ "0,0 ha") */
+function _benfFmtArea(ha){ if(ha==null||isNaN(ha)) return '—'; if(ha<0.1){ const m2=ha*10000; return (m2>=10?Math.round(m2):m2.toFixed(1).replace('.',','))+' m²'; } return fmt1(ha)+' ha'; }
 
 /* ====================== FICHA (modal) ====================== */
 let fichaCod=null;
