@@ -1362,23 +1362,39 @@ function _benfRateio(b){ if(!b||!b.geom||!Array.isArray(b.geom.ring)||b.geom.rin
   const itens=Object.keys(tally).map(k=>({matricula:k,pct:tally[k]/inTot,areaHa:tally[k]/inTot*totHa})).sort((a,b)=>b.pct-a.pct);
   return {totHa,itens}; }
 function _matNumById(nome){ const m=(S.matriculas||[]).find(x=>x.nome===nome); return m?(m.numero||m.nome):nome; }
+function _benfPointMat(b){ if(!b.geom||!Array.isArray(b.geom.ponto)) return null; const p=b.geom.ponto; const m=(S.matriculas||[]).find(m=>m.geom&&Array.isArray(m.geom.ring)&&m.geom.ring.length>=3&&_benfPtInRing(p,m.geom.ring)); return m?m.nome:null; }
+let _benfRatMemo={};
+/* vínculo efetivo benfeitoria->matrículas [{matricula,pct}] (manual salvo ou geográfico ao vivo) */
+function _benfMatRat(b){ if(_benfRatMemo[b.id]) return _benfRatMemo[b.id]; let out=[];
+  const salvo=()=>{ if(Array.isArray(b.matriculas)&&b.matriculas.length) return b.matriculas.map(x=>({matricula:x.matricula,pct:+x.pct||0})); if(b.matricula) return [{matricula:b.matricula,pct:100}]; return []; };
+  if(b.rateioModo==='geografico'){
+    if(b.geomTipo==='poligono'&&b.geom&&b.geom.ring){ const r=_benfRateio(b); if(r) out=r.itens.filter(x=>x.matricula!=='__fora__'&&x.pct>=0.005).map(x=>({matricula:x.matricula,pct:Math.round(x.pct*100)})); }
+    else { const pm=_benfPointMat(b); if(pm) out=[{matricula:pm,pct:100}]; }
+    if(!out.length) out=salvo();
+  } else out=salvo();
+  out=out.filter(x=>x.matricula&&x.pct>0);
+  _benfRatMemo[b.id]=out; return out; }
 function renderMapa(){
   const sedes=(S.sedes||[]), benf=(S.benfeitorias||[]), mats=(S.matriculas||[]);
   const eS=_benfEditSede!=null?sedes.find(s=>s.id===_benfEditSede):null;
   const eB=_benfEditBenf!=null?benf.find(b=>b.id===_benfEditBenf):null;
   const eM=_benfEditMat!=null?mats.find(m=>m.id===_benfEditMat):null;
+  _benfRatMemo={};
   const totVal=benf.reduce((s,b)=>s+(+b.valor||0),0);
   const depAno=benf.reduce((s,b)=>s+_deprecAno({valorAquisicao:b.valor,vidaUtilAnos:b.vidaUtilAnos,residualPct:b.residualPct}),0);
   const sedeOpts=(selNome)=>sedes.map(s=>`<option value="${esc(s.nome)}" ${selNome===s.nome?'selected':''}>${esc(s.nome)}${s.matricula?' — '+esc(s.matricula):''}</option>`).join('');
   const matOpts=(selNome)=>mats.map(m=>`<option value="${esc(m.nome)}" ${selNome===m.nome?'selected':''}>${esc(m.nome)}</option>`).join('');
   const _bt=(oc,t,cls)=>`<span class="btn sm${cls?' '+cls:''}" style="cursor:pointer;padding:2px 7px;font-size:12px" onclick="${oc}" title="${t}">`;
-  const _card=(b)=>{ const sel=(_benfEditBenf===b.id); const icon=BENF_ICON[b.tipo]||'📦'; const cor=_benfCor(b.matricula||b.sede||'');
+  const _card=(b,ctxMat)=>{ const sel=(_benfEditBenf===b.id); const icon=BENF_ICON[b.tipo]||'📦';
+    const rat=_benfMatRat(b); const cor=_benfCor((rat[0]&&rat[0].matricula)||b.sede||'');
+    const multi=rat.length>1; const entry=ctxMat?rat.find(x=>x.matricula===ctxMat):null; const pct=entry?entry.pct:(rat.length===1?rat[0].pct:100);
     const pos=b.geom?('<span style="color:#7fe0a0">'+(b.geomTipo==='poligono'?'▰ contorno':'📍 posicionado')+'</span>'):'<span style="color:var(--warn,#e0a33a)">⚠ sem posição</span>';
     const meta=esc(b.tipo||'—')+(b.categoria?' · <span style="color:#8ab6ff">'+esc(b.categoria)+'</span>':'')+' · '+pos;
-    const rat=(b.geomTipo==='poligono')?_benfRateio(b):null;
-    const ratI=rat?rat.itens.filter(x=>x.pct>=0.005):[];
-    const ratLine=ratI.length?ratI.map(x=>(x.matricula==='__fora__'?'fora':esc(_matNumById(x.matricula)))+' '+Math.round(x.pct*100)+'%').join(' · '):'';
-    const ratTitle=ratI.map(x=>(x.matricula==='__fora__'?'fora das matrículas':esc(x.matricula))+': '+Math.round(x.pct*100)+'% · '+fmt1(x.areaHa)+' ha'+(b.valor?' · '+fmtR$(b.valor*x.pct):'')).join('\n');
+    const modo=b.rateioModo==='geografico'?' <span style="opacity:.65">geo</span>':'';
+    const ratLine=multi?rat.map(x=>{const n=esc(_matNumById(x.matricula)); return x.matricula===ctxMat?('<b style="color:#ffd24a">'+n+' '+x.pct+'%</b>'):(n+' '+x.pct+'%');}).join(' · ')+modo:'';
+    const ratTitle=multi?rat.map(x=>esc(x.matricula)+': '+x.pct+'%'+(b.valor?' · '+fmtR$((+b.valor)*x.pct/100):'')).join('\n'):'';
+    const valTot=+b.valor||0; const valPart=multi?Math.round(valTot*pct/100):valTot;
+    const valHtml=b.valor?(multi?(fmtR$(valPart)+'<div class="sub" style="font-size:9px;font-weight:400;line-height:1.1">'+pct+'% de '+fmtR$(valTot)+'</div>'):fmtR$(valTot)):'<span class="sub" style="font-weight:400">—</span>';
     const btns=`${_bt('_benfEdit('+b.id+')','editar / posicionar no mapa')}✎</span> ${_bt('_benfDel('+b.id+')','excluir','danger')}✕</span>`;
     return `<div class="bfcard" style="flex-direction:row;align-items:center;gap:14px;border:1px solid ${cor}55;border-left:4px solid ${cor}${sel?';box-shadow:0 0 0 2px #ffd24a':''}">`
       +`<div style="font-size:22px;flex:0 0 auto;line-height:1.1">${icon}</div>`
@@ -1388,7 +1404,7 @@ function renderMapa(){
         +(ratLine?`<div class="sub" style="font-size:10px;margin-top:1px;color:#8ab6ff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="${ratTitle}">📊 ${ratLine}</div>`:'')
       +`</div>`
       +`<div class="sub" style="flex:1;min-width:0;font-size:10.5px;line-height:1.38;padding:0 16px;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden;white-space:normal" title="${esc(b.obs||'')}">${b.obs?esc(b.obs):'<span style="opacity:.5">sem descrição</span>'}</div>`
-      +`<div style="font-weight:800;color:var(--gold,#e0b34a);font-size:13px;flex:0 0 auto;white-space:nowrap;text-align:right">${b.valor?fmtR$(b.valor):'<span class="sub" style="font-weight:400">—</span>'}</div>`
+      +`<div style="font-weight:800;color:var(--gold,#e0b34a);font-size:13px;flex:0 0 auto;white-space:nowrap;text-align:right">${valHtml}</div>`
       +`<div style="display:flex;gap:3px;flex:0 0 auto">${btns}</div></div>`; };
   const _grid=(cards,ind)=>`<div style="display:flex;flex-direction:column;gap:6px;margin:0 0 8px ${ind||0}px">${cards}</div>`;
   const _matHead=(m)=>{ const cor=_benfCor(m.nome); const sel=(_benfEditMat===m.id); const areaMed=m.geom&&m.geom.ring?_ringAreaHa(m.geom.ring):null;
@@ -1401,18 +1417,19 @@ function renderMapa(){
     return `<div style="display:flex;align-items:center;gap:7px;margin:8px 0 5px 14px;padding-bottom:4px;border-bottom:1px solid ${cor}55"><span>🏠</span><span style="font-weight:700;color:${cor};font-size:12.5px${sel?';text-shadow:0 0 6px '+cor:''}">${esc(s.nome)}</span><span class="sub" style="font-size:10.5px">${st}</span><span style="flex:1"></span>${btns}</div>`; };
   const _campoHead=`<div style="display:flex;align-items:center;gap:6px;margin:8px 0 5px 14px;padding-bottom:4px;border-bottom:1px dashed #55607a"><span>🌱</span><span style="font-weight:700;color:#9aa6bd;font-size:12.5px">Campo / Infraestrutura</span></div>`;
   const validMat=new Set(mats.map(m=>m.nome));
+  const _inMat=(b,matNome)=> matNome===''? _benfMatRat(b).length===0 : _benfMatRat(b).some(x=>x.matricula===matNome);
   const _block=(matNome,headHTML)=>{ const msedes=sedes.filter(s=>(s.matricula||'')===matNome);
-    const mbenf=benf.filter(b=>(b.matricula||'')===matNome);
+    const mbenf=benf.filter(b=>_inMat(b,matNome));
     const sedeNames=new Set(msedes.map(s=>s.nome));
     let html=headHTML;
-    msedes.forEach(s=>{ const cs=mbenf.filter(b=>b.local!=='campo'&&b.sede===s.nome); html+=_sedeHead(s)+(cs.length?_grid(cs.map(_card).join(''),14):'<div class="sub" style="padding:0 2px 6px 14px">— sem benfeitoria —</div>'); });
+    msedes.forEach(s=>{ const cs=mbenf.filter(b=>b.local!=='campo'&&b.sede===s.nome); html+=_sedeHead(s)+(cs.length?_grid(cs.map(b=>_card(b,matNome)).join(''),14):'<div class="sub" style="padding:0 2px 6px 14px">— sem benfeitoria —</div>'); });
     const campo=mbenf.filter(b=>b.local==='campo'||!sedeNames.has(b.sede));
-    if(campo.length) html+=_campoHead+_grid(campo.map(_card).join(''),14);
+    if(campo.length) html+=_campoHead+_grid(campo.map(b=>_card(b,matNome)).join(''),14);
     if(!msedes.length&&!campo.length) html+='<div class="sub" style="padding:0 2px 6px 14px">— vazia —</div>';
     return html; };
   let listaCards=mats.slice().sort((a,b)=>String(a.nome).localeCompare(String(b.nome))).map(m=>_block(m.nome,_matHead(m))).join('');
   const semHead=`<div style="display:flex;align-items:center;gap:8px;margin:14px 0 8px;padding:7px 9px;border-radius:9px;background:#55607a22;border-left:4px solid #55607a"><span style="font-size:16px">📄</span><span style="font-weight:800;color:#9aa6bd;font-size:14px">— sem matrícula —</span></div>`;
-  const orphSede=sedes.some(s=>!validMat.has(s.matricula||'')), orphBenf=benf.some(b=>!validMat.has(b.matricula||''));
+  const orphSede=sedes.some(s=>!validMat.has(s.matricula||'')), orphBenf=benf.some(b=>_benfMatRat(b).length===0);
   if(orphSede||orphBenf) listaCards+=_block('',semHead);
   if(!listaCards.trim()) listaCards='<div class="sub" style="padding:12px">Cadastre as <b>matrículas</b> (com a poligonal) no módulo <b>Cadastros</b>. Aqui você cria as <b>sedes</b> e <b>benfeitorias</b> e vincula a cada matrícula.</div>';
   const cardTot=(rot,val,cor)=>`<div style="flex:1;min-width:96px;background:var(--bg3,#111a2e);border:1px solid var(--border,#22345a);border-radius:10px;padding:8px 12px"><div class="sub">${rot}</div><div style="font-size:17px;font-weight:800${cor?';color:'+cor:''}">${val}</div></div>`;
@@ -1429,13 +1446,17 @@ function renderMapa(){
       <div class="fcol" style="flex:2;min-width:150px"><label>${eB?'✎ Nome (editando)':'Nome da benfeitoria'}</label><input id="bf_nome" value="${eB?esc(eB.nome):''}" placeholder="ex.: Galpão 1"></div>
       <div class="fcol" style="min-width:110px"><label>Tipo</label><select id="bf_tipo">${BENF_TIPOS.map(t=>`<option ${eB&&eB.tipo===t?'selected':''}>${t}</option>`).join('')}</select></div>
       <div class="fcol" style="min-width:120px"><label>Categoria</label><select id="bf_cat"><option value="">—</option>${BENF_CATEGORIAS.map(c=>`<option ${eB&&eB.categoria===c?'selected':''}>${c}</option>`).join('')}</select></div>
-      <div class="fcol" style="min-width:130px"><label>Matrícula</label><select id="bf_mat"><option value="">—</option>${matOpts(eB?eB.matricula:'')}</select></div>
+      <div class="fcol" style="min-width:150px"><label>Rateio matrículas</label><select id="bf_ratmodo"><option value="manual" ${(!eB||eB.rateioModo!=='geografico')?'selected':''}>Manual (%)</option><option value="geografico" ${eB&&eB.rateioModo==='geografico'?'selected':''}>Geográfico (poligonal)</option></select></div>
       <div class="fcol" style="min-width:110px"><label>Local</label><select id="bf_local"><option value="sede" ${eB&&eB.local==='sede'?'selected':''}>Na sede</option><option value="campo" ${eB&&eB.local==='campo'?'selected':''}>Campo / Infra</option></select></div>
       <div class="fcol" style="min-width:120px"><label>Sede (se na sede)</label><select id="bf_sede"><option value="">—</option>${sedeOpts(eB?eB.sede:'')}</select></div>
       <div class="fcol" style="flex:3;min-width:160px"><label>Descrição</label><input id="bf_desc" value="${eB&&eB.obs?esc(eB.obs):''}" placeholder="ex.: galpão de máquinas, ~400 m²"></div>
       <div class="fcol" style="max-width:110px"><label>Valor (R$)</label><input id="bf_valor" type="number" step="any" value="${eB&&eB.valor!=null?eB.valor:''}"></div>
       <div class="fcol" style="max-width:72px"><label>Vida útil</label><input id="bf_vida" type="number" step="any" value="${eB&&eB.vidaUtilAnos!=null?eB.vidaUtilAnos:20}"></div>
       <div class="fcol" style="max-width:130px"><label>Marca no mapa</label><select id="bf_geotipo"><option value="ponto" ${eB&&eB.geomTipo==='ponto'?'selected':''}>Ponto (pino)</option><option value="poligono" ${eB&&eB.geomTipo==='poligono'?'selected':''}>Polígono</option></select></div>
+      <div style="flex-basis:100%;margin-top:2px">
+        <label style="display:block;margin-bottom:2px">Matrículas <span class="hint">— marque as que a benfeitoria ocupa e a % de cada (manual); no modo geográfico a % vem da poligonal.</span></label>
+        <div class="partsel" id="bf_mats">${mats.length?mats.map(m=>{const e=(eB&&Array.isArray(eB.matriculas))?eB.matriculas.find(x=>x.matricula===m.nome):null; return '<label style="display:inline-flex;align-items:center;gap:3px;margin:2px 10px 2px 0"><input type="checkbox" class="bfMat" value="'+esc(m.nome)+'" '+(e?'checked':'')+'>'+esc(m.numero||m.nome)+' <input type="number" class="bfMatPct" data-m="'+esc(m.nome)+'" value="'+(e&&e.pct!=null?e.pct:'')+'" placeholder="%" style="width:48px">';}).join(''):'<span class="hint">Cadastre matrículas no módulo Cadastros.</span>'}</div>
+      </div>
       <button class="btn success" id="bf_add">${eB?'💾 Salvar':'+ Adicionar'}</button>${eB?'<button class="btn" id="bf_cancel">Cancelar</button>':''}
       <span class="fmsg" id="bf_msg"></span>
     </div>`;
@@ -1462,7 +1483,7 @@ function renderMapa(){
 async function _benfReload(){
   try{ const r=await SB.from('matriculas').select('*').order('nome'); if(!r.error&&r.data) S.matriculas=r.data.map(m=>({id:m.id,nome:m.nome,numero:m.numero||'',area:m.area,geom:m.geom||null,obs:m.obs||''})); }catch(e){}
   try{ const r=await SB.from('sedes').select('*').order('nome'); if(!r.error&&r.data) S.sedes=r.data.map(s=>({id:s.id,nome:s.nome,matricula:s.matricula||'',geom:s.geom||null,obs:s.obs||''})); }catch(e){}
-  try{ const r=await SB.from('benfeitorias').select('*').order('nome'); if(!r.error&&r.data) S.benfeitorias=r.data.map(b=>({id:b.id,nome:b.nome,tipo:b.tipo||'',matricula:b.matricula||'',local:b.local||'sede',sede:b.sede||'',categoria:b.categoria||'',valor:b.valor,vidaUtilAnos:b.vida_util_anos,residualPct:b.residual_pct,geomTipo:b.geom_tipo||'ponto',geom:b.geom||null,obs:b.obs||''})); }catch(e){}
+  try{ const r=await SB.from('benfeitorias').select('*').order('nome'); if(!r.error&&r.data) S.benfeitorias=r.data.map(b=>({id:b.id,nome:b.nome,tipo:b.tipo||'',matricula:b.matricula||'',matriculas:Array.isArray(b.matriculas)?b.matriculas:[],rateioModo:b.rateio_modo||'manual',local:b.local||'sede',sede:b.sede||'',categoria:b.categoria||'',valor:b.valor,vidaUtilAnos:b.vida_util_anos,residualPct:b.residual_pct,geomTipo:b.geom_tipo||'ponto',geom:b.geom||null,obs:b.obs||''})); }catch(e){}
 }
 function bindMapa(){
   const g=(id,fn)=>{ const e=$('#'+id); if(e) e.onclick=fn; };
@@ -1482,7 +1503,10 @@ function _benfSedeEdit(id){ _benfEditSede=id; _benfEditBenf=null; _benfEditMat=n
 async function _benfSedeDel(id){ const s=(S.sedes||[]).find(x=>x.id===id); if(!confirm('Excluir a sede "'+(s?s.nome:'')+'"?')) return; try{ await SB.from('sedes').delete().eq('id',id); await _benfReload(); render(); }catch(e){ alert('Erro: '+e.message); } }
 async function _benfSaveBenf(){ const nome=($('#bf_nome')?.value||'').trim(); const msg=$('#bf_msg'); if(!nome){ if(msg){msg.className='fmsg err';msg.textContent='Informe o nome.';} return; }
   const local=$('#bf_local')?.value||'sede';
-  const reg={ nome, tipo:$('#bf_tipo')?.value||'', matricula:$('#bf_mat')?.value||null, local, sede:(local==='sede'?($('#bf_sede')?.value||''):''), categoria:$('#bf_cat')?.value||null, obs:($('#bf_desc')?.value||'').trim()||null, valor:parseFloat($('#bf_valor')?.value)||null, vida_util_anos:parseFloat($('#bf_vida')?.value)||20, residual_pct:0, geom_tipo:$('#bf_geotipo')?.value||'ponto' };
+  const modo=$('#bf_ratmodo')?.value||'manual';
+  const matArr=[]; document.querySelectorAll('#bf_mats .bfMat:checked').forEach(c=>{ const pe=c.parentNode?c.parentNode.querySelector('.bfMatPct'):null; matArr.push({matricula:c.value, pct:pe?(parseFloat(pe.value)||0):0}); });
+  const principal=matArr.length?matArr[0].matricula:null;
+  const reg={ nome, tipo:$('#bf_tipo')?.value||'', matricula:principal, matriculas:matArr, rateio_modo:modo, local, sede:(local==='sede'?($('#bf_sede')?.value||''):''), categoria:$('#bf_cat')?.value||null, obs:($('#bf_desc')?.value||'').trim()||null, valor:parseFloat($('#bf_valor')?.value)||null, vida_util_anos:parseFloat($('#bf_vida')?.value)||20, residual_pct:0, geom_tipo:$('#bf_geotipo')?.value||'ponto' };
   try{ if(_benfEditBenf!=null){ await SB.from('benfeitorias').update(reg).eq('id',_benfEditBenf); _benfEditBenf=null; } else { await SB.from('benfeitorias').insert(reg); } await _benfReload(); render(); }catch(e){ if(msg){msg.className='fmsg err';msg.textContent='Erro: '+e.message;} } }
 function _benfEdit(id){ _benfEditBenf=id; _benfEditSede=null; _benfEditMat=null; _benfFormTab='benf'; render(); }
 async function _benfDel(id){ const b=(S.benfeitorias||[]).find(x=>x.id===id); if(!confirm('Excluir "'+(b?b.nome:'')+'"?')) return; try{ await SB.from('benfeitorias').delete().eq('id',id); await _benfReload(); render(); }catch(e){ alert('Erro: '+e.message); } }
@@ -1518,7 +1542,7 @@ function _benfDrawAll(){ if(!_benfMap) return; _benfMk.forEach(m=>_benfMap.remov
   // MATRÍCULAS (parcela legal) — contorno destacado
   (S.matriculas||[]).forEach(m=>{ if(m.geom&&Array.isArray(m.geom.ring)&&m.geom.ring.length>=3){ const ll=m.geom.ring.map(([E,N])=>_utmToLatLon(E,N,23)); const cor=_benfCor(m.nome); const sel=(_benfEditMat===m.id); const poly=L.polygon(ll,{color:cor,weight:sel?4:2.5,fill:true,fillOpacity:sel?.1:.03,dashArray:'10 6'}).addTo(_benfMap); poly.bindTooltip('Matrícula: '+m.nome); poly.on('click',e=>{ if(_benfClickAt(e.latlng)){ L.DomEvent.stop(e); } }); _benfMk.push(poly); } });
   (S.sedes||[]).forEach(s=>{ if(s.geom&&Array.isArray(s.geom.ring)&&s.geom.ring.length>=3){ const ll=s.geom.ring.map(([E,N])=>_utmToLatLon(E,N,23)); const sel=(_benfEditSede===s.id); const cor=_benfCor(s.matricula||s.nome); const poly=L.polygon(ll,{color:cor,weight:sel?4:2,fill:true,fillOpacity:sel?.12:.05,dashArray:sel?null:'6 4'}).addTo(_benfMap); poly.bindTooltip('Sede: '+s.nome); poly.on('click',e=>{ if(_benfClickAt(e.latlng)){ L.DomEvent.stop(e); return; } _benfSedeEdit(s.id); }); _benfMk.push(poly); } });
-  (S.benfeitorias||[]).forEach(b=>{ if(!b.geom) return; const cor=_benfCor(b.matricula||b.sede||''); const sel=(_benfEditBenf===b.id);
+  (S.benfeitorias||[]).forEach(b=>{ if(!b.geom) return; const cor=_benfCor((_benfMatRat(b)[0]||{}).matricula||b.sede||''); const sel=(_benfEditBenf===b.id);
     if(b.geom.ponto){ const [lat,lon]=_utmToLatLon(b.geom.ponto[0],b.geom.ponto[1],23); const mk=L.marker([lat,lon],{icon:_benfPinIcon(cor,sel?26:18,sel)}).addTo(_benfMap); mk._benfPin=cor; mk._benfSel=sel; mk.bindTooltip(b.nome+(b.tipo?' ('+b.tipo+')':'')); mk.on('click',e=>{ if(_benfClickAt(e.latlng)){ L.DomEvent.stop(e); return; } _benfEdit(b.id); }); _benfMk.push(mk); }
     else if(Array.isArray(b.geom.ring)&&b.geom.ring.length>=3){ const ll=b.geom.ring.map(([E,N])=>_utmToLatLon(E,N,23)); const poly=L.polygon(ll,{color:sel?'#ffd24a':cor,weight:sel?4:2,fillColor:cor,fillOpacity:sel?.5:.35}).addTo(_benfMap); poly.bindTooltip(b.nome+(b.tipo?' ('+b.tipo+')':'')); poly.on('click',e=>{ if(_benfClickAt(e.latlng)){ L.DomEvent.stop(e); return; } _benfEdit(b.id); }); _benfMk.push(poly); } });
 }
@@ -5342,7 +5366,7 @@ async function carregarDoSupabase(){
     try{ const r=await SB.from('empregadores').select('*'); if(!r.error&&r.data) S.empregadores=r.data.map(e=>({nome:e.nome,inss:+e.inss_patronal_pct||0,sat:+e.sat_pct||0,terceiros:+e.terceiros_pct||0,fgts:+e.fgts_pct||0,funrural:!!e.funrural})); }catch(e){ console.warn('empregadores',e); }
     try{ const r=await SB.from('matriculas').select('*').order('nome'); if(!r.error&&r.data) S.matriculas=r.data.map(m=>({id:m.id,nome:m.nome,numero:m.numero||'',area:m.area,geom:m.geom||null,obs:m.obs||''})); }catch(e){ console.warn('matriculas',e); }
     try{ const r=await SB.from('sedes').select('*').order('nome'); if(!r.error&&r.data) S.sedes=r.data.map(s=>({id:s.id,nome:s.nome,matricula:s.matricula||'',geom:s.geom||null,obs:s.obs||''})); }catch(e){ console.warn('sedes',e); }
-    try{ const r=await SB.from('benfeitorias').select('*').order('nome'); if(!r.error&&r.data) S.benfeitorias=r.data.map(b=>({id:b.id,nome:b.nome,tipo:b.tipo||'',matricula:b.matricula||'',local:b.local||'sede',sede:b.sede||'',categoria:b.categoria||'',valor:b.valor,vidaUtilAnos:b.vida_util_anos,residualPct:b.residual_pct,geomTipo:b.geom_tipo||'ponto',geom:b.geom||null,obs:b.obs||''})); }catch(e){ console.warn('benfeitorias',e); }
+    try{ const r=await SB.from('benfeitorias').select('*').order('nome'); if(!r.error&&r.data) S.benfeitorias=r.data.map(b=>({id:b.id,nome:b.nome,tipo:b.tipo||'',matricula:b.matricula||'',matriculas:Array.isArray(b.matriculas)?b.matriculas:[],rateioModo:b.rateio_modo||'manual',local:b.local||'sede',sede:b.sede||'',categoria:b.categoria||'',valor:b.valor,vidaUtilAnos:b.vida_util_anos,residualPct:b.residual_pct,geomTipo:b.geom_tipo||'ponto',geom:b.geom||null,obs:b.obs||''})); }catch(e){ console.warn('benfeitorias',e); }
     /* ----- PREMISSAS do planejamento (dashboard): produtividade/preço por cultura+ciclo ----- */
     try{ const r=await SB.from('plan_premissas').select('*').eq('safra',SAFRA);
       if(r.error){ S.planPremErr=true; console.warn('plan_premissas',r.error.message); }
