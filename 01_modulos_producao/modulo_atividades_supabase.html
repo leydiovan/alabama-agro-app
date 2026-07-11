@@ -1353,7 +1353,7 @@ function renderMapa(){
   const benfBySede={}; benf.forEach(b=>{ (benfBySede[b.sede||'— sem sede —']=benfBySede[b.sede||'— sem sede —']||[]).push(b); });
   const listaBenf=Object.keys(benfBySede).sort().map(sn=>`<div class="sub" style="margin-top:6px;font-weight:700;color:${_benfCor(sn)}">${esc(sn)}</div>`+benfBySede[sn].map(b=>{
     const geo=b.geom?(b.geomTipo==='poligono'?'▰':'📍'):'<span style="color:var(--warn)">sem posição</span>';
-    return `<div class="prow" style="justify-content:space-between"><span>${esc(b.nome)} <span class="sub">· ${esc(b.tipo||'—')}${b.valor?' · '+fmtR$(b.valor):''}</span></span><span style="white-space:nowrap">${geo} <span class="btn sm" style="cursor:pointer" onclick="_benfPos(${b.id})" title="posicionar no mapa">📍</span> <span class="btn sm" style="cursor:pointer" onclick="_benfEdit(${b.id})">✎</span> <span class="btn sm danger" style="cursor:pointer" onclick="_benfDel(${b.id})">✕</span></span></div>`; }).join('')).join('')||'<div class="sub" style="padding:6px">Nenhuma benfeitoria.</div>';
+    return `<div class="prow" style="justify-content:space-between"><span>${esc(b.nome)} <span class="sub">· ${esc(b.tipo||'—')}${b.valor?' · '+fmtR$(b.valor):''}</span></span><span style="white-space:nowrap">${geo} <span class="btn sm" style="cursor:pointer" onclick="_benfPos(${b.id})" title="posicionar como ponto">📍</span> <span class="btn sm" style="cursor:pointer" onclick="_benfPosPoly(${b.id})" title="desenhar contorno (polígono)">▰</span> <span class="btn sm" style="cursor:pointer" onclick="_benfEdit(${b.id})">✎</span> <span class="btn sm danger" style="cursor:pointer" onclick="_benfDel(${b.id})">✕</span></span></div>`; }).join('')).join('')||'<div class="sub" style="padding:6px">Nenhuma benfeitoria.</div>';
   const listaSede=sedes.map(s=>`<div class="prow" style="justify-content:space-between"><span style="color:${_benfCor(s.nome)};font-weight:700">${esc(s.nome)}</span><span style="white-space:nowrap">${s.geom?'▰':'<span class="sub" style="color:var(--warn)">sem perímetro</span>'} <span class="btn sm" style="cursor:pointer" onclick="_benfSedePerim(${s.id})" title="desenhar perímetro">🖊️</span> <span class="btn sm" style="cursor:pointer" onclick="_benfSedeEdit(${s.id})">✎</span> <span class="btn sm danger" style="cursor:pointer" onclick="_benfSedeDel(${s.id})">✕</span></span></div>`).join('')||'<div class="sub" style="padding:6px">Nenhuma sede.</div>';
   return `<div class="wrap" style="max-width:none">
     <div class="row" style="gap:10px;flex-wrap:wrap;margin-bottom:10px">
@@ -1423,13 +1423,14 @@ async function _benfDel(id){ const b=(S.benfeitorias||[]).find(x=>x.id===id); if
 function _benfMapInit(){ const el=$('#benf_map'); if(!el) return;
   _leafletReady(err=>{ if(err){ el.innerHTML='<div class="hint" style="padding:14px">Sem internet para o mapa de satélite.</div>'; return; }
     if(_benfMap){ try{_benfMap.remove();}catch(e){} } _benfMk=[]; _benfLayer=null;
-    _benfMap=L.map(el,{zoomControl:true});
-    const esri=L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',{maxZoom:21,maxNativeZoom:18,attribution:'Imagery © Esri'});
+    _benfMap=L.map(el,{zoomControl:true,maxZoom:22});
+    const google=L.tileLayer('https://{s}.google.com/vt/lyrs=s&x={x}&y={y}&z={z}',{maxZoom:22,maxNativeZoom:21,subdomains:['mt0','mt1','mt2','mt3'],attribution:'Imagery © Google'});
+    const esri=L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',{maxZoom:22,maxNativeZoom:19,attribution:'Imagery © Esri'});
     const _h=new Date(), _d=new Date(_h.getTime()-120*864e5), _iso=x=>x.toISOString().slice(0,10);
-    const s2=L.tileLayer.wms('https://sh.dataspace.copernicus.eu/ogc/wms/'+_SH_INSTANCE,{layers:'TRUE_COLOR',format:'image/png',version:'1.3.0',maxZoom:21,maxNativeZoom:16,attribution:'Sentinel-2 © CDSE',TIME:_iso(_d)+'/'+_iso(_h),MAXCC:'20',PRIORITY:'mostRecent',showLogo:false,GAIN:'2.4',GAMMA:'0.7'});
-    const croqui=L.tileLayer('data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==',{attribution:'Croqui'});
-    esri.addTo(_benfMap);
-    L.control.layers({'Satélite (Esri)':esri,'Sentinel-2 recente':s2,'Croqui (limpo)':croqui},null,{position:'topright',collapsed:true}).addTo(_benfMap);
+    const s2=L.tileLayer.wms('https://sh.dataspace.copernicus.eu/ogc/wms/'+_SH_INSTANCE,{layers:'TRUE_COLOR',format:'image/png',version:'1.3.0',maxZoom:22,maxNativeZoom:16,attribution:'Sentinel-2 © CDSE',TIME:_iso(_d)+'/'+_iso(_h),MAXCC:'20',PRIORITY:'mostRecent',showLogo:false,GAIN:'2.4',GAMMA:'0.7'});
+    const croqui=L.tileLayer('data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==',{maxZoom:22,attribution:'Croqui'});
+    google.addTo(_benfMap);
+    L.control.layers({'Satélite (Google)':google,'Satélite (Esri)':esri,'Sentinel-2 recente':s2,'Croqui (limpo)':croqui},null,{position:'topright',collapsed:true}).addTo(_benfMap);
     _benfMap.on('click',e=>{ const ll=[e.latlng.lat,e.latlng.lng];
       if(_benfMeasure){ _benfMeasPts.push(ll); _benfMeasRedraw(); return; }
       if(!_benfDraw) return; if(_benfDraw.kind==='ponto'){ _benfVerts=[ll]; _benfCommitGeom(); } else { _benfVerts.push(ll); _benfRedrawDraw(); } });
@@ -1459,13 +1460,15 @@ function _benfRedrawDraw(){ if(!_benfMap) return; if(_benfLayer){ _benfMap.remov
 async function _benfCommitGeom(){ if(!_benfDraw) return; let geom=null;
   if(_benfDraw.kind==='ponto'){ if(!_benfVerts.length) return; const [lat,lon]=_benfVerts[0]; geom={crs:'UTM23S',ponto:_apcUTM(lat,lon,23)}; }
   else { if(_benfVerts.length<3){ alert('Marque ao menos 3 vértices.'); return; } geom={crs:'UTM23S',ring:_benfVerts.map(([lat,lon])=>_apcUTM(lat,lon,23))}; }
-  const tab=_benfDraw.target==='sede'?'sedes':'benfeitorias'; const id=_benfDraw.id;
+  const tab=_benfDraw.target==='sede'?'sedes':'benfeitorias'; const id=_benfDraw.id; const kind=_benfDraw.kind;
   _benfDraw=null; _benfVerts=[];
-  try{ await SB.from(tab).update({geom}).eq('id',id); }catch(e){ alert('Erro ao salvar posição: '+e.message); }
+  const upd=(tab==='benfeitorias')?{geom, geom_tipo:(kind==='poligono'?'poligono':'ponto')}:{geom};
+  try{ await SB.from(tab).update(upd).eq('id',id); }catch(e){ alert('Erro ao salvar posição: '+e.message); }
   await _benfReload(); render(); }
 function _benfFinish(){ if(_benfDraw&&_benfDraw.kind==='poligono') _benfCommitGeom(); }
 function _benfCancelDraw(){ _benfDraw=null; _benfVerts=[]; if(_benfMap) _benfMap.getContainer().style.cursor=''; render(); }
-function _benfPos(id){ const b=(S.benfeitorias||[]).find(x=>x.id===id); if(!b) return; _benfStartDraw(b.geomTipo==='poligono'?'poligono':'ponto','benf',id); }
+function _benfPos(id){ _benfStartDraw('ponto','benf',id); }
+function _benfPosPoly(id){ _benfStartDraw('poligono','benf',id); }
 function _benfSedePerim(id){ _benfStartDraw('poligono','sede',id); }
 /* ---- BASE: escala adaptativa (pino maior longe, tamanho real perto) ---- */
 function _benfPinIcon(cor,size){ return L.divIcon({className:'',iconSize:[size,size],iconAnchor:[size/2,size/2],html:'<div style="width:'+size+'px;height:'+size+'px;border-radius:50%;background:'+cor+';border:2px solid #fff;box-shadow:0 0 0 1px rgba(0,0,0,.5)"></div>'}); }
