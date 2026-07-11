@@ -1342,6 +1342,7 @@ function salvarNova(){
 const BENF_TIPOS=['Galpão','Silo','Armazém','Casa','Escritório','Oficina','Balança','Barracão','Curral','Poço','Estrutura','Outro'];
 let _benfMap=null, _benfBases=[], _benfDraw=null, _benfVerts=[], _benfLayer=null, _benfHandles=[], _benfMk=[], _benfEditSede=null, _benfEditBenf=null;
 let _benfMeasure=false, _benfMeasPts=[], _benfMeasLayer=[];   // medição (base)
+let _benfView=null, _benfBaseName='Satélite (Google)';        // preserva centro/zoom e camada ativa entre re-renders
 const _benfCor=(sede)=>{ const p=['#ff8a3d','#3dd6ff','#b98bff','#ffd24a','#7fe0a0','#ff6b9d','#8ab6ff','#e0b34a']; let h=0; for(const c of String(sede||'')) h=(h*31+c.charCodeAt(0))>>>0; return p[h%p.length]; };
 function renderMapa(){
   const sedes=(S.sedes||[]), benf=(S.benfeitorias||[]);
@@ -1433,22 +1434,27 @@ function _benfEdit(id){ _benfEditBenf=id; _benfEditSede=null; render(); window.s
 async function _benfDel(id){ const b=(S.benfeitorias||[]).find(x=>x.id===id); if(!confirm('Excluir "'+(b?b.nome:'')+'"?')) return; try{ await SB.from('benfeitorias').delete().eq('id',id); await _benfReload(); render(); }catch(e){ alert('Erro: '+e.message); } }
 function _benfMapInit(){ const el=$('#benf_map'); if(!el) return;
   _leafletReady(err=>{ if(err){ el.innerHTML='<div class="hint" style="padding:14px">Sem internet para o mapa de satélite.</div>'; return; }
-    if(_benfMap){ try{_benfMap.remove();}catch(e){} } _benfMk=[]; _benfLayer=null; _benfHandles=[];
+    if(_benfMap){ try{ _benfView={c:_benfMap.getCenter(),z:_benfMap.getZoom()}; }catch(e){} try{_benfMap.remove();}catch(e){} } _benfMk=[]; _benfLayer=null; _benfHandles=[];
     _benfMap=L.map(el,{zoomControl:true,maxZoom:22,doubleClickZoom:false});
     const google=L.tileLayer('https://{s}.google.com/vt/lyrs=s&x={x}&y={y}&z={z}',{maxZoom:22,maxNativeZoom:21,subdomains:['mt0','mt1','mt2','mt3'],attribution:'Imagery © Google'});
     const esri=L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',{maxZoom:22,maxNativeZoom:19,attribution:'Imagery © Esri'});
     const _h=new Date(), _d=new Date(_h.getTime()-120*864e5), _iso=x=>x.toISOString().slice(0,10);
     const s2=L.tileLayer.wms('https://sh.dataspace.copernicus.eu/ogc/wms/'+_SH_INSTANCE,{layers:'TRUE_COLOR',format:'image/png',version:'1.3.0',maxZoom:22,maxNativeZoom:16,attribution:'Sentinel-2 © CDSE',TIME:_iso(_d)+'/'+_iso(_h),MAXCC:'20',PRIORITY:'mostRecent',showLogo:false,GAIN:'2.4',GAMMA:'0.7'});
     const croqui=L.tileLayer('data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==',{maxZoom:22,attribution:'Croqui'});
-    google.addTo(_benfMap);
-    L.control.layers({'Satélite (Google)':google,'Satélite (Esri)':esri,'Sentinel-2 recente':s2,'Croqui (limpo)':croqui},null,{position:'topright',collapsed:true}).addTo(_benfMap);
+    const BASES={'Satélite (Google)':google,'Satélite (Esri)':esri,'Sentinel-2 recente':s2,'Croqui (limpo)':croqui};
+    (BASES[_benfBaseName]||google).addTo(_benfMap);
+    L.control.layers(BASES,null,{position:'topright',collapsed:true}).addTo(_benfMap);
+    _benfMap.on('baselayerchange',e=>{ _benfBaseName=e.name; });
     _benfMap.on('click',e=>{ _benfClickAt(e.latlng); });
     _benfMap.on('dblclick',e=>{ if(_benfDraw&&_benfDraw.kind==='poligono'){ L.DomEvent.stop(e); _benfFinish(); } });
     _benfMap.on('zoomend', _benfZoomScale);
     _benfDrawAll(); _benfZoomScale(); _benfUpdateToolbar();
     const pts=[]; (S.sedes||[]).forEach(s=>{ if(s.geom&&s.geom.ring) s.geom.ring.forEach(([E,N])=>pts.push(_utmToLatLon(E,N,23))); });
     (S.benfeitorias||[]).forEach(b=>{ if(b.geom){ if(b.geom.ponto) pts.push(_utmToLatLon(b.geom.ponto[0],b.geom.ponto[1],23)); else if(b.geom.ring) b.geom.ring.forEach(([E,N])=>pts.push(_utmToLatLon(E,N,23))); } });
-    setTimeout(()=>{ _benfAjustaAltura(); _benfMap.invalidateSize(); if(pts.length){ try{_benfMap.fitBounds(L.latLngBounds(pts),{padding:[30,30],maxZoom:17});}catch(e){} } else _benfMap.setView([-12.6,-44.7],12); },80);
+    setTimeout(()=>{ _benfAjustaAltura(); _benfMap.invalidateSize();
+      if(_benfView){ try{_benfMap.setView(_benfView.c,_benfView.z,{animate:false});}catch(e){} }   // mantém onde estava
+      else if(pts.length){ try{_benfMap.fitBounds(L.latLngBounds(pts),{padding:[30,30],maxZoom:17});}catch(e){} }
+      else _benfMap.setView([-12.6,-44.7],12); },80);
   });
 }
 function _benfDrawAll(){ if(!_benfMap) return; _benfMk.forEach(m=>_benfMap.removeLayer(m)); _benfMk=[];
