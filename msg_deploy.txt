@@ -1,1 +1,1 @@
-﻿Benfeitorias: rotulo dos vertices mais legivel
+﻿Benfeitorias: rotulos dos vertices so com zoom

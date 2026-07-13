@@ -1463,7 +1463,7 @@ function renderMapa(){
       <span class="fmsg" id="bf_msg"></span>
     </div>`;
   const formHTML=ftab==='sede'?formSede:formBenf;
-  return `<style>#main{padding:0!important;overflow:hidden} #benf_root{display:flex;align-items:stretch;overflow:hidden;background:var(--bg2,#0b1428)} #benf_map .leaflet-interactive:focus,#benf_map path:focus,#benf_map svg:focus{outline:none!important} #benf_map .leaflet-container{outline:none} .benf-vtx{background:#fff;border:2px solid #ffd24a;border-radius:50%;box-shadow:0 0 4px rgba(0,0,0,.6);cursor:grab} .benf-vtx.last{background:#ffd24a;box-shadow:0 0 6px rgba(255,210,74,.9)} .bfcard{border-radius:10px;background:var(--bg4,#0f1830);padding:8px 10px;display:flex;flex-direction:column;gap:2px;transition:.12s} .bfcard:hover{background:var(--bg5,#15223d)} .leaflet-tooltip.vertlbl{background:rgba(12,18,32,.85);border:1px solid rgba(255,255,255,.28);border-radius:4px;color:#fff;font:700 10px/1.25 system-ui,'Segoe UI',sans-serif;padding:1px 5px;margin:0;white-space:nowrap;box-shadow:0 1px 4px rgba(0,0,0,.65);pointer-events:none} .leaflet-tooltip.vertlbl:before{display:none}</style>
+  return `<style>#main{padding:0!important;overflow:hidden} #benf_root{display:flex;align-items:stretch;overflow:hidden;background:var(--bg2,#0b1428)} #benf_map .leaflet-interactive:focus,#benf_map path:focus,#benf_map svg:focus{outline:none!important} #benf_map .leaflet-container{outline:none} .benf-vtx{background:#fff;border:2px solid #ffd24a;border-radius:50%;box-shadow:0 0 4px rgba(0,0,0,.6);cursor:grab} .benf-vtx.last{background:#ffd24a;box-shadow:0 0 6px rgba(255,210,74,.9)} .bfcard{border-radius:10px;background:var(--bg4,#0f1830);padding:8px 10px;display:flex;flex-direction:column;gap:2px;transition:.12s} .bfcard:hover{background:var(--bg5,#15223d)} .leaflet-tooltip.vertlbl{display:none;background:rgba(12,18,32,.85);border:1px solid rgba(255,255,255,.28);border-radius:4px;color:#fff;font:700 10px/1.25 system-ui,'Segoe UI',sans-serif;padding:1px 5px;margin:0;white-space:nowrap;box-shadow:0 1px 4px rgba(0,0,0,.65);pointer-events:none} .leaflet-tooltip.vertlbl:before{display:none} .leaflet-container.zlab .leaflet-tooltip.vertlbl{display:block}</style>
   <div id="benf_root">
     <div id="benf_left" style="flex:0 0 50%;max-width:50%;display:flex;flex-direction:column;min-height:0;overflow:hidden;padding:14px 16px;box-sizing:border-box">
       <div class="row" style="gap:10px;flex-wrap:wrap;align-items:stretch;flex:0 0 auto;margin-bottom:12px">
@@ -1537,7 +1537,7 @@ function _benfMapInit(){ const el=$('#benf_map'); if(!el) return;
     _benfMap.on('baselayerchange',e=>{ _benfBaseName=e.name; });
     _benfMap.on('click',e=>{ _benfClickAt(e.latlng); });
     _benfMap.on('dblclick',e=>{ if(_benfDraw&&_benfDraw.kind==='poligono'){ L.DomEvent.stop(e); _benfFinish(); } });
-    _benfMap.on('zoomend', _benfZoomScale);
+    _benfMap.on('zoomend', function(){ _benfZoomScale(); try{ _benfMap.getContainer().classList.toggle('zlab', _benfMap.getZoom()>=15); }catch(e){} });
     _benfDrawAll(); _benfZoomScale(); _benfUpdateToolbar();
     const pts=[]; (S.matriculas||[]).forEach(m=>{ if(m.geom&&m.geom.ring) m.geom.ring.forEach(([E,N])=>pts.push(_utmToLatLon(E,N,23))); });
     (S.sedes||[]).forEach(s=>{ if(s.geom&&s.geom.ring) s.geom.ring.forEach(([E,N])=>pts.push(_utmToLatLon(E,N,23))); });
@@ -1545,7 +1545,8 @@ function _benfMapInit(){ const el=$('#benf_map'); if(!el) return;
     setTimeout(()=>{ _benfAjustaAltura(); _benfMap.invalidateSize();
       if(_benfView){ try{_benfMap.setView(_benfView.c,_benfView.z,{animate:false});}catch(e){} }   // mantém onde estava
       else if(pts.length){ try{_benfMap.fitBounds(L.latLngBounds(pts),{padding:[30,30],maxZoom:17});}catch(e){} }
-      else _benfMap.setView([-12.6,-44.7],12); },80);
+      else _benfMap.setView([-12.6,-44.7],12);
+      try{ _benfMap.getContainer().classList.toggle('zlab', _benfMap.getZoom()>=15); }catch(e){} },80);
   });
 }
 function _benfDrawAll(){ if(!_benfMap) return; _benfMk.forEach(m=>_benfMap.removeLayer(m)); _benfMk=[];
