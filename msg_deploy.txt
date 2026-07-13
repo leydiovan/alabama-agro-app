@@ -1,1 +1,1 @@
-﻿Benfeitorias: nomes dos vertices no mapa
+﻿Benfeitorias: botao separado pros rotulos dos vertices
