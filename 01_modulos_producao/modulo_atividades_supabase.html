@@ -3466,7 +3466,7 @@ function renderResultados(){
   if(_resExec===null||_resProd===null){ _resLoad().then(()=>render()); return '<div style="padding:24px">⏳ Carregando execuções e produção do banco…</div>'; }
   const cs=(S.comandas||[]).filter(c=>c.status!=='cancelada' && (_resFiltroCult==='todas'||(c.cultura||'')===_resFiltroCult));
   const porLote={};
-  cs.forEach(c=>{ const cc=_resCustoComanda(c); const L=porLote[c.loteNome]||(porLote[c.loteNome]={lote:c.loteNome,cultura:c.cultura||'',area:areaDe(c.loteNome)||cc.area,insumos:0,diesel:0,dieselL:0,aereo:0,colhTerc:0,total:0,n:0,coms:[]}); L.insumos+=cc.insumos;L.diesel+=cc.diesel;L.dieselL+=cc.dieselL;L.aereo+=cc.aereo;L.colhTerc+=cc.colhTerc;L.total+=cc.total;L.n++;L.coms.push({c,cc}); });
+  cs.forEach(c=>{ const cc=_resCustoComanda(c); const key=c.loteNome+'|'+(c.cultura||''); const L=porLote[key]||(porLote[key]={lote:c.loteNome,cultura:c.cultura||'',area:areaDe(c.loteNome)||cc.area,insumos:0,diesel:0,dieselL:0,aereo:0,colhTerc:0,total:0,n:0,coms:[]}); L.insumos+=cc.insumos;L.diesel+=cc.diesel;L.dieselL+=cc.dieselL;L.aereo+=cc.aereo;L.colhTerc+=cc.colhTerc;L.total+=cc.total;L.n++;L.coms.push({c,cc}); });
   const lotes=Object.values(porLote);
   // produção / receita / margem por lote
   lotes.forEach(l=>{ const pr=_resProdLote(l.lote,l.cultura); l.qtd=pr?pr.qtd:0; l.unid=pr?pr.unidade:'sc'; l.prov=pr?pr.prov:false; l.prodHa=(l.area>0&&l.qtd)?l.qtd/l.area:0; l.preco=_resPrecoVenda(l.cultura); l.receita=l.qtd*l.preco; l.margem=l.receita-l.total; });
