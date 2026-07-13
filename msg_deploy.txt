@@ -1,1 +1,1 @@
-﻿Benfeitorias: vertices das matriculas no mapa (com toggle)
+﻿Benfeitorias: fix vertices no mapa (carrega no boot)
