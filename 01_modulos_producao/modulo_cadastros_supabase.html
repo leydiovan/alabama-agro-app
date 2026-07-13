@@ -583,6 +583,35 @@ function _croquiSVG(m){                   // desenha polígono (UTM) + vértices
   return '<svg viewBox="0 0 '+W+' '+H+'" style="width:100%;max-width:'+W+'px;background:#0d1117;border:1px solid #30363d;border-radius:10px">'
     +'<polygon points="'+pts+'" fill="rgba(0,200,150,.10)" stroke="#00c896" stroke-width="1.6"/>'+dots+'</svg>';
 }
+/* ---- Mapa (Leaflet + satélite) dos vértices ---- */
+let _matMapObj=null, _leafletLoading=false;
+function _leafletReady(cb){
+  if(window.L){ cb(); return; }
+  if(_leafletLoading){ const t=setInterval(()=>{ if(window.L){ clearInterval(t); cb(); } },120); return; }
+  _leafletLoading=true;
+  const css=document.createElement('link'); css.rel='stylesheet'; css.href='https://unpkg.com/leaflet@1.9.4/dist/leaflet.css'; document.head.appendChild(css);
+  const js=document.createElement('script'); js.src='https://unpkg.com/leaflet@1.9.4/dist/leaflet.js'; js.onload=()=>cb(); js.onerror=()=>{ _leafletLoading=false; }; document.head.appendChild(js);
+}
+function _utmToLatLng(E,N,zona,south){ if(south==null)south=true; const a=6378137,f=1/298.257223563,e2=f*(2-f),ep2=e2/(1-e2),k0=.9996; const e1=(1-Math.sqrt(1-e2))/(1+Math.sqrt(1-e2)); const x=E-5e5; let y=N; if(south)y-=1e7; const M=y/k0, mu=M/(a*(1-e2/4-3*e2*e2/64-5*e2**3/256)); const p1=mu+(3*e1/2-27*e1**3/32)*Math.sin(2*mu)+(21*e1*e1/16-55*e1**4/32)*Math.sin(4*mu)+(151*e1**3/96)*Math.sin(6*mu); const C1=ep2*Math.cos(p1)**2,T1=Math.tan(p1)**2,N1=a/Math.sqrt(1-e2*Math.sin(p1)**2),R1=a*(1-e2)/Math.pow(1-e2*Math.sin(p1)**2,1.5),D=x/(N1*k0); const lat=p1-(N1*Math.tan(p1)/R1)*(D*D/2-(5+3*T1+10*C1-4*C1*C1-9*ep2)*D**4/24+(61+90*T1+298*C1+45*T1*T1-252*ep2-3*C1*C1)*D**6/720); const l0=(zona*6-183)*Math.PI/180; const lon=l0+(D-(1+2*T1+C1)*D**3/6+(5-2*C1+28*T1-3*C1*C1+8*ep2+24*T1*T1)*D**5/120)/Math.cos(p1); return [lat*180/Math.PI, lon*180/Math.PI]; }
+function _matMapInit(m){
+  const el=document.getElementById('matMap'); if(!el) return;
+  _leafletReady(()=>{
+    if(!window.L) return;
+    if(_matMapObj){ try{_matMapObj.remove();}catch(e){} _matMapObj=null; }
+    let pts=[];  // [lat, lon, codigo]
+    if(m._vertices&&m._vertices.length) pts=m._vertices.filter(v=>v.latitude!=null&&v.longitude!=null).map(v=>[v.latitude,v.longitude,v.codigo||'']);
+    if(!pts.length && m.geom&&m.geom.ring&&m.geom.ring.length) pts=m.geom.ring.map(p=>{ const ll=_utmToLatLng(p[0],p[1],23,true); return [ll[0],ll[1],'']; });
+    if(!pts.length){ el.innerHTML='<div class="hint" style="padding:10px">Sem coordenadas para o mapa.</div>'; return; }
+    const latlngs=pts.map(p=>[p[0],p[1]]);
+    const map=L.map(el,{zoomControl:true,attributionControl:false});
+    L.tileLayer('https://mt1.google.com/vt/lyrs=s&x={x}&y={y}&z={z}',{maxZoom:21,maxNativeZoom:21}).addTo(map);
+    const poly=L.polygon(latlngs,{color:'#00e0a0',weight:2,fillColor:'#00c896',fillOpacity:.10}).addTo(map);
+    pts.forEach((p,i)=>{ L.circleMarker([p[0],p[1]],{radius:5,color:'#111',weight:1.2,fillColor:'#f0b400',fillOpacity:1}).addTo(map)
+      .bindTooltip((p[2]||('v'+i))+'<br>'+p[0].toFixed(6)+', '+p[1].toFixed(6),{direction:'top'}); });
+    try{ map.fitBounds(poly.getBounds(),{padding:[24,24]}); }catch(e){}
+    _matMapObj=map; setTimeout(()=>{try{map.invalidateSize();}catch(e){}},250);
+  });
+}
 function _badges(m){
   const b=[];
   if(m.numero) b.push('<span class="grp">nº '+esc(m.numero)+'</span>');
@@ -683,6 +712,8 @@ function _matEditorHTML(e){
     +'<div class="formactions"><button class="btn" id="vAdd">＋ Adicionar valor</button></div>'
     // ===== VÉRTICES + CROQUI =====
     +S3+'📐 Vértices e polígono ('+vs.length+' vértices'+(am!=null?' · '+nf(am)+' ha medida':'')+')</div>'
+    +'<div id="matMap" style="height:380px;border-radius:10px;overflow:hidden;border:1px solid #30363d;background:#0d1117;margin-bottom:8px"></div>'
+    +'<div class="hint" style="margin-bottom:6px">🛰️ Mapa de satélite acima (vértices em amarelo — passe o mouse pro código). Croqui esquemático abaixo:</div>'
     +_croquiSVG(e)
     +(vs.length?'<div style="overflow:auto;margin-top:8px"><table class="tbl"><thead><tr><th>Vért.</th><th>Este (UTM)</th><th>Norte (UTM)</th><th>Tipo</th><th>σ</th></tr></thead><tbody>'+vertRows+'</tbody></table></div>':'<div class="hint" style="color:var(--warn)">Sem vértices — importe o KML de vértices (SIGEF).</div>')
     +'<div class="hint" style="margin-top:8px">Importar polígono (KML) — vira a geometria:</div><input type="file" id="lKml" accept=".kml,.kmz" style="margin-bottom:6px"><div id="lKmlSel"></div>'
@@ -714,6 +745,7 @@ function bindMatriculas(){
   if($('axAdd')) $('axAdd').onclick=()=>_matUploadAnexo(e);
   document.querySelectorAll('[data-dlanexo]').forEach(b=>b.onclick=()=>_matDownloadAnexo(+b.dataset.dlanexo));
   document.querySelectorAll('[data-delanexo]').forEach(b=>b.onclick=async()=>{ const a=(e._anexos||[]).find(x=>x.id===+b.dataset.delanexo); if(!a||!confirm('Excluir "'+a.nome+'"?'))return; if(a.storage_path) await SB.storage.from('matriculas').remove([a.storage_path]); await SB.from('matricula_anexos').delete().eq('id',a.id); await _recarregarMat(); route(); });
+  try{ _matMapInit(e); }catch(err){ console.warn('mapa',err); }
 }
 async function _salvarMatricula(e){
   const m=$('mMsg'); m.className='fmsg'; m.textContent='Salvando…';

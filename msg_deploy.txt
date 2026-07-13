@@ -1,1 +1,1 @@
-﻿Cadastros: 4 matriculas de reserva legal (Flavena II + Rancho Queimado) + vinculo reserva->beneficiaria
+﻿Cadastros: mapa de satelite com os vertices no editor da matricula
