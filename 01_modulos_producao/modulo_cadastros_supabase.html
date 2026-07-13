@@ -344,6 +344,7 @@ let EDIT_SUF=null, FORM_SUF_TRAITS=null, FORM_SUF_CULT=null;
 const ENTIDADES=[
   ['lotes','Lotes',()=>S.lotes.length],
   ['matriculas','Matrículas',()=>(S.matriculas||[]).length],
+  ['vertices','Vértices',()=>(S.vertices||[]).length],
   ['proprietarios','Proprietários',()=>(S.proprietarios||[]).length],
   ['produtos','Produtos',()=>S.produtos.length],
   ['tiposAtiv','Tipos de atividade',()=>S.tiposAtiv.length],
@@ -417,6 +418,7 @@ function cadHTML(){
   let body='';
   if(TAB==='lotes') body=lotesHTML();
   else if(TAB==='matriculas') body=matriculasHTML();
+  else if(TAB==='vertices') body=verticesHTML();
   else if(TAB==='proprietarios') body=proprietariosHTML();
   else if(TAB==='produtos') body=produtosHTML();
   else if(TAB==='tiposAtiv') body=tiposHTML();
@@ -436,9 +438,10 @@ function cadHTML(){
   return '<div class="subnav">'+sub+'</div>'+body;
 }
 function bindTab(){
-  document.querySelectorAll('[data-tab]').forEach(b=>b.onclick=()=>{TAB=b.dataset.tab;SEARCH='';EDIT_PROD=null;EDIT_IDX=null;EDIT_TEC=null;FORM_TEC_MOL=null;EDIT_SUF=null;FORM_SUF_TRAITS=null;FORM_SUF_CULT=null;route();});
+  document.querySelectorAll('[data-tab]').forEach(b=>b.onclick=()=>{TAB=b.dataset.tab;SEARCH='';EDIT_PROD=null;EDIT_IDX=null;EDIT_TEC=null;FORM_TEC_MOL=null;EDIT_SUF=null;FORM_SUF_TRAITS=null;FORM_SUF_CULT=null;VEDIT=null;route();});
   if(TAB==='lotes') bindLotes();
   else if(TAB==='matriculas') bindMatriculas();
+  else if(TAB==='vertices') bindVertices();
   else if(TAB==='proprietarios') bindProprietarios();
   else if(TAB==='produtos') bindProdutos();
   else if(TAB==='tiposAtiv') bindTipos();
@@ -566,8 +569,9 @@ function _MAT_TOAPP(r){ return {id:r.id,nome:r.nome,numero:r.numero||'',denomina
   riscoJuridico:r.risco_juridico||'',valorAtual:r.valor_atual,geoFonte:r.geo_fonte||'NAO',georreferenciada:!!r.georreferenciada,
   geom:r.geom||null,obs:r.obs||'',proprietarios:r.proprietarios||[],memorial:r.memorial||null,
   _vertices:[],_onus:[],_valores:[],_anexos:[]}; }
-function _croquiSVG(m){                   // desenha polígono (UTM ring) + vértices num SVG
-  const ring=m.geom&&m.geom.ring; if(!Array.isArray(ring)||ring.length<3) return '<div class="hint">Sem polígono.</div>';
+function _croquiSVG(m){                   // desenha polígono (UTM) + vértices num SVG — prefere os vértices vinculados
+  const ring=(m._vertices&&m._vertices.length>=3)?m._vertices.map(v=>[v.este,v.norte]):(m.geom&&m.geom.ring);
+  if(!Array.isArray(ring)||ring.length<3) return '<div class="hint">Sem polígono.</div>';
   let minE=1e18,maxE=-1e18,minN=1e18,maxN=-1e18;
   ring.forEach(p=>{minE=Math.min(minE,p[0]);maxE=Math.max(maxE,p[0]);minN=Math.min(minN,p[1]);maxN=Math.max(maxN,p[1]);});
   const W=560,H=360,pad=26, dx=(maxE-minE)||1, dy=(maxN-minN)||1, sc=Math.min((W-2*pad)/dx,(H-2*pad)/dy);
@@ -726,9 +730,18 @@ async function _matImportPoligono(e,file){
 async function _matImportVertices(e,file){
   const r=new FileReader(); r.onload=async()=>{ try{
     const vs=_parseVerticesKML(r.result); if(!vs.length){ alert('Nenhum vértice encontrado.'); return; }
-    if(!confirm('Substituir os '+((e._vertices||[]).length)+' vértices por '+vs.length+' do arquivo?')) return;
+    if(!confirm('Vincular '+vs.length+' vértices a esta matrícula?\n(marcos já existentes na base são reaproveitados; substitui os '+((e._vertices||[]).length)+' atuais)')) return;
     await SB.from('matricula_vertices').delete().eq('matricula_id',e.id);
-    await SB.from('matricula_vertices').insert(vs.map(v=>Object.assign({matricula_id:e.id},v)));
+    for(let i=0;i<vs.length;i++){ const v=vs[i];
+      let E=v.este,N=v.norte;
+      if((E==null||N==null)&&v.longitude!=null&&v.latitude!=null){ const u=_latLngToUTM(v.latitude,v.longitude,23); E=u[0]; N=u[1]; }
+      if(E==null||N==null) continue;
+      let vid=null;
+      const {data:found}=await SB.from('vertices').select('id').gte('este',E-0.15).lte('este',E+0.15).gte('norte',N-0.15).lte('norte',N+0.15).limit(1);
+      if(found&&found.length) vid=found[0].id;
+      else { const {data:ins}=await SB.from('vertices').insert({codigo:v.codigo,tipo_vertice:v.tipo_vertice,metodo:v.metodo,este:E,norte:N,longitude:v.longitude,latitude:v.latitude,altitude:v.altitude,sigma_x:v.sigma_x,sigma_y:v.sigma_y,sigma_z:v.sigma_z,qrcode:v.qrcode}).select('id').single(); if(ins) vid=ins.id; }
+      if(vid) await SB.from('matricula_vertices').insert({matricula_id:e.id,vertice_id:vid,ordem:i,codigo:v.codigo});
+    }
     await _recarregarMat(); route();
   }catch(err){ alert('Falha: '+err.message); } };
   r.readAsText(file);
@@ -770,16 +783,53 @@ async function _recarregarMat(){
     const {data:mats}=await SB.from('matriculas').select('*');
     S.matriculas=(mats||[]).map(_MAT_TOAPP);
     const byId={}; S.matriculas.forEach(m=>{m._vertices=[];m._onus=[];m._valores=[];m._anexos=[];byId[m.id]=m;});
-    const [vv,oo,va,ax]=await Promise.all([
-      SB.from('matricula_vertices').select('*').order('ordem'),
+    const [gv,jv,oo,va,ax]=await Promise.all([
+      SB.from('vertices').select('*'),
+      SB.from('matricula_vertices').select('matricula_id,vertice_id,ordem,codigo').order('ordem'),
       SB.from('matricula_onus').select('*').order('ordem'),
       SB.from('matricula_valores').select('*'),
       SB.from('matricula_anexos').select('*')]);
-    (vv.data||[]).forEach(r=>{const m=byId[r.matricula_id];if(m)m._vertices.push(r);});
+    const vById={}; (gv.data||[]).forEach(v=>{v._nmat=0; vById[v.id]=v;}); S.vertices=gv.data||[];
+    (jv.data||[]).forEach(j=>{ const g=vById[j.vertice_id]; const m=byId[j.matricula_id]; if(g)g._nmat++; if(m&&g) m._vertices.push({vertice_id:g.id,ordem:j.ordem,codigo:j.codigo||g.codigo,este:g.este,norte:g.norte,tipo_vertice:g.tipo_vertice,sigma_x:g.sigma_x,longitude:g.longitude,latitude:g.latitude,nmat:g._nmat}); });
+    S.matriculas.forEach(m=>{ m._vertices.sort((a,b)=>(a.ordem||0)-(b.ordem||0)); m._vertices.forEach(v=>{v.nmat=(vById[v.vertice_id]||{})._nmat||1;}); });
     (oo.data||[]).forEach(r=>{const m=byId[r.matricula_id];if(m)m._onus.push(r);});
     (va.data||[]).forEach(r=>{const m=byId[r.matricula_id];if(m)m._valores.push(r);});
     (ax.data||[]).forEach(r=>{const m=byId[r.matricula_id];if(m)m._anexos.push(r);});
   }catch(e){ console.error('recarregarMat',e); }
+}
+/* ----- VÉRTICES (marcos globais, compartilhados entre matrículas) ----- */
+let VEDIT=null;
+function _vertUsos(vid){ return (S.matriculas||[]).filter(m=>(m._vertices||[]).some(v=>v.vertice_id===vid)); }
+function verticesHTML(){
+  const q=SEARCH.toLowerCase();
+  const lista=(S.vertices||[]).slice().filter(v=>!q||String(v.codigo||'').toLowerCase().includes(q)||String(Math.round(v.este||0)).includes(q)).sort((a,b)=>String(a.codigo||'').localeCompare(String(b.codigo||'')));
+  const e=VEDIT!=null?(S.vertices||[]).find(v=>v.id===VEDIT):null;
+  const compart=(S.vertices||[]).filter(v=>_vertUsos(v.id).length>1).length;
+  const rows=lista.map(v=>{ const usos=_vertUsos(v.id); const mats=usos.map(m=>m.numero||m.nome).join(', ');
+    return '<tr><td><span class="nome">'+esc(v.codigo||'—')+'</span>'+(usos.length>1?'<span class="grp" style="color:#e0a33a;background:rgba(224,163,58,.12)">🔗 '+usos.length+' matríc.</span>':'')+(v.tipo_vertice?'<span class="grp">'+esc(v.tipo_vertice)+'</span>':'')+'</td>'
+     +'<td class="num sub">'+(v.este!=null?nf(v.este):'')+'</td><td class="num sub">'+(v.norte!=null?nf(v.norte):'')+'</td>'
+     +'<td class="sub">'+esc(mats)+'</td>'
+     +'<td><span class="x" data-vedit="'+v.id+'" title="Editar">✎</span></td></tr>'; }).join('');
+  const editor=e?('<div class="cadwrap" style="margin-bottom:14px"><div class="cadhead"><h2>Vértice '+esc(e.codigo||'')+'</h2><button class="btn ghost" id="vVoltar">← Fechar</button></div><div class="fcol">'
+    +'<div class="hint" style="color:var(--warn)">Editar este marco altera <b>todas</b> as matrículas que o usam ('+_vertUsos(e.id).length+'): '+esc(_vertUsos(e.id).map(m=>m.numero||m.nome).join(', ')||'nenhuma')+'</div>'
+    +'<div class="two">'+_inp('vgCod','Código SIGEF',e.codigo,'')+_inp('vgTipo','Tipo',e.tipo_vertice,'M/P/V')+'</div>'
+    +'<div class="two">'+_inp('vgE','Este (UTM 23S)',e.este,'','number')+_inp('vgN','Norte (UTM 23S)',e.norte,'','number')+'</div>'
+    +'<div class="formactions"><button class="btn success" id="vgSalvar">💾 Salvar vértice</button><span class="fmsg" id="vgMsg"></span></div></div></div>'):'';
+  return '<div class="cadwrap" style="margin-bottom:14px"><div class="cadhead"><h2>Vértices (marcos)</h2><span class="pf-big">'+(S.vertices||[]).length+' marcos · '+compart+' compartilhados</span></div>'
+    +'<div class="hint">Cada vértice é um <b>marco físico</b> (UTM 23S). O mesmo marco pode ser usado por várias matrículas na divisa — editar aqui reflete em todas. Os vértices são vinculados no editor de cada matrícula (importar KML).</div></div>'
+    +editor
+    +'<div class="toolbar"><input class="search" id="qSearch" placeholder="🔎 buscar por código ou coordenada…" value="'+esc(SEARCH)+'"></div>'
+    +'<table class="tbl"><thead><tr><th>Vértice ('+lista.length+')</th><th class="num">Este</th><th class="num">Norte</th><th>Matrículas</th><th></th></tr></thead><tbody>'+(rows||'<tr><td colspan="5" class="empty">Nenhum vértice.</td></tr>')+'</tbody></table>';
+}
+function bindVertices(){
+  document.querySelectorAll('[data-vedit]').forEach(b=>b.onclick=()=>{ VEDIT=+b.dataset.vedit; window.scrollTo(0,0); route(); });
+  if($('vVoltar')) $('vVoltar').onclick=()=>{ VEDIT=null; route(); };
+  if($('vgSalvar')) $('vgSalvar').onclick=async()=>{ const e=(S.vertices||[]).find(v=>v.id===VEDIT); if(!e)return; const msg=$('vgMsg'); msg.className='fmsg'; msg.textContent='Salvando…';
+    const nnum=id=>{const v=$(id).value;return v!==''?parseFloat(v):null;};
+    const rec={codigo:$('vgCod').value.trim()||null,tipo_vertice:$('vgTipo').value.trim()||null,este:nnum('vgE'),norte:nnum('vgN')};
+    const {error}=await SB.from('vertices').update(rec).eq('id',e.id); if(error){msg.className='fmsg err';msg.textContent='Erro: '+error.message;return;}
+    VEDIT=null; await _recarregarMat(); route(); };
+  bindSearch();
 }
 /* ----- PROPRIETÁRIOS (entidade p/ cruzar matrículas · do grupo x terceiros) ----- */
 function proprietariosHTML(){

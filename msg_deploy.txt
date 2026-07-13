@@ -1,6 +1,1 @@
-﻿Matriculas: recadastro completo no esquema normalizado (vertices/onus/valores/anexos)
-
-- Aba Matriculas reconstruida no modulo de Cadastros: lista com filtros (vigentes/antigas/terceiros/risco), badges e patrimonio somado.
-- Editor por matricula com vigente x antiga, grupo x terceiro (proprietario registral/posse), risco juridico, valor atual, CIB, data abertura, geo_fonte.
-- Onus e valores como itens editaveis (gravam direto nas tabelas filhas); vertices + croqui SVG (poligono + pontos SIGEF); import de poligono/vertices KML; anexos com upload/download (Storage).
-- Gravacao POR MATRICULA (upsert + filhos), sem o "apaga a tabela inteira"; botao destrutivo desativado nessa aba.
+﻿Cadastros: aba Vertices (marcos globais compartilhados entre matriculas) + polígono derivado dos vertices
