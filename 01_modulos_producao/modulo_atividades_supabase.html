@@ -158,6 +158,7 @@ main{padding:16px 22px 60px;}
     <button data-v="comandas" class="on">📋 Comandas</button>
     <button data-v="nova">➕ Nova Comanda</button>
     <button data-v="planejamento">📅 Planejamento</button>
+    <button data-v="resultados">📊 Resultados</button>
     <button data-v="mapa">🏗️ Benfeitorias</button>
     <button data-v="aprovcampo" id="navAprovCampo" style="display:none">✅ Aprovações de campo</button>
   </nav>
@@ -3414,6 +3415,107 @@ function _planMover(id,dir){
   render();
 }
 
+/* ===== ABA RESULTADOS — custo realizado da safra, derivado AO VIVO das comandas ===== */
+const RES_DIESEL_PRECO = 6.50;                 // R$/L provisório (dono ajusta depois c/ o rateio real)
+let _resExec = null;                            // {codigo:{area,diesel}} — cache de execucao_campo
+let _resProd = null;                            // {lote|cultura:{qtd,unidade,prov}} — cache de producao_entrada
+let _resFiltroCult = 'todas';
+let _resOpen = {};
+const _RES_CAT = {
+  'Escarificação':'Preparo','Gradagem':'Preparo','Rolo':'Preparo','Subsolagem':'Preparo','Destruição de Soqueira':'Preparo',
+  'Adubação':'Adubação','Aplicação de Sólidos':'Adubação','Distribuidor de Fertilizantes':'Adubação',
+  'Plantio':'Plantio','Tratamento de Sementes':'Plantio',
+  'Pulverização Terrestre':'Defensivos','Pulverização Aérea':'Aérea',
+  'Colheita de Grãos':'Colheita','Colheita de Fibras':'Colheita'
+};
+async function _resLoad(){
+  _resExec = {}; _resProd = {};
+  if(!SB){ return; }
+  try{
+    const {data} = await SB.from('execucao_campo').select('comanda_codigo,area_ha,diesel_litros').eq('safra',SAFRA);
+    (data||[]).forEach(r=>{ const k=r.comanda_codigo; if(!k) return; const o=_resExec[k]||(_resExec[k]={area:0,diesel:0}); o.area=Math.max(o.area,+r.area_ha||0); o.diesel+=(+r.diesel_litros||0); });
+  }catch(e){ console.warn('resLoad exec',e); }
+  try{
+    const {data} = await SB.from('producao_entrada').select('lote,cultura,qtd,unidade,obs').eq('safra',SAFRA);
+    (data||[]).forEach(r=>{ const k=(r.lote||'')+'|'+(r.cultura||''); const o=_resProd[k]||(_resProd[k]={qtd:0,unidade:r.unidade||'sc',prov:false}); o.qtd+=(+r.qtd||0); if(String(r.obs||'').toLowerCase().includes('provis')) o.prov=true; });
+  }catch(e){ console.warn('resLoad prod',e); }
+}
+/* preço de venda por cultura, das premissas do Planejamento (S.planPremissas, chave "Cultura|ciclo") */
+function _resPrecoVenda(cult){
+  const nz=s=>String(s||'').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'');
+  const c=nz(cult); const pp=S.planPremissas||{};
+  for(const k in pp){ if(nz(k.split('|')[0])===c){ return parseFloat(String(pp[k].preco||'').replace(',','.'))||0; } }
+  return 0;
+}
+function _resProdLote(lote,cult){ return (_resProd&&_resProd[(lote||'')+'|'+(cult||'')])||null; }
+function _resCustoComanda(c){
+  const ex=(_resExec&&_resExec[c.codigo])||{area:0,diesel:0};
+  const area=ex.area>0?ex.area:(areaDe(c.loteNome)||0);
+  const gr=c.geralRetorno||{};
+  let insumos=0;
+  (c.produtos||[]).forEach(p=>{ const dose=parseFloat(String(p.dose||'').replace(',','.'))||0; insumos += dose*_custoUnitProd(p.nome)*area; });
+  const diesel=(ex.diesel||0)*RES_DIESEL_PRECO;
+  const aereo=(+gr.custo_servico_ha||0)*area;
+  const colhTerc=((+gr.terceiros_ha||0)+(+gr.oper_propria_ha||0))*area;
+  return {area,insumos,diesel,aereo,colhTerc,total:insumos+diesel+aereo+colhTerc,cat:_RES_CAT[c.tipoAtiv]||'Outros'};
+}
+function resSetCult(c){ _resFiltroCult=c; render(); }
+function resToggleLote(l){ _resOpen[l]=!_resOpen[l]; render(); }
+function _res$(n){ return 'R$ '+fmtBR(n); }
+function renderResultados(){
+  if(_resExec===null||_resProd===null){ _resLoad().then(()=>render()); return '<div style="padding:24px">⏳ Carregando execuções e produção do banco…</div>'; }
+  const cs=(S.comandas||[]).filter(c=>c.status!=='cancelada' && (_resFiltroCult==='todas'||(c.cultura||'')===_resFiltroCult));
+  const porLote={};
+  cs.forEach(c=>{ const cc=_resCustoComanda(c); const L=porLote[c.loteNome]||(porLote[c.loteNome]={lote:c.loteNome,cultura:c.cultura||'',area:areaDe(c.loteNome)||cc.area,insumos:0,diesel:0,aereo:0,colhTerc:0,total:0,n:0,coms:[]}); L.insumos+=cc.insumos;L.diesel+=cc.diesel;L.aereo+=cc.aereo;L.colhTerc+=cc.colhTerc;L.total+=cc.total;L.n++;L.coms.push({c,cc}); });
+  const lotes=Object.values(porLote);
+  // produção / receita / margem por lote
+  lotes.forEach(l=>{ const pr=_resProdLote(l.lote,l.cultura); l.qtd=pr?pr.qtd:0; l.unid=pr?pr.unidade:'sc'; l.prov=pr?pr.prov:false; l.prodHa=(l.area>0&&l.qtd)?l.qtd/l.area:0; l.preco=_resPrecoVenda(l.cultura); l.receita=l.qtd*l.preco; l.margem=l.receita-l.total; });
+  lotes.sort((a,b)=>b.margem-a.margem);
+  const tot=lotes.reduce((s,l)=>{s.total+=l.total;s.receita+=l.receita;s.margem+=l.margem;return s;},{total:0,receita:0,margem:0});
+  const areaTot=lotes.reduce((s,l)=>s+(l.area||0),0);
+  const anyProv=lotes.some(l=>l.prov);
+  const btn=(v,txt)=>`<button onclick="resSetCult('${v}')" style="padding:6px 12px;border-radius:8px;border:1px solid #3a4a5a;cursor:pointer;background:${_resFiltroCult===v?'#2e7d32':'#1c2733'};color:#fff;font-weight:600">${txt}</button>`;
+  const mcol=v=>v>=0?'#7fd18b':'#e88';
+  const card=(t,v,sub)=>`<div style="flex:1;min-width:150px;background:#16202b;border:1px solid #2a3a4a;border-radius:12px;padding:14px"><div style="color:#8aa;font-size:12px">${t}</div><div style="font-size:22px;font-weight:700;${sub?'color:'+sub:''}">${v}</div></div>`;
+  let h=`<div style="padding:8px 4px 40px">
+   <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:14px">
+     <h2 style="margin:0;font-size:20px">📊 Resultados <span style="color:#8aa;font-weight:400;font-size:14px">(safra ${esc(SAFRA)})</span></h2>
+     <span style="margin-left:auto;font-size:12px;color:#8aa">diesel R$ ${fmtBR(RES_DIESEL_PRECO)}/L · ao vivo do banco</span>
+   </div>
+   <div style="display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap">${btn('todas','Todas')}${btn('soja','Soja')}${btn('algodao','Algodão')}${btn('feijao','Feijão')}</div>
+   <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:18px">
+     ${card('Custo total',_res$(tot.total))}
+     ${card('Receita',_res$(tot.receita))}
+     ${card('Margem',_res$(tot.margem),mcol(tot.margem))}
+     ${card('Custo médio',areaTot>0?(_res$(tot.total/areaTot)+'/ha'):'—')}
+   </div>`;
+  const th=(t,al)=>`<th style="text-align:${al||'right'};padding:8px 10px">${t}</th>`;
+  h+=`<table style="width:100%;border-collapse:collapse;font-size:13px"><thead><tr style="background:#16202b;color:#8aa">
+     ${th('Lote','left')}${th('Cult','left')}${th('Área')}${th('Prod/ha')}${th('Custo/ha')}${th('Receita/ha')}${th('Margem/ha')}${th('Custo total')}${th('Margem total')}</tr></thead><tbody>`;
+  const num=(v,c,b)=>`<td style="text-align:right;padding:6px 10px;${b?'font-weight:700;':''}${c?'color:'+c+';':''}">${v}</td>`;
+  lotes.forEach(l=>{
+    const cpha=l.area>0?l.total/l.area:0, rpha=l.area>0?l.receita/l.area:0, mpha=l.area>0?l.margem/l.area:0; const op=_resOpen[l.lote+'|'+l.cultura];
+    const prodTxt=l.prodHa?fmtBR(l.prodHa)+' '+esc(l.unid)+(l.prov?'*':''):'—';
+    h+=`<tr onclick="resToggleLote('${(esc(l.lote)+'|'+esc(l.cultura)).replace(/'/g,"\\'")}')" style="cursor:pointer;border-bottom:1px solid #223">
+      <td style="padding:6px 10px;font-weight:600">${op?'▾':'▸'} ${esc(l.lote)}</td><td style="padding:6px 10px;color:#9ab">${esc(l.cultura)}</td>
+      <td style="text-align:right;padding:6px 10px">${fmtBR(l.area)}</td>${num(prodTxt)}${num(fmtBR(cpha))}${num(l.receita?fmtBR(rpha):'—')}${num(l.receita?fmtBR(mpha):'—',l.receita?mcol(l.margem):'')}
+      ${num(fmtBR(l.total),'',true)}${num(l.receita?fmtBR(l.margem):'—',l.receita?mcol(l.margem):'',true)}</tr>`;
+    if(op){
+      h+=`<tr><td colspan="9" style="padding:0 10px 10px 28px;background:#0e161e"><table style="width:100%;border-collapse:collapse;font-size:12px;color:#bcd"><tbody>`;
+      l.coms.sort((a,b)=>String(a.c.dataExecucao||'').localeCompare(String(b.c.dataExecucao||''))).forEach(({c,cc})=>{
+        h+=`<tr><td style="padding:3px 8px">${esc(c.dataExecucao||'')}</td><td style="padding:3px 8px">${esc(c.tipoAtiv)}</td><td style="padding:3px 8px;color:#8aa">${esc(cc.cat)}</td><td style="text-align:right;padding:3px 8px">ins ${fmtBR(cc.insumos)}</td><td style="text-align:right;padding:3px 8px">die ${fmtBR(cc.diesel)}</td><td style="text-align:right;padding:3px 8px">aer ${fmtBR(cc.aereo+cc.colhTerc)}</td><td style="text-align:right;padding:3px 8px;font-weight:600;color:#eee">${fmtBR(cc.total)}</td></tr>`;
+      });
+      h+=`</tbody></table></td></tr>`;
+    }
+  });
+  h+=`<tr style="background:#16202b;font-weight:700"><td style="padding:8px 10px">TOTAL</td><td></td><td style="text-align:right;padding:8px 10px">${fmtBR(areaTot)}</td><td></td><td style="text-align:right;padding:8px 10px">${areaTot>0?fmtBR(tot.total/areaTot):'—'}</td><td style="text-align:right;padding:8px 10px">${tot.receita&&areaTot>0?fmtBR(tot.receita/areaTot):'—'}</td><td style="text-align:right;padding:8px 10px;color:${mcol(tot.margem)}">${tot.receita&&areaTot>0?fmtBR(tot.margem/areaTot):'—'}</td><td style="text-align:right;padding:8px 10px">${fmtBR(tot.total)}</td><td style="text-align:right;padding:8px 10px;color:${mcol(tot.margem)}">${tot.receita?fmtBR(tot.margem):'—'}</td></tr>`;
+  h+=`</tbody></table>`;
+  h+=`<div style="margin-top:10px;font-size:11px;color:#667">⚠️ Provisório: diesel R$ ${fmtBR(RES_DIESEL_PRECO)}/L · preço de venda das premissas (Soja R$${fmtBR(_resPrecoVenda('soja'))}/sc, Algodão R$${fmtBR(_resPrecoVenda('algodao'))}/@) · ${anyProv?'produção com <b>*</b> = média provisória (substituir amanhã)':'produção real'} · feijão sem preço de venda.</div>`;
+  h+=`</div>`;
+  return h;
+}
+function bindResultados(){ /* interações via onclick inline (resSetCult/resToggleLote) */ }
+
 function renderPlanejamento(){
   const sub=`<div class="nav-row" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:14px">
     <div class="nav">
@@ -4849,6 +4951,7 @@ function render(){
   if(VIEW==='comandas'){m.innerHTML=renderComandas();bindComandas();}
   else if(VIEW==='nova'){m.innerHTML=renderNova();bindNova();}
   else if(VIEW==='planejamento'){m.innerHTML=renderPlanejamento();bindPlanejamento();}
+  else if(VIEW==='resultados'){m.innerHTML=renderResultados();bindResultados();}
   else if(VIEW==='mapa'){m.innerHTML=renderMapa();bindMapa();}
   else if(VIEW==='aprovcampo'){m.innerHTML=renderAprovCampo();bindAprovCampo();}
 }
