@@ -1,1 +1,1 @@
-﻿Cadastros: aba Vertices (marcos globais compartilhados entre matriculas) + polígono derivado dos vertices
+﻿Cadastros: 4 matriculas de reserva legal (Flavena II + Rancho Queimado) + vinculo reserva->beneficiaria

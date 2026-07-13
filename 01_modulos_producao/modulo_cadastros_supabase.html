@@ -565,7 +565,7 @@ function _fmtMoeda(v){ return v==null?'—':Number(v).toLocaleString('pt-BR',{mi
 function _MAT_TOAPP(r){ return {id:r.id,nome:r.nome,numero:r.numero||'',denominacao:r.denominacao||'',municipio:r.municipio||'',
   area:r.area,perimetroM:r.perimetro_m,reservaLegalHa:r.reserva_legal_ha,incraCod:r.incra_cod||'',nirf:r.nirf||'',car:r.car||'',cib:r.cib||'',
   certificacao:r.certificacao||'',respTecnico:r.resp_tecnico||'',dataAbertura:r.data_abertura||'',matAnterior:r.matricula_anterior||'',
-  vigente:r.vigente!==false,situacao:r.situacao||'vigente',grupo:r.grupo!==false,propRegistral:r.proprietario_registral||'',posseObs:r.posse_obs||'',
+  vigente:r.vigente!==false,situacao:r.situacao||'vigente',grupo:r.grupo!==false,propRegistral:r.proprietario_registral||'',posseObs:r.posse_obs||'',tipoArea:r.tipo_area||'produtiva',
   riscoJuridico:r.risco_juridico||'',valorAtual:r.valor_atual,geoFonte:r.geo_fonte||'NAO',georreferenciada:!!r.georreferenciada,
   geom:r.geom||null,obs:r.obs||'',proprietarios:r.proprietarios||[],memorial:r.memorial||null,
   _vertices:[],_onus:[],_valores:[],_anexos:[]}; }
@@ -590,6 +590,7 @@ function _badges(m){
   if(m.geoFonte&&m.geoFonte!=='NAO') b.push('<span class="grp" style="color:var(--ok-l);background:rgba(0,200,150,.10)" title="'+esc(m.geoFonte)+'">🗺️ '+(m.geoFonte==='SIGEF'?'SIGEF':'georref')+'</span>');
   b.push(m.propRegistral?'<span class="grp" style="color:#e0a33a;background:rgba(224,163,58,.12)" title="registral: '+esc(m.propRegistral)+'">👤 terceiro</span>':'<span class="grp" style="color:var(--ok-l);background:rgba(0,200,150,.10)">🏢 grupo</span>');
   const nAtiv=(m._onus||[]).filter(o=>o.status==='ATIVO').length; if(nAtiv) b.push('<span class="grp" style="color:#e0a33a;background:rgba(224,163,58,.12)">🔒 '+nAtiv+' ônus</span>');
+  if(m.tipoArea==='reserva_legal') b.push('<span class="grp" style="color:#7fe0a0;background:rgba(0,200,150,.10)">🌳 reserva</span>');
   if(m.riscoJuridico) b.push('<span class="grp" style="color:#f85149;background:rgba(248,81,73,.14)" title="'+esc(m.riscoJuridico)+'">⚠ risco</span>');
   return b.join('');
 }
@@ -651,6 +652,16 @@ function _matEditorHTML(e){
     +_inp('mRisco','⚠ Risco jurídico',e.riscoJuridico,'ex.: ação de cancelamento MP; bloqueio judicial')
     +_inp('mObs','Observação geral',e.obs,'opcional')
     +'<div class="formactions"><button class="btn success" id="mSalvar">💾 Salvar matrícula</button><button class="btn ghost xr" id="mExcluir">Excluir matrícula</button><span class="fmsg" id="mMsg"></span></div>'
+    // ===== RESERVA LEGAL =====
+    +S3+'🌳 Reserva legal</div>'
+    +'<label>Tipo de área <select id="mTipoArea"><option value="produtiva"'+(e.tipoArea==='produtiva'||!e.tipoArea?' selected':'')+'>Produtiva</option><option value="reserva_legal"'+(e.tipoArea==='reserva_legal'?' selected':'')+'>Reserva legal (compensação)</option><option value="mista"'+(e.tipoArea==='mista'?' selected':'')+'>Mista</option></select> <span class="hint">(salvo com a matrícula)</span></label>'
+    +'<div class="sub" style="margin-top:8px"><b>Esta área cobre a reserva legal de:</b></div>'
+    +'<table class="tbl"><thead><tr><th>Matrícula beneficiária</th><th class="num">ha</th><th>Averbação</th><th></th></tr></thead><tbody>'
+    +((e._reservaServe||[]).map(x=>'<tr><td>'+esc(x.nome)+'</td><td class="num">'+(x.area_ha!=null?nf(x.area_ha):'—')+'</td><td class="sub">'+esc(x.registro||'')+'</td><td><span class="x xr" data-delresv="'+x.id+'" title="Remover">✕</span></td></tr>').join('')||'<tr><td colspan="4" class="empty">—</td></tr>')+'</tbody></table>'
+    +'<div class="two" style="margin-top:6px"><label>Beneficiária (fazenda cuja RL fica aqui) <select id="rvBen"><option value="">—</option>'+(S.matriculas||[]).filter(x=>x.id!==e.id).sort((a,b)=>String(a.nome).localeCompare(String(b.nome))).map(x=>'<option value="'+x.id+'">'+esc((x.numero?x.numero+' · ':'')+x.nome)+'</option>').join('')+'</select></label>'
+    +_inp('rvArea','Área coberta (ha)','','','number')+'</div>'
+    +'<div class="two">'+_inp('rvReg','Averbação (AV-x)','','ex.: AV-10-3206')+'<div style="align-self:end"><button class="btn" id="rvAdd">＋ Vincular beneficiária</button></div></div>'
+    +((e._reservaEm||[]).length?'<div class="sub" style="margin-top:8px"><b>A reserva legal desta fazenda está localizada em:</b></div><ul style="margin:2px 0 6px 18px">'+e._reservaEm.map(x=>'<li>'+esc(x.nome)+(x.area_ha!=null?' — '+nf(x.area_ha)+' ha':'')+(x.registro?' <span class="sub">('+esc(x.registro)+')</span>':'')+'</li>').join('')+'</ul>':'')
     // ===== ÔNUS =====
     +S3+'🔒 Ônus / gravames ('+(e._onus||[]).length+')</div>'
     +'<table class="tbl"><thead><tr><th>Ônus</th><th class="num">Valor</th><th></th></tr></thead><tbody>'+(onusRows||'<tr><td colspan="3" class="empty">Sem ônus.</td></tr>')+'</tbody></table>'
@@ -696,6 +707,8 @@ function bindMatriculas(){
   document.querySelectorAll('[data-delonus]').forEach(b=>b.onclick=async()=>{ if(!confirm('Excluir este ônus?'))return; await SB.from('matricula_onus').delete().eq('id',+b.dataset.delonus); await _recarregarMat(); route(); });
   if($('vAdd')) $('vAdd').onclick=async()=>{ const nnum=id=>{const v=$(id).value;return v!==''?parseFloat(v):null;}; const rec={matricula_id:e.id,data_negocio:$('vData').value.trim()||null,tipo:$('vTipo').value,de_quem:$('vDe').value.trim()||null,para_quem:$('vPara').value.trim()||null,valor:nnum('vValor'),moeda:$('vMoeda').value.trim()||null,registro:$('vReg').value.trim()||null,atual:$('vAtual').value==='sim'}; const {error}=await SB.from('matricula_valores').insert(rec); if(error){alert('Erro: '+error.message);return;} await _recarregarMat(); route(); };
   document.querySelectorAll('[data-delval]').forEach(b=>b.onclick=async()=>{ if(!confirm('Excluir este valor?'))return; await SB.from('matricula_valores').delete().eq('id',+b.dataset.delval); await _recarregarMat(); route(); });
+  if($('rvAdd')) $('rvAdd').onclick=async()=>{ const ben=$('rvBen').value; if(!ben){alert('Escolha a matrícula beneficiária.');return;} const area=$('rvArea').value!==''?parseFloat($('rvArea').value):null; const {error}=await SB.from('matricula_reserva').insert({reserva_matricula_id:e.id,beneficiaria_matricula_id:+ben,area_ha:area,registro:$('rvReg').value.trim()||null}); if(error){alert('Erro: '+error.message);return;} await _recarregarMat(); route(); };
+  document.querySelectorAll('[data-delresv]').forEach(b=>b.onclick=async()=>{ if(!confirm('Remover este vínculo de reserva?'))return; await SB.from('matricula_reserva').delete().eq('id',+b.dataset.delresv); await _recarregarMat(); route(); });
   if($('lKml')) $('lKml').onchange=(ev)=>{ const f=ev.target.files&&ev.target.files[0]; if(f) _matImportPoligono(e,f); };
   if($('lVert')) $('lVert').onchange=(ev)=>{ const f=ev.target.files&&ev.target.files[0]; if(f) _matImportVertices(e,f); };
   if($('axAdd')) $('axAdd').onclick=()=>_matUploadAnexo(e);
@@ -714,7 +727,8 @@ async function _salvarMatricula(e){
     certificacao:txt('mCert'), resp_tecnico:txt('mRT'), data_abertura:txt('mAbertura'), matricula_anterior:txt('mMant'),
     vigente:vig, situacao:vig?'vigente':'encerrada', grupo:$('mGrupo').value==='sim',
     proprietario_registral:txt('mReg'), posse_obs:txt('mPosse'), risco_juridico:txt('mRisco'),
-    valor_atual:nnum('mValAtual'), geo_fonte:$('mGeo').value, georreferenciada:$('mGeo').value!=='NAO', obs:txt('mObs') };
+    valor_atual:nnum('mValAtual'), geo_fonte:$('mGeo').value, georreferenciada:$('mGeo').value!=='NAO', obs:txt('mObs'),
+    tipo_area:($('mTipoArea')?$('mTipoArea').value:'produtiva') };
   const {error}=await SB.from('matriculas').update(rec).eq('id',e.id);
   if(error){ m.className='fmsg err'; m.textContent='Erro: '+error.message; return; }
   await _recarregarMat(); m.className='fmsg ok'; m.textContent='✅ Salvo'; route();
@@ -783,12 +797,17 @@ async function _recarregarMat(){
     const {data:mats}=await SB.from('matriculas').select('*');
     S.matriculas=(mats||[]).map(_MAT_TOAPP);
     const byId={}; S.matriculas.forEach(m=>{m._vertices=[];m._onus=[];m._valores=[];m._anexos=[];byId[m.id]=m;});
-    const [gv,jv,oo,va,ax]=await Promise.all([
+    const [gv,jv,oo,va,ax,rz]=await Promise.all([
       SB.from('vertices').select('*'),
       SB.from('matricula_vertices').select('matricula_id,vertice_id,ordem,codigo').order('ordem'),
       SB.from('matricula_onus').select('*').order('ordem'),
       SB.from('matricula_valores').select('*'),
-      SB.from('matricula_anexos').select('*')]);
+      SB.from('matricula_anexos').select('*'),
+      SB.from('matricula_reserva').select('*')]);
+    S.matriculas.forEach(m=>{m._reservaServe=[];m._reservaEm=[];});
+    (rz.data||[]).forEach(r=>{ const res=byId[r.reserva_matricula_id], ben=byId[r.beneficiaria_matricula_id];
+      if(res) res._reservaServe.push({id:r.id,beneficiaria_id:r.beneficiaria_matricula_id,nome:(ben?(ben.numero||ben.nome):('#'+r.beneficiaria_matricula_id)),area_ha:r.area_ha,registro:r.registro});
+      if(ben) ben._reservaEm.push({id:r.id,reserva_id:r.reserva_matricula_id,nome:(res?(res.numero||res.nome):('#'+r.reserva_matricula_id)),area_ha:r.area_ha,registro:r.registro}); });
     const vById={}; (gv.data||[]).forEach(v=>{v._nmat=0; vById[v.id]=v;}); S.vertices=gv.data||[];
     (jv.data||[]).forEach(j=>{ const g=vById[j.vertice_id]; const m=byId[j.matricula_id]; if(g)g._nmat++; if(m&&g) m._vertices.push({vertice_id:g.id,ordem:j.ordem,codigo:j.codigo||g.codigo,este:g.este,norte:g.norte,tipo_vertice:g.tipo_vertice,sigma_x:g.sigma_x,longitude:g.longitude,latitude:g.latitude,nmat:g._nmat}); });
     S.matriculas.forEach(m=>{ m._vertices.sort((a,b)=>(a.ordem||0)-(b.ordem||0)); m._vertices.forEach(v=>{v.nmat=(vById[v.vertice_id]||{})._nmat||1;}); });
