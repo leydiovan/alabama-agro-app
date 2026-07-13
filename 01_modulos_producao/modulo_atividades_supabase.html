@@ -3416,7 +3416,7 @@ function _planMover(id,dir){
 }
 
 /* ===== ABA RESULTADOS — custo realizado da safra, derivado AO VIVO das comandas ===== */
-const RES_DIESEL_PRECO = 6.50;                 // R$/L provisório (dono ajusta depois c/ o rateio real)
+const RES_DIESEL_PRECO = 6.58;                 // R$/L real (média do período); litros rateados p/ total real 363 mil L
 let _resExec = null;                            // {codigo:{area,diesel}} — cache de execucao_campo
 let _resProd = null;                            // {lote|cultura:{qtd,unidade,prov}} — cache de producao_entrada
 let _resFiltroCult = 'todas';
@@ -3512,7 +3512,7 @@ function renderResultados(){
   });
   h+=`<tr style="background:#16202b;font-weight:700"><td style="padding:8px 10px">TOTAL</td><td></td><td style="text-align:right;padding:8px 10px">${fmtBR(areaTot)}</td><td></td><td style="text-align:right;padding:8px 10px;color:#9bb1c9">${areaTot>0?fmtL(tot.dieselL/areaTot)+' L':'—'}</td><td style="text-align:right;padding:8px 10px">${areaTot>0?fmtBR(tot.total/areaTot):'—'}</td><td style="text-align:right;padding:8px 10px">${tot.receita&&areaTot>0?fmtBR(tot.receita/areaTot):'—'}</td><td style="text-align:right;padding:8px 10px;color:${mcol(tot.margem)}">${tot.receita&&areaTot>0?fmtBR(tot.margem/areaTot):'—'}</td><td style="text-align:right;padding:8px 10px">${fmtBR(tot.total)}</td><td style="text-align:right;padding:8px 10px;color:${mcol(tot.margem)}">${tot.receita?fmtBR(tot.margem):'—'}</td></tr>`;
   h+=`</tbody></table>`;
-  h+=`<div style="margin-top:10px;font-size:11px;color:#667">⚠️ Provisório: diesel R$ ${fmtBR(RES_DIESEL_PRECO)}/L · preço de venda das premissas (Soja R$${fmtBR(_resPrecoVenda('soja'))}/sc, Algodão R$${fmtBR(_resPrecoVenda('algodao'))}/@) · ${anyProv?'produção com <b>*</b> = média provisória (substituir amanhã)':'produção real'} · feijão sem preço de venda.</div>`;
+  h+=`<div style="margin-top:10px;font-size:11px;color:#667">Diesel R$ ${fmtBR(RES_DIESEL_PRECO)}/L (rateado do real 363 mil L) · preço de venda das premissas (Soja R$${fmtBR(_resPrecoVenda('soja'))}/sc, Algodão R$${fmtBR(_resPrecoVenda('algodao'))}/@, Feijão R$${fmtBR(_resPrecoVenda('feijao'))}/sc)${anyProv?' · <b>⚠️ produção com * = média provisória</b>':' · produção real'}</div>`;
   h+=`</div>`;
   return h;
 }
