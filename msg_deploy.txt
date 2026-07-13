@@ -1,14 +1,6 @@
-Deploy: sufixo semente + custos fixos/depreciacao + RH fixo (folha real
-+ encargos por empregador GPS) + situacao/visivel-coleta
+﻿Matriculas: recadastro completo no esquema normalizado (vertices/onus/valores/anexos)
 
-- coleta.html: filtra visivel_coleta (so quem esta marcado aparece).
-- Cadastros: tecnologia por sufixo (semente=variedade+sufixo), aba
-  Sufixos, traits tipo/detentora, depreciacao nas maquinas/implementos.
-- Atividades: aba Custos fixos (itens + depreciacao + RH fixo derivado),
-  parcela por poligono no mapa de satelite (Sentinel-2 por data).
-- Funcionarios: situacao/visivel-coleta, tipo pro-labore, campos da
-  folha (carteira/por fora/descontos), aba Empregadores (encargos).
-
-Backend: migracoes 60-65 ja aplicadas no Supabase.
-
-Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>
+- Aba Matriculas reconstruida no modulo de Cadastros: lista com filtros (vigentes/antigas/terceiros/risco), badges e patrimonio somado.
+- Editor por matricula com vigente x antiga, grupo x terceiro (proprietario registral/posse), risco juridico, valor atual, CIB, data abertura, geo_fonte.
+- Onus e valores como itens editaveis (gravam direto nas tabelas filhas); vertices + croqui SVG (poligono + pontos SIGEF); import de poligono/vertices KML; anexos com upload/download (Storage).
+- Gravacao POR MATRICULA (upsert + filhos), sem o "apaga a tabela inteira"; botao destrutivo desativado nessa aba.

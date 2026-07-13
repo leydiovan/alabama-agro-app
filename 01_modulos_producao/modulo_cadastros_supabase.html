@@ -556,81 +556,230 @@ function _matMemorialHTML(e){
     +'<div class="sub" style="margin-top:6px"><b>Perímetro / vértices</b> ('+vs.length+')</div>'+vhtml
     +'<label style="margin-top:8px">Texto do memorial / observações <textarea id="mMemTexto" rows="3" style="width:100%;box-sizing:border-box">'+esc(mem.texto||'')+'</textarea></label>';
 }
+/* ===== MATRÍCULAS (esquema normalizado: matriculas + vertices/onus/valores/anexos) ===== */
+var MATF='vigentes';                     // filtro da lista: vigentes | antigas | terceiros | risco | todas
+function _fmtMoeda(v){ return v==null?'—':Number(v).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2}); }
+function _MAT_TOAPP(r){ return {id:r.id,nome:r.nome,numero:r.numero||'',denominacao:r.denominacao||'',municipio:r.municipio||'',
+  area:r.area,perimetroM:r.perimetro_m,reservaLegalHa:r.reserva_legal_ha,incraCod:r.incra_cod||'',nirf:r.nirf||'',car:r.car||'',cib:r.cib||'',
+  certificacao:r.certificacao||'',respTecnico:r.resp_tecnico||'',dataAbertura:r.data_abertura||'',matAnterior:r.matricula_anterior||'',
+  vigente:r.vigente!==false,situacao:r.situacao||'vigente',grupo:r.grupo!==false,propRegistral:r.proprietario_registral||'',posseObs:r.posse_obs||'',
+  riscoJuridico:r.risco_juridico||'',valorAtual:r.valor_atual,geoFonte:r.geo_fonte||'NAO',georreferenciada:!!r.georreferenciada,
+  geom:r.geom||null,obs:r.obs||'',proprietarios:r.proprietarios||[],memorial:r.memorial||null,
+  _vertices:[],_onus:[],_valores:[],_anexos:[]}; }
+function _croquiSVG(m){                   // desenha polígono (UTM ring) + vértices num SVG
+  const ring=m.geom&&m.geom.ring; if(!Array.isArray(ring)||ring.length<3) return '<div class="hint">Sem polígono.</div>';
+  let minE=1e18,maxE=-1e18,minN=1e18,maxN=-1e18;
+  ring.forEach(p=>{minE=Math.min(minE,p[0]);maxE=Math.max(maxE,p[0]);minN=Math.min(minN,p[1]);maxN=Math.max(maxN,p[1]);});
+  const W=560,H=360,pad=26, dx=(maxE-minE)||1, dy=(maxN-minN)||1, sc=Math.min((W-2*pad)/dx,(H-2*pad)/dy);
+  const X=e=>pad+(e-minE)*sc, Y=n=>H-pad-(n-minN)*sc;   // N para cima
+  const pts=ring.map(p=>X(p[0]).toFixed(1)+','+Y(p[1]).toFixed(1)).join(' ');
+  const vs=(m._vertices||[]).filter(v=>v.este!=null&&v.norte!=null);
+  const dots=vs.map(v=>'<circle cx="'+X(v.este).toFixed(1)+'" cy="'+Y(v.norte).toFixed(1)+'" r="3.2" fill="#f0b400" stroke="#111" stroke-width="1"/>'
+    +'<text x="'+(X(v.este)+5).toFixed(1)+'" y="'+(Y(v.norte)-4).toFixed(1)+'" font-size="9" fill="#9fb0c0">'+esc(v.codigo||'')+'</text>').join('');
+  return '<svg viewBox="0 0 '+W+' '+H+'" style="width:100%;max-width:'+W+'px;background:#0d1117;border:1px solid #30363d;border-radius:10px">'
+    +'<polygon points="'+pts+'" fill="rgba(0,200,150,.10)" stroke="#00c896" stroke-width="1.6"/>'+dots+'</svg>';
+}
+function _badges(m){
+  const b=[];
+  if(m.numero) b.push('<span class="grp">nº '+esc(m.numero)+'</span>');
+  b.push(m.vigente===false?'<span class="grp" style="color:#c9a227;background:rgba(201,162,39,.12)">📕 encerrada</span>':'<span class="grp" style="color:var(--ok-l);background:rgba(0,200,150,.10)">✅ vigente</span>');
+  if(m.geoFonte&&m.geoFonte!=='NAO') b.push('<span class="grp" style="color:var(--ok-l);background:rgba(0,200,150,.10)" title="'+esc(m.geoFonte)+'">🗺️ '+(m.geoFonte==='SIGEF'?'SIGEF':'georref')+'</span>');
+  b.push(m.propRegistral?'<span class="grp" style="color:#e0a33a;background:rgba(224,163,58,.12)" title="registral: '+esc(m.propRegistral)+'">👤 terceiro</span>':'<span class="grp" style="color:var(--ok-l);background:rgba(0,200,150,.10)">🏢 grupo</span>');
+  const nAtiv=(m._onus||[]).filter(o=>o.status==='ATIVO').length; if(nAtiv) b.push('<span class="grp" style="color:#e0a33a;background:rgba(224,163,58,.12)">🔒 '+nAtiv+' ônus</span>');
+  if(m.riscoJuridico) b.push('<span class="grp" style="color:#f85149;background:rgba(248,81,73,.14)" title="'+esc(m.riscoJuridico)+'">⚠ risco</span>');
+  return b.join('');
+}
 function matriculasHTML(){
   const e=EDIT_IDX!=null?(S.matriculas||[])[EDIT_IDX]:null;
-  const _props=(S.proprietarios||[]).slice().sort((a,b)=>String(a.nome).localeCompare(String(b.nome)));
-  const _sel=new Set((e&&e.proprietarios)||[]);
-  const _propsChk=_props.length?_props.map(p=>'<label><input type="checkbox" class="mProp" value="'+esc(p.nome)+'" '+(_sel.has(p.nome)?'checked':'')+'>'+esc(p.nome)+(p.grupo?' <span class="sub" style="color:var(--ok-l)">·grupo</span>':'')+'</label>').join(''):'<span class="hint">Cadastre pessoas na aba <b>Proprietários</b> primeiro.</span>';
-  const _doGrupo=[..._sel].some(n=>{const p=(S.proprietarios||[]).find(x=>x.nome===n);return p&&p.grupo;});
-  const _grpBadge=_sel.size?(_doGrupo?'<span class="grp" style="color:var(--ok-l);background:rgba(0,200,150,.10)">🏢 do grupo</span>':'<span class="grp">terceiros</span>'):'';
+  if(e) return _matEditorHTML(e);
   const q=SEARCH.toLowerCase();
-  const lista=(S.matriculas||[]).map((m,idx)=>({m,idx})).filter(o=>!q||String(o.m.nome||'').toLowerCase().includes(q)).sort((a,b)=>String(a.m.nome).localeCompare(String(b.m.nome)));
-  const rows=lista.map(({m,idx})=>{ const am=m.geom&&m.geom.ring?_matAreaHa(m.geom.ring):null;
-    return '<tr><td><span class="nome">'+esc(m.nome)+'</span>'+(m.numero?'<span class="grp">nº '+esc(m.numero)+'</span>':'')+(m.geom?'<span class="grp" style="color:var(--ok-l);background:rgba(0,200,150,.10)">🗺️</span>':'')+(m.alienada?'<span class="grp" style="color:#e0a33a;background:rgba(224,163,58,.12)" title="'+esc(m.alienacao||'Alienada / com ônus')+'">🔒 alienada</span>':'')+((m.proprietarios||[]).some(n=>{const p=(S.proprietarios||[]).find(x=>x.nome===n);return p&&p.grupo;})?'<span class="grp" style="color:var(--ok-l);background:rgba(0,200,150,.10)">🏢 grupo</span>':'')+'</td>'
+  const passa=m=>MATF==='todas'||(MATF==='vigentes'&&m.vigente!==false)||(MATF==='antigas'&&m.vigente===false)||(MATF==='terceiros'&&m.propRegistral)||(MATF==='risco'&&m.riscoJuridico);
+  const lista=(S.matriculas||[]).map((m,idx)=>({m,idx})).filter(o=>passa(o.m)).filter(o=>!q||String(o.m.nome||'').toLowerCase().includes(q)).sort((a,b)=>String(a.m.nome).localeCompare(String(b.m.nome)));
+  const fbtn=(k,t)=>'<button class="'+(MATF===k?'on':'')+'" data-matf="'+k+'" style="padding:5px 10px;border-radius:7px;border:1px solid #30363d;background:'+(MATF===k?'#238636':'#161b22')+';color:#e6edf3;cursor:pointer;font:600 12px system-ui">'+t+'</button>';
+  const rows=lista.map(({m,idx})=>'<tr><td><span class="nome">'+esc(m.nome)+'</span> '+_badges(m)+'</td>'
      +'<td class="num">'+(m.area!=null?nf(m.area)+' <span class="sub">ha</span>':'—')+'</td>'
-     +'<td class="sub">'+(am!=null?nf(am)+' ha medida':'sem polígono')+'</td>'
-     +'<td><span class="x" data-eidx="'+idx+'" title="Editar">✎</span><span class="x xr" data-didx="'+idx+'" title="Remover">✕</span></td></tr>'; }).join('');
-  const am=e&&e.geom&&e.geom.ring?_matAreaHa(e.geom.ring):null;
-  return '<div class="cadwrap" style="margin-bottom:18px"><div class="cadhead"><h2>'+(e?'Editar matrícula':'Nova matrícula')+'</h2><span class="pf-big" id="mSoma">—</span></div>'
+     +'<td class="num">'+(m.valorAtual!=null?'R$ '+_fmtMoeda(m.valorAtual):'—')+'</td>'
+     +'<td><span class="x" data-eidx="'+idx+'" title="Abrir/editar">✎</span></td></tr>').join('');
+  const tot=(S.matriculas||[]).filter(m=>m.vigente!==false);
+  const somaArea=tot.reduce((s,m)=>s+(m.area||0),0), somaPat=tot.reduce((s,m)=>s+(m.valorAtual||0),0);
+  return '<div class="cadwrap" style="margin-bottom:14px"><div class="cadhead"><h2>Matrículas</h2>'
+    +'<span class="pf-big">'+tot.length+' vigentes · '+nf(somaArea)+' ha'+(somaPat?' · patrimônio parcial R$ '+_fmtMoeda(somaPat):'')+'</span></div>'
+    +'<div class="hint">O cadastro de cada matrícula (vértices, ônus, valores, anexos) é <b>gravado por matrícula</b> — clique ✎ para abrir. Use <b>Nova matrícula</b> para incluir.</div>'
+    +'<div style="margin-top:8px"><button class="btn success" id="mNova">＋ Nova matrícula</button></div></div>'
+    +'<div class="toolbar" style="gap:6px;flex-wrap:wrap">'+fbtn('vigentes','Vigentes')+fbtn('antigas','Antigas')+fbtn('terceiros','Terceiros')+fbtn('risco','⚠ Risco')+fbtn('todas','Todas')
+    +'<input class="search" id="qSearch" placeholder="🔎 buscar matrícula…" value="'+esc(SEARCH)+'" style="flex:1;min-width:180px"></div>'
+    +'<table class="tbl"><thead><tr><th>Matrícula ('+lista.length+')</th><th class="num">Área</th><th class="num">Valor atual</th><th></th></tr></thead><tbody>'+(rows||'<tr><td colspan="4" class="empty">Nenhuma matrícula.</td></tr>')+'</tbody></table>';
+}
+function _inp(id,lbl,val,ph,tp){return '<label>'+lbl+' <input id="'+id+'" '+(tp?'type="'+tp+'" step="any"':'')+' value="'+(val==null?'':esc(String(val)))+'" placeholder="'+esc(ph||'')+'"></label>';}
+function _matEditorHTML(e){
+  const am=e.geom&&e.geom.ring?_matAreaHa(e.geom.ring):null;
+  const onus=(e._onus||[]).slice().sort((a,b)=>(a.status==='ATIVO'?0:1)-(b.status==='ATIVO'?0:1));
+  const onusRows=onus.map(o=>'<tr><td><b>'+esc(o.tipo||'')+'</b>'+(o.grau&&o.grau!=='-'?' <span class="sub">'+esc(o.grau)+' grau</span>':'')+(o.registro?' <span class="grp">'+esc(o.registro)+'</span>':'')
+     +(o.status!=='ATIVO'?' <span class="grp" style="color:#c9a227">'+esc(o.status)+'</span>':'<span class="grp" style="color:#e0a33a;background:rgba(224,163,58,.12)">ATIVO</span>')
+     +(o.credor?'<div class="sub">'+esc(o.credor)+(o.devedor?' · dev. '+esc(o.devedor):'')+'</div>':'')+(o.produto?'<div class="sub">'+esc(o.produto)+'</div>':'')+(o.obs?'<div class="sub">'+esc(o.obs)+'</div>':'')+'</td>'
+     +'<td class="num">'+(o.valor!=null?'R$ '+_fmtMoeda(o.valor):'—')+'</td>'
+     +'<td><span class="x xr" data-delonus="'+o.id+'" title="Excluir ônus">✕</span></td></tr>').join('');
+  const vals=(e._valores||[]).slice().sort((a,b)=>String(a.data_negocio||'').localeCompare(String(b.data_negocio||'')));
+  const valRows=vals.map(v=>'<tr><td class="sub">'+esc(v.data_negocio||'')+'</td><td>'+esc(v.tipo||'')+(v.atual?' <span class="grp" style="color:var(--ok-l);background:rgba(0,200,150,.10)">atual</span>':'')+(v.de_quem||v.para_quem?'<div class="sub">'+esc(v.de_quem||'?')+' → '+esc(v.para_quem||'?')+'</div>':'')+(v.registro?'<div class="sub">'+esc(v.registro)+'</div>':'')+'</td>'
+     +'<td class="num">'+(v.valor!=null?esc(v.moeda||'R$')+' '+_fmtMoeda(v.valor):'—')+'</td><td><span class="x xr" data-delval="'+v.id+'" title="Excluir">✕</span></td></tr>').join('');
+  const vs=e._vertices||[];
+  const vertRows=vs.map(v=>'<tr><td>'+esc(v.codigo||'')+'</td><td class="sub">'+(v.este!=null?nf(v.este):'')+'</td><td class="sub">'+(v.norte!=null?nf(v.norte):'')+'</td><td class="sub">'+esc(v.tipo_vertice||'')+'</td><td class="sub">'+(v.sigma_x!=null?v.sigma_x:'')+'</td></tr>').join('');
+  const anx=e._anexos||[];
+  const anxRows=anx.length?anx.map(a=>'<tr><td>'+esc(a.tipo||'')+'</td><td><span class="nome">'+esc(a.nome||'')+'</span></td><td><span class="x" data-dlanexo="'+a.id+'" title="Baixar">⬇</span> <span class="x xr" data-delanexo="'+a.id+'" title="Excluir">✕</span></td></tr>').join(''):'<tr><td colspan="3" class="empty">Nenhum arquivo anexado.</td></tr>';
+  const S3='<div class="sectit" style="margin-top:14px">';
+  return '<div class="cadwrap"><div class="cadhead"><h2>'+esc(e.nome)+'</h2><button class="btn ghost" id="mVoltar">← Voltar</button></div>'
     +'<div class="fcol">'
-    +'<div class="two"><label>Nome/identificação <input id="mNome" value="'+(e?esc(e.nome):'')+'" placeholder="ex.: Faz. Alabama VII — Mat. 9.996"></label>'
-    +'<label>Nº matrícula (CRI) <input id="mNum" value="'+(e?esc(e.numero||''):'')+'" placeholder="9.996"></label></div>'
-    +'<div class="two"><label>Denominação do imóvel <input id="mDenom" value="'+(e?esc(e.denominacao||''):'')+'" placeholder="ex.: FAZENDA ALABAMA VII"></label>'
-    +'<label>Município/UF <input id="mMun" value="'+(e?esc(e.municipio||''):'')+'" placeholder="ex.: São Desidério - BA"></label></div>'
-    +'<div class="two"><label>Área oficial (ha) <input type="number" id="mArea" step="any" min="0" value="'+(e&&e.area!=null?e.area:'')+'" placeholder="0"></label>'
-    +'<label>Perímetro (m) <input type="number" id="mPerim" step="any" min="0" value="'+(e&&e.perimetroM!=null?e.perimetroM:'')+'" placeholder="0"></label></div>'
-    +'<div class="two"><label>Reserva Legal (ha) <input type="number" id="mRL" step="any" min="0" value="'+(e&&e.reservaLegalHa!=null?e.reservaLegalHa:'')+'"></label>'
-    +'<label>Cód. INCRA <input id="mIncra" value="'+(e?esc(e.incraCod||''):'')+'"></label></div>'
-    +'<div class="two"><label>NIRF <input id="mNirf" value="'+(e?esc(e.nirf||''):'')+'"></label>'
-    +'<label>CAR <input id="mCar" value="'+(e?esc(e.car||''):'')+'"></label></div>'
-    +'<div class="two"><label>Certificação INCRA (SIGEF) <input id="mCert" value="'+(e?esc(e.certificacao||''):'')+'"></label>'
-    +'<label>Responsável técnico (RT) <input id="mRT" value="'+(e?esc(e.respTecnico||''):'')+'"></label></div>'
-    +'<div class="two"><label>Alienada / com ônus? <select id="mAlienada"><option value="nao"'+((e&&e.alienada)?'':' selected')+'>Não</option><option value="sim"'+((e&&e.alienada)?' selected':'')+'>Sim</option></select></label>'
-    +'<label>Descrição da alienação / ônus <input id="mAlienacao" value="'+(e?esc(e.alienacao||''):'')+'" placeholder="ex.: Alienação Fiduciária — credora, R$…, venc.…"></label></div>'
-    +'<label>Observação <input id="mObs" value="'+(e?esc(e.obs||''):'')+'" placeholder="opcional"></label>'
-    +'<div class="sectit" style="margin-top:10px">👤 Proprietário(s) '+_grpBadge+'</div>'
-    +'<div class="hint" style="margin-bottom:4px">Marque quem é dono desta matrícula (cadastro na aba <b>Proprietários</b>). "Do grupo" é derivado automaticamente.</div>'
-    +'<div class="partsel" id="mProps">'+_propsChk+'</div>'
-    +_matMemorialHTML(e)
-    +(e&&e.geom?('<div class="sectit" style="margin-top:6px">Geometria (mapa real)</div>'
-      +'<div class="hint">Fonte: <b>'+esc(e.geom.fonte||'—')+'</b> · '+esc(e.geom.crs||'UTM23S')+' · '+(e.geom.ring?e.geom.ring.length:0)+' pontos'
-      +(am!=null?' · Área medida: <b>'+nf(am)+' ha</b>':'')
-      +(am!=null&&e.area!=null&&Math.abs(am-e.area)>3?'<br><span style="color:var(--warn)">Difere da oficial ('+nf(e.area)+' ha).</span>':'')+'</div>'):'')
-    +'<div class="sectit" style="margin-top:8px">Importar poligonal (KML)</div>'
-    +'<div class="hint" style="margin-bottom:6px">Carregue um .kml; se tiver vários polígonos, escolha qual é esta matrícula.</div>'
-    +'<input type="file" id="lKml" accept=".kml,.kmz,application/vnd.google-earth.kml+xml" style="margin-bottom:6px"><div id="lKmlSel"></div>'
-    +'<div class="sectit" style="margin-top:8px">Importar poligonal (DXF — AutoCAD)</div>'
-    +'<div class="hint" style="margin-bottom:6px">.dxf com coordenadas em UTM 23S. Se tiver vários contornos, escolha qual.</div>'
-    +'<input type="file" id="lDxf" accept=".dxf" style="margin-bottom:6px"><div id="lDxfSel"></div>'
-    +'<div class="formactions"><button class="btn success" id="mSalvar">'+(e?'Salvar alterações':'Cadastrar matrícula')+'</button>'+(e?'<button class="btn ghost" id="mCancel">Cancelar</button>':'')+'<span class="fmsg" id="mMsg"></span></div>'
-    +'</div></div>'
-    +'<div class="toolbar"><input class="search" id="qSearch" placeholder="🔎 buscar matrícula…" value="'+esc(SEARCH)+'"></div>'
-    +'<table class="tbl"><thead><tr><th>Matrícula ('+lista.length+')</th><th class="num">Área</th><th>Polígono</th><th></th></tr></thead><tbody>'+(rows||'<tr><td colspan="4" class="empty">Nenhuma matrícula.</td></tr>')+'</tbody></table>';
+    +'<div class="two">'+_inp('mNome','Nome/identificação',e.nome,'')+_inp('mNum','Nº matrícula (CRI)',e.numero,'9.996')+'</div>'
+    +'<div class="two">'+_inp('mDenom','Denominação',e.denominacao,'')+_inp('mMun','Município/UF',e.municipio,'São Desidério - BA')+'</div>'
+    +'<div class="two"><label>Situação <select id="mVig"><option value="vig"'+(e.vigente!==false?' selected':'')+'>Vigente</option><option value="enc"'+(e.vigente===false?' selected':'')+'>Encerrada / antiga</option></select></label>'
+    +_inp('mMant','Substitui a matrícula (nº)',e.matAnterior,'ex.: 4042')+'</div>'
+    +'<div class="two">'+_inp('mArea','Área oficial (ha)',e.area,'0','number')+_inp('mPerim','Perímetro (m)',e.perimetroM,'0','number')+'</div>'
+    +'<div class="two">'+_inp('mRL','Reserva Legal (ha)',e.reservaLegalHa,'','number')+_inp('mAbertura','Data de abertura',e.dataAbertura,'AAAA-MM-DD')+'</div>'
+    +'<div class="two">'+_inp('mIncra','Cód. INCRA/SNCR',e.incraCod,'')+_inp('mNirf','NIRF',e.nirf,'')+'</div>'
+    +'<div class="two">'+_inp('mCar','CAR',e.car,'')+_inp('mCib','CIB',e.cib,'')+'</div>'
+    +'<div class="two">'+_inp('mCert','Certificação INCRA (SIGEF)',e.certificacao,'')+_inp('mRT','Responsável técnico',e.respTecnico,'')+'</div>'
+    +'<div class="two"><label>Georreferenciamento <select id="mGeo"><option value="SIGEF"'+(e.geoFonte==='SIGEF'?' selected':'')+'>SIGEF (memorial+vértices)</option><option value="ESCRITURA"'+(e.geoFonte==='ESCRITURA'?' selected':'')+'>Escritura (coords)</option><option value="NAO"'+(!e.geoFonte||e.geoFonte==='NAO'?' selected':'')+'>Não georreferenciada</option></select></label>'
+    +_inp('mValAtual','Valor atual (R$) → patrimônio',e.valorAtual,'','number')+'</div>'
+    +S3+'👤 Posse / propriedade</div>'
+    +'<div class="two"><label>Pertence ao grupo? <select id="mGrupo"><option value="sim"'+(e.grupo!==false?' selected':'')+'>Sim</option><option value="nao"'+(e.grupo===false?' selected':'')+'>Não</option></select></label>'
+    +_inp('mReg','Proprietário registral (se terceiro)',e.propRegistral,'nome de quem está na matrícula')+'</div>'
+    +_inp('mPosse','Observação de posse',e.posseObs,'ex.: comprada; em transferência')
+    +_inp('mRisco','⚠ Risco jurídico',e.riscoJuridico,'ex.: ação de cancelamento MP; bloqueio judicial')
+    +_inp('mObs','Observação geral',e.obs,'opcional')
+    +'<div class="formactions"><button class="btn success" id="mSalvar">💾 Salvar matrícula</button><button class="btn ghost xr" id="mExcluir">Excluir matrícula</button><span class="fmsg" id="mMsg"></span></div>'
+    // ===== ÔNUS =====
+    +S3+'🔒 Ônus / gravames ('+(e._onus||[]).length+')</div>'
+    +'<table class="tbl"><thead><tr><th>Ônus</th><th class="num">Valor</th><th></th></tr></thead><tbody>'+(onusRows||'<tr><td colspan="3" class="empty">Sem ônus.</td></tr>')+'</tbody></table>'
+    +'<div class="hint" style="margin-top:6px">Adicionar ônus:</div>'
+    +'<div class="two">'+_inp('oTipo','Tipo','','hipoteca cedular / penhor / alienação fiduciária…')+_inp('oGrau','Grau','','1º')+'</div>'
+    +'<div class="two">'+_inp('oCredor','Credor','','')+_inp('oDevedor','Devedor/emitente','','')+'</div>'
+    +'<div class="two">'+_inp('oValor','Valor (R$)','','','number')+_inp('oReg','Registro (R-/AV-)','','')+'</div>'
+    +'<div class="two">'+_inp('oProd','Produto/garantia','','ex.: Soja 1.000.000 kg safra 24/25')
+    +'<label>Status <select id="oStatus"><option value="ATIVO">Ativo</option><option value="BAIXADO">Baixado</option><option value="TRANSFERIDO">Transferido</option></select></label></div>'
+    +'<div class="formactions"><button class="btn" id="oAdd">＋ Adicionar ônus</button></div>'
+    // ===== VALORES =====
+    +S3+'💰 Valores negociados ('+(e._valores||[]).length+')</div>'
+    +'<table class="tbl"><thead><tr><th>Data</th><th>Negócio</th><th class="num">Valor</th><th></th></tr></thead><tbody>'+(valRows||'<tr><td colspan="4" class="empty">Sem valores.</td></tr>')+'</tbody></table>'
+    +'<div class="hint" style="margin-top:6px">Adicionar valor:</div>'
+    +'<div class="two">'+_inp('vData','Data','','AAAA-MM-DD')+'<label>Tipo <select id="vTipo"><option value="compra_venda">Compra e venda</option><option value="dacao">Dação</option><option value="inventario">Inventário</option><option value="desmembramento">Desmembramento</option><option value="avaliacao">Avaliação</option><option value="atual">Valor atual</option></select></label></div>'
+    +'<div class="two">'+_inp('vDe','De quem','','')+_inp('vPara','Para quem','','')+'</div>'
+    +'<div class="two">'+_inp('vValor','Valor','','','number')+_inp('vMoeda','Moeda','R$','R$ / Cr$ / Cz$')+'</div>'
+    +'<div class="two">'+_inp('vReg','Registro','','')+'<label>É o valor atual? <select id="vAtual"><option value="nao">Não</option><option value="sim">Sim</option></select></label></div>'
+    +'<div class="formactions"><button class="btn" id="vAdd">＋ Adicionar valor</button></div>'
+    // ===== VÉRTICES + CROQUI =====
+    +S3+'📐 Vértices e polígono ('+vs.length+' vértices'+(am!=null?' · '+nf(am)+' ha medida':'')+')</div>'
+    +_croquiSVG(e)
+    +(vs.length?'<div style="overflow:auto;margin-top:8px"><table class="tbl"><thead><tr><th>Vért.</th><th>Este (UTM)</th><th>Norte (UTM)</th><th>Tipo</th><th>σ</th></tr></thead><tbody>'+vertRows+'</tbody></table></div>':'<div class="hint" style="color:var(--warn)">Sem vértices — importe o KML de vértices (SIGEF).</div>')
+    +'<div class="hint" style="margin-top:8px">Importar polígono (KML) — vira a geometria:</div><input type="file" id="lKml" accept=".kml,.kmz" style="margin-bottom:6px"><div id="lKmlSel"></div>'
+    +'<div class="hint">Importar vértices (KML de vértices SIGEF):</div><input type="file" id="lVert" accept=".kml" style="margin-bottom:6px">'
+    // ===== ANEXOS =====
+    +S3+'📎 Anexos (escritura, polígono, vértices, limites, memorial, certidão)</div>'
+    +'<table class="tbl"><thead><tr><th>Tipo</th><th>Arquivo</th><th></th></tr></thead><tbody>'+anxRows+'</tbody></table>'
+    +'<div class="two" style="margin-top:6px"><label>Tipo do anexo <select id="axTipo"><option value="escritura">Escritura</option><option value="poligono">Polígono</option><option value="vertices">Vértices</option><option value="limites">Limites</option><option value="memorial">Memorial</option><option value="certidao">Certidão</option><option value="outro">Outro</option></select></label>'
+    +'<label>Arquivo <input type="file" id="axFile"></label></div>'
+    +'<div class="formactions"><button class="btn" id="axAdd">⬆ Enviar anexo</button><span class="fmsg" id="axMsg"></span></div>'
+    +'</div></div>';
 }
 function bindMatriculas(){
-  $('mSalvar').onclick=()=>{ const m=$('mMsg'); m.className='fmsg err';
-    const nome=$('mNome').value.trim(); if(!nome){ m.textContent='Informe o nome/identificação.'; return; }
-    const dup=(S.matriculas||[]).find((x,i)=>String(x.nome||'').toLowerCase()===nome.toLowerCase()&&i!==EDIT_IDX);
-    if(dup){ m.textContent='Já existe uma matrícula com esse nome.'; return; }
-    const nnum=id=>{ const v=$(id)&&$(id).value; return (v!==''&&v!=null)?parseFloat(v):null; };
-    const extra={ numero:$('mNum').value.trim(), denominacao:$('mDenom').value.trim(), municipio:$('mMun').value.trim(),
-      area:nnum('mArea'), perimetroM:nnum('mPerim'), reservaLegalHa:nnum('mRL'),
-      incraCod:$('mIncra').value.trim(), nirf:$('mNirf').value.trim(), car:$('mCar').value.trim(),
-      certificacao:$('mCert').value.trim(), respTecnico:$('mRT').value.trim(),
-      alienada:($('mAlienada')&&$('mAlienada').value==='sim'), alienacao:($('mAlienacao')?$('mAlienacao').value.trim():''), obs:$('mObs').value.trim() };
-    const memTxt=$('mMemTexto')?$('mMemTexto').value:null;
-    const props=[...document.querySelectorAll('.mProp:checked')].map(c=>c.value);
-    extra.proprietarios=props;
-    if(EDIT_IDX!=null){ const ex=S.matriculas[EDIT_IDX]; const geom=_kmlGeomTmp||ex.geom||null; const memorial=Object.assign({},ex.memorial||{},{texto:(memTxt!=null?memTxt:((ex.memorial||{}).texto||''))}); Object.assign(ex,{nome,geom,memorial},extra); EDIT_IDX=null; }
-    else { const memorial=memTxt?{texto:memTxt}:null; S.matriculas.push(Object.assign({nome,geom:(_kmlGeomTmp||null),memorial},extra)); }
-    _kmlGeomTmp=null; _kmlPolys=[];
-    salvarAbaSB('matriculas',true); route(); };
-  if($('lKml')) $('lKml').onchange=(ev)=>{ const f=ev.target.files&&ev.target.files[0]; if(f) _onKmlFile(f); };
-  if($('lDxf')) $('lDxf').onchange=(ev)=>{ const f=ev.target.files&&ev.target.files[0]; if(f) _onDxfFile(f); };
-  if($('mCancel')) $('mCancel').onclick=()=>{ EDIT_IDX=null; _kmlGeomTmp=null; route(); };
+  if($('mNova')) $('mNova').onclick=async()=>{ const nome=prompt('Nome da nova matrícula:'); if(!nome) return; const {data,error}=await SB.from('matriculas').insert({nome:nome.trim(),vigente:true,situacao:'vigente',grupo:true,geo_fonte:'NAO'}).select('id').single(); if(error){alert('Erro: '+error.message);return;} await _recarregarMat(); EDIT_IDX=(S.matriculas||[]).findIndex(x=>x.id===data.id); route(); };
+  document.querySelectorAll('[data-matf]').forEach(b=>b.onclick=()=>{ MATF=b.dataset.matf; route(); });
   document.querySelectorAll('[data-eidx]').forEach(b=>b.onclick=()=>{ EDIT_IDX=+b.dataset.eidx; window.scrollTo(0,0); route(); });
-  document.querySelectorAll('[data-didx]').forEach(b=>b.onclick=()=>{ const i=+b.dataset.didx; const x=S.matriculas[i]; if(confirm('Remover a matrícula "'+(x?x.nome:'')+'"?\n(sedes/benfeitorias ligadas ficam sem matrícula)')){ S.matriculas.splice(i,1); salvarAbaSB('matriculas',true); route(); } });
-  bindSearch();
+  if($('mVoltar')) $('mVoltar').onclick=()=>{ EDIT_IDX=null; route(); };
+  const e=EDIT_IDX!=null?S.matriculas[EDIT_IDX]:null; if(!e){ bindSearch(); return; }
+  if($('mSalvar')) $('mSalvar').onclick=()=>_salvarMatricula(e);
+  if($('mExcluir')) $('mExcluir').onclick=async()=>{ if(!confirm('Excluir a matrícula "'+e.nome+'" e TODO o cadastro dela (vértices, ônus, valores, anexos)?')) return; await SB.from('matriculas').delete().eq('id',e.id); EDIT_IDX=null; await _recarregarMat(); route(); };
+  if($('oAdd')) $('oAdd').onclick=async()=>{ const nnum=id=>{const v=$(id).value;return v!==''?parseFloat(v):null;}; const rec={matricula_id:e.id,tipo:$('oTipo').value.trim()||'ônus',grau:$('oGrau').value.trim()||null,credor:$('oCredor').value.trim()||null,devedor:$('oDevedor').value.trim()||null,valor:nnum('oValor'),produto:$('oProd').value.trim()||null,registro:$('oReg').value.trim()||null,status:$('oStatus').value,historico:$('oStatus').value!=='ATIVO'}; const {error}=await SB.from('matricula_onus').insert(rec); if(error){alert('Erro: '+error.message);return;} await _recarregarMat(); route(); };
+  document.querySelectorAll('[data-delonus]').forEach(b=>b.onclick=async()=>{ if(!confirm('Excluir este ônus?'))return; await SB.from('matricula_onus').delete().eq('id',+b.dataset.delonus); await _recarregarMat(); route(); });
+  if($('vAdd')) $('vAdd').onclick=async()=>{ const nnum=id=>{const v=$(id).value;return v!==''?parseFloat(v):null;}; const rec={matricula_id:e.id,data_negocio:$('vData').value.trim()||null,tipo:$('vTipo').value,de_quem:$('vDe').value.trim()||null,para_quem:$('vPara').value.trim()||null,valor:nnum('vValor'),moeda:$('vMoeda').value.trim()||null,registro:$('vReg').value.trim()||null,atual:$('vAtual').value==='sim'}; const {error}=await SB.from('matricula_valores').insert(rec); if(error){alert('Erro: '+error.message);return;} await _recarregarMat(); route(); };
+  document.querySelectorAll('[data-delval]').forEach(b=>b.onclick=async()=>{ if(!confirm('Excluir este valor?'))return; await SB.from('matricula_valores').delete().eq('id',+b.dataset.delval); await _recarregarMat(); route(); });
+  if($('lKml')) $('lKml').onchange=(ev)=>{ const f=ev.target.files&&ev.target.files[0]; if(f) _matImportPoligono(e,f); };
+  if($('lVert')) $('lVert').onchange=(ev)=>{ const f=ev.target.files&&ev.target.files[0]; if(f) _matImportVertices(e,f); };
+  if($('axAdd')) $('axAdd').onclick=()=>_matUploadAnexo(e);
+  document.querySelectorAll('[data-dlanexo]').forEach(b=>b.onclick=()=>_matDownloadAnexo(+b.dataset.dlanexo));
+  document.querySelectorAll('[data-delanexo]').forEach(b=>b.onclick=async()=>{ const a=(e._anexos||[]).find(x=>x.id===+b.dataset.delanexo); if(!a||!confirm('Excluir "'+a.nome+'"?'))return; if(a.storage_path) await SB.storage.from('matriculas').remove([a.storage_path]); await SB.from('matricula_anexos').delete().eq('id',a.id); await _recarregarMat(); route(); });
+}
+async function _salvarMatricula(e){
+  const m=$('mMsg'); m.className='fmsg'; m.textContent='Salvando…';
+  const nnum=id=>{const v=$(id)&&$(id).value; return (v!==''&&v!=null)?parseFloat(v):null;};
+  const txt=id=>{const v=$(id)&&$(id).value; return (v&&v.trim())?v.trim():null;};
+  const nome=txt('mNome'); if(!nome){ m.className='fmsg err'; m.textContent='Informe o nome.'; return; }
+  const vig=$('mVig').value==='vig';
+  const rec={ nome, numero:txt('mNum'), denominacao:txt('mDenom'), municipio:txt('mMun'),
+    area:nnum('mArea'), perimetro_m:nnum('mPerim'), reserva_legal_ha:nnum('mRL'),
+    incra_cod:txt('mIncra'), nirf:txt('mNirf'), car:txt('mCar'), cib:txt('mCib'),
+    certificacao:txt('mCert'), resp_tecnico:txt('mRT'), data_abertura:txt('mAbertura'), matricula_anterior:txt('mMant'),
+    vigente:vig, situacao:vig?'vigente':'encerrada', grupo:$('mGrupo').value==='sim',
+    proprietario_registral:txt('mReg'), posse_obs:txt('mPosse'), risco_juridico:txt('mRisco'),
+    valor_atual:nnum('mValAtual'), geo_fonte:$('mGeo').value, georreferenciada:$('mGeo').value!=='NAO', obs:txt('mObs') };
+  const {error}=await SB.from('matriculas').update(rec).eq('id',e.id);
+  if(error){ m.className='fmsg err'; m.textContent='Erro: '+error.message; return; }
+  await _recarregarMat(); m.className='fmsg ok'; m.textContent='✅ Salvo'; route();
+}
+async function _matImportPoligono(e,file){
+  const r=new FileReader(); r.onload=async()=>{ try{
+    const polys=_parseKML(r.result); if(!polys||!polys.length){ alert('Nenhum polígono no KML.'); return; }
+    const ring=polys[0].ring.map(([lon,lat])=>_latLngToUTM(lat,lon,23)); const geom={crs:'UTM23S',fonte:e.geoFonte||'KML',ring};
+    await SB.from('matriculas').update({geom}).eq('id',e.id); await _recarregarMat(); route();
+  }catch(err){ alert('Falha ao ler KML: '+err.message); } };
+  r.readAsText(file);
+}
+async function _matImportVertices(e,file){
+  const r=new FileReader(); r.onload=async()=>{ try{
+    const vs=_parseVerticesKML(r.result); if(!vs.length){ alert('Nenhum vértice encontrado.'); return; }
+    if(!confirm('Substituir os '+((e._vertices||[]).length)+' vértices por '+vs.length+' do arquivo?')) return;
+    await SB.from('matricula_vertices').delete().eq('matricula_id',e.id);
+    await SB.from('matricula_vertices').insert(vs.map(v=>Object.assign({matricula_id:e.id},v)));
+    await _recarregarMat(); route();
+  }catch(err){ alert('Falha: '+err.message); } };
+  r.readAsText(file);
+}
+function _parseVerticesKML(t){
+  const out=[]; const blocks=String(t).split(/<Placemark>/i).slice(1);
+  const numc=s=>{const n=parseFloat(String(s).replace(/\./g,'').replace(',','.'));return isNaN(n)?null:n;};
+  blocks.forEach((b,i)=>{
+    const nm=(b.match(/<name>\s*([^<]+?)\s*<\/name>/i)||[])[1];
+    const dv=n=>{const mm=b.match(new RegExp('name="'+n+'"[\\s\\S]*?<value>\\s*([^<]*?)\\s*</value>','i'));return mm?mm[1].trim():null;};
+    const co=b.match(/<coordinates>\s*([-\d.]+),([-\d.]+)(?:,([-\d.]+))?/i);
+    if(!nm&&!co) return;
+    out.push({ordem:i,codigo:nm?nm.trim():null,qrcode:dv('qrcode'),tipo_vertice:dv('tipo_vertice'),metodo:dv('metodo_posicionamento'),lado:dv('lado'),
+      sigma_x:numc(dv('sigma_x')),sigma_y:numc(dv('sigma_y')),sigma_z:numc(dv('sigma_z')),
+      este:numc(dv('x')),norte:numc(dv('y')),longitude:co?parseFloat(co[1]):null,latitude:co?parseFloat(co[2]):null,altitude:co&&co[3]?parseFloat(co[3]):null});
+  });
+  return out;
+}
+async function _matUploadAnexo(e){
+  const f=$('axFile').files&&$('axFile').files[0]; const msg=$('axMsg'); msg.className='fmsg';
+  if(!f){ msg.className='fmsg err'; msg.textContent='Escolha um arquivo.'; return; }
+  const tipo=$('axTipo').value; msg.textContent='Enviando…';
+  const path=e.id+'/'+Date.now()+'_'+f.name.replace(/[^\w.\-]/g,'_');
+  const up=await SB.storage.from('matriculas').upload(path,f,{upsert:false});
+  if(up.error){ msg.className='fmsg err'; msg.textContent='Erro: '+up.error.message; return; }
+  const {error}=await SB.from('matricula_anexos').insert({matricula_id:e.id,tipo,nome:f.name,storage_path:path,mime:f.type||null,tamanho_bytes:f.size});
+  if(error){ msg.className='fmsg err'; msg.textContent='Erro: '+error.message; return; }
+  await _recarregarMat(); route();
+}
+async function _matDownloadAnexo(id){
+  let a=null; (S.matriculas||[]).forEach(m=>(m._anexos||[]).forEach(x=>{if(x.id===id)a=x;}));
+  if(!a) return;
+  const {data,error}=await SB.storage.from('matriculas').createSignedUrl(a.storage_path,120);
+  if(error){ alert('Erro: '+error.message); return; }
+  window.open(data.signedUrl,'_blank');
+}
+async function _recarregarMat(){
+  try{
+    const {data:mats}=await SB.from('matriculas').select('*');
+    S.matriculas=(mats||[]).map(_MAT_TOAPP);
+    const byId={}; S.matriculas.forEach(m=>{m._vertices=[];m._onus=[];m._valores=[];m._anexos=[];byId[m.id]=m;});
+    const [vv,oo,va,ax]=await Promise.all([
+      SB.from('matricula_vertices').select('*').order('ordem'),
+      SB.from('matricula_onus').select('*').order('ordem'),
+      SB.from('matricula_valores').select('*'),
+      SB.from('matricula_anexos').select('*')]);
+    (vv.data||[]).forEach(r=>{const m=byId[r.matricula_id];if(m)m._vertices.push(r);});
+    (oo.data||[]).forEach(r=>{const m=byId[r.matricula_id];if(m)m._onus.push(r);});
+    (va.data||[]).forEach(r=>{const m=byId[r.matricula_id];if(m)m._valores.push(r);});
+    (ax.data||[]).forEach(r=>{const m=byId[r.matricula_id];if(m)m._anexos.push(r);});
+  }catch(e){ console.error('recarregarMat',e); }
 }
 /* ----- PROPRIETÁRIOS (entidade p/ cruzar matrículas · do grupo x terceiros) ----- */
 function proprietariosHTML(){
@@ -1398,6 +1547,7 @@ function _injetaBotaoSalvar(){
   if(VIEW!=='cad') return;                 // só nas abas de cadastro
   const ent=(typeof TAB!=='undefined')?TAB:null;
   if(!ent || !_ENT_TAB[ent]) return;
+  if(ent==='matriculas') return;           // Matrículas grava por-matrícula (sem wipe da tabela inteira)
   const main=document.getElementById('main'); if(!main) return;
   if(main.querySelector('.btnSalvarAba')) return;
   const bar=document.createElement('div');
@@ -1577,7 +1727,7 @@ function _statusSB(txt,cor){ let el=document.getElementById('sbStatus'); if(!el)
 /* mapeamento coleção(app) -> tabela(banco) e conversões */
 const _MAPA_CAD=[
   {col:'lotes', tab:'lotes', toApp:r=>({cod:r.cod,nome:r.nome,area:r.area,base:!!r.base,partes:r.partes||[],geom:r.geom||null,disposicao:r.disposicao||'colados'})},
-  {col:'matriculas', tab:'matriculas', toApp:r=>({id:r.id,nome:r.nome,numero:r.numero||'',denominacao:r.denominacao||'',municipio:r.municipio||'',area:r.area,perimetroM:r.perimetro_m,reservaLegalHa:r.reserva_legal_ha,incraCod:r.incra_cod||'',nirf:r.nirf||'',car:r.car||'',certificacao:r.certificacao||'',respTecnico:r.resp_tecnico||'',alienada:!!r.alienada,alienacao:r.alienacao||'',proprietarios:r.proprietarios||[],geom:r.geom||null,memorial:r.memorial||null,obs:r.obs||''})},
+  {col:'matriculas', tab:'matriculas', toApp:r=>_MAT_TOAPP(r)},
   {col:'proprietarios', tab:'proprietarios', toApp:r=>({id:r.id,nome:r.nome,cpfCnpj:r.cpf_cnpj||'',tipo:r.tipo||'PF',grupo:!!r.grupo,obs:r.obs||''})},
   {col:'produtos', tab:'produtos', toApp:r=>({id:r.id,codigo:r.codigo,nome:r.nome,tipo:r.tipo,classe:r.classe,unidade:r.unidade,perfil:perfilDe(r.tipo),precoRef:r.preco,estoque:r.estoque,estoqueMin:r.estoque_min,formCod:r.formulacao||'',compRaw:r.comp||'',compTexto:r.comp_texto||'',ativos:r.ativos||[],garantias:r.garantias||[],comanda:r.comanda||'',sementeTipo:r.semente_tipo||'',cultura:r.cultura||'',sementeEmb:r.semente_emb||'',sementesEmb:r.sementes_emb,pms:r.pms,tecnologias:r.tecnologias||[],sufixo:r.sufixo||'',fabricante:r.fabricante||'',validade:r.validade||null})},
   {col:'maquinas', tab:'maquinas', toApp:r=>Object.assign({},r,{idFrota:r.id_frota!=null?r.id_frota:r.idFrota, faixaM:(r.faixa_m!=null?r.faixa_m:r.faixaM), valorAquisicao:r.valor_aquisicao, vidaUtilAnos:r.vida_util_anos, residualPct:r.residual_pct})},
@@ -1611,6 +1761,7 @@ async function carregarCadastrosSB(){
     // tipos de atividade
     try{ const {data}=await SB.from('tipos_atividade').select('*'); if(data&&data.length){ S.tiposAtiv=data.map(r=>({nome:r.nome,perfil:r.perfil,diario:r.diario,contador:r.contador||0,img:r.img||''})); } }catch(e){}
     if(erros.length) console.warn('erros carga:',erros);
+    try{ await _recarregarMat(); }catch(e){ console.warn('carga filhos matriculas',e); }   // vertices/onus/valores/anexos
     _statusSB('✅ Cadastros do banco ('+total+' registros)','#27ae60');
     route();
   }catch(e){ _statusSB('❌ Falha: '+e.message,'#c0392b'); console.error(e); route(); }
