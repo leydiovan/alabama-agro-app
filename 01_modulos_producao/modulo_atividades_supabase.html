@@ -1345,6 +1345,7 @@ const BENF_ICON={'Galpão':'🏭','Silo':'🌾','Armazém':'🏬','Casa':'🏠',
 let _benfMap=null, _benfBases=[], _benfDraw=null, _benfVerts=[], _benfLayer=null, _benfHandles=[], _benfMk=[], _benfEditSede=null, _benfEditBenf=null, _benfEditMat=null;
 let _benfMeasure=false, _benfMeasPts=[], _benfMeasLayer=[];   // medição (base)
 let _benfView=null, _benfBaseName='Satélite (Google)';        // preserva centro/zoom e camada ativa entre re-renders
+let _benfShowVerts=true;                                      // mostra os vértices das matrículas no mapa
 let _benfFormTab='benf', _matGeomTmp=null, _matPolysTmp=null;  // aba do formulário + polígono importado (KML/DXF) pendente
 let _benfCircCenter=null, _benfCircMeta=null, _benfImportId=null;  // desenho de círculo (pivô) + import de poligonal
 const _benfCor=(sede)=>{ const p=['#ff8a3d','#3dd6ff','#b98bff','#ffd24a','#7fe0a0','#ff6b9d','#8ab6ff','#e0b34a']; let h=0; for(const c of String(sede||'')) h=(h*31+c.charCodeAt(0))>>>0; return p[h%p.length]; };
@@ -1481,7 +1482,13 @@ function renderMapa(){
 }
 
 async function _benfReload(){
-  try{ const r=await SB.from('matriculas').select('*').order('nome'); if(!r.error&&r.data) S.matriculas=r.data.map(m=>({id:m.id,nome:m.nome,numero:m.numero||'',area:m.area,geom:m.geom||null,obs:m.obs||''})); }catch(e){}
+  try{ const r=await SB.from('matriculas').select('*').order('nome'); if(!r.error&&r.data) S.matriculas=r.data.map(m=>({id:m.id,nome:m.nome,numero:m.numero||'',area:m.area,geom:m.geom||null,obs:m.obs||''}));
+    // vértices (tabela global + junção) → anexa _vertices [{lat,lon,cod}] a cada matrícula (p/ mostrar no mapa)
+    const mById={}; (S.matriculas||[]).forEach(m=>{ m._vertices=[]; mById[m.id]=m; });
+    const [gv,jv]=await Promise.all([ SB.from('vertices').select('id,codigo,longitude,latitude'), SB.from('matricula_vertices').select('matricula_id,vertice_id,ordem').order('ordem') ]);
+    const vById={}; (gv.data||[]).forEach(v=>vById[v.id]=v);
+    (jv.data||[]).forEach(j=>{ const g=vById[j.vertice_id], m=mById[j.matricula_id]; if(g&&m&&g.latitude!=null&&g.longitude!=null) m._vertices.push({lat:g.latitude,lon:g.longitude,cod:g.codigo||''}); });
+  }catch(e){}
   try{ const r=await SB.from('sedes').select('*').order('nome'); if(!r.error&&r.data) S.sedes=r.data.map(s=>({id:s.id,nome:s.nome,matricula:s.matricula||'',geom:s.geom||null,obs:s.obs||''})); }catch(e){}
   try{ const r=await SB.from('benfeitorias').select('*').order('nome'); if(!r.error&&r.data) S.benfeitorias=r.data.map(b=>({id:b.id,nome:b.nome,tipo:b.tipo||'',matricula:b.matricula||'',matriculas:Array.isArray(b.matriculas)?b.matriculas:[],rateioModo:b.rateio_modo||'manual',local:b.local||'sede',sede:b.sede||'',categoria:b.categoria||'',valor:b.valor,vidaUtilAnos:b.vida_util_anos,residualPct:b.residual_pct,geomTipo:b.geom_tipo||'ponto',geom:b.geom||null,obs:b.obs||''})); }catch(e){}
 }
@@ -1522,6 +1529,8 @@ function _benfMapInit(){ const el=$('#benf_map'); if(!el) return;
     const BASES={'Satélite (Google)':google,'Satélite (Esri)':esri,'Sentinel-2 recente':s2,'Croqui (limpo)':croqui};
     (BASES[_benfBaseName]||google).addTo(_benfMap);
     L.control.layers(BASES,null,{position:'topright',collapsed:true}).addTo(_benfMap);
+    // botão: liga/desliga os vértices das matrículas
+    const _vc=L.control({position:'topright'}); _vc.onAdd=function(){ const d=L.DomUtil.create('div','leaflet-bar'); const a=L.DomUtil.create('a','',d); a.href='#'; a.title='Mostrar/ocultar vértices das matrículas'; a.innerHTML='📍'; a.style.cssText='width:30px;height:30px;line-height:30px;text-align:center;font-size:15px;text-decoration:none;background:'+(_benfShowVerts?'#f0b400':'#fff'); L.DomEvent.on(a,'click',function(e){ L.DomEvent.stop(e); _benfShowVerts=!_benfShowVerts; a.style.background=_benfShowVerts?'#f0b400':'#fff'; _benfDrawAll(); }); return d; }; _vc.addTo(_benfMap);
     _benfMap.on('baselayerchange',e=>{ _benfBaseName=e.name; });
     _benfMap.on('click',e=>{ _benfClickAt(e.latlng); });
     _benfMap.on('dblclick',e=>{ if(_benfDraw&&_benfDraw.kind==='poligono'){ L.DomEvent.stop(e); _benfFinish(); } });
@@ -1541,6 +1550,8 @@ function _benfDrawAll(){ if(!_benfMap) return; _benfMk.forEach(m=>_benfMap.remov
   (S.lotes||[]).forEach(l=>{ if(l.base && l.geom && Array.isArray(l.geom.ring) && l.geom.ring.length>=3){ const ll=l.geom.ring.map(([E,N])=>_utmToLatLon(E,N,23)); const poly=L.polygon(ll,{color:'#6fae7a',weight:1,fill:false,opacity:.55,interactive:false}).addTo(_benfMap); _benfMk.push(poly); } });
   // MATRÍCULAS (parcela legal) — contorno destacado
   (S.matriculas||[]).forEach(m=>{ if(m.geom&&Array.isArray(m.geom.ring)&&m.geom.ring.length>=3){ const ll=m.geom.ring.map(([E,N])=>_utmToLatLon(E,N,23)); const cor=_benfCor(m.nome); const sel=(_benfEditMat===m.id); const poly=L.polygon(ll,{color:cor,weight:sel?4:2.5,fill:true,fillOpacity:sel?.1:.03,dashArray:'10 6'}).addTo(_benfMap); poly.bindTooltip('Matrícula: '+m.nome); poly.on('click',e=>{ if(_benfClickAt(e.latlng)){ L.DomEvent.stop(e); } }); _benfMk.push(poly); } });
+  // VÉRTICES das matrículas (marcos SIGEF) — dots amarelos com código; liga/desliga em _benfShowVerts
+  if(_benfShowVerts){ (S.matriculas||[]).forEach(m=>{ (m._vertices||[]).forEach(v=>{ if(v.lat==null||v.lon==null) return; const mk=L.circleMarker([v.lat,v.lon],{radius:3,color:'#111',weight:1,fillColor:'#f0b400',fillOpacity:1}).addTo(_benfMap); mk.bindTooltip((v.cod||'vértice')+' · '+(m.numero||m.nome),{direction:'top'}); _benfMk.push(mk); }); }); }
   (S.sedes||[]).forEach(s=>{ if(s.geom&&Array.isArray(s.geom.ring)&&s.geom.ring.length>=3){ const ll=s.geom.ring.map(([E,N])=>_utmToLatLon(E,N,23)); const sel=(_benfEditSede===s.id); const cor=_benfCor(s.matricula||s.nome); const poly=L.polygon(ll,{color:cor,weight:sel?4:2,fill:true,fillOpacity:sel?.12:.05,dashArray:sel?null:'6 4'}).addTo(_benfMap); poly.bindTooltip('Sede: '+s.nome); poly.on('click',e=>{ if(_benfClickAt(e.latlng)){ L.DomEvent.stop(e); return; } _benfSedeEdit(s.id); }); _benfMk.push(poly); } });
   (S.benfeitorias||[]).forEach(b=>{ if(!b.geom) return; const cor=_benfCor((_benfMatRat(b)[0]||{}).matricula||b.sede||''); const sel=(_benfEditBenf===b.id);
     if(b.geom.ponto){ const [lat,lon]=_utmToLatLon(b.geom.ponto[0],b.geom.ponto[1],23); const mk=L.marker([lat,lon],{icon:_benfPinIcon(cor,sel?26:18,sel)}).addTo(_benfMap); mk._benfPin=cor; mk._benfSel=sel; mk.bindTooltip(b.nome+(b.tipo?' ('+b.tipo+')':'')); mk.on('click',e=>{ if(_benfClickAt(e.latlng)){ L.DomEvent.stop(e); return; } _benfEdit(b.id); }); _benfMk.push(mk); }

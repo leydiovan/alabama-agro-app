@@ -1,1 +1,1 @@
-﻿Cadastros: mapa de satelite com os vertices no editor da matricula
+﻿Benfeitorias: vertices das matriculas no mapa (com toggle)
