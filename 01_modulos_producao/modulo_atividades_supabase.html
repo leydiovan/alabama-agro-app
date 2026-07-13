@@ -176,6 +176,7 @@ window.__POLIGONAIS__ = [];</script>
 <script>
 /* ====================== ESTADO (seed injetado no final) ====================== */
 let S = window.__SEED__; if(!S.produtos) S.produtos=[];
+S.comandas=[];   // resquício das versões pré-banco: NÃO mostrar o seed antigo (118 comandas) na abertura — as comandas vêm do banco (carregadas em seguida)
 S.planejamento=S.planejamento||[]; S.saldoProd=S.saldoProd||{}; S.custoProd=S.custoProd||{}; S.culturas=S.culturas||[]; S.planPremissas=S.planPremissas||{}; S.planCrono=S.planCrono||[]; S.tecnologias=S.tecnologias||[]; S.sufixos=S.sufixos||[]; S.custosFixos=S.custosFixos||[]; S.maqDep=S.maqDep||[]; S.impDep=S.impDep||[]; S.funcRh=S.funcRh||[]; S.empregadores=S.empregadores||[]; S.sedes=S.sedes||[]; S.benfeitorias=S.benfeitorias||[]; S.matriculas=S.matriculas||[];
 S.cotacoes=S.cotacoes||[]; S.dolar=S.dolar||5; S.unidades=S.unidades||[]; S.fornecedores=S.fornecedores||[]; S.arred=S.arred||{on:true,val:{}};
 

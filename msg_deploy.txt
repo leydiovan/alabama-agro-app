@@ -1,1 +1,1 @@
-﻿Benfeitorias: rotulos dos vertices so com zoom
+﻿Atividades: remove flash das 118 comandas do seed antigo
