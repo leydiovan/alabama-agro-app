@@ -1,1 +1,1 @@
-﻿Benfeitorias: botao separado pros rotulos dos vertices
+﻿Benfeitorias: rotulo dos vertices mais legivel
