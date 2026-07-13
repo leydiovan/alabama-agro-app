@@ -1,1 +1,1 @@
-﻿Benfeitorias: fix vertices no mapa (carrega no boot)
+﻿Benfeitorias: nomes dos vertices no mapa
