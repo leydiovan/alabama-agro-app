@@ -3462,10 +3462,11 @@ function _resDRE(){
   const insTotal=ins.sementes+ins.fertilizantes+ins.defensivos+ins.biologicos;
   const combustivel=dieselL*RES_DIESEL_PRECO;
   // custos fixos caixa: manutenção (COE) vs admin fixa (impostos/seguros/honorários/escritório)
-  let manut=0,cfImp=0,cfSeg=0,cfHon=0,cfEsc=0;
+  let manut=0,cfImp=0,cfSeg=0,cfHon=0,cfEsc=0,cfArr=0;
   (S.custosFixos||[]).forEach(c=>{ if(c.tipo==='nao_caixa') return; const a=(c.periodicidade==='mensal')?(+c.valor||0)*12:(+c.valor||0); const d=(c.descricao||'').toLowerCase(); const cat=c.categoria||'';
     if(cat==='Manutenção e Serviços'){ manut+=a; return; }
-    if(/itr|aiba|incra|alvar/.test(d)) cfImp+=a;
+    if(/arrend/.test(d)||cat==='Arrendamento') cfArr+=a;
+    else if(/itr|aiba|incra|alvar/.test(d)) cfImp+=a;
     else if(/seguro/.test(d)) cfSeg+=a;
     else if(/assessor|consultor|contabil|honorar/.test(d)) cfHon+=a;
     else cfEsc+=a; });
@@ -3481,7 +3482,7 @@ function _resDRE(){
   const depIt=(typeof _deprecItens==='function')?_deprecItens():[]; let depMaq=0,depBenf=0;
   depIt.forEach(d=>{ if(d.tipo==='Benfeitoria') depBenf+=d.valAno; else depMaq+=d.valAno; });
   const dep={maquinas:depMaq,benfeitorias:depBenf,total:T.naoCaixa};
-  const admFix={impostos:cfImp,seguros:cfSeg,honorarios:cfHon,escritorio:cfEsc,total:cfImp+cfSeg+cfHon+cfEsc};
+  const admFix={impostos:cfImp,seguros:cfSeg,honorarios:cfHon,escritorio:cfEsc,arrendamento:cfArr,total:cfImp+cfSeg+cfHon+cfEsc+cfArr};
   const servTotal=aereo+colhTerc, operTotal=combustivel+manut, posColh=0;
   const coeTotal=insTotal+servTotal+operTotal+posColh;
   const margem=receita-coeTotal;
@@ -3563,7 +3564,7 @@ function _resA4HTML(){
   dre+=dreRow('(−) Custo fixo 1. Mão de obra permanente',D.mo.total,true);
   dre+=dreRow('&nbsp;&nbsp;&nbsp;Salários + encargos (equipe fixa)',D.mo.salarios,false,true);dre+=dreRow('&nbsp;&nbsp;&nbsp;Pró-labore (sócios)',D.mo.prolabore,false,true);dre+=dreRow('&nbsp;&nbsp;&nbsp;13º + Férias',D.mo.decFer,false,true);
   dre+=dreRow('(−) Custo fixo 2. Despesas administrativas fixas',D.admFix.total,true);
-  dre+=dreRow('&nbsp;&nbsp;&nbsp;Impostos/taxas rurais (ITR, AIBA)',D.admFix.impostos,false,true);dre+=dreRow('&nbsp;&nbsp;&nbsp;Seguros fixos',D.admFix.seguros,false,true);dre+=dreRow('&nbsp;&nbsp;&nbsp;Honorários profissionais',D.admFix.honorarios,false,true);dre+=dreRow('&nbsp;&nbsp;&nbsp;Escritório/conectividade/estrutura',D.admFix.escritorio,false,true);
+  dre+=dreRow('&nbsp;&nbsp;&nbsp;Impostos/taxas rurais (ITR, AIBA)',D.admFix.impostos,false,true);dre+=dreRow('&nbsp;&nbsp;&nbsp;Seguros fixos',D.admFix.seguros,false,true);dre+=dreRow('&nbsp;&nbsp;&nbsp;Honorários profissionais',D.admFix.honorarios,false,true);dre+=dreRow('&nbsp;&nbsp;&nbsp;Arrendamento (custo da terra)',D.admFix.arrendamento,false,true);dre+=dreRow('&nbsp;&nbsp;&nbsp;Escritório/conectividade/estrutura',D.admFix.escritorio,false,true);
   dre+=dreRow('(=) EBITDA',D.ebitda,true);
   dre+=dreRow('(−) Custo fixo 3. Depreciações',D.dep.total,true);
   dre+=dreRow('&nbsp;&nbsp;&nbsp;Máquinas e veículos',D.dep.maquinas,false,true);dre+=dreRow('&nbsp;&nbsp;&nbsp;Instalações e benfeitorias',D.dep.benfeitorias,false,true);
@@ -3686,7 +3687,7 @@ function renderResultados(){
       ${dgrp('(−) Custo fixo 1. Mão de obra permanente',D.mo.total)}
       ${dsub('Salários + encargos (equipe fixa)',D.mo.salarios)}${dsub('Pró-labore (sócios)',D.mo.prolabore)}${dsub('13º + Férias',D.mo.decFer)}
       ${dgrp('(−) Custo fixo 2. Despesas administrativas fixas',D.admFix.total)}
-      ${dsub('Impostos/taxas rurais (ITR, AIBA)',D.admFix.impostos)}${dsub('Seguros fixos',D.admFix.seguros)}${dsub('Honorários profissionais',D.admFix.honorarios)}${dsub('Escritório/conectividade/estrutura',D.admFix.escritorio)}
+      ${dsub('Impostos/taxas rurais (ITR, AIBA)',D.admFix.impostos)}${dsub('Seguros fixos',D.admFix.seguros)}${dsub('Honorários profissionais',D.admFix.honorarios)}${dsub('Arrendamento (custo da terra)',D.admFix.arrendamento)}${dsub('Escritório/conectividade/estrutura',D.admFix.escritorio)}
       ${dtot('(=) EBITDA',D.ebitda,dcol2(D.ebitda))}
       ${dgrp('(−) Custo fixo 3. Depreciações',D.dep.total)}
       ${dsub('Máquinas e veículos',D.dep.maquinas)}${dsub('Instalações e benfeitorias',D.dep.benfeitorias)}
