@@ -1,0 +1,3 @@
+﻿DRE reorganizada na logica COE (Insumos/Servicos terceiros/Operacoes-manutencao/Pos-colheita) + Margem de contribuicao
+
+Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>

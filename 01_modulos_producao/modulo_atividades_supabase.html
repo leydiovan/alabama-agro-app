@@ -3461,23 +3461,36 @@ function _resDRE(){
     aereo+=(+gr.custo_servico_ha||0)*area; colhTerc+=((+gr.terceiros_ha||0)+(+gr.oper_propria_ha||0))*area; dieselL+=(ex.diesel||0); });
   const insTotal=ins.sementes+ins.fertilizantes+ins.defensivos+ins.biologicos;
   const combustivel=dieselL*RES_DIESEL_PRECO;
-  // custos fixos: separa o que é COE (energia/manutenção) do que é estrutura
-  let manut=0,energia=0,admin=0,impostos=0;
+  // custos fixos caixa: manutenção (COE) vs admin fixa (impostos/seguros/honorários/escritório)
+  let manut=0,cfImp=0,cfSeg=0,cfHon=0,cfEsc=0;
   (S.custosFixos||[]).forEach(c=>{ if(c.tipo==='nao_caixa') return; const a=(c.periodicidade==='mensal')?(+c.valor||0)*12:(+c.valor||0); const d=(c.descricao||'').toLowerCase(); const cat=c.categoria||'';
-    if(cat==='Manutenção e Serviços') manut+=a; else if(d.indexOf('energia')>=0) energia+=a; else if(cat==='Impostos/seguros/licenças') impostos+=a; else admin+=a; });
+    if(cat==='Manutenção e Serviços'){ manut+=a; return; }
+    if(/itr|aiba|incra|alvar/.test(d)) cfImp+=a;
+    else if(/seguro/.test(d)) cfSeg+=a;
+    else if(/assessor|consultor|contabil|honorar/.test(d)) cfHon+=a;
+    else cfEsc+=a; });
   // receita
   let receita=0; const recCult={};
   Object.keys(_resProd||{}).forEach(k=>{ const cult=k.split('|')[1]||''; const r=(_resProd[k].qtd||0)*_resPrecoVenda(cult); receita+=r; recCult[cult]=(recCult[cult]||0)+r; });
   const T=(typeof _cfTotais==='function')?_cfTotais():{rh:0,prov13fer:0,naoCaixa:0};
-  const servTotal=aereo+colhTerc, operTotal=combustivel+manut+energia, posColh=0;
+  // mão de obra permanente: salários/encargos (equipe) + pró-labore + 13º/férias
+  const rhIt=(typeof _rhFixoItens==='function')?_rhFixoItens():[]; let salarios=0,prolabore=0;
+  rhIt.forEach(r=>{ if(r.tipo==='Pró-labore') prolabore+=r.ano; else salarios+=r.ano; });
+  const mo={salarios,prolabore,decFer:T.prov13fer,total:salarios+prolabore+T.prov13fer};
+  // depreciação: máquinas/veículos vs benfeitorias
+  const depIt=(typeof _deprecItens==='function')?_deprecItens():[]; let depMaq=0,depBenf=0;
+  depIt.forEach(d=>{ if(d.tipo==='Benfeitoria') depBenf+=d.valAno; else depMaq+=d.valAno; });
+  const dep={maquinas:depMaq,benfeitorias:depBenf,total:T.naoCaixa};
+  const admFix={impostos:cfImp,seguros:cfSeg,honorarios:cfHon,escritorio:cfEsc,total:cfImp+cfSeg+cfHon+cfEsc};
+  const servTotal=aereo+colhTerc, operTotal=combustivel+manut, posColh=0;
   const coeTotal=insTotal+servTotal+operTotal+posColh;
   const margem=receita-coeTotal;
-  const estruturaTot=T.rh+T.prov13fer+admin+impostos;
-  const ebitda=margem-estruturaTot, deprec=T.naoCaixa, ebit=ebitda-deprec;
+  const cfCaixa=mo.total+admFix.total;
+  const ebitda=margem-cfCaixa, ebit=ebitda-dep.total;
   return {receita,recCult,
-    coe:{ins,insTotal,aereo,colhTerc,servTotal,combustivel,manut,energia,operTotal,posColh,total:coeTotal},
-    margem, estrutura:{rh:T.rh,decFer:T.prov13fer,admin,impostos,total:estruturaTot},
-    ebitda,deprec,ebit,cf:T};
+    coe:{ins,insTotal,aereo,colhTerc,servTotal,combustivel,manut,operTotal,posColh,total:coeTotal},
+    margem, mo, admFix, dep, cfCaixa,
+    ebitda,deprec:dep.total,ebit,cf:T};
 }
 /* detalhe do custo fixo — mostra item a item o que soma na DRE */
 function _resCustoFixoDetalheHTML(){
@@ -3545,10 +3558,13 @@ function _resA4HTML(){
   dre+=dreRow('&nbsp;&nbsp;&nbsp;Combustíveis e lubrificantes',co.combustivel,false,true);dre+=dreRow('&nbsp;&nbsp;&nbsp;Peças e manutenção',co.manut,false,true);dre+=dreRow('&nbsp;&nbsp;&nbsp;Energia elétrica',co.energia,false,true);
   dre+=dreRow('4. Pós-colheita e comercialização',co.posColh,false,true);
   dre+=dreRow('(=) Margem de contribuição',D.margem,true);
-  dre+=dreRow('(−) Estrutura / custos fixos',D.estrutura.total,true);
-  dre+=dreRow('&nbsp;&nbsp;&nbsp;Folha fixa (RH)',D.estrutura.rh,false,true);dre+=dreRow('&nbsp;&nbsp;&nbsp;13º + Férias',D.estrutura.decFer,false,true);dre+=dreRow('&nbsp;&nbsp;&nbsp;Administrativo',D.estrutura.admin,false,true);dre+=dreRow('&nbsp;&nbsp;&nbsp;Impostos (ITR/AIBA)',D.estrutura.impostos,false,true);
+  dre+=dreRow('(−) Custo fixo 1. Mão de obra permanente',D.mo.total,true);
+  dre+=dreRow('&nbsp;&nbsp;&nbsp;Salários + encargos (equipe fixa)',D.mo.salarios,false,true);dre+=dreRow('&nbsp;&nbsp;&nbsp;Pró-labore (sócios)',D.mo.prolabore,false,true);dre+=dreRow('&nbsp;&nbsp;&nbsp;13º + Férias',D.mo.decFer,false,true);
+  dre+=dreRow('(−) Custo fixo 2. Despesas administrativas fixas',D.admFix.total,true);
+  dre+=dreRow('&nbsp;&nbsp;&nbsp;Impostos/taxas rurais (ITR, AIBA)',D.admFix.impostos,false,true);dre+=dreRow('&nbsp;&nbsp;&nbsp;Seguros fixos',D.admFix.seguros,false,true);dre+=dreRow('&nbsp;&nbsp;&nbsp;Honorários profissionais',D.admFix.honorarios,false,true);dre+=dreRow('&nbsp;&nbsp;&nbsp;Escritório/conectividade/estrutura',D.admFix.escritorio,false,true);
   dre+=dreRow('(=) EBITDA',D.ebitda,true);
-  dre+=dreRow('(−) Depreciação & amortização',D.deprec,true);
+  dre+=dreRow('(−) Custo fixo 3. Depreciações',D.dep.total,true);
+  dre+=dreRow('&nbsp;&nbsp;&nbsp;Máquinas e veículos',D.dep.maquinas,false,true);dre+=dreRow('&nbsp;&nbsp;&nbsp;Instalações e benfeitorias',D.dep.benfeitorias,false,true);
   dre+=dreRow('(=) EBIT',D.ebit,true);
   dre+=`</tbody></table><div style="font-size:10px;color:#666">Margem s/ COE ${D.receita>0?(D.margem/D.receita*100).toFixed(1):'—'}% · Margem EBITDA ${D.receita>0?(D.ebitda/D.receita*100).toFixed(1):'—'}% · Margem EBIT ${D.receita>0?(D.ebit/D.receita*100).toFixed(1):'—'}% · Pós-colheita e juros/impostos: a definir</div>`;
   // tabela por lote
@@ -3663,10 +3679,13 @@ function renderResultados(){
       ${dsub('Combustíveis e lubrificantes',co.combustivel)}${dsub('Peças e manutenção',co.manut)}${dsub('Energia elétrica',co.energia)}
       ${dgrp('4. Pós-colheita e comercialização',co.posColh)}
       ${dtot('(=) Margem de contribuição',D.margem,dcol2(D.margem))}
-      ${dtot('(−) Estrutura / custos fixos',D.estrutura.total,'#e88')}
-      ${dsub('Folha fixa (RH)',D.estrutura.rh)}${dsub('13º + Férias',D.estrutura.decFer)}${dsub('Administrativo',D.estrutura.admin)}${dsub('Impostos (ITR/AIBA)',D.estrutura.impostos)}
+      ${dgrp('(−) Custo fixo 1. Mão de obra permanente',D.mo.total)}
+      ${dsub('Salários + encargos (equipe fixa)',D.mo.salarios)}${dsub('Pró-labore (sócios)',D.mo.prolabore)}${dsub('13º + Férias',D.mo.decFer)}
+      ${dgrp('(−) Custo fixo 2. Despesas administrativas fixas',D.admFix.total)}
+      ${dsub('Impostos/taxas rurais (ITR, AIBA)',D.admFix.impostos)}${dsub('Seguros fixos',D.admFix.seguros)}${dsub('Honorários profissionais',D.admFix.honorarios)}${dsub('Escritório/conectividade/estrutura',D.admFix.escritorio)}
       ${dtot('(=) EBITDA',D.ebitda,dcol2(D.ebitda))}
-      ${dtot('(−) Depreciação & amortização',D.deprec,'#e88')}
+      ${dgrp('(−) Custo fixo 3. Depreciações',D.dep.total)}
+      ${dsub('Máquinas e veículos',D.dep.maquinas)}${dsub('Instalações e benfeitorias',D.dep.benfeitorias)}
       ${dtot('(=) EBIT',D.ebit,dcol2(D.ebit))}
     </tbody></table>
     <div style="font-size:11px;color:#667;margin-top:8px">Margem s/ COE <b style="color:${dcol2(D.margem)}">${D.receita>0?(D.margem/D.receita*100).toFixed(1):'—'}%</b> · Margem EBITDA <b style="color:${dcol2(D.ebitda)}">${D.receita>0?(D.ebitda/D.receita*100).toFixed(1):'—'}%</b> · Margem EBIT <b style="color:${dcol2(D.ebit)}">${D.receita>0?(D.ebit/D.receita*100).toFixed(1):'—'}%</b><br>Pós-colheita (frete/secagem/comissões) e Juros/impostos abaixo do EBIT: <b>a definir</b>.</div>
