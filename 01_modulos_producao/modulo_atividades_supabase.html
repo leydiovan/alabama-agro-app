@@ -3486,10 +3486,12 @@ function _resDRE(){
   const coeTotal=insTotal+servTotal+operTotal+posColh;
   const margem=receita-coeTotal;
   const cfCaixa=mo.total+admFix.total;
+  const custoFixoTotal=cfCaixa+dep.total;           // 3 grupos: mão de obra + admin + depreciação
+  const cotTotal=coeTotal+custoFixoTotal;           // COT = COE + Custo Fixo
   const ebitda=margem-cfCaixa, ebit=ebitda-dep.total;
   return {receita,recCult,
     coe:{ins,insTotal,aereo,colhTerc,servTotal,combustivel,manut,operTotal,posColh,total:coeTotal},
-    margem, mo, admFix, dep, cfCaixa,
+    margem, mo, admFix, dep, cfCaixa, custoFixoTotal, cotTotal,
     ebitda,deprec:dep.total,ebit,cf:T};
 }
 /* detalhe do custo fixo — mostra item a item o que soma na DRE */
@@ -3566,6 +3568,8 @@ function _resA4HTML(){
   dre+=dreRow('(−) Custo fixo 3. Depreciações',D.dep.total,true);
   dre+=dreRow('&nbsp;&nbsp;&nbsp;Máquinas e veículos',D.dep.maquinas,false,true);dre+=dreRow('&nbsp;&nbsp;&nbsp;Instalações e benfeitorias',D.dep.benfeitorias,false,true);
   dre+=dreRow('(=) EBIT',D.ebit,true);
+  dre+=`<tr><td colspan="3" style="padding:4px"></td></tr>`;
+  dre+=dreRow('COT — Custo Operacional Total (COE + Custo Fixo)',D.cotTotal,true);
   dre+=`</tbody></table><div style="font-size:10px;color:#666">Margem s/ COE ${D.receita>0?(D.margem/D.receita*100).toFixed(1):'—'}% · Margem EBITDA ${D.receita>0?(D.ebitda/D.receita*100).toFixed(1):'—'}% · Margem EBIT ${D.receita>0?(D.ebit/D.receita*100).toFixed(1):'—'}% · Pós-colheita e juros/impostos: a definir</div>`;
   // tabela por lote
   const th=(t,al)=>`<th style="text-align:${al||'right'};padding:3px 5px;border-bottom:1.5px solid #333">${t}</th>`;
@@ -3688,6 +3692,10 @@ function renderResultados(){
       ${dsub('Máquinas e veículos',D.dep.maquinas)}${dsub('Instalações e benfeitorias',D.dep.benfeitorias)}
       ${dtot('(=) EBIT',D.ebit,dcol2(D.ebit))}
     </tbody></table>
+    <div style="margin-top:10px;padding:10px 12px;background:#16202b;border:1px solid #37506b;border-radius:8px;display:flex;flex-wrap:wrap;gap:12px;align-items:center">
+      <div><b style="font-size:14px">📊 COT — Custo Operacional Total</b><br><span style="font-size:11px;color:#8aa">COE ${_res$(D.coe.total)} + Custo Fixo ${_res$(D.custoFixoTotal)}</span></div>
+      <div style="margin-left:auto;text-align:right"><b style="font-size:18px">${_res$(D.cotTotal)}</b>${areaTot>0?`<br><span style="font-size:12px;color:#8aa">${_res$(D.cotTotal/areaTot)}/ha · ${D.receita>0?(D.cotTotal/D.receita*100).toFixed(1)+'% da receita':''}</span>`:''}</div>
+    </div>
     <div style="font-size:11px;color:#667;margin-top:8px">Margem s/ COE <b style="color:${dcol2(D.margem)}">${D.receita>0?(D.margem/D.receita*100).toFixed(1):'—'}%</b> · Margem EBITDA <b style="color:${dcol2(D.ebitda)}">${D.receita>0?(D.ebitda/D.receita*100).toFixed(1):'—'}%</b> · Margem EBIT <b style="color:${dcol2(D.ebit)}">${D.receita>0?(D.ebit/D.receita*100).toFixed(1):'—'}%</b><br>Pós-colheita (frete/secagem/comissões) e Juros/impostos abaixo do EBIT: <b>a definir</b>.</div>
   </div>`;
   // sub-aba: Por lote | Custo fixo (detalhe)
