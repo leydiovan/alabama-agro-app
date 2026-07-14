@@ -3420,7 +3420,9 @@ const RES_DIESEL_PRECO = 6.58;                 // R$/L real (média do período)
 let _resExec = null;                            // {codigo:{area,diesel}} — cache de execucao_campo
 let _resProd = null;                            // {lote|cultura:{qtd,unidade,prov}} — cache de producao_entrada
 let _resFiltroCult = 'todas';
+let _resView = 'lotes';   // 'lotes' | 'custofixo'
 let _resOpen = {};
+function resSetView(v){ _resView=v; render(); }
 const _RES_CAT = {
   'Escarificação':'Preparo','Gradagem':'Preparo','Rolo':'Preparo','Subsolagem':'Preparo','Destruição de Soqueira':'Preparo',
   'Adubação':'Adubação','Aplicação de Sólidos':'Adubação','Distribuidor de Fertilizantes':'Adubação',
@@ -3460,6 +3462,44 @@ function _resDRE(){
   const resCaixa=lucroBruto-T.caixa;
   const resLiq=resCaixa-T.naoCaixa;
   return {receita,recCult,custo,catT,lucroBruto,cf:T,resCaixa,resLiq};
+}
+/* detalhe do custo fixo — mostra item a item o que soma na DRE */
+function _resCustoFixoDetalheHTML(){
+  const T=(typeof _cfTotais==='function')?_cfTotais():{caixa:0,rh:0,prov13fer:0,caixaManual:0,deprec:0,ncManual:0,naoCaixa:0,total:0};
+  const dep=(typeof _deprecItens==='function')?_deprecItens():[];
+  const rh=(typeof _rhFixoItens==='function')?_rhFixoItens():[];
+  const p13=(typeof _rh13FeriasItens==='function')?_rh13FeriasItens():[];
+  const outros=(S.custosFixos||[]);
+  const F=n=>fmtBR(n);
+  const box=(titulo,subtotal,corpo,cols)=>`<div style="background:#16202b;border:1px solid #2a3a4a;border-radius:10px;margin-bottom:14px;overflow:hidden">
+     <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 14px;background:#1b2836"><b>${titulo}</b><b style="color:#cde">R$ ${F(subtotal)}<span style="color:#8aa;font-weight:400;font-size:11px">/ano</span></b></div>
+     <table style="width:100%;border-collapse:collapse;font-size:12px"><thead><tr style="color:#8aa">${cols}</tr></thead><tbody>${corpo}</tbody></table></div>`;
+  const td=(v,al)=>`<td style="padding:4px 14px;text-align:${al||'left'};border-top:1px solid #1e2a36">${v}</td>`;
+  const th=(v,al)=>`<th style="padding:6px 14px;text-align:${al||'left'};font-weight:600">${v}</th>`;
+  // Depreciação
+  const depBody=dep.length?dep.map(d=>`<tr>${td(esc(d.nome))}${td('<span style="color:#8aa">'+esc(d.tipo)+'</span>')}${td('R$ '+F(d.valAno),'right')}</tr>`).join('')
+     :`<tr>${td('<span style="color:#8aa">Sem depreciação — preencha valor de aquisição + vida útil nas máquinas/implementos (Cadastros).</span>')}<td></td><td></td></tr>`;
+  const depBox=box('🏭 Depreciação (não-caixa) — '+dep.length+' itens',T.deprec,depBody,th('Item')+th('Tipo')+th('R$/ano','right'));
+  // Folha fixa (RH)
+  const rhBody=rh.length?rh.map(r=>`<tr>${td('<b>'+esc(r.nome)+'</b>')}${td('<span style="color:#8aa">'+esc(r.tipo)+'</span>')}${td('R$ '+F(r.carteira),'right')}${td(F(r.encargos)+'%','right')}${td('R$ '+F(r.mes),'right')}${td('<b>R$ '+F(r.ano)+'</b>','right')}</tr>`).join('')
+     :`<tr>${td('<span style="color:#8aa">Sem folha fixa — cadastre funcionários com custo fixo (RH).</span>')}<td colspan="5"></td></tr>`;
+  const rhBox=box('👷 Folha fixa (RH) — '+rh.length+' pessoas',T.rh,rhBody,th('Funcionário')+th('Tipo')+th('Carteira','right')+th('Enc.','right')+th('R$/mês','right')+th('R$/ano','right'));
+  // 13º + Férias
+  const p13Body=p13.length?p13.map(r=>`<tr>${td(esc(r.nome))}${td('R$ '+F(r.mes),'right')}${td('<b>R$ '+F(r.ano)+'</b>','right')}</tr>`).join('')
+     :`<tr>${td('<span style="color:#8aa">Sem provisão (só registrados CLT geram 13º/férias).</span>')}<td></td><td></td></tr>`;
+  const p13Box=box('📅 13º + Férias (provisão) — '+p13.length+' pessoas',T.prov13fer,p13Body,th('Funcionário')+th('R$/mês','right')+th('R$/ano','right'));
+  // Outros custos fixos manuais
+  const outBody=outros.length?outros.map(c=>`<tr>${td(esc(c.categoria||'—'))}${td(esc(c.descricao||''))}${td('<span style="color:#8aa">'+esc(c.periodicidade||'anual')+(c.tipo==='nao_caixa'?' · não-caixa':'')+'</span>')}${td('R$ '+F(_cfAnual(c)),'right')}</tr>`).join('')
+     :`<tr>${td('<span style="color:#8aa">Nenhum item manual — adicione na aba <b>Custos fixos</b> do Planejamento (admin, energia, seguros, arrendamento, financeiro…).</span>')}<td colspan="3"></td></tr>`;
+  const outBox=box('🏢 Outros custos fixos — '+outros.length+' itens',T.caixaManual+T.ncManual,outBody,th('Categoria')+th('Descrição')+th('Período')+th('R$/ano','right'));
+  return `<div style="max-width:760px">
+    <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:16px">
+      <div style="flex:1;min-width:140px;background:#122019;border:1px solid #244;border-radius:12px;padding:12px 14px"><div style="color:#8aa;font-size:11px">Custo fixo CAIXA</div><div style="font-size:18px;font-weight:700">R$ ${F(T.caixa)}</div><div style="font-size:10px;color:#8aa">folha + 13º/férias + outros</div></div>
+      <div style="flex:1;min-width:140px;background:#1a1622;border:1px solid #423;border-radius:12px;padding:12px 14px"><div style="color:#8aa;font-size:11px">NÃO-CAIXA (deprec.)</div><div style="font-size:18px;font-weight:700">R$ ${F(T.naoCaixa)}</div><div style="font-size:10px;color:#8aa">só reduz o EBIT, não sai do caixa</div></div>
+      <div style="flex:1;min-width:140px;background:#16202b;border:1px solid #2a3a4a;border-radius:12px;padding:12px 14px"><div style="color:#8aa;font-size:11px">TOTAL custo fixo</div><div style="font-size:18px;font-weight:700">R$ ${F(T.total)}</div><div style="font-size:10px;color:#8aa">/ano (ciclo da safra)</div></div>
+    </div>
+    <div style="font-size:12px;color:#8aa;margin-bottom:12px">Na DRE: a parte <b>caixa</b> (R$ ${F(T.caixa)}) desce até o EBITDA; a <b>depreciação</b> (R$ ${F(T.deprec)}) sai depois, do EBITDA pro EBIT.</div>
+    ${rhBox}${p13Box}${depBox}${outBox}</div>`;
 }
 function _resCustoComanda(c){
   const ex=(_resExec&&_resExec[c.codigo])||{area:0,diesel:0};
@@ -3537,6 +3577,10 @@ function renderResultados(){
     </tbody></table>
     ${D.cf.total===0?'<div style="font-size:11px;color:#b9770e;margin-top:8px">⚠️ Custo fixo zerado — preencha na aba <b>Custos fixos</b> (Planejamento): depreciação das máquinas + folha fixa.</div>':`<div style="font-size:11px;color:#667;margin-top:8px">Margem EBITDA <b style="color:${dcol2(D.resCaixa)}">${D.receita>0?(D.resCaixa/D.receita*100).toFixed(1):'—'}%</b> · Margem EBIT <b style="color:${dcol2(D.resLiq)}">${D.receita>0?(D.resLiq/D.receita*100).toFixed(1):'—'}%</b> · custo fixo R$ ${fmtBR(D.cf.total)}<br>Lucro líquido = EBIT − juros − impostos (Funrural etc.), <b>a definir</b>.</div>`}
   </div>`;
+  // sub-aba: Por lote | Custo fixo (detalhe)
+  const vbtn=(v,txt)=>`<button onclick="resSetView('${v}')" style="padding:6px 12px;border-radius:8px;border:1px solid #3a4a5a;cursor:pointer;background:${_resView===v?'#37506b':'#1c2733'};color:#fff;font-weight:600">${txt}</button>`;
+  h+=`<div style="display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap">${vbtn('lotes','📋 Por lote')}${vbtn('custofixo','🏷️ Custo fixo (detalhe)')}</div>`;
+  if(_resView==='custofixo'){ h+=_resCustoFixoDetalheHTML(); h+='</div>'; return h; }
   const th=(t,al)=>`<th style="text-align:${al||'right'};padding:8px 10px">${t}</th>`;
   h+=`<table style="width:100%;border-collapse:collapse;font-size:13px"><thead><tr style="background:#16202b;color:#8aa">
      ${th('Lote','left')}${th('Cult','left')}${th('Área')}${th('Prod/ha')}${th('Diesel L/ha')}${th('Custo/ha')}${th('Receita/ha')}${th('Margem/ha')}${th('Custo total')}${th('Margem total')}</tr></thead><tbody>`;
