@@ -1,0 +1,3 @@
+﻿Resultados: margem negativa aparece (lote com custo e sem receita = prejuizo); feijao com semente+TS
+
+Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>

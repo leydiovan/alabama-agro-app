@@ -3461,7 +3461,9 @@ function _resDRE(){
   const lucroBruto=receita-custo;
   const resCaixa=lucroBruto-T.caixa;
   const resLiq=resCaixa-T.naoCaixa;
-  return {receita,recCult,custo,catT,lucroBruto,cf:T,resCaixa,resLiq};
+  const cfCat={};
+  (S.custosFixos||[]).forEach(c=>{ if(c.tipo==='nao_caixa') return; const a=(c.periodicidade==='mensal')?(+c.valor||0)*12:(+c.valor||0); const k=c.categoria||'Outros'; cfCat[k]=(cfCat[k]||0)+a; });
+  return {receita,recCult,custo,catT,lucroBruto,cf:T,cfCat,resCaixa,resLiq};
 }
 /* detalhe do custo fixo — mostra item a item o que soma na DRE */
 function _resCustoFixoDetalheHTML(){
@@ -3489,8 +3491,12 @@ function _resCustoFixoDetalheHTML(){
      :`<tr>${td('<span style="color:#8aa">Sem provisão (só registrados CLT geram 13º/férias).</span>')}<td></td><td></td></tr>`;
   const p13Box=box('📅 13º + Férias (provisão) — '+p13.length+' pessoas',T.prov13fer,p13Body,th('Funcionário')+th('R$/mês','right')+th('R$/ano','right'));
   // Outros custos fixos manuais
-  const outBody=outros.length?outros.map(c=>`<tr>${td(esc(c.categoria||'—'))}${td(esc(c.descricao||''))}${td('<span style="color:#8aa">'+esc(c.periodicidade||'anual')+(c.tipo==='nao_caixa'?' · não-caixa':'')+'</span>')}${td('R$ '+F(_cfAnual(c)),'right')}</tr>`).join('')
-     :`<tr>${td('<span style="color:#8aa">Nenhum item manual — adicione na aba <b>Custos fixos</b> do Planejamento (admin, energia, seguros, arrendamento, financeiro…).</span>')}<td colspan="3"></td></tr>`;
+  let outBody='';
+  if(outros.length){ const porCat={}; outros.forEach(c=>{(porCat[c.categoria||'Outros']=porCat[c.categoria||'Outros']||[]).push(c);});
+    Object.keys(porCat).sort((a,b)=>porCat[b].reduce((s,c)=>s+_cfAnual(c),0)-porCat[a].reduce((s,c)=>s+_cfAnual(c),0)).forEach(cat=>{ const its=porCat[cat]; const sub=its.reduce((s,c)=>s+_cfAnual(c),0);
+      outBody+=`<tr style="background:#12202b"><td colspan="3" style="padding:6px 14px;font-weight:700;color:#cde;border-top:1px solid #2a3a4a">${esc(cat)}</td><td style="text-align:right;padding:6px 14px;font-weight:700;color:#cde;border-top:1px solid #2a3a4a">R$ ${F(sub)}</td></tr>`;
+      its.forEach(c=>{ outBody+=`<tr><td></td>${td(esc(c.descricao||''))}${td('<span style="color:#8aa">'+esc(c.periodicidade||'anual')+(c.tipo==='nao_caixa'?' · não-caixa':'')+'</span>')}${td('R$ '+F(_cfAnual(c)),'right')}</tr>`; }); });
+  } else { outBody=`<tr>${td('<span style="color:#8aa">Nenhum item manual — adicione na aba <b>Custos fixos</b> do Planejamento.</span>')}<td colspan="3"></td></tr>`; }
   const outBox=box('🏢 Outros custos fixos — '+outros.length+' itens',T.caixaManual+T.ncManual,outBody,th('Categoria')+th('Descrição')+th('Período')+th('R$/ano','right'));
   return `<div style="max-width:760px">
     <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:16px">
@@ -3519,7 +3525,8 @@ function _resA4HTML(){
   ['Insumos','Diesel','Aéreo','Colheita'].forEach(k=>dre+=dreRow(k,D.catT[k],false,true));
   dre+=dreRow('(=) Lucro bruto (operacional)',D.lucroBruto,true);
   dre+=dreRow('(−) Despesas fixas (caixa)',D.cf.caixa,true);
-  ['Folha fixa (RH)|'+D.cf.rh,'13º + Férias|'+D.cf.prov13fer,'Outros fixos|'+D.cf.caixaManual].forEach(s=>{const p=s.split('|');dre+=dreRow(p[0],+p[1],false,true);});
+  dre+=dreRow('Folha fixa (RH)',D.cf.rh,false,true);dre+=dreRow('13º + Férias',D.cf.prov13fer,false,true);
+  Object.keys(D.cfCat).forEach(k=>dre+=dreRow(k,D.cfCat[k],false,true));
   dre+=dreRow('(=) EBITDA',D.resCaixa,true);
   dre+=dreRow('(−) Depreciação & amortização',D.cf.naoCaixa,true);
   dre+=dreRow('(=) EBIT',D.resLiq,true);
@@ -3624,7 +3631,7 @@ function renderResultados(){
       ${['Insumos','Diesel','Aéreo','Colheita'].map(k=>dsub(k,D.catT[k])).join('')}
       ${dtot('(=) Lucro bruto (margem operacional)',D.lucroBruto,dcol2(D.lucroBruto))}
       ${dtot('(−) Despesas fixas (caixa)',D.cf.caixa,'#e88')}
-      ${dsub('Folha fixa (RH)',D.cf.rh)}${dsub('13º + Férias (provisão)',D.cf.prov13fer)}${dsub('Outros fixos (admin/estrutura)',D.cf.caixaManual)}
+      ${dsub('Folha fixa (RH)',D.cf.rh)}${dsub('13º + Férias (provisão)',D.cf.prov13fer)}${Object.keys(D.cfCat).map(k=>dsub(k,D.cfCat[k])).join('')}
       ${dtot('(=) EBITDA',D.resCaixa,dcol2(D.resCaixa))}
       ${dtot('(−) Depreciação & amortização',D.cf.naoCaixa,'#e88')}
       ${dtot('(=) EBIT',D.resLiq,dcol2(D.resLiq))}
