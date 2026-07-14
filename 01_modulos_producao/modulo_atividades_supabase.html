@@ -3467,13 +3467,23 @@ function renderResultados(){
   const cs=(S.comandas||[]).filter(c=>c.status!=='cancelada' && (_resFiltroCult==='todas'||(c.cultura||'')===_resFiltroCult));
   const porLote={};
   cs.forEach(c=>{ const cc=_resCustoComanda(c); const key=c.loteNome+'|'+(c.cultura||''); const L=porLote[key]||(porLote[key]={lote:c.loteNome,cultura:c.cultura||'',area:areaDe(c.loteNome)||cc.area,insumos:0,diesel:0,dieselL:0,aereo:0,colhTerc:0,total:0,n:0,coms:[]}); L.insumos+=cc.insumos;L.diesel+=cc.diesel;L.dieselL+=cc.dieselL;L.aereo+=cc.aereo;L.colhTerc+=cc.colhTerc;L.total+=cc.total;L.n++;L.coms.push({c,cc}); });
-  const lotes=Object.values(porLote);
-  // produção / receita / margem por lote
-  lotes.forEach(l=>{ const pr=_resProdLote(l.lote,l.cultura); l.qtd=pr?pr.qtd:0; l.unid=pr?pr.unidade:'sc'; l.prov=pr?pr.prov:false; l.prodHa=(l.area>0&&l.qtd)?l.qtd/l.area:0; l.preco=_resPrecoVenda(l.cultura); l.receita=l.qtd*l.preco; l.margem=l.receita-l.total; });
-  lotes.sort((a,b)=>b.margem-a.margem);
-  const tot=lotes.reduce((s,l)=>{s.total+=l.total;s.receita+=l.receita;s.margem+=l.margem;s.dieselL+=(l.dieselL||0);s.diesel+=(l.diesel||0);return s;},{total:0,receita:0,margem:0,dieselL:0,diesel:0});
-  const areaTot=lotes.reduce((s,l)=>s+(l.area||0),0);
-  const anyProv=lotes.some(l=>l.prov);
+  const slices=Object.values(porLote);
+  // produção / receita / margem por FATIA (lote+cultura)
+  slices.forEach(l=>{ const pr=_resProdLote(l.lote,l.cultura); l.qtd=pr?pr.qtd:0; l.unid=pr?pr.unidade:'sc'; l.prov=pr?pr.prov:false; l.prodHa=(l.area>0&&l.qtd)?l.qtd/l.area:0; l.preco=_resPrecoVenda(l.cultura); l.receita=l.qtd*l.preco; l.margem=l.receita-l.total; });
+  const tot=slices.reduce((s,l)=>{s.total+=l.total;s.receita+=l.receita;s.margem+=l.margem;s.dieselL+=(l.dieselL||0);s.diesel+=(l.diesel||0);return s;},{total:0,receita:0,margem:0,dieselL:0,diesel:0});
+  // área total = lotes físicos DISTINTOS (lote com 2 culturas não conta 2×)
+  const areaTot=Object.values(slices.reduce((a,l)=>{a[l.lote]=l.area||0;return a;},{})).reduce((s,a)=>s+a,0);
+  const anyProv=slices.some(l=>l.prov);
+  // linhas exibidas: filtro TODAS = 1 linha por LOTE (culturas combinadas); filtro por cultura = 1 linha por fatia
+  let rows;
+  if(_resFiltroCult==='todas'){
+    const byLote={};
+    slices.forEach(l=>{ const L=byLote[l.lote]||(byLote[l.lote]={lote:l.lote,cults:[],area:l.area,insumos:0,diesel:0,dieselL:0,aereo:0,colhTerc:0,total:0,qtd:0,unid:'',prov:false,receita:0,coms:[]});
+      L.insumos+=l.insumos;L.diesel+=l.diesel;L.dieselL+=l.dieselL;L.aereo+=l.aereo;L.colhTerc+=l.colhTerc;L.total+=l.total;L.receita+=l.receita;L.coms=L.coms.concat(l.coms); L.cults.push(l.cultura);
+      if(l.qtd){ L.unid=(L.unid&&L.unid!==l.unid)?'misto':l.unid; L.qtd+=l.qtd; if(l.prov)L.prov=true; } });
+    rows=Object.values(byLote).map(L=>{ L.cultura=L.cults.join('+'); L.prodHa=(L.area>0&&L.qtd&&L.unid!=='misto')?L.qtd/L.area:0; L.margem=L.receita-L.total; return L; });
+  } else { rows=slices; }
+  rows.sort((a,b)=>b.margem-a.margem);
   const btn=(v,txt)=>`<button onclick="resSetCult('${v}')" style="padding:6px 12px;border-radius:8px;border:1px solid #3a4a5a;cursor:pointer;background:${_resFiltroCult===v?'#2e7d32':'#1c2733'};color:#fff;font-weight:600">${txt}</button>`;
   const mcol=v=>v>=0?'#7fd18b':'#e88';
   const fmtL=n=>Math.round(n||0).toLocaleString('pt-BR');
@@ -3495,7 +3505,7 @@ function renderResultados(){
   h+=`<table style="width:100%;border-collapse:collapse;font-size:13px"><thead><tr style="background:#16202b;color:#8aa">
      ${th('Lote','left')}${th('Cult','left')}${th('Área')}${th('Prod/ha')}${th('Diesel L/ha')}${th('Custo/ha')}${th('Receita/ha')}${th('Margem/ha')}${th('Custo total')}${th('Margem total')}</tr></thead><tbody>`;
   const num=(v,c,b)=>`<td style="text-align:right;padding:6px 10px;${b?'font-weight:700;':''}${c?'color:'+c+';':''}">${v}</td>`;
-  lotes.forEach(l=>{
+  rows.forEach(l=>{
     const cpha=l.area>0?l.total/l.area:0, rpha=l.area>0?l.receita/l.area:0, mpha=l.area>0?l.margem/l.area:0; const op=_resOpen[l.lote+'|'+l.cultura];
     const prodTxt=l.prodHa?fmtBR(l.prodHa)+' '+esc(l.unid)+(l.prov?'*':''):'—';
     h+=`<tr onclick="resToggleLote('${(esc(l.lote)+'|'+esc(l.cultura)).replace(/'/g,"\\'")}')" style="cursor:pointer;border-bottom:1px solid #223">
