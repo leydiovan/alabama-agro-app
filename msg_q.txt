@@ -1,0 +1,5 @@
+﻿Resultados: DRE e Custo fixo quebram despesas por categoria (Manutencao e Servicos separado de Admin/Impostos)
+
+Manutencao de maquinas (pecas/oleos/filtros/servicos) R$588k lancada; DRE mostra cada categoria de custo fixo.
+
+Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>

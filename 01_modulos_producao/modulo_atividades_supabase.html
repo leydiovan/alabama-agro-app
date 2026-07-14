@@ -3549,7 +3549,12 @@ function _resA4HTML(){
 function _resA4Abrir(){
   let st=document.getElementById('a4style');
   if(!st){ st=document.createElement('style'); st.id='a4style';
-    st.textContent='#a4wrap{position:fixed;inset:0;z-index:100000;background:rgba(0,0,0,.55);overflow:auto;padding:16px 0}@media print{body>*:not(#a4wrap){display:none!important}#a4wrap{position:static!important;background:#fff!important;padding:0!important;overflow:visible!important}#a4wrap .a4bar{display:none!important}#a4sheet{width:auto!important;max-width:none!important;margin:0!important;box-shadow:none!important;padding:0!important}@page{size:A4 portrait;margin:14mm}}';
+    st.textContent='#a4wrap{position:fixed;inset:0;z-index:100000;background:rgba(0,0,0,.55);overflow:auto;padding:16px 0}'
+     +'#a4sheet{width:210mm;max-width:96vw;margin:0 auto;color:#111;box-sizing:border-box;box-shadow:0 0 24px rgba(0,0,0,.5);font:13px/1.45 -apple-system,system-ui,Arial,sans-serif;background:repeating-linear-gradient(#fff 0 296mm,#e33 296mm 297mm)}'
+     +'#a4sheet .a4pad{padding:14mm}'
+     +'#a4sheet table,#a4sheet tr{break-inside:avoid;page-break-inside:avoid}'
+     +'#a4sheet h1,#a4sheet .a4sec{break-after:avoid}'
+     +'@media print{body>*:not(#a4wrap){display:none!important}#a4wrap{position:static!important;background:#fff!important;padding:0!important;overflow:visible!important}#a4wrap .a4bar{display:none!important}#a4sheet{width:auto!important;max-width:none!important;margin:0!important;box-shadow:none!important;background:#fff!important}#a4sheet .a4pad{padding:0!important}@page{size:A4 portrait;margin:14mm}}';
     document.head.appendChild(st); }
   let w=document.getElementById('a4wrap');
   if(!w){ w=document.createElement('div'); w.id='a4wrap'; document.body.appendChild(w); }
@@ -3557,7 +3562,7 @@ function _resA4Abrir(){
   w.innerHTML='<div class="a4bar" style="width:210mm;max-width:96vw;margin:0 auto 10px;display:flex;gap:10px;justify-content:flex-end">'
     +'<button onclick="window.print()" '+bbtn+';background:#2e7d32;color:#fff">🖨️ Imprimir</button>'
     +'<button onclick="_resA4Fechar()" '+bbtn+';background:#555;color:#fff">✕ Fechar</button></div>'
-    +'<div id="a4sheet" style="width:210mm;max-width:96vw;margin:0 auto;background:#fff;color:#111;padding:16mm 14mm;box-shadow:0 0 24px rgba(0,0,0,.5);font:13px/1.45 -apple-system,system-ui,Arial,sans-serif;box-sizing:border-box">'+_resA4HTML()+'</div>';
+    +'<div id="a4sheet"><div class="a4pad">'+_resA4HTML()+'</div></div>';
   w.style.display='block';
 }
 function _resA4Fechar(){ const w=document.getElementById('a4wrap'); if(w) w.style.display='none'; }
