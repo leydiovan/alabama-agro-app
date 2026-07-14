@@ -3478,10 +3478,10 @@ function renderResultados(){
   let rows;
   if(_resFiltroCult==='todas'){
     const byLote={};
-    slices.forEach(l=>{ const L=byLote[l.lote]||(byLote[l.lote]={lote:l.lote,cults:[],area:l.area,insumos:0,diesel:0,dieselL:0,aereo:0,colhTerc:0,total:0,qtd:0,unid:'',prov:false,receita:0,coms:[]});
+    slices.forEach(l=>{ const L=byLote[l.lote]||(byLote[l.lote]={lote:l.lote,cults:[],area:l.area,insumos:0,diesel:0,dieselL:0,aereo:0,colhTerc:0,total:0,unid:'sc',prov:false,receita:0,coms:[],prodPorCult:[]});
       L.insumos+=l.insumos;L.diesel+=l.diesel;L.dieselL+=l.dieselL;L.aereo+=l.aereo;L.colhTerc+=l.colhTerc;L.total+=l.total;L.receita+=l.receita;L.coms=L.coms.concat(l.coms); L.cults.push(l.cultura);
-      if(l.qtd){ L.unid=(L.unid&&L.unid!==l.unid)?'misto':l.unid; L.qtd+=l.qtd; if(l.prov)L.prov=true; } });
-    rows=Object.values(byLote).map(L=>{ L.cultura=L.cults.join('+'); L.prodHa=(L.area>0&&L.qtd&&L.unid!=='misto')?L.qtd/L.area:0; L.margem=L.receita-L.total; return L; });
+      if(l.qtd){ L.prodPorCult.push({cultura:l.cultura,prodHa:l.prodHa,unid:l.unid,prov:l.prov}); if(l.prov)L.prov=true; } });
+    rows=Object.values(byLote).map(L=>{ L.cultura=L.cults.join('+'); L.multiProd=L.prodPorCult.length>1; if(L.prodPorCult.length===1){ L.prodHa=L.prodPorCult[0].prodHa; L.unid=L.prodPorCult[0].unid; } else { L.prodHa=0; } L.margem=L.receita-L.total; return L; });
   } else { rows=slices; }
   rows.sort((a,b)=>b.margem-a.margem);
   const btn=(v,txt)=>`<button onclick="resSetCult('${v}')" style="padding:6px 12px;border-radius:8px;border:1px solid #3a4a5a;cursor:pointer;background:${_resFiltroCult===v?'#2e7d32':'#1c2733'};color:#fff;font-weight:600">${txt}</button>`;
@@ -3507,7 +3507,9 @@ function renderResultados(){
   const num=(v,c,b)=>`<td style="text-align:right;padding:6px 10px;${b?'font-weight:700;':''}${c?'color:'+c+';':''}">${v}</td>`;
   rows.forEach(l=>{
     const cpha=l.area>0?l.total/l.area:0, rpha=l.area>0?l.receita/l.area:0, mpha=l.area>0?l.margem/l.area:0; const op=_resOpen[l.lote+'|'+l.cultura];
-    const prodTxt=l.prodHa?fmtBR(l.prodHa)+' '+esc(l.unid)+(l.prov?'*':''):'—';
+    const prodTxt=l.multiProd
+      ? l.prodPorCult.map(p=>`<div style="font-size:11px;line-height:1.35;white-space:nowrap">${fmtBR(p.prodHa)} ${esc(p.unid)} <span style="color:#8aa">${esc(p.cultura)}</span>${p.prov?'*':''}</div>`).join('')
+      : (l.prodHa?fmtBR(l.prodHa)+' '+esc(l.unid)+(l.prov?'*':''):'—');
     h+=`<tr onclick="resToggleLote('${(esc(l.lote)+'|'+esc(l.cultura)).replace(/'/g,"\\'")}')" style="cursor:pointer;border-bottom:1px solid #223">
       <td style="padding:6px 10px;font-weight:600">${op?'▾':'▸'} ${esc(l.lote)}</td><td style="padding:6px 10px;color:#9ab">${esc(l.cultura)}</td>
       <td style="text-align:right;padding:6px 10px">${fmtBR(l.area)}</td>${num(prodTxt)}${num(l.area>0&&l.dieselL?fmtL(l.dieselL/l.area)+' L':'—','#9bb1c9')}${num(fmtBR(cpha))}${num(l.receita?fmtBR(rpha):'—')}${num(l.receita?fmtBR(mpha):'—',l.receita?mcol(l.margem):'')}
