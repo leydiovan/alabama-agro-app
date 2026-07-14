@@ -3560,7 +3560,7 @@ function renderResultados(){
   });
   h+=`<tr style="background:#16202b;font-weight:700"><td style="padding:8px 10px">TOTAL</td><td></td><td style="text-align:right;padding:8px 10px">${fmtBR(areaTot)}</td><td></td><td style="text-align:right;padding:8px 10px;color:#9bb1c9">${areaTot>0?fmtL(tot.dieselL/areaTot)+' L':'—'}</td><td style="text-align:right;padding:8px 10px">${areaTot>0?fmtBR(tot.total/areaTot):'—'}</td><td style="text-align:right;padding:8px 10px">${tot.receita&&areaTot>0?fmtBR(tot.receita/areaTot):'—'}</td><td style="text-align:right;padding:8px 10px;color:${mcol(tot.margem)}">${tot.receita&&areaTot>0?fmtBR(tot.margem/areaTot):'—'}</td><td style="text-align:right;padding:8px 10px">${fmtBR(tot.total)}</td><td style="text-align:right;padding:8px 10px;color:${mcol(tot.margem)}">${tot.receita?fmtBR(tot.margem):'—'}</td></tr>`;
   h+=`</tbody></table>`;
-  h+=`<div style="margin-top:10px;font-size:11px;color:#667">Diesel R$ ${fmtBR(RES_DIESEL_PRECO)}/L (rateado do real 363 mil L) · preço de venda das premissas (Soja R$${fmtBR(_resPrecoVenda('soja'))}/sc, Algodão R$${fmtBR(_resPrecoVenda('algodao'))}/@, Feijão R$${fmtBR(_resPrecoVenda('feijao'))}/sc)${anyProv?' · <b>⚠️ produção com * = média provisória</b>':' · produção real'}</div>`;
+  h+=`<div style="margin-top:10px;font-size:11px;color:#667">Diesel R$ ${fmtBR(RES_DIESEL_PRECO)}/L (rateado do real: 350 mil L total − Ceará/M1/M2) · preço de venda das premissas (Soja R$${fmtBR(_resPrecoVenda('soja'))}/sc, Algodão R$${fmtBR(_resPrecoVenda('algodao'))}/@, Feijão R$${fmtBR(_resPrecoVenda('feijao'))}/sc)${anyProv?' · <b>⚠️ produção com * = média provisória</b>':' · produção real'}</div>`;
   h+=`</div>`;
   return h;
 }
