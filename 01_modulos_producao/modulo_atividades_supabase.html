@@ -3528,14 +3528,14 @@ function renderResultados(){
       ${Object.keys(D.recCult).map(c=>dsub(esc(c),D.recCult[c])).join('')}
       ${dtot('(−) Custo de produção (direto)',D.custo,'#e88')}
       ${['Insumos','Diesel','Aéreo','Colheita'].map(k=>dsub(k,D.catT[k])).join('')}
-      ${dtot('(=) Lucro bruto (operacional)',D.lucroBruto,dcol2(D.lucroBruto))}
-      ${dtot('(−) Custo fixo — caixa',D.cf.caixa,'#e88')}
+      ${dtot('(=) Lucro bruto (margem operacional)',D.lucroBruto,dcol2(D.lucroBruto))}
+      ${dtot('(−) Despesas fixas (caixa)',D.cf.caixa,'#e88')}
       ${dsub('Folha fixa (RH)',D.cf.rh)}${dsub('13º + Férias (provisão)',D.cf.prov13fer)}${dsub('Outros fixos (admin/estrutura)',D.cf.caixaManual)}
-      ${dtot('(=) Resultado de caixa',D.resCaixa,dcol2(D.resCaixa))}
-      ${dtot('(−) Depreciação (não-caixa)',D.cf.naoCaixa,'#e88')}
-      ${dtot('(=) Resultado líquido (contábil)',D.resLiq,dcol2(D.resLiq))}
+      ${dtot('(=) EBITDA',D.resCaixa,dcol2(D.resCaixa))}
+      ${dtot('(−) Depreciação & amortização',D.cf.naoCaixa,'#e88')}
+      ${dtot('(=) EBIT',D.resLiq,dcol2(D.resLiq))}
     </tbody></table>
-    ${D.cf.total===0?'<div style="font-size:11px;color:#b9770e;margin-top:8px">⚠️ Custo fixo zerado — preencha na aba <b>Custos fixos</b> (Planejamento): depreciação das máquinas + folha fixa.</div>':`<div style="font-size:11px;color:#667;margin-top:8px">Margem líquida: <b style="color:${dcol2(D.resLiq)}">${D.receita>0?(D.resLiq/D.receita*100).toFixed(1):'—'}%</b> · custo fixo total R$ ${fmtBR(D.cf.total)}</div>`}
+    ${D.cf.total===0?'<div style="font-size:11px;color:#b9770e;margin-top:8px">⚠️ Custo fixo zerado — preencha na aba <b>Custos fixos</b> (Planejamento): depreciação das máquinas + folha fixa.</div>':`<div style="font-size:11px;color:#667;margin-top:8px">Margem EBITDA <b style="color:${dcol2(D.resCaixa)}">${D.receita>0?(D.resCaixa/D.receita*100).toFixed(1):'—'}%</b> · Margem EBIT <b style="color:${dcol2(D.resLiq)}">${D.receita>0?(D.resLiq/D.receita*100).toFixed(1):'—'}%</b> · custo fixo R$ ${fmtBR(D.cf.total)}<br>Lucro líquido = EBIT − juros − impostos (Funrural etc.), <b>a definir</b>.</div>`}
   </div>`;
   const th=(t,al)=>`<th style="text-align:${al||'right'};padding:8px 10px">${t}</th>`;
   h+=`<table style="width:100%;border-collapse:collapse;font-size:13px"><thead><tr style="background:#16202b;color:#8aa">
