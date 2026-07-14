@@ -3501,6 +3501,59 @@ function _resCustoFixoDetalheHTML(){
     <div style="font-size:12px;color:#8aa;margin-bottom:12px">Na DRE: a parte <b>caixa</b> (R$ ${F(T.caixa)}) desce até o EBITDA; a <b>depreciação</b> (R$ ${F(T.deprec)}) sai depois, do EBITDA pro EBIT.</div>
     ${rhBox}${p13Box}${depBox}${outBox}</div>`;
 }
+/* ===== Relatório A4 (folha branca, retrato, pronto p/ imprimir) ===== */
+function _resA4HTML(){
+  const D=_resDRE();
+  const cs=(S.comandas||[]).filter(c=>c.status!=='cancelada');
+  const porLC={};
+  cs.forEach(c=>{ const cc=_resCustoComanda(c); const k=c.loteNome+'|'+(c.cultura||''); const L=porLC[k]||(porLC[k]={lote:c.loteNome,cultura:c.cultura||'',area:areaDe(c.loteNome)||cc.area,total:0,dieselL:0}); L.total+=cc.total; L.dieselL+=cc.dieselL; });
+  const linhas=Object.values(porLC).map(L=>{ const pr=_resProdLote(L.lote,L.cultura); const qtd=pr?pr.qtd:0; const rec=qtd*_resPrecoVenda(L.cultura); L.qtd=qtd; L.unid=pr?pr.unidade:'sc'; L.receita=rec; L.margem=rec-L.total; L.prodHa=(L.area>0&&qtd)?qtd/L.area:0; return L; }).sort((a,b)=>String(a.lote).localeCompare(String(b.lote),'pt'));
+  const areaTot=Object.values(linhas.reduce((a,l)=>{a[l.lote]=l.area||0;return a;},{})).reduce((s,a)=>s+a,0);
+  const F=n=>fmtBR(n); const R$=n=>'R$ '+F(n);
+  const dt=new Date().toLocaleDateString('pt-BR');
+  const dreRow=(lab,val,bold,sub)=>`<tr${bold?' style="font-weight:700"':''}><td style="padding:${bold?'6':'2'}px 4px;${sub?'padding-left:16px;color:#555;font-weight:400;font-size:11px':''}${bold?';border-top:1px solid #999':''}">${lab}</td><td style="text-align:right;padding:${bold?'6':'2'}px 4px${bold?';border-top:1px solid #999':''}">${R$(val)}</td><td style="text-align:right;padding:${bold?'6':'2'}px 4px;color:#666;font-size:11px${bold?';border-top:1px solid #999':''}">${D.receita>0&&bold?Math.round(val/D.receita*100)+'%':''}</td></tr>`;
+  let dre=`<table style="width:100%;border-collapse:collapse;font-size:12px;margin-bottom:6px"><tbody>`;
+  dre+=dreRow('(+) Receita bruta',D.receita,true);
+  Object.keys(D.recCult).forEach(c=>dre+=dreRow(c,D.recCult[c],false,true));
+  dre+=dreRow('(−) Custo de produção (direto)',D.custo,true);
+  ['Insumos','Diesel','Aéreo','Colheita'].forEach(k=>dre+=dreRow(k,D.catT[k],false,true));
+  dre+=dreRow('(=) Lucro bruto (operacional)',D.lucroBruto,true);
+  dre+=dreRow('(−) Despesas fixas (caixa)',D.cf.caixa,true);
+  ['Folha fixa (RH)|'+D.cf.rh,'13º + Férias|'+D.cf.prov13fer,'Outros fixos|'+D.cf.caixaManual].forEach(s=>{const p=s.split('|');dre+=dreRow(p[0],+p[1],false,true);});
+  dre+=dreRow('(=) EBITDA',D.resCaixa,true);
+  dre+=dreRow('(−) Depreciação & amortização',D.cf.naoCaixa,true);
+  dre+=dreRow('(=) EBIT',D.resLiq,true);
+  dre+=`</tbody></table><div style="font-size:10px;color:#666">Margem EBITDA ${D.receita>0?(D.resCaixa/D.receita*100).toFixed(1):'—'}% · Margem EBIT ${D.receita>0?(D.resLiq/D.receita*100).toFixed(1):'—'}% · Lucro líquido = EBIT − juros/impostos (a definir)</div>`;
+  // tabela por lote
+  const th=(t,al)=>`<th style="text-align:${al||'right'};padding:3px 5px;border-bottom:1.5px solid #333">${t}</th>`;
+  let tab=`<table style="width:100%;border-collapse:collapse;font-size:10.5px"><thead><tr>${th('Lote','left')}${th('Cult','left')}${th('Área')}${th('Prod/ha')}${th('Custo/ha')}${th('Receita/ha')}${th('Margem/ha')}${th('Margem R$')}</tr></thead><tbody>`;
+  linhas.forEach(l=>{ const cph=l.area>0?l.total/l.area:0,rph=l.area>0?l.receita/l.area:0,mph=l.area>0?l.margem/l.area:0;
+    tab+=`<tr><td style="padding:2px 5px;border-bottom:1px solid #eee">${esc(l.lote)}</td><td style="padding:2px 5px;border-bottom:1px solid #eee;color:#666">${esc(l.cultura)}</td><td style="text-align:right;padding:2px 5px;border-bottom:1px solid #eee">${F(l.area)}</td><td style="text-align:right;padding:2px 5px;border-bottom:1px solid #eee">${l.prodHa?F(l.prodHa)+' '+esc(l.unid):'—'}</td><td style="text-align:right;padding:2px 5px;border-bottom:1px solid #eee">${F(cph)}</td><td style="text-align:right;padding:2px 5px;border-bottom:1px solid #eee">${l.receita?F(rph):'—'}</td><td style="text-align:right;padding:2px 5px;border-bottom:1px solid #eee">${l.receita?F(mph):'—'}</td><td style="text-align:right;padding:2px 5px;border-bottom:1px solid #eee;font-weight:600">${l.receita?F(l.margem):'—'}</td></tr>`; });
+  tab+=`</tbody></table>`;
+  return `<div style="text-align:center;border-bottom:2px solid #111;padding-bottom:8px;margin-bottom:12px">
+      <div style="font-size:20px;font-weight:700;letter-spacing:1px">ALABAMA AGRO</div>
+      <div style="font-size:13px;margin-top:2px">Resultados — Safra ${esc(SAFRA)}</div>
+      <div style="font-size:10px;color:#666;margin-top:2px">${F(areaTot)} ha · emitido em ${dt}</div>
+    </div>
+    <div style="font-size:13px;font-weight:700;margin-bottom:4px">Demonstração do Resultado (DRE)</div>${dre}
+    <div style="font-size:13px;font-weight:700;margin:16px 0 4px">Resultado por lote</div>${tab}
+    <div style="margin-top:14px;font-size:9px;color:#888;text-align:center;border-top:1px solid #ccc;padding-top:6px">Custo fixo total R$ ${F(D.cf.total)}/ano (folha ${F(D.cf.caixa)} + depreciação ${F(D.cf.deprec)}) · diesel R$ ${F(RES_DIESEL_PRECO)}/L · valores provisórios onde houver algodão sem preço final</div>`;
+}
+function _resA4Abrir(){
+  let st=document.getElementById('a4style');
+  if(!st){ st=document.createElement('style'); st.id='a4style';
+    st.textContent='#a4wrap{position:fixed;inset:0;z-index:100000;background:rgba(0,0,0,.55);overflow:auto;padding:16px 0}@media print{body>*:not(#a4wrap){display:none!important}#a4wrap{position:static!important;background:#fff!important;padding:0!important;overflow:visible!important}#a4wrap .a4bar{display:none!important}#a4sheet{width:auto!important;max-width:none!important;margin:0!important;box-shadow:none!important;padding:0!important}@page{size:A4 portrait;margin:14mm}}';
+    document.head.appendChild(st); }
+  let w=document.getElementById('a4wrap');
+  if(!w){ w=document.createElement('div'); w.id='a4wrap'; document.body.appendChild(w); }
+  const bbtn='style="padding:8px 16px;border:none;border-radius:8px;cursor:pointer;font-weight:700;font-size:13px"';
+  w.innerHTML='<div class="a4bar" style="width:210mm;max-width:96vw;margin:0 auto 10px;display:flex;gap:10px;justify-content:flex-end">'
+    +'<button onclick="window.print()" '+bbtn+';background:#2e7d32;color:#fff">🖨️ Imprimir</button>'
+    +'<button onclick="_resA4Fechar()" '+bbtn+';background:#555;color:#fff">✕ Fechar</button></div>'
+    +'<div id="a4sheet" style="width:210mm;max-width:96vw;margin:0 auto;background:#fff;color:#111;padding:16mm 14mm;box-shadow:0 0 24px rgba(0,0,0,.5);font:13px/1.45 -apple-system,system-ui,Arial,sans-serif;box-sizing:border-box">'+_resA4HTML()+'</div>';
+  w.style.display='block';
+}
+function _resA4Fechar(){ const w=document.getElementById('a4wrap'); if(w) w.style.display='none'; }
 function _resCustoComanda(c){
   const ex=(_resExec&&_resExec[c.codigo])||{area:0,diesel:0};
   const area=ex.area>0?ex.area:(areaDe(c.loteNome)||0);
@@ -3544,7 +3597,8 @@ function renderResultados(){
   let h=`<div style="padding:8px 4px 40px">
    <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:14px">
      <h2 style="margin:0;font-size:20px">📊 Resultados <span style="color:#8aa;font-weight:400;font-size:14px">(safra ${esc(SAFRA)})</span></h2>
-     <span style="margin-left:auto;font-size:12px;color:#8aa">diesel R$ ${fmtBR(RES_DIESEL_PRECO)}/L · ao vivo do banco</span>
+     <button onclick="_resA4Abrir()" style="margin-left:auto;padding:6px 12px;border-radius:8px;border:1px solid #3a4a5a;cursor:pointer;background:#1c2733;color:#fff;font-weight:600">🖨️ Relatório A4</button>
+     <span style="font-size:12px;color:#8aa">diesel R$ ${fmtBR(RES_DIESEL_PRECO)}/L · ao vivo</span>
    </div>
    <div style="display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap">${btn('todas','Todas')}${btn('soja','Soja')}${btn('algodao','Algodão')}${btn('feijao','Feijão')}</div>
    <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:18px">
