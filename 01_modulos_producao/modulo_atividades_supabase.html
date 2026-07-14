@@ -3448,6 +3448,19 @@ function _resPrecoVenda(cult){
   return 0;
 }
 function _resProdLote(lote,cult){ return (_resProd&&_resProd[(lote||'')+'|'+(cult||'')])||null; }
+/* DRE — consolidado da safra (sempre TODAS as culturas): receita - custo direto - custo fixo */
+function _resDRE(){
+  const cs=(S.comandas||[]).filter(c=>c.status!=='cancelada');
+  let custo=0; const catT={Insumos:0,Diesel:0,Aéreo:0,Colheita:0};
+  cs.forEach(c=>{ const cc=_resCustoComanda(c); custo+=cc.total; catT.Insumos+=cc.insumos; catT.Diesel+=cc.diesel; catT['Aéreo']+=cc.aereo; catT.Colheita+=cc.colhTerc; });
+  let receita=0; const recCult={};
+  Object.keys(_resProd||{}).forEach(k=>{ const sp=k.split('|'); const cult=sp[1]||''; const pr=_resProd[k]; const r=(pr.qtd||0)*_resPrecoVenda(cult); receita+=r; recCult[cult]=(recCult[cult]||0)+r; });
+  const T=(typeof _cfTotais==='function')?_cfTotais():{caixa:0,rh:0,prov13fer:0,caixaManual:0,deprec:0,ncManual:0,naoCaixa:0,total:0};
+  const lucroBruto=receita-custo;
+  const resCaixa=lucroBruto-T.caixa;
+  const resLiq=resCaixa-T.naoCaixa;
+  return {receita,recCult,custo,catT,lucroBruto,cf:T,resCaixa,resLiq};
+}
 function _resCustoComanda(c){
   const ex=(_resExec&&_resExec[c.codigo])||{area:0,diesel:0};
   const area=ex.area>0?ex.area:(areaDe(c.loteNome)||0);
@@ -3501,6 +3514,29 @@ function renderResultados(){
      ${card('Diesel',fmtL(tot.dieselL)+' L · '+_res$(tot.diesel))}
      ${card('Custo médio',areaTot>0?(_res$(tot.total/areaTot)+'/ha'):'—')}
    </div>`;
+  // ===== DRE (consolidado da safra) =====
+  const D=_resDRE();
+  const dcol2=v=>v>=0?'#7fd18b':'#e88';
+  const money=(v,col)=>`<td style="text-align:right;padding:5px 8px;white-space:nowrap;${col?'color:'+col+';':''}">${_res$(v)}</td>`;
+  const pctc=v=>`<td style="text-align:right;padding:5px 8px;color:#889;font-size:12px;width:56px">${D.receita>0?Math.round(v/D.receita*100)+'%':''}</td>`;
+  const dsub=(lab,v)=>`<tr><td style="padding:2px 8px 2px 24px;color:#9ab;font-weight:400;font-size:12px">${lab}</td>${money(v)}<td></td></tr>`;
+  const dtot=(lab,v,col)=>`<tr style="font-weight:700;border-top:1px solid #2a3a4a"><td style="padding:7px 8px">${lab}</td>${money(v,col)}${pctc(v)}</tr>`;
+  h+=`<div style="background:#111c26;border:1px solid #2a3a4a;border-radius:12px;padding:14px 18px;margin-bottom:20px;max-width:560px">
+    <div style="font-weight:700;font-size:15px;margin-bottom:8px">📄 DRE — Safra ${esc(SAFRA)} <span style="font-weight:400;color:#8aa;font-size:12px">· consolidado (todas as culturas)</span></div>
+    <table style="width:100%;border-collapse:collapse;font-size:13px"><tbody>
+      <tr style="font-weight:700"><td style="padding:5px 8px">(+) Receita bruta</td>${money(D.receita)}${pctc(D.receita)}</tr>
+      ${Object.keys(D.recCult).map(c=>dsub(esc(c),D.recCult[c])).join('')}
+      ${dtot('(−) Custo de produção (direto)',D.custo,'#e88')}
+      ${['Insumos','Diesel','Aéreo','Colheita'].map(k=>dsub(k,D.catT[k])).join('')}
+      ${dtot('(=) Lucro bruto (operacional)',D.lucroBruto,dcol2(D.lucroBruto))}
+      ${dtot('(−) Custo fixo — caixa',D.cf.caixa,'#e88')}
+      ${dsub('Folha fixa (RH)',D.cf.rh)}${dsub('13º + Férias (provisão)',D.cf.prov13fer)}${dsub('Outros fixos (admin/estrutura)',D.cf.caixaManual)}
+      ${dtot('(=) Resultado de caixa',D.resCaixa,dcol2(D.resCaixa))}
+      ${dtot('(−) Depreciação (não-caixa)',D.cf.naoCaixa,'#e88')}
+      ${dtot('(=) Resultado líquido (contábil)',D.resLiq,dcol2(D.resLiq))}
+    </tbody></table>
+    ${D.cf.total===0?'<div style="font-size:11px;color:#b9770e;margin-top:8px">⚠️ Custo fixo zerado — preencha na aba <b>Custos fixos</b> (Planejamento): depreciação das máquinas + folha fixa.</div>':`<div style="font-size:11px;color:#667;margin-top:8px">Margem líquida: <b style="color:${dcol2(D.resLiq)}">${D.receita>0?(D.resLiq/D.receita*100).toFixed(1):'—'}%</b> · custo fixo total R$ ${fmtBR(D.cf.total)}</div>`}
+  </div>`;
   const th=(t,al)=>`<th style="text-align:${al||'right'};padding:8px 10px">${t}</th>`;
   h+=`<table style="width:100%;border-collapse:collapse;font-size:13px"><thead><tr style="background:#16202b;color:#8aa">
      ${th('Lote','left')}${th('Cult','left')}${th('Área')}${th('Prod/ha')}${th('Diesel L/ha')}${th('Custo/ha')}${th('Receita/ha')}${th('Margem/ha')}${th('Custo total')}${th('Margem total')}</tr></thead><tbody>`;

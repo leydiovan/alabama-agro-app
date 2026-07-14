@@ -1,0 +1,3 @@
+﻿Resultados: no Total, produtividade por cultura empilhada (nao soma sacas de culturas diferentes); valor R$ combina
+
+Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>
