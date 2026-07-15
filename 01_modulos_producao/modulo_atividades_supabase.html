@@ -3566,9 +3566,9 @@ function _resCustoFixoDetalheHTML(){
 function _resCustoCategoriaCultura(){
   const cs=(S.comandas||[]).filter(c=>c.status!=='cancelada');
   const out={};
-  const g=cult=>out[cult]||(out[cult]={area:0,sementes:0,fertilizantes:0,defensivos:0,biologicos:0,aereo:0,colheita:0,combustivel:0,manut:0,energia:0,posColh:0,total:0});
+  const g=cult=>out[cult]||(out[cult]={area:0,sementes:0,fertilizantes:0,defensivos:0,biologicos:0,aereo:0,colheita:0,combustivel:0,manut:0,energia:0,posColh:0,total:0,tipos:{}});
   cs.forEach(c=>{ const o=g(c.cultura||''); const ex=(_resExec&&_resExec[c.codigo])||{area:0,diesel:0}; const area=ex.area>0?ex.area:(areaDe(c.loteNome)||0); const gr=c.geralRetorno||{};
-    (c.produtos||[]).forEach(p=>{ const dose=parseFloat(String(p.dose||'').replace(',','.'))||0; o[_TIPO2COE[p.tipo]||'defensivos']+=dose*_custoUnitProd(p.nome)*area; });
+    (c.produtos||[]).forEach(p=>{ const dose=parseFloat(String(p.dose||'').replace(',','.'))||0; const cost=dose*_custoUnitProd(p.nome)*area; o[_TIPO2COE[p.tipo]||'defensivos']+=cost; const tp=p.tipo||'Outro'; o.tipos[tp]=(o.tipos[tp]||0)+cost; });
     o.aereo+=(+gr.custo_servico_ha||0)*area; o.colheita+=((+gr.terceiros_ha||0)+(+gr.oper_propria_ha||0))*area; o.combustivel+=(ex.diesel||0)*RES_DIESEL_PRECO; });
   const slices=[]; const seen={};
   cs.forEach(c=>{ const k=c.loteNome+'|'+(c.cultura||''); if(seen[k])return; seen[k]=1; slices.push({lote:c.loteNome,cultura:c.cultura||'',area:areaDe(c.loteNome)||0}); });
@@ -3643,18 +3643,28 @@ function _resA4HTML(){
   const cLab={soja:'Soja',algodao:'Algodão',feijao:'Feijão'};
   const Fi=v=>Math.round(v||0).toLocaleString('pt-BR');
   const grpsCat=[
-   {lab:'1. Insumos',keys:['sementes','fertilizantes','defensivos','biologicos'],subs:[['Sementes e tratamento','sementes'],['Fertilizantes e corretivos','fertilizantes'],['Defensivos','defensivos'],['Biológicos','biologicos']]},
-   {lab:'2. Serviços de terceiros',keys:['aereo','colheita'],subs:[['Aplicação aérea','aereo'],['Colheita (terceiros)','colheita']]},
-   {lab:'3. Operações e manutenção',keys:['combustivel','manut','energia'],subs:[['Combustíveis e lubrificantes','combustivel'],['Peças e manutenção','manut'],['Energia (irrigação/pivôs)','energia']]},
-   {lab:'4. Pós-colheita',keys:['posColh'],subs:[['Silo bolsa (armazenagem)','posColh']]},
+   {lab:'1. Insumos',keys:['sementes','fertilizantes','defensivos','biologicos'],subs:[
+     {lab:'Sementes e tratamento',key:'sementes',tipos:['Semente','Tratamento de Sementes']},
+     {lab:'Fertilizantes e corretivos',key:'fertilizantes',tipos:['Fertilizante','Fertilizante Foliar']},
+     {lab:'Defensivos',key:'defensivos',tipos:['Herbicida','Inseticida','Fungicida','Adjuvante','Regulador']},
+     {lab:'Biológicos',key:'biologicos',tipos:['Inoculante']} ]},
+   {lab:'2. Serviços de terceiros',keys:['aereo','colheita'],subs:[{lab:'Aplicação aérea',key:'aereo'},{lab:'Colheita (terceiros)',key:'colheita'}]},
+   {lab:'3. Operações e manutenção',keys:['combustivel','manut','energia'],subs:[{lab:'Combustíveis e lubrificantes',key:'combustivel'},{lab:'Peças e manutenção',key:'manut'},{lab:'Energia (irrigação/pivôs)',key:'energia'}]},
+   {lab:'4. Pós-colheita',keys:['posColh'],subs:[{lab:'Silo bolsa (armazenagem)',key:'posColh'}]},
   ];
   const hha=(cult,key)=>{const o=cc[cult];return o&&o.area>0?o[key]/o.area:0;};
+  const thaC=(cult,tp)=>{const o=cc[cult];return o&&o.area>0?(o.tipos[tp]||0)/o.area:0;};
   const hhaG=(cult,keys)=>{const o=cc[cult];if(!o||o.area<=0)return 0;return keys.reduce((s,k)=>s+o[k],0)/o.area;};
-  const thC=(t,al)=>`<th style="text-align:${al||'right'};padding:5px 8px;border-bottom:2px solid #333">${t}</th>`;
-  let tabC=`<table style="width:100%;border-collapse:collapse;font-size:11px"><thead><tr>${thC('Categoria — R$/ha','left')}${cCols.map(c=>thC(cLab[c])).join('')}</tr></thead><tbody>`;
+  const tipoTem=tp=>cCols.some(c=>(cc[c].tipos[tp]||0)>0);
+  const thC=(t,al)=>`<th style="text-align:${al||'right'};padding:4px 8px;border-bottom:2px solid #333">${t}</th>`;
+  let tabC=`<table style="width:100%;border-collapse:collapse;font-size:10.5px"><thead><tr>${thC('Categoria — R$/ha','left')}${cCols.map(c=>thC(cLab[c])).join('')}</tr></thead><tbody>`;
   grpsCat.forEach(gp=>{
-    tabC+=`<tr style="background:#e9e9e9"><td style="padding:3px 8px;font-weight:700;border-top:1px solid #999">${gp.lab}</td>${cCols.map(c=>`<td style="text-align:right;padding:3px 8px;font-weight:700;border-top:1px solid #999">${Fi(hhaG(c,gp.keys))}</td>`).join('')}</tr>`;
-    gp.subs.forEach(([lab,key])=>{ tabC+=`<tr><td style="padding:2px 8px 2px 20px;border-bottom:1px solid #eee;color:#333">${lab}</td>${cCols.map(c=>`<td style="text-align:right;padding:2px 8px;border-bottom:1px solid #eee">${Fi(hha(c,key))}</td>`).join('')}</tr>`; });
+    tabC+=`<tr style="background:#e2e2e2"><td style="padding:3px 8px;font-weight:700;border-top:1px solid #999">${gp.lab}</td>${cCols.map(c=>`<td style="text-align:right;padding:3px 8px;font-weight:700;border-top:1px solid #999">${Fi(hhaG(c,gp.keys))}</td>`).join('')}</tr>`;
+    gp.subs.forEach(sb=>{ const hasT=sb.tipos&&sb.tipos.some(tipoTem);
+      tabC+=`<tr${hasT?' style="background:#f6f6f6"':''}><td style="padding:2px 8px 2px 18px;${hasT?'font-weight:600;':''}color:#222;border-bottom:1px solid #eee">${sb.lab}</td>${cCols.map(c=>`<td style="text-align:right;padding:2px 8px;${hasT?'font-weight:600;':''}border-bottom:1px solid #eee">${Fi(hha(c,sb.key))}</td>`).join('')}</tr>`;
+      if(sb.tipos) sb.tipos.forEach(tp=>{ if(!tipoTem(tp)) return;
+        tabC+=`<tr><td style="padding:1px 8px 1px 34px;color:#666;font-size:9.5px;border-bottom:1px solid #f4f4f4">${esc(tp)}</td>${cCols.map(c=>`<td style="text-align:right;padding:1px 8px;color:#666;font-size:9.5px;border-bottom:1px solid #f4f4f4">${Fi(thaC(c,tp))}</td>`).join('')}</tr>`; });
+    });
   });
   tabC+=`<tr style="background:#333;color:#fff"><td style="padding:5px 8px;font-weight:800">CUSTO MÉDIO TOTAL / ha (COE)</td>${cCols.map(c=>`<td style="text-align:right;padding:5px 8px;font-weight:800">${Fi(cc[c].area>0?cc[c].total/cc[c].area:0)}</td>`).join('')}</tr>`;
   tabC+=`<tr style="background:#f4f4f4"><td style="padding:4px 8px;font-weight:700">Área (ha)</td>${cCols.map(c=>`<td style="text-align:right;padding:4px 8px">${F(cc[c].area)}</td>`).join('')}</tr>`;
