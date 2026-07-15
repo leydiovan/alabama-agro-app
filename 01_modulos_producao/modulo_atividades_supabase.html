@@ -3588,19 +3588,28 @@ function _resMapaSVG(){
   const cs=(S.comandas||[]).filter(c=>c.status!=='cancelada');
   const cult={}; cs.forEach(c=>{ const s=cult[c.loteNome]||(cult[c.loteNome]=new Set()); s.add(c.cultura||''); });
   const feats=[];
-  Object.keys(cult).forEach(nome=>{ const ring=_resGeom[nome]; if(!ring||ring.length<3) return; const s=cult[nome]; const main=s.has('algodao')?'algodao':s.has('soja')?'soja':'feijao'; const feij=s.has('feijao')&&main!=='feijao'; feats.push({nome,main,feij,ring}); });
+  Object.keys(cult).forEach(nome=>{ const ring=_resGeom[nome]; if(!ring||ring.length<3) return; const s=cult[nome]; const main=s.has('algodao')?'algodao':s.has('soja')?'soja':'feijao'; const feij=s.has('feijao')&&main!=='feijao'; feats.push({nome,main,feij,ring:ring.map(p=>[+p[0],+p[1]])}); });
   if(!feats.length) return '<div style="color:#888;text-align:center;padding:20px">Sem geometria de lotes no cadastro.</div>';
+  // geometria: área, interseção, RDP (simplifica pontos densos), offset por aresta c/ limite de miter, centróide real
+  const polyArea=r=>{let a=0;const n=r.length;for(let i=0;i<n;i++){const p=r[i],q=r[(i+1)%n];a+=p[0]*q[1]-q[0]*p[1];}return a/2;};
+  const inter=(l1,l2)=>{const den=l1.dx*l2.dy-l1.dy*l2.dx;if(Math.abs(den)<1e-9)return null;const t=((l2.px-l1.px)*l2.dy-(l2.py-l1.py)*l2.dx)/den;return [l1.px+t*l1.dx,l1.py+t*l1.dy];};
+  const perp=(p,a,b)=>{const dx=b[0]-a[0],dy=b[1]-a[1],L=Math.hypot(dx,dy);return L<1e-9?Math.hypot(p[0]-a[0],p[1]-a[1]):Math.abs((p[0]-a[0])*dy-(p[1]-a[1])*dx)/L;};
+  const rdp=(pts,eps)=>{if(pts.length<3)return pts;let dm=0,idx=0;const a=pts[0],b=pts[pts.length-1];for(let i=1;i<pts.length-1;i++){const d=perp(pts[i],a,b);if(d>dm){dm=d;idx=i;}}return dm>eps?rdp(pts.slice(0,idx+1),eps).slice(0,-1).concat(rdp(pts.slice(idx),eps)):[a,b];};
+  const offsetPoly=(ring,d)=>{let pts=ring.slice();if(pts.length>1&&pts[0][0]===pts[pts.length-1][0]&&pts[0][1]===pts[pts.length-1][1])pts.pop();const n=pts.length;if(n<3)return pts;const lines=[];for(let i=0;i<n;i++){const a=pts[i],b=pts[(i+1)%n];let dx=b[0]-a[0],dy=b[1]-a[1];const L=Math.hypot(dx,dy)||1;dx/=L;dy/=L;lines.push({px:a[0]-dy*d,py:a[1]+dx*d,dx,dy});}const out=[];const cap=Math.abs(d)*2.2;for(let i=0;i<n;i++){let p=inter(lines[(i-1+n)%n],lines[i]);if(p){const ov=pts[i],ddx=p[0]-ov[0],ddy=p[1]-ov[1],ds=Math.hypot(ddx,ddy);if(ds>cap)p=[ov[0]+ddx/ds*cap,ov[1]+ddy/ds*cap];}out.push(p||pts[i]);}return out;};
+  const centroid=r=>{let a=0,cx=0,cy=0;const n=r.length;for(let i=0;i<n;i++){const p=r[i],q=r[(i+1)%n];const cr=p[0]*q[1]-q[0]*p[1];a+=cr;cx+=(p[0]+q[0])*cr;cy+=(p[1]+q[1])*cr;}a/=2;if(Math.abs(a)<1e-6){let sx=0,sy=0;r.forEach(p=>{sx+=p[0];sy+=p[1];});return [sx/n,sy/n];}return [cx/(6*a),cy/(6*a)];};
+  const OFF=100;                                   // offset interno de 100 m
+  const shrink=ring=>{ const rr=rdp(ring,8); const A=offsetPoly(rr,OFF),B=offsetPoly(rr,-OFF); const aA=Math.abs(polyArea(A)),aB=Math.abs(polyArea(B)),a0=Math.abs(polyArea(rr)); let best=aA<aB?A:B; const ab=Math.min(aA,aB); if(!(ab>0.12*a0)){ const c=centroid(rr),k=0.63; best=rr.map(p=>[c[0]+(p[0]-c[0])*k,c[1]+(p[1]-c[1])*k]); } return best; };
+  // bbox das poligonais originais (enquadramento estável)
   let minX=1e12,maxX=-1e12,minY=1e12,maxY=-1e12;
-  feats.forEach(f=>f.ring.forEach(p=>{minX=Math.min(minX,+p[0]);maxX=Math.max(maxX,+p[0]);minY=Math.min(minY,+p[1]);maxY=Math.max(maxY,+p[1]);}));
-  const W=maxX-minX,H=maxY-minY,pad=W*0.02;
+  feats.forEach(f=>f.ring.forEach(p=>{minX=Math.min(minX,p[0]);maxX=Math.max(maxX,p[0]);minY=Math.min(minY,p[1]);maxY=Math.max(maxY,p[1]);}));
+  const W=maxX-minX,H=maxY-minY,pad=W*0.01;
   const px=x=>(x-minX+pad).toFixed(1), py=y=>(maxY-y+pad).toFixed(1);
   const COL={soja:'#a7c66b',algodao:'#6ba3c9',feijao:'#d8a86b'};
-  const cen=ring=>{let sx=0,sy=0;ring.forEach(p=>{sx+=+p[0];sy+=+p[1];});return [sx/ring.length,sy/ring.length];};
   let polys='',labels='';
-  feats.forEach(f=>{ const pts=f.ring.map(p=>px(+p[0])+','+py(+p[1])).join(' ');
-    polys+=`<polygon points="${pts}" fill="${COL[f.main]}" stroke="#333" stroke-width="${(W*0.0008).toFixed(1)}"/>`;
+  feats.forEach(f=>{ const inr=shrink(f.ring); const pts=inr.map(p=>px(p[0])+','+py(p[1])).join(' ');
+    polys+=`<polygon points="${pts}" fill="${COL[f.main]}" stroke="none"/>`;
     if(f.feij) polys+=`<polygon points="${pts}" fill="url(#hatchF)" stroke="none"/>`;
-    const c=cen(f.ring); const nm=esc(f.nome.replace('Lote ','').replace('Pivo ','P'));
+    const c=centroid(inr); const nm=esc(f.nome.replace('Lote ','').replace('Pivo ','P'));
     labels+=`<text x="${px(c[0])}" y="${py(c[1])}" font-size="${(W*0.014).toFixed(1)}" text-anchor="middle" dominant-baseline="middle" font-weight="700" fill="#1a1a1a" style="paint-order:stroke;stroke:#fff;stroke-width:${(W*0.004).toFixed(1)}px">${nm}</text>`; });
   const hs=(W*0.02).toFixed(1), hw=(W*0.006).toFixed(1);
   return `<svg viewBox="0 0 ${(W+pad*2).toFixed(1)} ${(H+pad*2).toFixed(1)}" xmlns="http://www.w3.org/2000/svg" style="width:100%;height:auto;display:block">
@@ -3734,14 +3743,12 @@ function _resA4HTML(){
       <div style="margin-top:14px;font-size:10px;color:#888;text-align:center;border-top:1px solid #ccc;padding-top:8px">Valores em <b>R$/ha</b> (custo médio) do COE de cada cultura, aberto por categoria — já com os custos gerais rateados (manutenção, energia dos pivôs, silo bolsa). <b>Não</b> inclui o custo fixo (mão de obra / admin / depreciação), que é da fazenda toda e entra só na DRE.</div>
     </div></div>
     <div class="a4page"><div class="a4fit">
-      ${hdr('Mapa de culturas — por lote')}
-      <div style="display:flex;gap:24px;justify-content:center;font-size:12px;margin-bottom:8px">
-        <span><span style="display:inline-block;width:16px;height:11px;background:#a7c66b;border:1px solid #333;vertical-align:middle"></span> Soja</span>
-        <span><span style="display:inline-block;width:16px;height:11px;background:#6ba3c9;border:1px solid #333;vertical-align:middle"></span> Algodão</span>
-        <span><span style="display:inline-block;width:16px;height:11px;background:#a7c66b;border:1px solid #333;vertical-align:middle;background-image:repeating-linear-gradient(45deg,transparent 0 3px,#7a4f22 3px 5px)"></span> Soja + feijão (safrinha)</span>
+      <div style="display:flex;gap:24px;justify-content:center;font-size:12px;margin-bottom:10px">
+        <span><span style="display:inline-block;width:16px;height:11px;background:#a7c66b;vertical-align:middle"></span> Soja</span>
+        <span><span style="display:inline-block;width:16px;height:11px;background:#6ba3c9;vertical-align:middle"></span> Algodão</span>
+        <span><span style="display:inline-block;width:16px;height:11px;background:#a7c66b;vertical-align:middle;background-image:repeating-linear-gradient(45deg,transparent 0 3px,#7a4f22 3px 5px)"></span> Soja + feijão (safrinha)</span>
       </div>
       ${_resMapaSVG()}
-      <div style="margin-top:8px;font-size:10px;color:#888;text-align:center;border-top:1px solid #ccc;padding-top:6px">Poligonais do cadastro (UTM 23S) · cor por cultura · lotes com feijão safrinha em hachura · nome no centro do lote.</div>
     </div></div>`;
 }
 function _resA4Abrir(){
