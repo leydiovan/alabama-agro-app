@@ -3566,7 +3566,7 @@ function _resA4HTML(){
   const cs=(S.comandas||[]).filter(c=>c.status!=='cancelada');
   const porLC={};
   cs.forEach(c=>{ const cc=_resCustoComanda(c); const k=c.loteNome+'|'+(c.cultura||''); const L=porLC[k]||(porLC[k]={lote:c.loteNome,cultura:c.cultura||'',area:areaDe(c.loteNome)||cc.area,total:0,dieselL:0}); L.total+=cc.total; L.dieselL+=cc.dieselL; });
-  const _ratLA=_resRateioLoteCOE(); const _nA={}; Object.values(porLC).forEach(s=>{_nA[s.lote]=(_nA[s.lote]||0)+1;}); Object.values(porLC).forEach(s=>{ const rv=_ratLA[s.lote]; if(rv) s.total+=rv/_nA[s.lote]; });
+  const _ratA=_resRateioCOE(Object.values(porLC)); Object.values(porLC).forEach(s=>{ const r=_ratA[s.lote+'|'+(s.cultura||'')]; if(r) s.total+=r.total; });
   const linhas=Object.values(porLC).map(L=>{ const pr=_resProdLote(L.lote,L.cultura); const qtd=pr?pr.qtd:0; const rec=qtd*_resPrecoVenda(L.cultura); L.qtd=qtd; L.unid=pr?pr.unidade:'sc'; L.receita=rec; L.margem=rec-L.total; L.prodHa=(L.area>0&&qtd)?qtd/L.area:0; return L; }).sort((a,b)=>String(a.lote).localeCompare(String(b.lote),'pt'));
   const areaTot=Object.values(linhas.reduce((a,l)=>{a[l.lote]=l.area||0;return a;},{})).reduce((s,a)=>s+a,0);
   const F=n=>fmtBR(n); const R$=n=>'R$ '+F(n);
@@ -3646,14 +3646,19 @@ function _resCustoComanda(c){
   const colhTerc=((+gr.terceiros_ha||0)+(+gr.oper_propria_ha||0))*area;
   return {area,insumos,diesel,dieselL:(ex.diesel||0),aereo,colhTerc,total:insumos+diesel+aereo+colhTerc,cat:_RES_CAT[c.tipoAtiv]||'Outros'};
 }
-/* custos operacionais (COE) marcados p/ lote específico (ex.: energia dos pivôs) -> {loteNome: R$}, rateado por área do cadastro */
-function _resRateioLoteCOE(){
-  const out={};
-  (S.custosFixos||[]).forEach(c=>{ if(c.tipo==='nao_caixa') return; if(_CF_COE_CATS.indexOf(c.categoria)<0) return; if((c.rateio||'')!=='lote') return;
-    const alvos=String(c.rateioAlvo||c.rateio_alvo||'').split(/[;,]/).map(s=>s.trim()).filter(Boolean); if(!alvos.length) return;
-    const areas=alvos.map(n=>({n,a:areaDe(n)||0})); const totA=areas.reduce((s,x)=>s+x.a,0); if(totA<=0) return;
-    const val=(c.periodicidade==='mensal')?(+c.valor||0)*12:(+c.valor||0);
-    areas.forEach(x=>{ out[x.n]=(out[x.n]||0)+val*x.a/totA; }); });
+/* rateia os custos operacionais (COE) que não vêm da comanda (energia, manutenção, pós-colheita) nas FATIAS (lote+cultura).
+   Regra por item: rateio='lote' -> só as fatias dos lotes do rateioAlvo | rateio='cultura' -> só as fatias daquela cultura | senão (por_ha) -> todas. Sempre por área. Retorna {"lote|cultura": {total, det:[{cat,val}]}} */
+function _resRateioCOE(slices){
+  const key=s=>s.lote+'|'+(s.cultura||''); const out={}; slices.forEach(s=>out[key(s)]={total:0,det:[]});
+  (S.custosFixos||[]).forEach(c=>{ if(c.tipo==='nao_caixa') return; if(_CF_COE_CATS.indexOf(c.categoria)<0) return;
+    const val=(c.periodicidade==='mensal')?(+c.valor||0)*12:(+c.valor||0); if(val<=0) return;
+    const rateio=(c.rateio||'por_ha'); const alvo=String(c.rateioAlvo||c.rateio_alvo||'');
+    let alvos;
+    if(rateio==='lote'){ const set=alvo.split(/[;,]/).map(x=>x.trim()).filter(Boolean); alvos=slices.filter(s=>set.indexOf(s.lote)>=0); }
+    else if(rateio==='cultura'){ const cul=alvo.trim().toLowerCase(); alvos=slices.filter(s=>(s.cultura||'').toLowerCase()===cul); }
+    else { alvos=slices.slice(); }
+    const totA=alvos.reduce((sm,s)=>sm+(s.area||0),0); if(totA<=0) return;
+    alvos.forEach(s=>{ const v=val*(s.area||0)/totA; const o=out[key(s)]; o.total+=v; o.det.push({cat:c.categoria,val:v}); }); });
   return out;
 }
 function resSetCult(c){ _resFiltroCult=c; render(); }
@@ -3665,9 +3670,9 @@ function renderResultados(){
   const porLote={};
   cs.forEach(c=>{ const cc=_resCustoComanda(c); const key=c.loteNome+'|'+(c.cultura||''); const L=porLote[key]||(porLote[key]={lote:c.loteNome,cultura:c.cultura||'',area:areaDe(c.loteNome)||cc.area,insumos:0,diesel:0,dieselL:0,aereo:0,colhTerc:0,total:0,n:0,coms:[]}); L.insumos+=cc.insumos;L.diesel+=cc.diesel;L.dieselL+=cc.dieselL;L.aereo+=cc.aereo;L.colhTerc+=cc.colhTerc;L.total+=cc.total;L.n++;L.coms.push({c,cc}); });
   const slices=Object.values(porLote);
-  // custos operacionais atribuíveis a lote (ex.: energia dos pivôs) — rateados por área na(s) fatia(s) do lote
-  const _ratL=_resRateioLoteCOE(); const _nSl={}; slices.forEach(s=>{_nSl[s.lote]=(_nSl[s.lote]||0)+1;});
-  slices.forEach(s=>{ const rv=_ratL[s.lote]; if(rv){ const add=rv/_nSl[s.lote]; s.energiaRat=(s.energiaRat||0)+add; s.total+=add; } });
+  // custos operacionais fora da comanda (energia/manutenção/pós-colheita) — rateados por área na fatia
+  const _rat=_resRateioCOE(slices);
+  slices.forEach(s=>{ const r=_rat[s.lote+'|'+(s.cultura||'')]; if(r&&r.total){ s.lumpRat=r.total; s.lumpDet=r.det; s.total+=r.total; } });
   // produção / receita / margem por FATIA (lote+cultura)
   slices.forEach(l=>{ const pr=_resProdLote(l.lote,l.cultura); l.qtd=pr?pr.qtd:0; l.unid=pr?pr.unidade:'sc'; l.prov=pr?pr.prov:false; l.prodHa=(l.area>0&&l.qtd)?l.qtd/l.area:0; l.preco=_resPrecoVenda(l.cultura); l.receita=l.qtd*l.preco; l.margem=l.receita-l.total; });
   const tot=slices.reduce((s,l)=>{s.total+=l.total;s.receita+=l.receita;s.margem+=l.margem;s.dieselL+=(l.dieselL||0);s.diesel+=(l.diesel||0);return s;},{total:0,receita:0,margem:0,dieselL:0,diesel:0});
@@ -3679,7 +3684,7 @@ function renderResultados(){
   if(_resFiltroCult==='todas'){
     const byLote={};
     slices.forEach(l=>{ const L=byLote[l.lote]||(byLote[l.lote]={lote:l.lote,cults:[],area:l.area,insumos:0,diesel:0,dieselL:0,aereo:0,colhTerc:0,total:0,unid:'sc',prov:false,receita:0,coms:[],prodPorCult:[]});
-      L.insumos+=l.insumos;L.diesel+=l.diesel;L.dieselL+=l.dieselL;L.aereo+=l.aereo;L.colhTerc+=l.colhTerc;L.total+=l.total;L.receita+=l.receita;L.energiaRat=(L.energiaRat||0)+(l.energiaRat||0);L.coms=L.coms.concat(l.coms); L.cults.push(l.cultura);
+      L.insumos+=l.insumos;L.diesel+=l.diesel;L.dieselL+=l.dieselL;L.aereo+=l.aereo;L.colhTerc+=l.colhTerc;L.total+=l.total;L.receita+=l.receita;L.lumpRat=(L.lumpRat||0)+(l.lumpRat||0);if(l.lumpDet)L.lumpDet=(L.lumpDet||[]).concat(l.lumpDet);L.coms=L.coms.concat(l.coms); L.cults.push(l.cultura);
       if(l.qtd){ L.prodPorCult.push({cultura:l.cultura,prodHa:l.prodHa,unid:l.unid,prov:l.prov}); if(l.prov)L.prov=true; } });
     rows=Object.values(byLote).map(L=>{ L.cultura=L.cults.join('+'); L.multiProd=L.prodPorCult.length>1; if(L.prodPorCult.length===1){ L.prodHa=L.prodPorCult[0].prodHa; L.unid=L.prodPorCult[0].unid; } else { L.prodHa=0; } L.margem=L.receita-L.total; return L; });
   } else { rows=slices; }
@@ -3696,12 +3701,13 @@ function renderResultados(){
    </div>
    <div style="display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap">${btn('todas','Todas')}${btn('soja','Soja')}${btn('algodao','Algodão')}${btn('feijao','Feijão')}</div>
    <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:18px">
-     ${card('Custo total',_res$(tot.total))}
+     ${card('Custo total (COE)',_res$(tot.total))}
      ${card('Receita',_res$(tot.receita))}
-     ${card('Margem',_res$(tot.margem),mcol(tot.margem))}
+     ${card('Margem de contrib.',_res$(tot.margem),mcol(tot.margem))}
      ${card('Diesel',fmtL(tot.dieselL)+' L · '+_res$(tot.diesel))}
      ${card('Custo médio',areaTot>0?(_res$(tot.total/areaTot)+'/ha'):'—')}
-   </div>`;
+   </div>
+   <div style="font-size:11px;color:#8aa;margin:-8px 0 16px">Margem aqui = <b>Margem de Contribuição</b> (Receita − COE completo, já com energia/manutenção/pós-colheita rateados por lote) — bate com a linha da DRE. Custo fixo (mão de obra, admin, depreciação) só entra na DRE consolidada, abaixo desta margem.</div>`;
   // ===== DRE (consolidado da safra) =====
   const D=_resDRE();
   const dcol2=v=>v>=0?'#7fd18b':'#e88';
@@ -3764,7 +3770,8 @@ function renderResultados(){
       l.coms.sort((a,b)=>String(a.c.dataExecucao||'').localeCompare(String(b.c.dataExecucao||''))).forEach(({c,cc})=>{
         h+=`<tr><td style="padding:3px 8px">${esc(c.dataExecucao||'')}</td><td style="padding:3px 8px">${esc(c.tipoAtiv)}</td><td style="padding:3px 8px;color:#8aa">${esc(cc.cat)}</td><td style="text-align:right;padding:3px 8px">ins ${fmtBR(cc.insumos)}</td><td style="text-align:right;padding:3px 8px">die ${fmtBR(cc.diesel)}</td><td style="text-align:right;padding:3px 8px">aer ${fmtBR(cc.aereo+cc.colhTerc)}</td><td style="text-align:right;padding:3px 8px;font-weight:600;color:#eee">${fmtBR(cc.total)}</td></tr>`;
       });
-      if(l.energiaRat>0) h+=`<tr><td style="padding:3px 8px" colspan="3">⚡ Energia (irrigação, rateada por ha do pivô)</td><td colspan="3" style="text-align:right;padding:3px 8px;color:#8aa">custo operacional fora da comanda</td><td style="text-align:right;padding:3px 8px;font-weight:600;color:#eee">${fmtBR(l.energiaRat)}</td></tr>`;
+      if(l.lumpRat>0){ const _agg={}; (l.lumpDet||[]).forEach(d=>_agg[d.cat]=(_agg[d.cat]||0)+d.val);
+        Object.keys(_agg).forEach(cat=>{ h+=`<tr><td style="padding:3px 8px" colspan="3">↳ ${esc(cat)} (rateado por ha)</td><td colspan="3" style="text-align:right;padding:3px 8px;color:#8aa">custo geral fora da comanda</td><td style="text-align:right;padding:3px 8px;font-weight:600;color:#eee">${fmtBR(_agg[cat])}</td></tr>`; }); }
       h+=`</tbody></table></td></tr>`;
     }
   });
