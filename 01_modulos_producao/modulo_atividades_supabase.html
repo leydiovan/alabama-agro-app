@@ -3462,10 +3462,11 @@ function _resDRE(){
   const insTotal=ins.sementes+ins.fertilizantes+ins.defensivos+ins.biologicos;
   const combustivel=dieselL*RES_DIESEL_PRECO;
   // custos fixos caixa: manutenção (COE) vs admin fixa (impostos/seguros/honorários/escritório)
-  let manut=0,energia=0,cfImp=0,cfSeg=0,cfHon=0,cfEsc=0,cfArr=0;
+  let manut=0,energia=0,posColhC=0,cfImp=0,cfSeg=0,cfHon=0,cfEsc=0,cfArr=0;
   (S.custosFixos||[]).forEach(c=>{ if(c.tipo==='nao_caixa') return; const a=(c.periodicidade==='mensal')?(+c.valor||0)*12:(+c.valor||0); const d=(c.descricao||'').toLowerCase(); const cat=c.categoria||'';
     if(cat==='Manutenção e Serviços'){ manut+=a; return; }
     if(cat==='Energia irrigação'){ energia+=a; return; }
+    if(cat==='Pós-colheita'){ posColhC+=a; return; }
     if(/arrend/.test(d)||cat==='Arrendamento') cfArr+=a;
     else if(/itr|aiba|incra|alvar/.test(d)) cfImp+=a;
     else if(/seguro/.test(d)) cfSeg+=a;
@@ -3484,7 +3485,7 @@ function _resDRE(){
   depIt.forEach(d=>{ if(d.tipo==='Benfeitoria') depBenf+=d.valAno; else depMaq+=d.valAno; });
   const dep={maquinas:depMaq,benfeitorias:depBenf,total:T.naoCaixa};
   const admFix={impostos:cfImp,seguros:cfSeg,honorarios:cfHon,escritorio:cfEsc,arrendamento:cfArr,total:cfImp+cfSeg+cfHon+cfEsc+cfArr};
-  const servTotal=aereo+colhTerc, operTotal=combustivel+manut+energia, posColh=0;
+  const servTotal=aereo+colhTerc, operTotal=combustivel+manut+energia, posColh=posColhC;
   const coeTotal=insTotal+servTotal+operTotal+posColh;
   const margem=receita-coeTotal;
   const cfCaixa=mo.total+admFix.total;
@@ -3543,7 +3544,7 @@ function _resCustoFixoDetalheHTML(){
   // cards do topo (3 grupos + total), espelhando a DRE
   const card=(lbl,val,sub,cor)=>`<div style="flex:1;min-width:150px;background:#16202b;border:1px solid ${cor||'#2a3a4a'};border-radius:12px;padding:12px 14px"><div style="color:#8aa;font-size:11px">${lbl}</div><div style="font-size:18px;font-weight:700">R$ ${F(val)}</div><div style="font-size:10px;color:#8aa">${sub}</div></div>`;
   return `<div style="max-width:820px">
-    <div style="font-size:12px;color:#8aa;margin-bottom:12px">Espelho do <b>Custo Fixo</b> da DRE — os mesmos R$ ${F(D.custoFixoTotal)} do COT, abertos item a item. (Manutenção e energia dos pivôs <b>não</b> estão aqui: viraram custo operacional no COE.)</div>
+    <div style="font-size:12px;color:#8aa;margin-bottom:12px">Espelho do <b>Custo Fixo</b> da DRE — os mesmos R$ ${F(D.custoFixoTotal)} do COT, abertos item a item. (Manutenção, energia dos pivôs e pós-colheita <b>não</b> estão aqui: viraram custo operacional no COE.)</div>
     <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:16px">
       ${card('1 · Mão de obra permanente',D.mo.total,'salários + pró-labore + 13º/férias')}
       ${card('2 · Despesas admin fixas',D.admFix.total,'impostos, seguros, honorários, arrendamento, sede')}
@@ -3555,7 +3556,7 @@ function _resCustoFixoDetalheHTML(){
     ${box('🏭 3 · Depreciações (não-caixa)',D.dep.total,g3)}
     <div style="font-size:12px;color:#8aa;margin-top:4px;line-height:1.5">
       <b>Como entra na DRE:</b> grupos 1 e 2 são <b>caixa</b> (saem de fato) e descem até o <b>EBITDA</b>; o grupo 3 (depreciação, R$ ${F(D.dep.total)}) é <b>não-caixa</b> — só reduz do EBITDA pro <b>EBIT</b>.<br>
-      ${coeItens.length?'<b>Fora daqui (no COE):</b> '+coeItens.length+' lançamento(s) operacional(is) = R$ '+F(coeTot)+' (manutenção + energia dos pivôs) — aparecem no bloco COE da DRE, não no custo fixo.':''}
+      ${coeItens.length?'<b>Fora daqui (no COE):</b> '+coeItens.length+' lançamento(s) operacional(is) = R$ '+F(coeTot)+' (manutenção, energia dos pivôs, pós-colheita) — aparecem no bloco COE da DRE, não no custo fixo.':''}
     </div>
   </div>`;
 }
@@ -3583,6 +3584,7 @@ function _resA4HTML(){
   dre+=dreRow('3. Operações e manutenção',co.operTotal,false,true);
   dre+=dreRow('&nbsp;&nbsp;&nbsp;Combustíveis e lubrificantes',co.combustivel,false,true);dre+=dreRow('&nbsp;&nbsp;&nbsp;Peças e manutenção',co.manut,false,true);dre+=dreRow('&nbsp;&nbsp;&nbsp;Energia elétrica (irrigação/pivôs)',co.energia,false,true);
   dre+=dreRow('4. Pós-colheita e comercialização',co.posColh,false,true);
+  if(co.posColh>0)dre+=dreRow('&nbsp;&nbsp;&nbsp;Lonas / cobertura da colheita',co.posColh,false,true);
   dre+=dreRow('Custo Fixo',D.custoFixoTotal,true);
   dre+=dreRow('1. Mão de obra permanente',D.mo.total,false,true);
   dre+=dreRow('&nbsp;&nbsp;&nbsp;Salários + encargos (equipe fixa)',D.mo.salarios,false,true);dre+=dreRow('&nbsp;&nbsp;&nbsp;Pró-labore (sócios)',D.mo.prolabore,false,true);dre+=dreRow('&nbsp;&nbsp;&nbsp;13º + Férias',D.mo.decFer,false,true);
@@ -3710,6 +3712,7 @@ function renderResultados(){
       ${dg2('3. Operações e manutenção',co.operTotal)}
       ${dsub('Combustíveis e lubrificantes',co.combustivel)}${dsub('Peças e manutenção',co.manut)}${dsub('Energia elétrica (irrigação/pivôs)',co.energia)}
       ${dg2('4. Pós-colheita e comercialização',co.posColh)}
+      ${co.posColh>0?dsub('Lonas / cobertura da colheita',co.posColh):''}
       ${dgrp('Custo Fixo',D.custoFixoTotal)}
       ${dg2('1. Mão de obra permanente',D.mo.total)}
       ${dsub('Salários + encargos (equipe fixa)',D.mo.salarios)}${dsub('Pró-labore (sócios)',D.mo.prolabore)}${dsub('13º + Férias',D.mo.decFer)}
@@ -3782,7 +3785,7 @@ function bindPlanejamento(){
 }
 /* ================== CUSTOS FIXOS (por safra) ================== */
 let _cfEdit=null;
-const CF_CATS=['Administrativo/estrutura','RH fixo / pró-labore','Impostos/seguros/licenças','Manutenção e Serviços','Energia irrigação','Outros'];
+const CF_CATS=['Administrativo/estrutura','RH fixo / pró-labore','Impostos/seguros/licenças','Manutenção e Serviços','Energia irrigação','Pós-colheita','Outros'];
 function _cfAnual(c){ const v=+c.valor||0; return (c.periodicidade==='mensal')? v*12 : v; }   // mensal→×12; anual/safra = total do ciclo
 function _deprecAno(m){ const v=+m.valorAquisicao||0, vu=+m.vidaUtilAnos||0, r=+m.residualPct||0; if(!(v>0)||!(vu>0)) return 0; return v*(1-Math.max(0,Math.min(100,r))/100)/vu; }
 function _deprecItens(){ const out=[];
@@ -3807,7 +3810,7 @@ function _rh13FeriasItens(){ const out=[];
     const encEmp=_encEmpregador(f.empregador); const enc=Math.max(0,(encEmp!=null?encEmp:(+f.encargosPct||0)));
     const ano=carteira*(4/3)*(1+enc/100); out.push({nome:f.nome, empregador:f.empregador||'', carteira, encargos:enc, mes:ano/12, ano}); });
   return out.sort((a,b)=>b.ano-a.ano); }
-const _CF_COE_CATS=['Manutenção e Serviços','Energia irrigação'];  // custos operacionais (vão pro COE, NÃO são custo fixo)
+const _CF_COE_CATS=['Manutenção e Serviços','Energia irrigação','Pós-colheita'];  // custos operacionais (vão pro COE, NÃO são custo fixo)
 function _cfTotais(){ let caixaManual=0, ncManual=0;
   (S.custosFixos||[]).forEach(c=>{ if(_CF_COE_CATS.indexOf(c.categoria)>=0) return; const a=_cfAnual(c); if(c.tipo==='nao_caixa') ncManual+=a; else caixaManual+=a; });
   const deprec=_deprecItens().reduce((s,i)=>s+i.valAno,0);
