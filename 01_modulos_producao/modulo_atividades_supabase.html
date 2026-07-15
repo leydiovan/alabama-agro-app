@@ -3598,7 +3598,7 @@ function _resMapaSVG(){
   const cen=ring=>{let sx=0,sy=0;ring.forEach(p=>{sx+=+p[0];sy+=+p[1];});return [sx/ring.length,sy/ring.length];};
   let polys='',labels='';
   feats.forEach(f=>{ const pts=f.ring.map(p=>px(+p[0])+','+py(+p[1])).join(' ');
-    polys+=`<polygon points="${pts}" fill="${COL[f.main]}" stroke="#333" stroke-width="${(W*0.0008).toFixed(1)}"/>`;
+    polys+=`<polygon points="${pts}" fill="${COL[f.main]}" stroke="#fff" stroke-width="${(W*0.003).toFixed(1)}" stroke-linejoin="round"/>`;
     if(f.feij) polys+=`<polygon points="${pts}" fill="url(#hatchF)" stroke="none"/>`;
     const c=cen(f.ring); const nm=esc(f.nome.replace('Lote ','').replace('Pivo ','P'));
     labels+=`<text x="${px(c[0])}" y="${py(c[1])}" font-size="${(W*0.014).toFixed(1)}" text-anchor="middle" dominant-baseline="middle" font-weight="700" fill="#1a1a1a" style="paint-order:stroke;stroke:#fff;stroke-width:${(W*0.004).toFixed(1)}px">${nm}</text>`; });
