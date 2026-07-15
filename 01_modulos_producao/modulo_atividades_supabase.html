@@ -3462,9 +3462,10 @@ function _resDRE(){
   const insTotal=ins.sementes+ins.fertilizantes+ins.defensivos+ins.biologicos;
   const combustivel=dieselL*RES_DIESEL_PRECO;
   // custos fixos caixa: manutenção (COE) vs admin fixa (impostos/seguros/honorários/escritório)
-  let manut=0,cfImp=0,cfSeg=0,cfHon=0,cfEsc=0,cfArr=0;
+  let manut=0,energia=0,cfImp=0,cfSeg=0,cfHon=0,cfEsc=0,cfArr=0;
   (S.custosFixos||[]).forEach(c=>{ if(c.tipo==='nao_caixa') return; const a=(c.periodicidade==='mensal')?(+c.valor||0)*12:(+c.valor||0); const d=(c.descricao||'').toLowerCase(); const cat=c.categoria||'';
     if(cat==='Manutenção e Serviços'){ manut+=a; return; }
+    if(cat==='Energia irrigação'){ energia+=a; return; }
     if(/arrend/.test(d)||cat==='Arrendamento') cfArr+=a;
     else if(/itr|aiba|incra|alvar/.test(d)) cfImp+=a;
     else if(/seguro/.test(d)) cfSeg+=a;
@@ -3483,7 +3484,7 @@ function _resDRE(){
   depIt.forEach(d=>{ if(d.tipo==='Benfeitoria') depBenf+=d.valAno; else depMaq+=d.valAno; });
   const dep={maquinas:depMaq,benfeitorias:depBenf,total:T.naoCaixa};
   const admFix={impostos:cfImp,seguros:cfSeg,honorarios:cfHon,escritorio:cfEsc,arrendamento:cfArr,total:cfImp+cfSeg+cfHon+cfEsc+cfArr};
-  const servTotal=aereo+colhTerc, operTotal=combustivel+manut, posColh=0;
+  const servTotal=aereo+colhTerc, operTotal=combustivel+manut+energia, posColh=0;
   const coeTotal=insTotal+servTotal+operTotal+posColh;
   const margem=receita-coeTotal;
   const cfCaixa=mo.total+admFix.total;
@@ -3491,7 +3492,7 @@ function _resDRE(){
   const cotTotal=coeTotal+custoFixoTotal;           // COT = COE + Custo Fixo
   const ebitda=margem-cfCaixa, ebit=ebitda-dep.total;
   return {receita,recCult,
-    coe:{ins,insTotal,aereo,colhTerc,servTotal,combustivel,manut,operTotal,posColh,total:coeTotal},
+    coe:{ins,insTotal,aereo,colhTerc,servTotal,combustivel,manut,energia,operTotal,posColh,total:coeTotal},
     margem, mo, admFix, dep, cfCaixa, custoFixoTotal, cotTotal,
     ebitda,deprec:dep.total,ebit,cf:T};
 }
@@ -3501,7 +3502,7 @@ function _resCustoFixoDetalheHTML(){
   const dep=(typeof _deprecItens==='function')?_deprecItens():[];
   const rh=(typeof _rhFixoItens==='function')?_rhFixoItens():[];
   const p13=(typeof _rh13FeriasItens==='function')?_rh13FeriasItens():[];
-  const outros=(S.custosFixos||[]);
+  const outros=(S.custosFixos||[]).filter(c=>_CF_COE_CATS.indexOf(c.categoria)<0);
   const F=n=>fmtBR(n);
   const box=(titulo,subtotal,corpo,cols)=>`<div style="background:#16202b;border:1px solid #2a3a4a;border-radius:10px;margin-bottom:14px;overflow:hidden">
      <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 14px;background:#1b2836"><b>${titulo}</b><b style="color:#cde">R$ ${F(subtotal)}<span style="color:#8aa;font-weight:400;font-size:11px">/ano</span></b></div>
@@ -3559,7 +3560,7 @@ function _resA4HTML(){
   dre+=dreRow('2. Serviços de terceiros',co.servTotal,false,true);
   dre+=dreRow('&nbsp;&nbsp;&nbsp;Aplicação aérea',co.aereo,false,true);dre+=dreRow('&nbsp;&nbsp;&nbsp;Colheita (terceiros)',co.colhTerc,false,true);
   dre+=dreRow('3. Operações e manutenção',co.operTotal,false,true);
-  dre+=dreRow('&nbsp;&nbsp;&nbsp;Combustíveis e lubrificantes',co.combustivel,false,true);dre+=dreRow('&nbsp;&nbsp;&nbsp;Peças e manutenção',co.manut,false,true);
+  dre+=dreRow('&nbsp;&nbsp;&nbsp;Combustíveis e lubrificantes',co.combustivel,false,true);dre+=dreRow('&nbsp;&nbsp;&nbsp;Peças e manutenção',co.manut,false,true);dre+=dreRow('&nbsp;&nbsp;&nbsp;Energia elétrica (irrigação/pivôs)',co.energia,false,true);
   dre+=dreRow('4. Pós-colheita e comercialização',co.posColh,false,true);
   dre+=dreRow('Custo Fixo',D.custoFixoTotal,true);
   dre+=dreRow('1. Mão de obra permanente',D.mo.total,false,true);
@@ -3686,7 +3687,7 @@ function renderResultados(){
       ${dg2('2. Serviços de terceiros',co.servTotal)}
       ${dsub('Aplicação aérea',co.aereo)}${dsub('Colheita (terceiros)',co.colhTerc)}
       ${dg2('3. Operações e manutenção',co.operTotal)}
-      ${dsub('Combustíveis e lubrificantes',co.combustivel)}${dsub('Peças e manutenção',co.manut)}
+      ${dsub('Combustíveis e lubrificantes',co.combustivel)}${dsub('Peças e manutenção',co.manut)}${dsub('Energia elétrica (irrigação/pivôs)',co.energia)}
       ${dg2('4. Pós-colheita e comercialização',co.posColh)}
       ${dgrp('Custo Fixo',D.custoFixoTotal)}
       ${dg2('1. Mão de obra permanente',D.mo.total)}
@@ -3760,7 +3761,7 @@ function bindPlanejamento(){
 }
 /* ================== CUSTOS FIXOS (por safra) ================== */
 let _cfEdit=null;
-const CF_CATS=['Administrativo/estrutura','RH fixo / pró-labore','Impostos/seguros/licenças','Manutenção e financeiro','Outros'];
+const CF_CATS=['Administrativo/estrutura','RH fixo / pró-labore','Impostos/seguros/licenças','Manutenção e Serviços','Energia irrigação','Outros'];
 function _cfAnual(c){ const v=+c.valor||0; return (c.periodicidade==='mensal')? v*12 : v; }   // mensal→×12; anual/safra = total do ciclo
 function _deprecAno(m){ const v=+m.valorAquisicao||0, vu=+m.vidaUtilAnos||0, r=+m.residualPct||0; if(!(v>0)||!(vu>0)) return 0; return v*(1-Math.max(0,Math.min(100,r))/100)/vu; }
 function _deprecItens(){ const out=[];
@@ -3785,8 +3786,9 @@ function _rh13FeriasItens(){ const out=[];
     const encEmp=_encEmpregador(f.empregador); const enc=Math.max(0,(encEmp!=null?encEmp:(+f.encargosPct||0)));
     const ano=carteira*(4/3)*(1+enc/100); out.push({nome:f.nome, empregador:f.empregador||'', carteira, encargos:enc, mes:ano/12, ano}); });
   return out.sort((a,b)=>b.ano-a.ano); }
+const _CF_COE_CATS=['Manutenção e Serviços','Energia irrigação'];  // custos operacionais (vão pro COE, NÃO são custo fixo)
 function _cfTotais(){ let caixaManual=0, ncManual=0;
-  (S.custosFixos||[]).forEach(c=>{ const a=_cfAnual(c); if(c.tipo==='nao_caixa') ncManual+=a; else caixaManual+=a; });
+  (S.custosFixos||[]).forEach(c=>{ if(_CF_COE_CATS.indexOf(c.categoria)>=0) return; const a=_cfAnual(c); if(c.tipo==='nao_caixa') ncManual+=a; else caixaManual+=a; });
   const deprec=_deprecItens().reduce((s,i)=>s+i.valAno,0);
   const rh=_rhFixoItens().reduce((s,i)=>s+i.ano,0);
   const prov13fer=_rh13FeriasItens().reduce((s,i)=>s+i.ano,0);

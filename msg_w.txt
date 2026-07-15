@@ -1,3 +1,0 @@
-﻿DRE: COT como guarda-chuva apos receita (COE + Custo Fixo dentro); removida margem de contribuicao
-
-Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>
