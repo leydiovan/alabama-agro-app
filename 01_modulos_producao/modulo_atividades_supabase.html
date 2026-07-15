@@ -3584,7 +3584,7 @@ function _resA4HTML(){
   dre+=dreRow('3. Operações e manutenção',co.operTotal,false,true);
   dre+=dreRow('&nbsp;&nbsp;&nbsp;Combustíveis e lubrificantes',co.combustivel,false,true);dre+=dreRow('&nbsp;&nbsp;&nbsp;Peças e manutenção',co.manut,false,true);dre+=dreRow('&nbsp;&nbsp;&nbsp;Energia elétrica (irrigação/pivôs)',co.energia,false,true);
   dre+=dreRow('4. Pós-colheita e comercialização',co.posColh,false,true);
-  if(co.posColh>0)dre+=dreRow('&nbsp;&nbsp;&nbsp;Lonas / cobertura da colheita',co.posColh,false,true);
+  if(co.posColh>0)dre+=dreRow('&nbsp;&nbsp;&nbsp;Silo bolsa (armazenagem em campo)',co.posColh,false,true);
   dre+=dreRow('Custo Fixo',D.custoFixoTotal,true);
   dre+=dreRow('1. Mão de obra permanente',D.mo.total,false,true);
   dre+=dreRow('&nbsp;&nbsp;&nbsp;Salários + encargos (equipe fixa)',D.mo.salarios,false,true);dre+=dreRow('&nbsp;&nbsp;&nbsp;Pró-labore (sócios)',D.mo.prolabore,false,true);dre+=dreRow('&nbsp;&nbsp;&nbsp;13º + Férias',D.mo.decFer,false,true);
@@ -3712,7 +3712,7 @@ function renderResultados(){
       ${dg2('3. Operações e manutenção',co.operTotal)}
       ${dsub('Combustíveis e lubrificantes',co.combustivel)}${dsub('Peças e manutenção',co.manut)}${dsub('Energia elétrica (irrigação/pivôs)',co.energia)}
       ${dg2('4. Pós-colheita e comercialização',co.posColh)}
-      ${co.posColh>0?dsub('Lonas / cobertura da colheita',co.posColh):''}
+      ${co.posColh>0?dsub('Silo bolsa (armazenagem em campo)',co.posColh):''}
       ${dgrp('Custo Fixo',D.custoFixoTotal)}
       ${dg2('1. Mão de obra permanente',D.mo.total)}
       ${dsub('Salários + encargos (equipe fixa)',D.mo.salarios)}${dsub('Pró-labore (sócios)',D.mo.prolabore)}${dsub('13º + Férias',D.mo.decFer)}
