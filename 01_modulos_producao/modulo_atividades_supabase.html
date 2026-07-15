@@ -3656,19 +3656,25 @@ function _resA4HTML(){
   const thaC=(cult,tp)=>{const o=cc[cult];return o&&o.area>0?(o.tipos[tp]||0)/o.area:0;};
   const hhaG=(cult,keys)=>{const o=cc[cult];if(!o||o.area<=0)return 0;return keys.reduce((s,k)=>s+o[k],0)/o.area;};
   const tipoTem=tp=>cCols.some(c=>(cc[c].tipos[tp]||0)>0);
-  const thC=(t,al)=>`<th style="text-align:${al||'right'};padding:4px 8px;border-bottom:2px solid #333">${t}</th>`;
-  let tabC=`<table style="width:100%;border-collapse:collapse;font-size:10.5px"><thead><tr>${thC('Categoria — R$/ha','left')}${cCols.map(c=>thC(cLab[c])).join('')}</tr></thead><tbody>`;
+  const unidC={soja:'sc',algodao:'@',feijao:'sc'};
+  const precoC={}; cCols.forEach(c=>precoC[c]=(typeof _resPrecoVenda==='function'?_resPrecoVenda(c):0)||0);
+  const totHa=c=>cc[c].area>0?cc[c].total/cc[c].area:0;
+  // célula: R$/ha (linha 1) + "un/ha (custo em sacas/@) · % do total" (linha 2)
+  const cel=(c,rha,st)=>{ const un=(rha>0&&precoC[c]>0)?rha/precoC[c]:0; const t=totHa(c); const pct=t>0?rha/t*100:0;
+    return `<td style="text-align:right;padding:1px 7px;${st||''}"><div>${Fi(rha)}</div><div style="font-size:8px;color:#999;line-height:1">${un>0?fmtBR(un)+' '+unidC[c]:'—'} · ${pct>=0.5?Math.round(pct)+'%':'—'}</div></td>`; };
+  const thC=(t,al)=>`<th style="text-align:${al||'right'};padding:4px 7px;border-bottom:2px solid #333">${t}</th>`;
+  let tabC=`<table style="width:100%;border-collapse:collapse;font-size:10px"><thead><tr>${thC('Categoria — R$/ha · un/ha · %','left')}${cCols.map(c=>thC(cLab[c])).join('')}</tr></thead><tbody>`;
   grpsCat.forEach(gp=>{
-    tabC+=`<tr style="background:#e2e2e2"><td style="padding:3px 8px;font-weight:700;border-top:1px solid #999">${gp.lab}</td>${cCols.map(c=>`<td style="text-align:right;padding:3px 8px;font-weight:700;border-top:1px solid #999">${Fi(hhaG(c,gp.keys))}</td>`).join('')}</tr>`;
+    tabC+=`<tr style="background:#e2e2e2;font-weight:700"><td style="padding:3px 7px;border-top:1px solid #999">${gp.lab}</td>${cCols.map(c=>cel(c,hhaG(c,gp.keys),'border-top:1px solid #999;font-weight:700')).join('')}</tr>`;
     gp.subs.forEach(sb=>{ const hasT=sb.tipos&&sb.tipos.some(tipoTem);
-      tabC+=`<tr${hasT?' style="background:#f6f6f6"':''}><td style="padding:2px 8px 2px 18px;${hasT?'font-weight:600;':''}color:#222;border-bottom:1px solid #eee">${sb.lab}</td>${cCols.map(c=>`<td style="text-align:right;padding:2px 8px;${hasT?'font-weight:600;':''}border-bottom:1px solid #eee">${Fi(hha(c,sb.key))}</td>`).join('')}</tr>`;
+      tabC+=`<tr${hasT?' style="background:#f6f6f6"':''}><td style="padding:2px 7px 2px 16px;${hasT?'font-weight:600;':''}color:#222;border-bottom:1px solid #eee">${sb.lab}</td>${cCols.map(c=>cel(c,hha(c,sb.key),(hasT?'font-weight:600;':'')+'border-bottom:1px solid #eee')).join('')}</tr>`;
       if(sb.tipos) sb.tipos.forEach(tp=>{ if(!tipoTem(tp)) return;
-        tabC+=`<tr><td style="padding:1px 8px 1px 34px;color:#666;font-size:9.5px;border-bottom:1px solid #f4f4f4">${esc(tp)}</td>${cCols.map(c=>`<td style="text-align:right;padding:1px 8px;color:#666;font-size:9.5px;border-bottom:1px solid #f4f4f4">${Fi(thaC(c,tp))}</td>`).join('')}</tr>`; });
+        tabC+=`<tr><td style="padding:1px 7px 1px 30px;color:#666;font-size:9px;border-bottom:1px solid #f4f4f4">${esc(tp)}</td>${cCols.map(c=>cel(c,thaC(c,tp),'color:#666;border-bottom:1px solid #f4f4f4')).join('')}</tr>`; });
     });
   });
-  tabC+=`<tr style="background:#333;color:#fff"><td style="padding:5px 8px;font-weight:800">CUSTO MÉDIO TOTAL / ha (COE)</td>${cCols.map(c=>`<td style="text-align:right;padding:5px 8px;font-weight:800">${Fi(cc[c].area>0?cc[c].total/cc[c].area:0)}</td>`).join('')}</tr>`;
-  tabC+=`<tr style="background:#f4f4f4"><td style="padding:4px 8px;font-weight:700">Área (ha)</td>${cCols.map(c=>`<td style="text-align:right;padding:4px 8px">${F(cc[c].area)}</td>`).join('')}</tr>`;
-  tabC+=`<tr style="background:#f4f4f4"><td style="padding:4px 8px;font-weight:700">Custo total (R$)</td>${cCols.map(c=>`<td style="text-align:right;padding:4px 8px;font-weight:700">${F(cc[c].total)}</td>`).join('')}</tr>`;
+  tabC+=`<tr style="background:#333;color:#fff;font-weight:800"><td style="padding:4px 7px">CUSTO MÉDIO TOTAL / ha (COE)</td>${cCols.map(c=>`<td style="text-align:right;padding:4px 7px"><div>${Fi(totHa(c))}</div><div style="font-size:8px;opacity:.85;line-height:1">${precoC[c]>0?fmtBR(totHa(c)/precoC[c])+' '+unidC[c]:'—'} · 100%</div></td>`).join('')}</tr>`;
+  tabC+=`<tr style="background:#f4f4f4"><td style="padding:3px 7px;font-weight:700">Área (ha) · preço de venda</td>${cCols.map(c=>`<td style="text-align:right;padding:3px 7px">${F(cc[c].area)} ha<div style="font-size:8px;color:#999">${_res$(precoC[c])}/${unidC[c]}</div></td>`).join('')}</tr>`;
+  tabC+=`<tr style="background:#f4f4f4"><td style="padding:3px 7px;font-weight:700">Custo total (R$)</td>${cCols.map(c=>`<td style="text-align:right;padding:3px 7px;font-weight:700">${F(cc[c].total)}</td>`).join('')}</tr>`;
   tabC+=`</tbody></table>`;
   const hdr=sub=>`<div style="text-align:center;border-bottom:2px solid #111;padding-bottom:10px;margin-bottom:14px">
       <div style="font-size:24px;font-weight:800;letter-spacing:1px">ALABAMA AGRO</div>
