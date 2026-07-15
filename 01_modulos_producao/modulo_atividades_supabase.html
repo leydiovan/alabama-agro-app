@@ -3473,8 +3473,10 @@ function _resDRE(){
     else if(/assessor|consultor|contabil|honorar/.test(d)) cfHon+=a;
     else cfEsc+=a; });
   // receita
-  let receita=0; const recCult={};
-  Object.keys(_resProd||{}).forEach(k=>{ const cult=k.split('|')[1]||''; const r=(_resProd[k].qtd||0)*_resPrecoVenda(cult); receita+=r; recCult[cult]=(recCult[cult]||0)+r; });
+  let receita=0; const recCult={}, recCultDet={};
+  Object.keys(_resProd||{}).forEach(k=>{ const lote=k.split('|')[0]||''; const cult=k.split('|')[1]||''; const pr=_resProd[k]; const qtd=pr.qtd||0; const preco=_resPrecoVenda(cult); const r=qtd*preco; receita+=r; recCult[cult]=(recCult[cult]||0)+r;
+    const d=recCultDet[cult]||(recCultDet[cult]={area:0,qtd:0,unid:pr.unidade||'sc',preco,receita:0}); d.area+=(areaDe(lote)||0); d.qtd+=qtd; d.receita+=r; });
+  Object.values(recCultDet).forEach(d=>{ d.prodHa=d.area>0?d.qtd/d.area:0; });
   const T=(typeof _cfTotais==='function')?_cfTotais():{rh:0,prov13fer:0,naoCaixa:0};
   // mão de obra permanente: salários/encargos (equipe) + pró-labore + 13º/férias
   const rhIt=(typeof _rhFixoItens==='function')?_rhFixoItens():[]; let salarios=0,prolabore=0;
@@ -3492,7 +3494,7 @@ function _resDRE(){
   const custoFixoTotal=cfCaixa+dep.total;           // 3 grupos: mão de obra + admin + depreciação
   const cotTotal=coeTotal+custoFixoTotal;           // COT = COE + Custo Fixo
   const ebitda=margem-cfCaixa, ebit=ebitda-dep.total;
-  return {receita,recCult,
+  return {receita,recCult,recCultDet,
     coe:{ins,insTotal,aereo,colhTerc,servTotal,combustivel,manut,energia,operTotal,posColh,total:coeTotal},
     margem, mo, admFix, dep, cfCaixa, custoFixoTotal, cotTotal,
     ebitda,deprec:dep.total,ebit,cf:T};
@@ -3576,7 +3578,7 @@ function _resA4HTML(){
   const co=D.coe;
   let dre=`<table style="width:100%;border-collapse:collapse;font-size:12px;margin-bottom:6px"><tbody>`;
   dre+=dreRow('(+) Receita bruta',D.receita,true);
-  Object.keys(D.recCult).forEach(c=>dre+=dreRow(c,D.recCult[c],false,true));
+  Object.keys(D.recCultDet).forEach(c=>{const d=D.recCultDet[c];dre+=`<tr><td style="padding:2px 4px;padding-left:16px;color:#555;font-size:11px">${esc(c)} <span style="color:#888">· ${F(d.area)} ha · ${F(d.prodHa)} ${esc(d.unid)}/ha · ${R$(d.preco)}/${esc(d.unid)}</span></td><td style="text-align:right;padding:2px 4px">${R$(d.receita)}</td><td></td></tr>`;});
   dre+=dreRow('(−) COT — Custo Operacional Total',D.cotTotal,true);
   dre+=dreRow('COE — Custo Operacional Efetivo (variável)',co.total,true);
   dre+=dreGrp('1. Insumos',co.insTotal);
@@ -3752,7 +3754,7 @@ function renderResultados(){
     <div style="font-weight:700;font-size:15px;margin-bottom:8px">📄 DRE — Safra ${esc(SAFRA)} <span style="font-weight:400;color:#8aa;font-size:12px">· consolidado (todas as culturas)</span></div>
     <table style="width:100%;border-collapse:collapse;font-size:13px"><tbody>
       <tr style="font-weight:700"><td style="padding:5px 8px">(+) Receita bruta</td>${money(D.receita)}${pctc(D.receita)}</tr>
-      ${Object.keys(D.recCult).map(c=>dsub(esc(c),D.recCult[c])).join('')}
+      ${Object.keys(D.recCultDet).map(c=>{const d=D.recCultDet[c];return `<tr><td style="padding:2px 8px 2px 40px;color:#9ab;font-weight:400;font-size:12px">${esc(c)} <span style="color:#7a8a99;font-size:11px">· ${fmtBR(d.area)} ha · ${fmtBR(d.prodHa)} ${esc(d.unid)}/ha · ${_res$(d.preco)}/${esc(d.unid)}</span></td>${money(d.receita)}<td></td></tr>`;}).join('')}
       ${dtot('(−) COT — Custo Operacional Total',D.cotTotal,'#e88')}
       ${dgrp('COE — Custo Operacional Efetivo (variável)',co.total)}
       ${dg2('1. Insumos',co.insTotal)}
