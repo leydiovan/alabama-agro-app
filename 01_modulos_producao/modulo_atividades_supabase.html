@@ -3496,47 +3496,68 @@ function _resDRE(){
     margem, mo, admFix, dep, cfCaixa, custoFixoTotal, cotTotal,
     ebitda,deprec:dep.total,ebit,cf:T};
 }
-/* detalhe do custo fixo — mostra item a item o que soma na DRE */
+/* detalhe do custo fixo — drill-down FIEL do Custo Fixo da DRE (3 grupos: mão de obra / admin fixas / depreciações) */
 function _resCustoFixoDetalheHTML(){
-  const T=(typeof _cfTotais==='function')?_cfTotais():{caixa:0,rh:0,prov13fer:0,caixaManual:0,deprec:0,ncManual:0,naoCaixa:0,total:0};
-  const dep=(typeof _deprecItens==='function')?_deprecItens():[];
+  const D=_resDRE();                                   // mesma fonte da DRE -> bate sempre
   const rh=(typeof _rhFixoItens==='function')?_rhFixoItens():[];
   const p13=(typeof _rh13FeriasItens==='function')?_rh13FeriasItens():[];
-  const outros=(S.custosFixos||[]).filter(c=>_CF_COE_CATS.indexOf(c.categoria)<0);
+  const dep=(typeof _deprecItens==='function')?_deprecItens():[];
   const F=n=>fmtBR(n);
-  const box=(titulo,subtotal,corpo,cols)=>`<div style="background:#16202b;border:1px solid #2a3a4a;border-radius:10px;margin-bottom:14px;overflow:hidden">
-     <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 14px;background:#1b2836"><b>${titulo}</b><b style="color:#cde">R$ ${F(subtotal)}<span style="color:#8aa;font-weight:400;font-size:11px">/ano</span></b></div>
-     <table style="width:100%;border-collapse:collapse;font-size:12px"><thead><tr style="color:#8aa">${cols}</tr></thead><tbody>${corpo}</tbody></table></div>`;
-  const td=(v,al)=>`<td style="padding:4px 14px;text-align:${al||'left'};border-top:1px solid #1e2a36">${v}</td>`;
-  const th=(v,al)=>`<th style="padding:6px 14px;text-align:${al||'left'};font-weight:600">${v}</th>`;
-  // Depreciação
-  const depBody=dep.length?dep.map(d=>`<tr>${td(esc(d.nome))}${td('<span style="color:#8aa">'+esc(d.tipo)+'</span>')}${td('R$ '+F(d.valAno),'right')}</tr>`).join('')
-     :`<tr>${td('<span style="color:#8aa">Sem depreciação — preencha valor de aquisição + vida útil nas máquinas/implementos (Cadastros).</span>')}<td></td><td></td></tr>`;
-  const depBox=box('🏭 Depreciação (não-caixa) — '+dep.length+' itens',T.deprec,depBody,th('Item')+th('Tipo')+th('R$/ano','right'));
-  // Folha fixa (RH)
-  const rhBody=rh.length?rh.map(r=>`<tr>${td('<b>'+esc(r.nome)+'</b>')}${td('<span style="color:#8aa">'+esc(r.tipo)+'</span>')}${td('R$ '+F(r.carteira),'right')}${td(F(r.encargos)+'%','right')}${td('R$ '+F(r.mes),'right')}${td('<b>R$ '+F(r.ano)+'</b>','right')}</tr>`).join('')
-     :`<tr>${td('<span style="color:#8aa">Sem folha fixa — cadastre funcionários com custo fixo (RH).</span>')}<td colspan="5"></td></tr>`;
-  const rhBox=box('👷 Folha fixa (RH) — '+rh.length+' pessoas',T.rh,rhBody,th('Funcionário')+th('Tipo')+th('Carteira','right')+th('Enc.','right')+th('R$/mês','right')+th('R$/ano','right'));
-  // 13º + Férias
-  const p13Body=p13.length?p13.map(r=>`<tr>${td(esc(r.nome))}${td('R$ '+F(r.mes),'right')}${td('<b>R$ '+F(r.ano)+'</b>','right')}</tr>`).join('')
-     :`<tr>${td('<span style="color:#8aa">Sem provisão (só registrados CLT geram 13º/férias).</span>')}<td></td><td></td></tr>`;
-  const p13Box=box('📅 13º + Férias (provisão) — '+p13.length+' pessoas',T.prov13fer,p13Body,th('Funcionário')+th('R$/mês','right')+th('R$/ano','right'));
-  // Outros custos fixos manuais
-  let outBody='';
-  if(outros.length){ const porCat={}; outros.forEach(c=>{(porCat[c.categoria||'Outros']=porCat[c.categoria||'Outros']||[]).push(c);});
-    Object.keys(porCat).sort((a,b)=>porCat[b].reduce((s,c)=>s+_cfAnual(c),0)-porCat[a].reduce((s,c)=>s+_cfAnual(c),0)).forEach(cat=>{ const its=porCat[cat]; const sub=its.reduce((s,c)=>s+_cfAnual(c),0);
-      outBody+=`<tr style="background:#12202b"><td colspan="3" style="padding:6px 14px;font-weight:700;color:#cde;border-top:1px solid #2a3a4a">${esc(cat)}</td><td style="text-align:right;padding:6px 14px;font-weight:700;color:#cde;border-top:1px solid #2a3a4a">R$ ${F(sub)}</td></tr>`;
-      its.forEach(c=>{ outBody+=`<tr><td></td>${td(esc(c.descricao||''))}${td('<span style="color:#8aa">'+esc(c.periodicidade||'anual')+(c.tipo==='nao_caixa'?' · não-caixa':'')+'</span>')}${td('R$ '+F(_cfAnual(c)),'right')}</tr>`; }); });
-  } else { outBody=`<tr>${td('<span style="color:#8aa">Nenhum item manual — adicione na aba <b>Custos fixos</b> do Planejamento.</span>')}<td colspan="3"></td></tr>`; }
-  const outBox=box('🏢 Outros custos fixos — '+outros.length+' itens',T.caixaManual+T.ncManual,outBody,th('Categoria')+th('Descrição')+th('Período')+th('R$/ano','right'));
-  return `<div style="max-width:760px">
+  // bucketiza os custos_fixos de admin EXATAMENTE como o _resDRE (mesma ordem/regra)
+  const ADMIN={impostos:[],seguros:[],honorarios:[],arrendamento:[],escritorio:[]};
+  (S.custosFixos||[]).forEach(c=>{ if(c.tipo==='nao_caixa') return; if(_CF_COE_CATS.indexOf(c.categoria)>=0) return;
+    const d=(c.descricao||'').toLowerCase(); const cat=c.categoria||'';
+    if(/arrend/.test(d)||cat==='Arrendamento') ADMIN.arrendamento.push(c);
+    else if(/itr|aiba|incra|alvar/.test(d)) ADMIN.impostos.push(c);
+    else if(/seguro/.test(d)) ADMIN.seguros.push(c);
+    else if(/assessor|consultor|contabil|honorar/.test(d)) ADMIN.honorarios.push(c);
+    else ADMIN.escritorio.push(c); });
+  // custos que ESTÃO no COE (não são custo fixo) — só pra nota informativa
+  const coeItens=(S.custosFixos||[]).filter(c=>_CF_COE_CATS.indexOf(c.categoria)>=0);
+  const coeTot=coeItens.reduce((s,c)=>s+_cfAnual(c),0);
+  const pct=v=>D.receita>0?' · '+(v/D.receita*100).toFixed(1)+'%':'';
+  const box=(titulo,subtotal,corpo)=>`<div style="background:#16202b;border:1px solid #2a3a4a;border-radius:10px;margin-bottom:14px;overflow:hidden">
+     <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 14px;background:#1b2836"><b style="color:#dfe">${titulo}</b><b style="color:#cde">R$ ${F(subtotal)}<span style="color:#8aa;font-weight:400;font-size:11px">/ano${pct(subtotal)}</span></b></div>
+     <table style="width:100%;border-collapse:collapse;font-size:12px"><tbody>${corpo}</tbody></table></div>`;
+  const catRow=(lab,val)=>`<tr style="background:#12202b"><td style="padding:6px 14px;font-weight:700;color:#9cb;border-top:1px solid #2a3a4a">${lab}</td><td style="text-align:right;padding:6px 14px;font-weight:700;color:#9cb;border-top:1px solid #2a3a4a;white-space:nowrap">R$ ${F(val)}</td></tr>`;
+  const itRow=(desc,meta,val)=>`<tr><td style="padding:4px 14px 4px 30px;border-top:1px solid #1e2a36;color:#cde">${desc}${meta?' <span style="color:#8aa;font-size:11px">· '+meta+'</span>':''}</td><td style="text-align:right;padding:4px 14px;border-top:1px solid #1e2a36;white-space:nowrap">R$ ${F(val)}</td></tr>`;
+  const vazio=`<tr><td style="padding:4px 14px 4px 30px;border-top:1px solid #1e2a36;color:#667">—</td><td></td></tr>`;
+  // ===== Grupo 1 — Mão de obra permanente =====
+  let g1='';
+  g1+=catRow('Salários + encargos (equipe fixa)',D.mo.salarios);
+  const rhSal=rh.filter(r=>r.tipo!=='Pró-labore'); rhSal.length?rhSal.forEach(r=>g1+=itRow('<b>'+esc(r.nome)+'</b>',esc(r.tipo)+' · R$'+F(r.carteira)+'/mês + '+F(r.encargos)+'% enc.',r.ano)):g1+=vazio;
+  g1+=catRow('Pró-labore (sócios)',D.mo.prolabore);
+  const rhPro=rh.filter(r=>r.tipo==='Pró-labore'); rhPro.length?rhPro.forEach(r=>g1+=itRow('<b>'+esc(r.nome)+'</b>','',r.ano)):g1+=vazio;
+  g1+=catRow('13º + Férias (provisão CLT)',D.mo.decFer);
+  p13.length?p13.forEach(r=>g1+=itRow(esc(r.nome),'R$'+F(r.mes)+'/mês',r.ano)):g1+=vazio;
+  // ===== Grupo 2 — Despesas administrativas fixas =====
+  const admDefs=[['impostos','Impostos/taxas rurais (ITR, AIBA)',D.admFix.impostos],['seguros','Seguros fixos',D.admFix.seguros],['honorarios','Honorários profissionais',D.admFix.honorarios],['arrendamento','Arrendamento (custo da terra)',D.admFix.arrendamento],['escritorio','Escritório/conectividade/estrutura',D.admFix.escritorio]];
+  let g2='';
+  admDefs.forEach(([k,lab,val])=>{ g2+=catRow(lab,val); const its=ADMIN[k]; its.length?its.forEach(c=>g2+=itRow(esc(c.descricao||''),esc(c.periodicidade||'anual'),_cfAnual(c))):g2+=vazio; });
+  // ===== Grupo 3 — Depreciações (não-caixa) =====
+  let g3='';
+  g3+=catRow('Máquinas e veículos',D.dep.maquinas);
+  const dMaq=dep.filter(d=>d.tipo!=='Benfeitoria'); dMaq.length?dMaq.forEach(d=>g3+=itRow(esc(d.nome),esc(d.tipo),d.valAno)):g3+=vazio;
+  g3+=catRow('Instalações e benfeitorias',D.dep.benfeitorias);
+  const dBenf=dep.filter(d=>d.tipo==='Benfeitoria'); dBenf.length?dBenf.forEach(d=>g3+=itRow(esc(d.nome),esc(d.tipo),d.valAno)):g3+=vazio;
+  // cards do topo (3 grupos + total), espelhando a DRE
+  const card=(lbl,val,sub,cor)=>`<div style="flex:1;min-width:150px;background:#16202b;border:1px solid ${cor||'#2a3a4a'};border-radius:12px;padding:12px 14px"><div style="color:#8aa;font-size:11px">${lbl}</div><div style="font-size:18px;font-weight:700">R$ ${F(val)}</div><div style="font-size:10px;color:#8aa">${sub}</div></div>`;
+  return `<div style="max-width:820px">
+    <div style="font-size:12px;color:#8aa;margin-bottom:12px">Espelho do <b>Custo Fixo</b> da DRE — os mesmos R$ ${F(D.custoFixoTotal)} do COT, abertos item a item. (Manutenção e energia dos pivôs <b>não</b> estão aqui: viraram custo operacional no COE.)</div>
     <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:16px">
-      <div style="flex:1;min-width:140px;background:#122019;border:1px solid #244;border-radius:12px;padding:12px 14px"><div style="color:#8aa;font-size:11px">Custo fixo CAIXA</div><div style="font-size:18px;font-weight:700">R$ ${F(T.caixa)}</div><div style="font-size:10px;color:#8aa">folha + 13º/férias + outros</div></div>
-      <div style="flex:1;min-width:140px;background:#1a1622;border:1px solid #423;border-radius:12px;padding:12px 14px"><div style="color:#8aa;font-size:11px">NÃO-CAIXA (deprec.)</div><div style="font-size:18px;font-weight:700">R$ ${F(T.naoCaixa)}</div><div style="font-size:10px;color:#8aa">só reduz o EBIT, não sai do caixa</div></div>
-      <div style="flex:1;min-width:140px;background:#16202b;border:1px solid #2a3a4a;border-radius:12px;padding:12px 14px"><div style="color:#8aa;font-size:11px">TOTAL custo fixo</div><div style="font-size:18px;font-weight:700">R$ ${F(T.total)}</div><div style="font-size:10px;color:#8aa">/ano (ciclo da safra)</div></div>
+      ${card('1 · Mão de obra permanente',D.mo.total,'salários + pró-labore + 13º/férias')}
+      ${card('2 · Despesas admin fixas',D.admFix.total,'impostos, seguros, honorários, arrendamento, sede')}
+      ${card('3 · Depreciações',D.dep.total,'não-caixa: máquinas + benfeitorias','#423')}
+      ${card('TOTAL Custo Fixo',D.custoFixoTotal,'/ano · '+(D.receita>0?(D.custoFixoTotal/D.receita*100).toFixed(1)+'% da receita':'—'),'#356')}
     </div>
-    <div style="font-size:12px;color:#8aa;margin-bottom:12px">Na DRE: a parte <b>caixa</b> (R$ ${F(T.caixa)}) desce até o EBITDA; a <b>depreciação</b> (R$ ${F(T.deprec)}) sai depois, do EBITDA pro EBIT.</div>
-    ${rhBox}${p13Box}${depBox}${outBox}</div>`;
+    ${box('👷 1 · Mão de obra permanente',D.mo.total,g1)}
+    ${box('🏢 2 · Despesas administrativas fixas',D.admFix.total,g2)}
+    ${box('🏭 3 · Depreciações (não-caixa)',D.dep.total,g3)}
+    <div style="font-size:12px;color:#8aa;margin-top:4px;line-height:1.5">
+      <b>Como entra na DRE:</b> grupos 1 e 2 são <b>caixa</b> (saem de fato) e descem até o <b>EBITDA</b>; o grupo 3 (depreciação, R$ ${F(D.dep.total)}) é <b>não-caixa</b> — só reduz do EBITDA pro <b>EBIT</b>.<br>
+      ${coeItens.length?'<b>Fora daqui (no COE):</b> '+coeItens.length+' lançamento(s) operacional(is) = R$ '+F(coeTot)+' (manutenção + energia dos pivôs) — aparecem no bloco COE da DRE, não no custo fixo.':''}
+    </div>
+  </div>`;
 }
 /* ===== Relatório A4 (folha branca, retrato, pronto p/ imprimir) ===== */
 function _resA4HTML(){
