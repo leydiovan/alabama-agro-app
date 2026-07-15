@@ -3659,25 +3659,23 @@ function _resA4HTML(){
   const unidC={soja:'sc',algodao:'@',feijao:'sc'};
   const precoC={}; cCols.forEach(c=>precoC[c]=(typeof _resPrecoVenda==='function'?_resPrecoVenda(c):0)||0);
   const totHa=c=>cc[c].area>0?cc[c].total/cc[c].area:0;
-  // por cultura: R$/ha | participação % (o custo em sc/@ aparece só na faixa preta do total = COE)
-  const celG=(c,rha,st)=>{ const bl='border-left:1px solid #ddd;'; if(!(rha>0)) return `<td style="text-align:right;padding:2px 8px;color:#bbb;${bl}${st||''}">—</td><td style="text-align:right;padding:2px 8px;color:#bbb;${st||''}">—</td>`;
+  // uma coluna por cultura; valor R$/ha com a participação % entre parênteses ao lado
+  const cel=(c,rha)=>{ if(!(rha>0)) return `<td style="text-align:right;padding:2px 14px;color:#bbb">—</td>`;
     const t=totHa(c); const pct=t>0?Math.round(rha/t*100):0;
-    return `<td style="text-align:right;padding:2px 8px;${bl}${st||''}">${Fi(rha)}</td><td style="text-align:right;padding:2px 8px;color:#888;${st||''}">${pct}%</td>`; };
-  let tabC=`<table style="width:100%;border-collapse:collapse;font-size:11.5px"><thead>
-    <tr><th style="padding:3px 8px"></th>${cCols.map(c=>`<th colspan="2" style="text-align:center;padding:3px 8px;border-left:1px solid #ddd;border-bottom:1px solid #999">${cLab[c]}</th>`).join('')}</tr>
-    <tr style="border-bottom:2px solid #333;font-size:10px;color:#555"><th style="text-align:left;padding:3px 8px">Categoria</th>${cCols.map(c=>`<th style="text-align:right;padding:3px 8px;border-left:1px solid #ddd">R$/ha</th><th style="text-align:right;padding:3px 8px">part.</th>`).join('')}</tr>
-    </thead><tbody>`;
+    return `<td style="text-align:right;padding:2px 14px;white-space:nowrap">${Fi(rha)} <span style="color:#999;font-size:9.5px">(${pct}%)</span></td>`; };
+  const thC=(t,al,w)=>`<th style="text-align:${al||'right'};padding:5px 14px;border-bottom:2px solid #333;${w?'width:'+w+';':''}">${t}</th>`;
+  let tabC=`<table style="width:100%;border-collapse:collapse;font-size:12px"><thead><tr>${thC('Categoria — R$/ha (participação)','left')}${cCols.map(c=>thC(cLab[c],'right','20%')).join('')}</tr></thead><tbody>`;
   grpsCat.forEach(gp=>{
-    tabC+=`<tr style="background:#e2e2e2;font-weight:700"><td style="padding:3px 8px;border-top:1px solid #999">${gp.lab}</td>${cCols.map(c=>celG(c,hhaG(c,gp.keys),'border-top:1px solid #999;font-weight:700')).join('')}</tr>`;
+    tabC+=`<tr style="background:#e2e2e2;font-weight:700"><td style="padding:3px 14px;border-top:1px solid #999">${gp.lab}</td>${cCols.map(c=>cel(c,hhaG(c,gp.keys))).join('')}</tr>`;
     gp.subs.forEach(sb=>{ const hasT=sb.tipos&&sb.tipos.some(tipoTem);
-      tabC+=`<tr${hasT?' style="background:#f6f6f6"':''}><td style="padding:2px 8px 2px 18px;${hasT?'font-weight:600;':''}color:#222;border-bottom:1px solid #eee">${sb.lab}</td>${cCols.map(c=>celG(c,hha(c,sb.key),(hasT?'font-weight:600;':'')+'border-bottom:1px solid #eee')).join('')}</tr>`;
+      tabC+=`<tr${hasT?' style="background:#f6f6f6"':''}><td style="padding:2px 14px 2px 22px;${hasT?'font-weight:600;':''}color:#222;border-bottom:1px solid #eee">${sb.lab}</td>${cCols.map(c=>cel(c,hha(c,sb.key))).join('')}</tr>`;
       if(sb.tipos) sb.tipos.forEach(tp=>{ if(!tipoTem(tp)) return;
-        tabC+=`<tr><td style="padding:1px 8px 1px 32px;color:#666;border-bottom:1px solid #f4f4f4">${esc(tp)}</td>${cCols.map(c=>celG(c,thaC(c,tp),'color:#666;border-bottom:1px solid #f4f4f4')).join('')}</tr>`; });
+        tabC+=`<tr><td style="padding:1px 14px 1px 38px;color:#666;font-size:11px;border-bottom:1px solid #f4f4f4">${esc(tp)}</td>${cCols.map(c=>cel(c,thaC(c,tp))).join('')}</tr>`; });
     });
   });
-  tabC+=`<tr style="background:#333;color:#fff;font-weight:800"><td style="padding:6px 8px">CUSTO MÉDIO TOTAL (COE) / ha</td>${cCols.map(c=>{const t=totHa(c);const un=precoC[c]>0?Math.round(t/precoC[c]):0;return `<td style="text-align:right;padding:6px 8px;border-left:1px solid #555">R$ ${Fi(t)}</td><td style="text-align:right;padding:6px 8px;white-space:nowrap">${un} ${unidC[c]}/ha</td>`;}).join('')}</tr>`;
-  tabC+=`<tr style="background:#f4f4f4"><td style="padding:4px 8px;font-weight:700">Área · preço de venda</td>${cCols.map(c=>`<td colspan="2" style="text-align:right;padding:4px 8px;border-left:1px solid #ddd">${F(cc[c].area)} ha · ${_res$(precoC[c])}/${unidC[c]}</td>`).join('')}</tr>`;
-  tabC+=`<tr style="background:#f4f4f4"><td style="padding:4px 8px;font-weight:700">Custo total (R$)</td>${cCols.map(c=>`<td colspan="2" style="text-align:right;padding:4px 8px;font-weight:700;border-left:1px solid #ddd">${F(cc[c].total)}</td>`).join('')}</tr>`;
+  tabC+=`<tr style="background:#333;color:#fff;font-weight:800"><td style="padding:6px 14px">CUSTO MÉDIO TOTAL (COE) / ha</td>${cCols.map(c=>{const t=totHa(c);const un=precoC[c]>0?Math.round(t/precoC[c]):0;return `<td style="text-align:right;padding:6px 14px;white-space:nowrap">R$ ${Fi(t)} <span style="opacity:.85;font-size:10px">(${un} ${unidC[c]}/ha)</span></td>`;}).join('')}</tr>`;
+  tabC+=`<tr style="background:#f4f4f4"><td style="padding:4px 14px;font-weight:700">Área · preço de venda</td>${cCols.map(c=>`<td style="text-align:right;padding:4px 14px;font-size:10.5px">${F(cc[c].area)} ha · ${_res$(precoC[c])}/${unidC[c]}</td>`).join('')}</tr>`;
+  tabC+=`<tr style="background:#f4f4f4"><td style="padding:4px 14px;font-weight:700">Custo total (R$)</td>${cCols.map(c=>`<td style="text-align:right;padding:4px 14px;font-weight:700">${F(cc[c].total)}</td>`).join('')}</tr>`;
   tabC+=`</tbody></table>`;
   const hdr=sub=>`<div style="text-align:center;border-bottom:2px solid #111;padding-bottom:10px;margin-bottom:14px">
       <div style="font-size:24px;font-weight:800;letter-spacing:1px">ALABAMA AGRO</div>
