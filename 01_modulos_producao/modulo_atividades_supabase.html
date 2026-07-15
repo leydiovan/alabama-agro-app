@@ -3641,8 +3641,8 @@ function _resA4Abrir(){
   if(!st){ st=document.createElement('style'); st.id='a4style';
     st.textContent='#a4wrap{position:fixed;inset:0;z-index:100000;background:rgba(0,0,0,.55);overflow:auto;padding:16px 0}'
      +'#a4sheet{width:210mm;max-width:96vw;margin:0 auto;color:#111;font:13px/1.45 -apple-system,system-ui,Arial,sans-serif}'
-     +'#a4sheet .a4page{width:210mm;height:297mm;box-sizing:border-box;padding:14mm;background:#fff;margin:0 auto 12px;box-shadow:0 0 24px rgba(0,0,0,.5);overflow:hidden;position:relative}'
-     +'#a4sheet .a4fit{transform-origin:top center}'
+     +'#a4sheet .a4page{width:210mm;height:297mm;box-sizing:border-box;padding:7mm;background:#fff;margin:0 auto 12px;box-shadow:0 0 24px rgba(0,0,0,.5);overflow:hidden;position:relative}'
+     +'#a4sheet .a4fit{transform-origin:top left}'
      +'#a4sheet table{break-inside:auto}'
      +'@media print{body>*:not(#a4wrap){display:none!important}#a4wrap{position:static!important;background:#fff!important;padding:0!important;overflow:visible!important}#a4wrap .a4bar{display:none!important}#a4sheet{width:auto!important;max-width:none!important;margin:0!important}#a4sheet .a4page{box-shadow:none!important;margin:0!important;page-break-after:always;overflow:hidden}#a4sheet .a4page:last-child{page-break-after:auto}@page{size:A4 portrait;margin:0}}';
     document.head.appendChild(st); }
@@ -3658,9 +3658,10 @@ function _resA4Abrir(){
 }
 /* auto-fit: cada .a4page escala seu conteúdo (.a4fit) pra caber na folha sem estourar */
 function _resA4Ajustar1(pg){ const fit=pg.querySelector('.a4fit'); if(!fit) return; fit.style.transform='none';
-  const cs=getComputedStyle(pg); const padV=parseFloat(cs.paddingTop)+parseFloat(cs.paddingBottom); const padH=parseFloat(cs.paddingLeft)+parseFloat(cs.paddingRight);
-  const availH=pg.clientHeight-padV, availW=pg.clientWidth-padH; const natH=fit.scrollHeight, natW=fit.scrollWidth;
-  if(natH<=0||natW<=0) return; const sc=Math.min(availW/natW, availH/natH, 1.6); if(sc<0.999||sc>1.001) fit.style.transform='scale('+sc+')'; }
+  const cs=getComputedStyle(pg); const padV=parseFloat(cs.paddingTop)+parseFloat(cs.paddingBottom);
+  const availH=pg.clientHeight-padV, natH=fit.scrollHeight;
+  if(natH<=0) return; const sc=natH>availH?availH/natH:1;   // só encolhe se estourar a altura; se cabe, escala 1 -> margem igual nas 2 folhas
+  if(sc<0.999) fit.style.transform='scale('+sc+')'; }
 function _resA4AjustarFolhas(){ const w=document.getElementById('a4wrap'); if(!w) return; const pgs=w.querySelectorAll('.a4page'); for(let i=0;i<pgs.length;i++) _resA4Ajustar1(pgs[i]); }
 function _resA4Fechar(){ const w=document.getElementById('a4wrap'); if(w) w.style.display='none'; }
 function _resCustoComanda(c){
