@@ -3419,6 +3419,7 @@ function _planMover(id,dir){
 const RES_DIESEL_PRECO = 6.58;                 // R$/L real (média do período); litros rateados p/ total real 363 mil L
 let _resExec = null;                            // {codigo:{area,diesel}} — cache de execucao_campo
 let _resProd = null;                            // {lote|cultura:{qtd,unidade,prov}} — cache de producao_entrada
+let _resGeom = {};                              // {loteNome: ring[[x,y]...]} — geometria UTM 23S p/ o mapa
 let _resFiltroCult = 'todas';
 let _resView = 'lotes';   // 'lotes' | 'custofixo'
 let _resOpen = {};
@@ -3441,6 +3442,10 @@ async function _resLoad(){
     const {data} = await SB.from('producao_entrada').select('lote,cultura,qtd,unidade,obs').eq('safra',SAFRA);
     (data||[]).forEach(r=>{ const k=(r.lote||'')+'|'+(r.cultura||''); const o=_resProd[k]||(_resProd[k]={qtd:0,unidade:r.unidade||'sc',prov:false}); o.qtd+=(+r.qtd||0); if(String(r.obs||'').toLowerCase().includes('provis')) o.prov=true; });
   }catch(e){ console.warn('resLoad prod',e); }
+  try{
+    const {data} = await SB.from('lotes').select('nome,geom');
+    _resGeom={}; (data||[]).forEach(r=>{ const g=r.geom; if(g&&g.ring&&g.ring.length>2) _resGeom[r.nome]=g.ring; });
+  }catch(e){ console.warn('resLoad geom',e); }
 }
 /* preço de venda por cultura, das premissas do Planejamento (S.planPremissas, chave "Cultura|ciclo") */
 function _resPrecoVenda(cult){
@@ -3578,6 +3583,30 @@ function _resCustoCategoriaCultura(){
   Object.values(out).forEach(o=>{ o.total=o.sementes+o.fertilizantes+o.defensivos+o.biologicos+o.aereo+o.colheita+o.combustivel+o.manut+o.energia+o.posColh; });
   return out;
 }
+/* mapa de culturas (folha 4 do A4) — poligonais UTM 23S por lote, cor por cultura, hachura na safrinha, nome no centro */
+function _resMapaSVG(){
+  const cs=(S.comandas||[]).filter(c=>c.status!=='cancelada');
+  const cult={}; cs.forEach(c=>{ const s=cult[c.loteNome]||(cult[c.loteNome]=new Set()); s.add(c.cultura||''); });
+  const feats=[];
+  Object.keys(cult).forEach(nome=>{ const ring=_resGeom[nome]; if(!ring||ring.length<3) return; const s=cult[nome]; const main=s.has('algodao')?'algodao':s.has('soja')?'soja':'feijao'; const feij=s.has('feijao')&&main!=='feijao'; feats.push({nome,main,feij,ring}); });
+  if(!feats.length) return '<div style="color:#888;text-align:center;padding:20px">Sem geometria de lotes no cadastro.</div>';
+  let minX=1e12,maxX=-1e12,minY=1e12,maxY=-1e12;
+  feats.forEach(f=>f.ring.forEach(p=>{minX=Math.min(minX,+p[0]);maxX=Math.max(maxX,+p[0]);minY=Math.min(minY,+p[1]);maxY=Math.max(maxY,+p[1]);}));
+  const W=maxX-minX,H=maxY-minY,pad=W*0.02;
+  const px=x=>(x-minX+pad).toFixed(1), py=y=>(maxY-y+pad).toFixed(1);
+  const COL={soja:'#a7c66b',algodao:'#6ba3c9',feijao:'#d8a86b'};
+  const cen=ring=>{let sx=0,sy=0;ring.forEach(p=>{sx+=+p[0];sy+=+p[1];});return [sx/ring.length,sy/ring.length];};
+  let polys='',labels='';
+  feats.forEach(f=>{ const pts=f.ring.map(p=>px(+p[0])+','+py(+p[1])).join(' ');
+    polys+=`<polygon points="${pts}" fill="${COL[f.main]}" stroke="#333" stroke-width="${(W*0.0008).toFixed(1)}"/>`;
+    if(f.feij) polys+=`<polygon points="${pts}" fill="url(#hatchF)" stroke="none"/>`;
+    const c=cen(f.ring); const nm=esc(f.nome.replace('Lote ','').replace('Pivo ','P'));
+    labels+=`<text x="${px(c[0])}" y="${py(c[1])}" font-size="${(W*0.014).toFixed(1)}" text-anchor="middle" dominant-baseline="middle" font-weight="700" fill="#1a1a1a" style="paint-order:stroke;stroke:#fff;stroke-width:${(W*0.004).toFixed(1)}px">${nm}</text>`; });
+  const hs=(W*0.02).toFixed(1), hw=(W*0.006).toFixed(1);
+  return `<svg viewBox="0 0 ${(W+pad*2).toFixed(1)} ${(H+pad*2).toFixed(1)}" xmlns="http://www.w3.org/2000/svg" style="width:100%;height:auto;display:block">
+    <defs><pattern id="hatchF" width="${hs}" height="${hs}" patternTransform="rotate(45)" patternUnits="userSpaceOnUse"><line x1="0" y1="0" x2="0" y2="${hs}" stroke="#7a4f22" stroke-width="${hw}"/></pattern></defs>
+    ${polys}${labels}</svg>`;
+}
 /* ===== Relatório A4 (folha branca, retrato, pronto p/ imprimir) ===== */
 function _resA4HTML(){
   const D=_resDRE();
@@ -3703,6 +3732,16 @@ function _resA4HTML(){
       <div style="font-size:14px;font-weight:700;margin-bottom:6px">Custo médio por hectare (COE) — por cultura</div>
       ${tabC}
       <div style="margin-top:14px;font-size:10px;color:#888;text-align:center;border-top:1px solid #ccc;padding-top:8px">Valores em <b>R$/ha</b> (custo médio) do COE de cada cultura, aberto por categoria — já com os custos gerais rateados (manutenção, energia dos pivôs, silo bolsa). <b>Não</b> inclui o custo fixo (mão de obra / admin / depreciação), que é da fazenda toda e entra só na DRE.</div>
+    </div></div>
+    <div class="a4page"><div class="a4fit">
+      ${hdr('Mapa de culturas — por lote')}
+      <div style="display:flex;gap:24px;justify-content:center;font-size:12px;margin-bottom:8px">
+        <span><span style="display:inline-block;width:16px;height:11px;background:#a7c66b;border:1px solid #333;vertical-align:middle"></span> Soja</span>
+        <span><span style="display:inline-block;width:16px;height:11px;background:#6ba3c9;border:1px solid #333;vertical-align:middle"></span> Algodão</span>
+        <span><span style="display:inline-block;width:16px;height:11px;background:#a7c66b;border:1px solid #333;vertical-align:middle;background-image:repeating-linear-gradient(45deg,transparent 0 3px,#7a4f22 3px 5px)"></span> Soja + feijão (safrinha)</span>
+      </div>
+      ${_resMapaSVG()}
+      <div style="margin-top:8px;font-size:10px;color:#888;text-align:center;border-top:1px solid #ccc;padding-top:6px">Poligonais do cadastro (UTM 23S) · cor por cultura · lotes com feijão safrinha em hachura · nome no centro do lote.</div>
     </div></div>`;
 }
 function _resA4Abrir(){
