@@ -3755,10 +3755,10 @@ function _resA4HTML(){
   let _aSoja=0,_aAlg=0,_aFeij=0;
   Object.keys(_cultSetF4).forEach(nome=>{ const ar=areaDe(nome)||0; const s=_cultSetF4[nome]; const main=s.has('algodao')?'algodao':'soja'; if(main==='algodao')_aAlg+=ar; else _aSoja+=ar; if(s.has('feijao')&&main!=='feijao')_aFeij+=ar; });
   const _areaTotF4=_aSoja+_aAlg;
-  const _legItem=(sw,lab,ha)=>`<div style="text-align:center"><div style="white-space:nowrap"><span style="display:inline-block;width:16px;height:11px;background:${sw};vertical-align:middle"></span> ${lab}</div><div style="font-size:11px;font-weight:700;color:#555;margin-top:3px">${F(ha)} ha</div></div>`;
+  const _legItem=(sw,lab)=>`<span style="white-space:nowrap"><span style="display:inline-block;width:16px;height:11px;background:${sw};vertical-align:middle"></span> ${lab}</span>`;
   const legendaF4=`<div style="position:absolute;left:59mm;top:69mm;transform:translateX(-50%);text-align:center">
       <div style="font-size:12px;font-weight:800;letter-spacing:1px;color:#2d3944;text-transform:uppercase;margin-bottom:6px">Área total ${F(_areaTotF4)} ha</div>
-      <div style="display:inline-flex;align-items:flex-start;gap:22px;font-size:12px">${_legItem('#c2a878','Soja',_aSoja)}${_legItem('#7d9aab','Algodão',_aAlg)}${_legItem('#75a094','Soja + feijão (safrinha)',_aFeij)}</div>
+      <div style="display:inline-flex;align-items:center;gap:22px;font-size:12px">${_legItem('#c2a878','Soja')}${_legItem('#7d9aab','Algodão')}${_legItem('#75a094','Soja + feijão (safrinha)')}</div>
     </div>`;
   const hdr=sub=>`<div style="display:flex;align-items:center;gap:16px;border-bottom:2px solid #111;padding-bottom:10px;margin-bottom:14px">
       <div style="flex:1;text-align:center">
