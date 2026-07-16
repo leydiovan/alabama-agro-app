@@ -3743,8 +3743,13 @@ function _resA4HTML(){
   tabC+=`</tbody></table>`;
   // ===== cards de topo da folha 4 (mapa) =====
   const _pctR=v=>D.receita>0?Math.round(v/D.receita*100):0;
-  const _cardF4=(lab,val,sub,ac)=>`<div style="flex:1;background:#f7f7f5;border-top:3px solid ${ac};border-radius:7px;padding:10px 8px 11px;text-align:center;box-shadow:0 1px 3px rgba(0,0,0,.09)"><div style="font-size:11px;font-weight:800;letter-spacing:1px;color:${ac};text-transform:uppercase">${lab}</div><div style="font-size:21px;font-weight:800;color:#222;margin:4px 0 2px">${val}</div><div style="font-size:10px;color:#888">${sub}</div></div>`;
-  const cardsF4=`<div style="position:absolute;left:7mm;right:7mm;top:29mm;display:flex;gap:6mm">${_cardF4('Receita bruta',R$(D.receita),'R$ '+F(areaTot>0?D.receita/areaTot:0)+'/ha · 100%','#5f8a72')}${_cardF4('COT',R$(D.cotTotal),'Custo operacional total · '+_pctR(D.cotTotal)+'% da receita','#b0855f')}${_cardF4('EBIT',R$(D.ebit),'Resultado operacional · margem '+_pctR(D.ebit)+'%','#2d3944')}</div>`;
+  const _cardF4=(lab,val,sub,ac)=>`<div style="flex:1;background:#f6f6f4;border:1px solid #e0e0dc;border-top:3px solid ${ac};border-radius:4px;padding:9px 8px 10px;text-align:center"><div style="font-size:11px;font-weight:800;letter-spacing:1px;color:${ac};text-transform:uppercase">${lab}</div><div style="font-size:20px;font-weight:800;color:#222;margin:4px 0 2px">${val}</div><div style="font-size:10px;color:#888">${sub}</div></div>`;
+  const cardsF4=`<div style="display:flex;gap:5mm">${_cardF4('Receita bruta',R$(D.receita),'R$ '+F(areaTot>0?D.receita/areaTot:0)+'/ha · 100%','#5f8a72')}${_cardF4('COT',R$(D.cotTotal),'Custo operacional total · '+_pctR(D.cotTotal)+'% da receita','#b0855f')}${_cardF4('EBIT',R$(D.ebit),'Resultado operacional · margem '+_pctR(D.ebit)+'%','#2d3944')}</div>`;
+  const mapaHeader=`<div style="position:absolute;left:7mm;right:7mm;top:11mm">
+      <div style="text-align:center;font-family:'Arial Black','Arial Bold',Arial,sans-serif;font-weight:900;font-size:33px;letter-spacing:1px;color:#2d3944;margin-bottom:7mm">RESULTADOS SAFRA 2025/26</div>
+      ${cardsF4}
+      <div style="border-bottom:2px solid #2d3944;margin-top:7mm"></div>
+    </div>`;
   const hdr=sub=>`<div style="display:flex;align-items:center;gap:16px;border-bottom:2px solid #111;padding-bottom:10px;margin-bottom:14px">
       <div style="flex:1;text-align:center">
         <div style="font-size:23px;font-weight:800">${sub}</div>
@@ -3752,7 +3757,16 @@ function _resA4HTML(){
       </div>
       <img src="${RES_LOGO}" alt="Alabama Agro" style="height:66px;width:auto;flex:none">
     </div>`;
-  return `<div class="a4page"><div class="a4fit">
+  return `<div class="a4page"><div class="a4fit" style="height:100%;box-sizing:border-box;display:flex;flex-direction:column;justify-content:center">
+      ${_resMapaSVG()}
+    </div>
+    ${mapaHeader}
+    <div style="position:absolute;left:59mm;top:89mm;transform:translateX(-50%);display:inline-flex;align-items:center;gap:24px;font-size:12px;white-space:nowrap">
+      <span><span style="display:inline-block;width:16px;height:11px;background:#c2a878;vertical-align:middle"></span> Soja</span>
+      <span><span style="display:inline-block;width:16px;height:11px;background:#7d9aab;vertical-align:middle"></span> Algodão</span>
+      <span><span style="display:inline-block;width:16px;height:11px;background:#75a094;vertical-align:middle"></span> Soja + feijão (safrinha)</span>
+    </div>${_resDonutHTML()}</div>
+    <div class="a4page"><div class="a4fit">
       ${hdr('Demonstração do Resultado — DRE')}
       <div style="font-size:14px;font-weight:700;margin-bottom:6px">Consolidado da safra</div>${dre}
       <div style="margin-top:16px;font-size:10px;color:#888;text-align:center;border-top:1px solid #ccc;padding-top:8px">Custo fixo total R$ ${F(D.cf.total)}/ano (folha ${F(D.cf.caixa)} + depreciação ${F(D.cf.deprec)}) · diesel R$ ${F(RES_DIESEL_PRECO)}/L · Margem de Contribuição = Receita − COE</div>
@@ -3767,17 +3781,7 @@ function _resA4HTML(){
       <div style="font-size:14px;font-weight:700;margin-bottom:6px">Custo médio por hectare (COE) — por cultura</div>
       ${tabC}
       <div style="margin-top:14px;font-size:10px;color:#888;text-align:center;border-top:1px solid #ccc;padding-top:8px">Valores em <b>R$/ha</b> (custo médio) do COE de cada cultura, aberto por categoria — já com os custos gerais rateados (manutenção, energia dos pivôs, silo bolsa). <b>Não</b> inclui o custo fixo (mão de obra / admin / depreciação), que é da fazenda toda e entra só na DRE.</div>
-    </div></div>
-    <div class="a4page"><div class="a4fit" style="height:100%;box-sizing:border-box;display:flex;flex-direction:column;justify-content:center">
-      ${_resMapaSVG()}
-    </div>
-    <div style="position:absolute;left:7mm;right:7mm;top:12mm;text-align:center;font-family:'Arial Black','Arial Bold',Arial,sans-serif;font-weight:900;font-size:34px;letter-spacing:1px;color:#2d3944">RESULTADOS SAFRA 2025/26</div>
-    ${cardsF4}
-    <div style="position:absolute;left:59mm;top:89mm;transform:translateX(-50%);display:inline-flex;align-items:center;gap:24px;font-size:12px;white-space:nowrap">
-      <span><span style="display:inline-block;width:16px;height:11px;background:#c2a878;vertical-align:middle"></span> Soja</span>
-      <span><span style="display:inline-block;width:16px;height:11px;background:#7d9aab;vertical-align:middle"></span> Algodão</span>
-      <span><span style="display:inline-block;width:16px;height:11px;background:#75a094;vertical-align:middle"></span> Soja + feijão (safrinha)</span>
-    </div>${_resDonutHTML()}</div>`;
+    </div></div>`;
 }
 function _resA4Abrir(){
   let st=document.getElementById('a4style');
