@@ -3594,7 +3594,7 @@ function _resMapaSVG(){
   feats.forEach(f=>f.ring.forEach(p=>{minX=Math.min(minX,+p[0]);maxX=Math.max(maxX,+p[0]);minY=Math.min(minY,+p[1]);maxY=Math.max(maxY,+p[1]);}));
   const W=maxX-minX,H=maxY-minY,pad=W*0.02;
   const px=x=>(x-minX+pad).toFixed(1), py=y=>(maxY-y+pad).toFixed(1);
-  const COL={soja:'#c9c9c9',algodao:'#5f5f5f',safrinha:'#8f8f8f'};   // 3 tons do tema (grayscale das tabelas)
+  const COL={soja:'#c9c9c9',algodao:'#7d9aab',safrinha:'#c2a878'};   // cinza neutro (soja) + azul-aço suave (algodão) + terra suave (safrinha)
   const colorOf=f=>f.feij?COL.safrinha:(f.main==='algodao'?COL.algodao:COL.soja);
   const cen=r=>{let a=0,cx=0,cy=0;const n=r.length;for(let i=0;i<n;i++){const p=r[i],q=r[(i+1)%n];const cr=(+p[0])*(+q[1])-(+q[0])*(+p[1]);a+=cr;cx+=((+p[0])+(+q[0]))*cr;cy+=((+p[1])+(+q[1]))*cr;}a/=2;if(Math.abs(a)<1e-6){let sx=0,sy=0;r.forEach(p=>{sx+=+p[0];sy+=+p[1];});return [sx/n,sy/n];}return [cx/(6*a),cy/(6*a)];};
   const bw=(W*0.006).toFixed(1);
@@ -3602,7 +3602,7 @@ function _resMapaSVG(){
   feats.forEach(f=>{ const pts=f.ring.map(p=>px(+p[0])+','+py(+p[1])).join(' ');
     polys+=`<polygon points="${pts}" fill="${colorOf(f)}" stroke="#fff" stroke-width="${bw}" stroke-linejoin="round"/>`;
     const c=cen(f.ring); const nm=esc(f.nome.replace('Lote ','').replace('Pivo ','P'));
-    labels+=`<text x="${px(c[0])}" y="${py(c[1])}" font-size="${(W*0.014).toFixed(1)}" text-anchor="middle" dominant-baseline="middle" font-weight="700" fill="#fff" style="paint-order:stroke;stroke:#333;stroke-width:${(W*0.004).toFixed(1)}px">${nm}</text>`; });
+    labels+=`<text x="${px(c[0])}" y="${py(c[1])}" font-size="${(W*0.014).toFixed(1)}" text-anchor="middle" dominant-baseline="middle" font-weight="700" fill="#222" style="paint-order:stroke;stroke:#fff;stroke-width:${(W*0.004).toFixed(1)}px">${nm}</text>`; });
   return `<svg viewBox="0 0 ${(W+pad*2).toFixed(1)} ${(H+pad*2).toFixed(1)}" xmlns="http://www.w3.org/2000/svg" style="width:100%;height:auto;display:block">
     ${polys}${labels}</svg>`;
 }
@@ -3735,8 +3735,8 @@ function _resA4HTML(){
     <div class="a4page"><div class="a4fit" style="height:100%;box-sizing:border-box;display:flex;flex-direction:column;justify-content:center;gap:16px">
       <div style="display:flex;gap:24px;justify-content:center;font-size:12px">
         <span><span style="display:inline-block;width:16px;height:11px;background:#c9c9c9;border:1px solid #999;vertical-align:middle"></span> Soja</span>
-        <span><span style="display:inline-block;width:16px;height:11px;background:#5f5f5f;vertical-align:middle"></span> Algodão</span>
-        <span><span style="display:inline-block;width:16px;height:11px;background:#8f8f8f;vertical-align:middle"></span> Soja + feijão (safrinha)</span>
+        <span><span style="display:inline-block;width:16px;height:11px;background:#7d9aab;vertical-align:middle"></span> Algodão</span>
+        <span><span style="display:inline-block;width:16px;height:11px;background:#c2a878;vertical-align:middle"></span> Soja + feijão (safrinha)</span>
       </div>
       ${_resMapaSVG()}
     </div></div>`;
