@@ -3764,13 +3764,13 @@ function _resA4HTML(){
       ${tabC}
       <div style="margin-top:14px;font-size:10px;color:#888;text-align:center;border-top:1px solid #ccc;padding-top:8px">Valores em <b>R$/ha</b> (custo médio) do COE de cada cultura, aberto por categoria — já com os custos gerais rateados (manutenção, energia dos pivôs, silo bolsa). <b>Não</b> inclui o custo fixo (mão de obra / admin / depreciação), que é da fazenda toda e entra só na DRE.</div>
     </div></div>
-    <div class="a4page"><div class="a4fit" style="height:100%;box-sizing:border-box;display:flex;flex-direction:column;justify-content:center;gap:16px">
-      <div style="display:flex;gap:24px;justify-content:center;font-size:12px">
-        <span><span style="display:inline-block;width:16px;height:11px;background:#c2a878;vertical-align:middle"></span> Soja</span>
-        <span><span style="display:inline-block;width:16px;height:11px;background:#7d9aab;vertical-align:middle"></span> Algodão</span>
-        <span><span style="display:inline-block;width:16px;height:11px;background:#75a094;vertical-align:middle"></span> Soja + feijão (safrinha)</span>
-      </div>
+    <div class="a4page"><div class="a4fit" style="height:100%;box-sizing:border-box;display:flex;flex-direction:column;justify-content:center">
       ${_resMapaSVG()}
+    </div>
+    <div style="position:absolute;left:59mm;top:89mm;transform:translateX(-50%);display:inline-flex;align-items:center;gap:24px;font-size:12px;white-space:nowrap">
+      <span><span style="display:inline-block;width:16px;height:11px;background:#c2a878;vertical-align:middle"></span> Soja</span>
+      <span><span style="display:inline-block;width:16px;height:11px;background:#7d9aab;vertical-align:middle"></span> Algodão</span>
+      <span><span style="display:inline-block;width:16px;height:11px;background:#75a094;vertical-align:middle"></span> Soja + feijão (safrinha)</span>
     </div>${_resDonutHTML()}</div>`;
 }
 function _resA4Abrir(){
