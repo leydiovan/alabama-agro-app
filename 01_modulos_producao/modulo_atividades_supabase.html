@@ -3600,6 +3600,40 @@ function _resDonutHTML(){
     <div style="font-size:9px;color:#555;line-height:1.5;margin-top:1mm">Soja ${fmt(aSoja)} ha · Algodão ${fmt(aAlg)} ha<br><span style="color:${COL.feijao}">●</span> Feijão safrinha ${fmt(aFeij)} ha</div>
   </div>`;
 }
+/* 3 roscas de CUSTO POR CATEGORIA (uma por cultura) + legenda única fora-a-fora (parte inferior da folha do mapa) */
+const _COST_CATS=[
+  {k:'sementes',lab:'Sementes',c:'#8c6d3f'},
+  {k:'fertilizantes',lab:'Fertilizantes e corretivos',c:'#c19a5b'},
+  {k:'defensivos',lab:'Defensivos',c:'#7d9aab'},
+  {k:'biologicos',lab:'Biológicos',c:'#8fb08a'},
+  {k:'servicos',lab:'Serviços de terceiros',c:'#5f8a72'},
+  {k:'operacoes',lab:'Operações e manutenção',c:'#6b7784'},
+  {k:'posColh',lab:'Pós-colheita',c:'#b0855f'}
+];
+function _resCustoDonutsHTML(){
+  const cc=(typeof _resCustoCategoriaCultura==='function')?_resCustoCategoriaCultura():{};
+  const val=(o,k)=> k==='servicos'?((o.aereo||0)+(o.colheita||0)) : k==='operacoes'?((o.combustivel||0)+(o.manut||0)+(o.energia||0)) : (+o[k]||0);
+  const cults=[{k:'soja',lab:'Soja',ico:RES_ICON_SOJA,ic:'#9c7a3f'},{k:'algodao',lab:'Algodão',ico:RES_ICON_ALG,ic:'#5f8194'},{k:'feijao',lab:'Feijão',ico:RES_ICON_FEIJAO,ic:'#4f7e6c'}].filter(c=>cc[c.k]);
+  if(!cults.length) return '';
+  const money=n=>'R$ '+fmtBR(n);
+  const R=41, C=2*Math.PI*R;
+  const donut=cu=>{
+    const o=cc[cu.k]; const tot=_COST_CATS.reduce((s,ct)=>s+val(o,ct.k),0); let off=0, segs='';
+    if(tot>0){ _COST_CATS.forEach(ct=>{ const v=val(o,ct.k); if(v<=0)return; const fr=v/tot; segs+=`<circle cx="50" cy="50" r="${R}" fill="none" stroke="${ct.c}" stroke-width="10" stroke-dasharray="${(fr*C).toFixed(2)} ${C.toFixed(2)}" stroke-dashoffset="${(-off*C).toFixed(2)}"/>`; off+=fr; }); }
+    else segs=`<circle cx="50" cy="50" r="${R}" fill="none" stroke="#eee" stroke-width="10"/>`;
+    return `<div style="flex:1;text-align:center">
+        <div style="position:relative;width:41mm;height:41mm;margin:0 auto">
+          <svg viewBox="0 0 100 100" style="width:100%;height:100%;transform:rotate(-90deg)">${segs}</svg>
+          <div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center"><div style="width:13mm;height:13mm;background:${cu.ic};-webkit-mask:url(${cu.ico}) center/contain no-repeat;mask:url(${cu.ico}) center/contain no-repeat"></div></div>
+        </div>
+        <div style="font-size:12px;font-weight:800;color:${cu.ic};margin-top:1.5mm">${cu.lab}</div>
+        <div style="font-size:9.5px;color:#666">${money(tot)}${o.area>0?' · R$ '+fmtBR(tot/o.area)+'/ha':''}</div>
+      </div>`;
+  };
+  const leg=_COST_CATS.map(ct=>`<span style="white-space:nowrap;margin:0 8px"><span style="display:inline-block;width:12px;height:11px;background:${ct.c};vertical-align:middle;border-radius:2px"></span> ${ct.lab}</span>`).join('');
+  return `<div style="position:absolute;left:7mm;right:7mm;bottom:20mm;display:flex;align-items:flex-start;gap:5mm">${cults.map(donut).join('')}</div>
+    <div style="position:absolute;left:5mm;right:5mm;bottom:8mm;text-align:center;font-size:10.5px;color:#333;line-height:1.6">${leg}</div>`;
+}
 /* custo por CATEGORIA x CULTURA (folha 3 do A4) — R$ total + área por cultura (p/ custo médio/ha) */
 function _resCustoCategoriaCultura(){
   const cs=(S.comandas||[]).filter(c=>c.status!=='cancelada');
@@ -3635,7 +3669,7 @@ function _resMapaSVG(){
     polys+=`<polygon points="${pts}" fill="${colorOf(f)}" stroke="#fff" stroke-width="${bw}" stroke-linejoin="round"/>`;
     const c=cen(f.ring); const nm=esc(f.nome.replace('Lote ','').replace('Pivo ','P'));
     labels+=`<text x="${px(c[0])}" y="${py(c[1])}" font-size="${(W*0.014).toFixed(1)}" text-anchor="middle" dominant-baseline="middle" font-weight="700" fill="#222" style="paint-order:stroke;stroke:#fff;stroke-width:${(W*0.004).toFixed(1)}px">${nm}</text>`; });
-  return `<svg viewBox="0 0 ${(W+pad*2).toFixed(1)} ${(H+pad*2).toFixed(1)}" xmlns="http://www.w3.org/2000/svg" style="width:100%;height:auto;display:block">
+  return `<svg viewBox="0 0 ${(W+pad*2).toFixed(1)} ${(H+pad*2).toFixed(1)}" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="xMidYMid meet" style="width:100%;height:100%;display:block">
     ${polys}${labels}</svg>`;
 }
 /* ===== Relatório A4 (folha branca, retrato, pronto p/ imprimir) ===== */
@@ -3767,11 +3801,10 @@ function _resA4HTML(){
       </div>
       <img src="${RES_LOGO}" alt="Alabama Agro" style="height:66px;width:auto;flex:none">
     </div>`;
-  return `<div class="a4page"><div class="a4fit" style="height:100%;box-sizing:border-box;display:flex;flex-direction:column;justify-content:center">
-      ${_resMapaSVG()}
-    </div>
+  return `<div class="a4page">
+    <div style="position:absolute;left:7mm;right:7mm;top:52mm;height:158mm;display:flex;align-items:center;justify-content:center">${_resMapaSVG()}</div>
     ${mapaHeader}
-    ${legendaF4}${_resDonutHTML()}</div>
+    ${legendaF4}${_resDonutHTML()}${_resCustoDonutsHTML()}</div>
     <div class="a4page"><div class="a4fit">
       ${hdr('Demonstração do Resultado — DRE')}
       <div style="font-size:14px;font-weight:700;margin-bottom:6px">Consolidado da safra</div>${dre}
