@@ -3577,7 +3577,7 @@ function _resDonutHTML(){
   let aSoja=0,aAlg=0,aFeij=0;
   Object.keys(cult).forEach(nome=>{ const ar=areaDe(nome)||0; const s=cult[nome]; const main=s.has('algodao')?'algodao':'soja'; if(main==='algodao')aAlg+=ar; else aSoja+=ar; if(s.has('feijao')&&main!=='feijao')aFeij+=ar; });
   const tot=aSoja+aAlg; if(tot<=0) return '';
-  const COL={soja:'#c9c9c9',algodao:'#7d9aab',feijao:'#c2a878'}, ICOL={soja:'#9a9a9a',algodao:'#5f8194'};
+  const COL={soja:'#75a094',algodao:'#7d9aab',feijao:'#c2a878'}, ICOL={soja:'#4f7e6c',algodao:'#5f8194'};
   const C1=2*Math.PI*34, C2=2*Math.PI*44, fS=aSoja/tot, fA=aAlg/tot, fF=Math.min(1,aFeij/tot);
   const fmt=n=>Math.round(n).toLocaleString('pt-BR');
   const ico=(uri,cor)=>`<div style="width:9mm;height:9mm;background:${cor};-webkit-mask:url(${uri}) center/contain no-repeat;mask:url(${uri}) center/contain no-repeat"></div>`;
@@ -3620,7 +3620,7 @@ function _resMapaSVG(){
   feats.forEach(f=>f.ring.forEach(p=>{minX=Math.min(minX,+p[0]);maxX=Math.max(maxX,+p[0]);minY=Math.min(minY,+p[1]);maxY=Math.max(maxY,+p[1]);}));
   const W=maxX-minX,H=maxY-minY,pad=W*0.02;
   const px=x=>(x-minX+pad).toFixed(1), py=y=>(maxY-y+pad).toFixed(1);
-  const COL={soja:'#c9c9c9',algodao:'#7d9aab',safrinha:'#c2a878'};   // cinza neutro (soja) + azul-aço suave (algodão) + terra suave (safrinha)
+  const COL={soja:'#75a094',algodao:'#7d9aab',safrinha:'#c2a878'};   // cinza neutro (soja) + azul-aço suave (algodão) + terra suave (safrinha)
   const colorOf=f=>f.feij?COL.safrinha:(f.main==='algodao'?COL.algodao:COL.soja);
   const cen=r=>{let a=0,cx=0,cy=0;const n=r.length;for(let i=0;i<n;i++){const p=r[i],q=r[(i+1)%n];const cr=(+p[0])*(+q[1])-(+q[0])*(+p[1]);a+=cr;cx+=((+p[0])+(+q[0]))*cr;cy+=((+p[1])+(+q[1]))*cr;}a/=2;if(Math.abs(a)<1e-6){let sx=0,sy=0;r.forEach(p=>{sx+=+p[0];sy+=+p[1];});return [sx/n,sy/n];}return [cx/(6*a),cy/(6*a)];};
   const bw=(W*0.006).toFixed(1);
@@ -3760,7 +3760,7 @@ function _resA4HTML(){
     </div></div>
     <div class="a4page"><div class="a4fit" style="height:100%;box-sizing:border-box;display:flex;flex-direction:column;justify-content:center;gap:16px">
       <div style="display:flex;gap:24px;justify-content:center;font-size:12px">
-        <span><span style="display:inline-block;width:16px;height:11px;background:#c9c9c9;border:1px solid #999;vertical-align:middle"></span> Soja</span>
+        <span><span style="display:inline-block;width:16px;height:11px;background:#75a094;vertical-align:middle"></span> Soja</span>
         <span><span style="display:inline-block;width:16px;height:11px;background:#7d9aab;vertical-align:middle"></span> Algodão</span>
         <span><span style="display:inline-block;width:16px;height:11px;background:#c2a878;vertical-align:middle"></span> Soja + feijão (safrinha)</span>
       </div>
