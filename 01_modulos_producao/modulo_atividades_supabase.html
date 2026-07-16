@@ -3604,18 +3604,19 @@ function _resDonutHTML(){
 function _resReceitaBarsHTML(){
   const rec={};
   Object.keys(_resProd||{}).forEach(k=>{ const cult=k.split('|')[1]||''; const qtd=(_resProd[k].qtd)||0; rec[cult]=(rec[cult]||0)+qtd*(typeof _resPrecoVenda==='function'?_resPrecoVenda(cult):0); });
-  const cults=[{k:'soja',lab:'Soja',ico:RES_ICON_SOJA,ic:'#9c7a3f'},{k:'algodao',lab:'Algodão',ico:RES_ICON_ALG,ic:'#5f8194'},{k:'feijao',lab:'Feijão',ico:RES_ICON_FEIJAO,ic:'#4f7e6c'}].filter(c=>rec[c.k]!==undefined);
+  const cults=[{k:'soja',lab:'Soja',ico:RES_ICON_SOJA,ic:'#c2a878'},{k:'algodao',lab:'Algodão',ico:RES_ICON_ALG,ic:'#7d9aab'},{k:'feijao',lab:'Feijão',ico:RES_ICON_FEIJAO,ic:'#75a094'}].filter(c=>rec[c.k]!==undefined);
   if(!cults.length) return '';
   const max=Math.max(1,...cults.map(c=>rec[c.k]||0));
+  const total=cults.reduce((s,c)=>s+(rec[c.k]||0),0);
   const money=n=>'R$ '+fmtBR(n);
-  const row=cu=>{ const v=rec[cu.k]||0, w=(v/max*80).toFixed(1);
+  const row=cu=>{ const v=rec[cu.k]||0, w=(v/max*80).toFixed(1), pct=total>0?(v/total*100).toFixed(1).replace('.',','):'0';
     return `<div style="display:flex;align-items:center;gap:7mm">
-        <div style="width:20mm;height:20mm;flex:none;background:${cu.ic};-webkit-mask:url(${cu.ico}) center/contain no-repeat;mask:url(${cu.ico}) center/contain no-repeat"></div>
+        <div style="width:16mm;height:16mm;flex:none;background:${cu.ic};-webkit-mask:url(${cu.ico}) center/contain no-repeat;mask:url(${cu.ico}) center/contain no-repeat"></div>
         <div style="flex:1;min-width:0">
-          <div style="font-size:11px;font-weight:800;letter-spacing:.5px;color:${cu.ic};margin-bottom:2mm">${cu.lab}</div>
+          <div style="font-size:11px;font-weight:800;letter-spacing:.5px;color:#2d3944;margin-bottom:2mm">${cu.lab}</div>
           <div style="display:flex;align-items:center">
-            <div style="height:10mm;width:${w}%;background:${cu.ic};border-radius:0 3px 3px 0;min-width:1.5mm"></div>
-            <div style="margin-left:3mm;font-size:13px;font-weight:800;color:#2d3944;white-space:nowrap">${money(v)}</div>
+            <div style="height:8.5mm;width:${w}%;background:${cu.ic};border-radius:0 3px 3px 0;min-width:1.5mm"></div>
+            <div style="margin-left:3mm;font-size:13px;font-weight:800;color:#2d3944;white-space:nowrap">${money(v)} <span style="font-size:11px;font-weight:600;color:#888">(${pct}%)</span></div>
           </div>
         </div>
       </div>`;
