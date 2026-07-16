@@ -3636,6 +3636,26 @@ function _resReceitaBarsHTML(pos){
   };
   return `<div style="position:absolute;${pos||'left:9mm;right:12mm;top:214mm;bottom:8mm'};display:flex;flex-direction:column;justify-content:center;gap:6mm">${cults.map(row).join('')}</div>`;
 }
+/* colunas empilhadas do COE por categoria (ordenado maior→menor) — cada coluna empilhada pelas 3 culturas */
+function _resCoeColunasHTML(pos, Hmax){
+  const cc=(typeof _resCustoCategoriaCultura==='function')?_resCustoCategoriaCultura():{};
+  const cults=[{k:'soja',c:'#c2a878'},{k:'algodao',c:'#7d9aab'},{k:'feijao',c:'#75a094'}];
+  const CATS=[{k:'sementes',lab:'Sementes'},{k:'fertilizantes',lab:'Fertilizantes'},{k:'defensivos',lab:'Defensivos'},{k:'biologicos',lab:'Biológicos'},{k:'servicos',lab:'Serviços terceiros'},{k:'operacoes',lab:'Operações/manut.'},{k:'posColh',lab:'Pós-colheita'}];
+  const val=(cu,k)=>{const o=cc[cu]||{};return k==='servicos'?((o.aereo||0)+(o.colheita||0)):k==='operacoes'?((o.combustivel||0)+(o.manut||0)+(o.energia||0)):(+o[k]||0);};
+  const data=CATS.map(cat=>{const parts=cults.map(cu=>({c:cu.c,v:val(cu.k,cat.k)}));const tot=parts.reduce((s,p)=>s+p.v,0);return {lab:cat.lab,tot,parts};}).filter(d=>d.tot>0).sort((a,b)=>b.tot-a.tot);
+  if(!data.length) return '';
+  const max=data[0].tot, coeTot=data.reduce((s,d)=>s+d.tot,0), H=Hmax||105;
+  const money=n=> n>=1e6?'R$ '+(n/1e6).toFixed(1).replace('.',',')+' mi':(n>=1e3?'R$ '+Math.round(n/1e3)+' mil':'R$ '+Math.round(n));
+  const col=d=>{ const h=(d.tot/max*H).toFixed(1), pct=coeTot>0?Math.round(d.tot/coeTot*100):0;
+    const segs=d.parts.filter(p=>p.v>0).map(p=>`<div style="height:${(p.v/d.tot*100).toFixed(1)}%;background:${p.c}"></div>`).join('');
+    return `<div style="flex:1;display:flex;flex-direction:column;align-items:center;min-width:0">
+        <div style="font-size:8px;font-weight:700;color:#2d3944;margin-bottom:1mm;white-space:nowrap">${money(d.tot)}</div>
+        <div style="width:66%;height:${h}mm;display:flex;flex-direction:column-reverse;border-radius:2px 2px 0 0;overflow:hidden">${segs}</div>
+        <div style="font-size:7.5px;color:#555;margin-top:1.5mm;text-align:center;line-height:1.15">${d.lab} <span style="color:#999">${pct}%</span></div>
+      </div>`;
+  };
+  return `<div style="position:absolute;${pos};display:flex;align-items:flex-end;gap:3mm">${data.map(col).join('')}</div>`;
+}
 /* custo por CATEGORIA x CULTURA (folha 3 do A4) — R$ total + área por cultura (p/ custo médio/ha) */
 function _resCustoCategoriaCultura(){
   const cs=(S.comandas||[]).filter(c=>c.status!=='cancelada');
@@ -3812,7 +3832,8 @@ function _resA4HTML(){
     ${mapaHeader}
     ${_resReceitaBarsHTML('left:10mm;right:12mm;top:54mm;height:60mm')}
     ${_resLegendaMapaHTML('left:164mm;top:206mm;transform:translateX(-50%)')}
-    ${_resDonutHTML({left:'145mm',bottom:'171mm',scale:0.95})}</div>
+    ${_resDonutHTML({left:'145mm',bottom:'171mm',scale:0.95})}
+    ${_resCoeColunasHTML('left:10mm;right:10mm;bottom:6mm', 105)}</div>
     <div class="a4page"><div class="a4fit">
       ${hdr('Demonstração do Resultado — DRE')}
       <div style="font-size:14px;font-weight:700;margin-bottom:6px">Consolidado da safra</div>${dre}
