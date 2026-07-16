@@ -3750,6 +3750,16 @@ function _resA4HTML(){
       <div style="text-align:center;font-family:'Arial Black','Arial Bold',Arial,sans-serif;font-weight:900;font-size:33px;letter-spacing:1px;color:#2d3944;margin-bottom:8mm">RESULTADOS SAFRA 2025/26</div>
       ${cardsF4}
     </div>`;
+  // ===== áreas por cultura p/ a legenda (mesma lógica da rosca) =====
+  const _cultSetF4={}; cs.forEach(c=>{ (_cultSetF4[c.loteNome]||(_cultSetF4[c.loteNome]=new Set())).add(c.cultura||''); });
+  let _aSoja=0,_aAlg=0,_aFeij=0;
+  Object.keys(_cultSetF4).forEach(nome=>{ const ar=areaDe(nome)||0; const s=_cultSetF4[nome]; const main=s.has('algodao')?'algodao':'soja'; if(main==='algodao')_aAlg+=ar; else _aSoja+=ar; if(s.has('feijao')&&main!=='feijao')_aFeij+=ar; });
+  const _areaTotF4=_aSoja+_aAlg;
+  const _legItem=(sw,lab,ha)=>`<div style="text-align:center"><div style="white-space:nowrap"><span style="display:inline-block;width:16px;height:11px;background:${sw};vertical-align:middle"></span> ${lab}</div><div style="font-size:11px;font-weight:700;color:#555;margin-top:3px">${F(ha)} ha</div></div>`;
+  const legendaF4=`<div style="position:absolute;left:59mm;top:69mm;transform:translateX(-50%);text-align:center">
+      <div style="font-size:12px;font-weight:800;letter-spacing:1px;color:#2d3944;text-transform:uppercase;margin-bottom:6px">Área total ${F(_areaTotF4)} ha</div>
+      <div style="display:inline-flex;align-items:flex-start;gap:22px;font-size:12px">${_legItem('#c2a878','Soja',_aSoja)}${_legItem('#7d9aab','Algodão',_aAlg)}${_legItem('#75a094','Soja + feijão (safrinha)',_aFeij)}</div>
+    </div>`;
   const hdr=sub=>`<div style="display:flex;align-items:center;gap:16px;border-bottom:2px solid #111;padding-bottom:10px;margin-bottom:14px">
       <div style="flex:1;text-align:center">
         <div style="font-size:23px;font-weight:800">${sub}</div>
@@ -3761,11 +3771,7 @@ function _resA4HTML(){
       ${_resMapaSVG()}
     </div>
     ${mapaHeader}
-    <div style="position:absolute;left:59mm;top:89mm;transform:translateX(-50%);display:inline-flex;align-items:center;gap:24px;font-size:12px;white-space:nowrap">
-      <span><span style="display:inline-block;width:16px;height:11px;background:#c2a878;vertical-align:middle"></span> Soja</span>
-      <span><span style="display:inline-block;width:16px;height:11px;background:#7d9aab;vertical-align:middle"></span> Algodão</span>
-      <span><span style="display:inline-block;width:16px;height:11px;background:#75a094;vertical-align:middle"></span> Soja + feijão (safrinha)</span>
-    </div>${_resDonutHTML()}</div>
+    ${legendaF4}${_resDonutHTML()}</div>
     <div class="a4page"><div class="a4fit">
       ${hdr('Demonstração do Resultado — DRE')}
       <div style="font-size:14px;font-weight:700;margin-bottom:6px">Consolidado da safra</div>${dre}
