@@ -3583,7 +3583,7 @@ function _resDonutHTML(){
   const angF=(fF/2)*2*Math.PI, RmmF=30, cxF=(26+Math.sin(angF)*RmmF).toFixed(1), cyF=(26-Math.cos(angF)*RmmF).toFixed(1);
   const fmt=n=>Math.round(n).toLocaleString('pt-BR');
   const ico=(uri,cor,sz)=>`<div style="width:${sz||'9mm'};height:${sz||'9mm'};background:${cor};-webkit-mask:url(${uri}) center/contain no-repeat;mask:url(${uri}) center/contain no-repeat"></div>`;
-  return `<div style="position:absolute;left:8mm;bottom:8mm;width:54mm;text-align:center">
+  return `<div style="position:absolute;left:8mm;bottom:84mm;width:54mm;text-align:center">
     <div style="position:relative;width:52mm;height:52mm;margin:0 auto">
       <svg viewBox="0 0 100 100" style="width:100%;height:100%;transform:rotate(-90deg)">
         <circle cx="50" cy="50" r="34" fill="none" stroke="${COL.soja}" stroke-width="7" stroke-dasharray="${(fS*C1).toFixed(2)} ${C1.toFixed(2)}"/>
