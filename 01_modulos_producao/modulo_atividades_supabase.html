@@ -3657,7 +3657,7 @@ function _resMapaSVG(){
   feats.forEach(f=>{ const pts=f.ring.map(p=>px(+p[0])+','+py(+p[1])).join(' ');
     polys+=`<polygon points="${pts}" fill="${colorOf(f)}" stroke="#fff" stroke-width="${bw}" stroke-linejoin="round"/>`;
     const c=cen(f.ring); const nm=esc(f.nome.replace('Lote ','').replace('Pivo ','P'));
-    labels+=`<text x="${px(c[0])}" y="${py(c[1])}" font-size="${(W*0.014).toFixed(1)}" text-anchor="middle" dominant-baseline="middle" font-weight="700" fill="#222" style="paint-order:stroke;stroke:#fff;stroke-width:${(W*0.004).toFixed(1)}px">${nm}</text>`; });
+    labels+=`<text x="${px(c[0])}" y="${py(c[1])}" font-size="${(W*0.0168).toFixed(1)}" text-anchor="middle" dominant-baseline="middle" font-weight="400" fill="#fff">${nm}</text>`; });
   return `<svg viewBox="0 0 ${(W+pad*2).toFixed(1)} ${(H+pad*2).toFixed(1)}" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="xMidYMid meet" style="width:100%;height:100%;display:block">
     ${polys}${labels}</svg>`;
 }
