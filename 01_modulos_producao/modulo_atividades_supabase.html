@@ -3743,10 +3743,11 @@ function _resA4HTML(){
   tabC+=`</tbody></table>`;
   // ===== cards de topo da folha 4 (mapa) =====
   const _pctR=v=>D.receita>0?Math.round(v/D.receita*100):0;
-  const _cardF4=(lab,val,sub,ac)=>`<div style="flex:1;background:#f6f6f4;border:1px solid #e0e0dc;border-top:3px solid ${ac};border-radius:4px;padding:9px 8px 10px;text-align:center"><div style="font-size:11px;font-weight:800;letter-spacing:1px;color:${ac};text-transform:uppercase">${lab}</div><div style="font-size:20px;font-weight:800;color:#222;margin:4px 0 2px">${val}</div><div style="font-size:10px;color:#888">${sub}</div></div>`;
-  const cardsF4=`<div style="display:flex;gap:5mm">${_cardF4('Receita bruta',R$(D.receita),'R$ '+F(areaTot>0?D.receita/areaTot:0)+'/ha · 100%','#5f8a72')}${_cardF4('COT',R$(D.cotTotal),'Custo operacional total · '+_pctR(D.cotTotal)+'% da receita','#b0855f')}${_cardF4('EBIT',R$(D.ebit),'Resultado operacional · margem '+_pctR(D.ebit)+'%','#2d3944')}</div>`;
+  const _cardF4=(lab,val,sub,ac)=>`<div style="flex:1;text-align:center;padding:0 5mm"><div style="font-size:11px;font-weight:700;letter-spacing:1.5px;color:${ac};text-transform:uppercase">${lab}</div><div style="font-size:24px;font-weight:800;color:#2d3944;margin:4px 0 3px">${val}</div><div style="font-size:10px;color:#999">${sub}</div></div>`;
+  const _divF4=`<div style="width:1px;background:#e2e2df;align-self:stretch;margin:2px 0"></div>`;
+  const cardsF4=`<div style="display:flex;align-items:center">${_cardF4('Receita bruta',R$(D.receita),'R$ '+F(areaTot>0?D.receita/areaTot:0)+'/ha · 100%','#5f8a72')}${_divF4}${_cardF4('COT',R$(D.cotTotal),'Custo operacional total · '+_pctR(D.cotTotal)+'% da receita','#b0855f')}${_divF4}${_cardF4('EBIT',R$(D.ebit),'Resultado operacional · margem '+_pctR(D.ebit)+'%','#2d3944')}</div>`;
   const mapaHeader=`<div style="position:absolute;left:7mm;right:7mm;top:11mm">
-      <div style="text-align:center;font-family:'Arial Black','Arial Bold',Arial,sans-serif;font-weight:900;font-size:33px;letter-spacing:1px;color:#2d3944;margin-bottom:7mm">RESULTADOS SAFRA 2025/26</div>
+      <div style="text-align:center;font-family:'Arial Black','Arial Bold',Arial,sans-serif;font-weight:900;font-size:33px;letter-spacing:1px;color:#2d3944;margin-bottom:8mm">RESULTADOS SAFRA 2025/26</div>
       ${cardsF4}
     </div>`;
   const hdr=sub=>`<div style="display:flex;align-items:center;gap:16px;border-bottom:2px solid #111;padding-bottom:10px;margin-bottom:14px">
