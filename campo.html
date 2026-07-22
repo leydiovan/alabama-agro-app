@@ -85,6 +85,10 @@ input[type=time],input[type=number]{font-variant-numeric:tabular-nums}
 <script>
 const SB_URL='https://ngdidjtfgmtkdkvqwfjf.supabase.co';
 const SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5nZGlkanRmZ210a2RrdnF3ZmpmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NTU5MDYsImV4cCI6MjA5NjUzMTkwNn0.OW9hGEFTvSYx_THv3DR9pt8xIVC0B9Pw2bTDGD6TBLk';
+/* Conta do APARELHO (auto-login). Fica VAZIA aqui: o campo.html vai pro GitHub Pages, que é público.
+   O build-www.ps1 injeta as credenciais SÓ no APK, a partir de app-android/device-auth.json (fora do git).
+   Conta restrita pela migração 78: lê 6 tabelas, grava em 2, não apaga nada. */
+const DEV_EMAIL='', DEV_PASS='';
 let SB=null;
 const $=id=>document.getElementById(id);
 const esc=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -128,14 +132,24 @@ function _st(t,c){ let e=$('snack'); if(!e){ e=document.createElement('div'); e.
 /* ---------- boot / login ---------- */
 async function boot(){
   SB = window.supabase ? window.supabase.createClient(SB_URL,SB_KEY) : null;
+  const temCache=((_cacheGet('funcs',[])||[]).length>0);    // aparelho JÁ provisionado (tem cadastro no bolso)
+  if(!SB && !temCache){ $('app').innerHTML='<div class="center err" style="margin-top:40px">Sem internet (biblioteca não carregou).</div>'; return; }
+  if(temCache){ entrar(); _garantirSessao(); return; }       // OFFLINE-FIRST: entra NA HORA por nome+PIN; a sessão de sync se resolve em 2º plano
   let session=null;
-  if(SB){ try{ const {data}=await SB.auth.getSession(); session=data&&data.session; }catch(e){} }   // getSession = local (não bate na rede)
-  let temOper=false; try{ temOper=!!(+localStorage.getItem('campo_oper')); }catch(e){}
-  if(session){ entrar(); return; }                          // sessão válida (mesmo offline, o refresh-token persiste): entra normal
-  if(!navigator.onLine && temOper){ entrar(); return; }     // CAMPO/offline com operador salvo: NUNCA trava no login — trabalha local, a sincronização espera a rede/login
-  if(!SB){ $('app').innerHTML='<div class="center err" style="margin-top:40px">Sem internet (biblioteca não carregou).</div>'; return; }
-  STEP='login'; render();                                   // online (ou 1ª vez, sem operador): pede login p/ (re)estabelecer a sessão de sincronização
+  try{ const {data}=await _q(SB.auth.getSession(),6000); session=data&&data.session; }catch(e){}
+  if(!session) session=await _garantirSessao();             // 1ª vez do aparelho: entra sozinho com a conta gravada (APK)
+  if(session){ entrar(); return; }
+  STEP='login'; render();                                   // sem conta gravada (site público) e sem sessão: pede e-mail/senha
 }
+/* mantém viva a sessão de sincronização, SEM travar a tela. No APK entra sozinho; no site, não faz nada. */
+async function _garantirSessao(){
+  if(!SB||!navigator.onLine) return null;
+  let s=null; try{ const {data}=await _q(SB.auth.getSession(),6000); s=data&&data.session; }catch(e){}
+  if(!s && DEV_EMAIL){ try{ const {data,error}=await _q(SB.auth.signInWithPassword({email:DEV_EMAIL,password:DEV_PASS}),8000); if(error) throw error; s=(data&&data.session)||null; }catch(e){ s=null; } }
+  if(s && !_SESSOK){ _SESSOK=true; _atualizarCadastros(); }   // sessão nova -> repõe cadastros/comandas que o cache não tinha
+  return s;
+}
+let _SESSOK=false;
 function _msg(t,c){ const e=$('msg'); if(e){ e.textContent=t; e.style.color=c||'var(--muted)'; } }
 async function login(){
   const em=$('e').value.trim(), pw=$('s').value;
@@ -145,24 +159,48 @@ async function login(){
 }
 async function entrar(){
   DIA=hoje();
-  try{ const {data:sd}=await SB.auth.getSession(); USER_EMAIL=(sd&&sd.session&&sd.session.user&&sd.session.user.email)||''; }catch(e){}   // getSession = local (não bate na rede)
-  try{ if(!navigator.onLine) throw 0; const {data:f,error}=await _q(SB.from('funcionarios').select('id,nome,tipo,ativo,operador_melosa,pin').order('nome')); if(error) throw error; FUNCS=(f||[]).filter(x=>x.ativo!==false); _cacheSet('funcs',FUNCS); }catch(e){ FUNCS=_cacheGet('funcs',[]); }
-  try{ if(!navigator.onLine) throw 0; const {data:m,error}=await _q(SB.from('maquinas').select('id,nome,categoria,id_frota,consumo_ref,marca,modelo,faixa_m').order('nome')); if(error) throw error; MAQS=m||[]; _cacheSet('maqs',MAQS); }catch(e){ MAQS=_cacheGet('maqs',[]); }
-  try{ if(!navigator.onLine) throw 0; const {data:i,error}=await _q(SB.from('implementos').select('id,nome,categoria,id_frota,largura_trabalho').order('nome')); if(error) throw error; IMPS=i||[]; _cacheSet('imps',IMPS); }catch(e){ IMPS=_cacheGet('imps',[]); }
-  try{ if(!navigator.onLine) throw 0; const {data:l,error}=await _q(SB.from('lotes').select('nome,area,geom').order('nome')); if(error) throw error; LOTES=l||[]; _cacheSet('lotes',LOTES); }catch(e){ LOTES=_cacheGet('lotes',[]); }
-  await carregarSafra();
+  // OFFLINE-FIRST: sobe NA HORA com o que já está no aparelho — a rede nunca segura a tela
+  FUNCS=_cacheGet('funcs',[])||[]; MAQS=_cacheGet('maqs',[])||[]; IMPS=_cacheGet('imps',[])||[]; LOTES=_cacheGet('lotes',[])||[];
+  SAFRA=_cacheGet('safra','')||''; COMANDAS=_cacheGet('comandas',[])||[];
   // operador entra SEMPRE pela tela de login (nome + PIN); o último fica pré-selecionado
-  OPER=null; STEP='quemsou';
-  render();
+  if(FUNCS.length){ OPER=null; STEP='quemsou'; render(); _atualizarCadastros(); return; }   // já provisionado -> entra offline e atualiza em 2º plano
+  $('app').innerHTML='<div class="center" style="margin-top:40px">Preparando o aparelho…</div>';   // 1ª vez neste aparelho: precisa da rede uma vez
+  await _atualizarCadastros();
+  OPER=null; STEP='quemsou'; render();
+}
+/* atualiza cadastros/comandas em 2º PLANO: tudo em paralelo e, se a rede falhar, mantém o que está no aparelho */
+async function _atualizarCadastros(){
+  if(!SB) return;
+  try{ const {data:sd}=await _q(SB.auth.getSession(),6000); USER_EMAIL=(sd&&sd.session&&sd.session.user&&sd.session.user.email)||''; }catch(e){}
+  const g=async(tab,sel)=>{ try{ if(!navigator.onLine) throw 0; const {data,error}=await _q(SB.from(tab).select(sel).order('nome')); if(error) throw error; return data||[]; }catch(e){ return null; } };
+  const [f,m,i,l]=await Promise.all([
+    g('funcionarios_campo','id,nome,tipo,ativo,visivel_coleta,operador_melosa,pin'),   // view restrita: sem salário/CPF/folha (migração 78)
+    g('maquinas','id,nome,categoria,id_frota,consumo_ref,marca,modelo,faixa_m'),
+    g('implementos','id,nome,categoria,id_frota,largura_trabalho'),
+    g('lotes','nome,area,geom')
+  ]);
+  // BLINDAGEM: resposta vazia NUNCA apaga o que está no aparelho (sessão expirada/RLS devolve [] com sucesso -> trancaria o operador do lado de fora)
+  const ff=(f||[]).filter(x=>x.ativo!==false && x.visivel_coleta!==false);
+  if(ff.length){ FUNCS=ff; _cacheSet('funcs',FUNCS); }   // o PIN vem junto -> login offline no próximo boot
+  if(m&&m.length){ MAQS=m; _cacheSet('maqs',MAQS); }
+  if(i&&i.length){ IMPS=i; _cacheSet('imps',IMPS); }
+  if(l&&l.length){ LOTES=l; _cacheSet('lotes',LOTES); }
+  await carregarSafra();
+  if(STEP==='quemsou') render();   // a lista de operadores acabou de chegar
   _updPend(); if(navigator.onLine) _syncAll().then(async()=>{ if(OPER){ await carregarDia(); if(STEP==='home') render(); } });
 }
-window.addEventListener('online', async()=>{ if(!SB||!OPER) return; _st('🔄 Sincronizando…','#3498db'); await _syncAll(); await carregarDia(); if(STEP==='home') render(); else _updPend(); _st('✅ Sincronizado','#27ae60'); });
+window.addEventListener('online', async()=>{ if(!SB) return; _SESSOK=false; await _garantirSessao(); if(!OPER) return; _st('🔄 Sincronizando…','#3498db'); await _syncAll(); await carregarDia(); if(STEP==='home') render(); else _updPend(); _st('✅ Sincronizado','#27ae60'); });
+/* app foi pro 2º plano ou está sendo fechado -> grava AGORA o trajeto que está na mão (o Android mata o processo sem avisar) */
+document.addEventListener('visibilitychange',()=>{ if(document.visibilityState==='hidden'){ try{ _touchSess(); }catch(e){} } });
+window.addEventListener('pagehide',()=>{ try{ _touchSess(); }catch(e){} });
 async function carregarSafra(){
-  let safras=null; try{ if(!navigator.onLine) throw 0; const {data,error}=await _q(SB.from('safras').select('*')); if(error) throw error; safras=data||[]; _cacheSet('safras',safras); }catch(e){ safras=_cacheGet('safras',[]); }
+  let safras=null, netOk=false;   // netOk = o servidor respondeu COM DADO -> prova de sessão viva (só aí uma lista vazia é verdade)
+  try{ if(!navigator.onLine) throw 0; const {data,error}=await _q(SB.from('safras').select('*')); if(error) throw error; safras=data||[]; if(safras.length){ netOk=true; _cacheSet('safras',safras); } else safras=_cacheGet('safras',[]); }catch(e){ safras=_cacheGet('safras',[]); }   // vazio não apaga o cache
   const h=hoje();
   let s=safras.find(x=>x.inicio&&x.fim&&x.inicio<=h&&h<=x.fim);
   if(!s) s=safras.slice().sort((a,b)=>(b.ano||0)-(a.ano||0))[0];
-  SAFRA=s?s.nome:(_cacheGet('safra','')||''); _cacheSet('safra',SAFRA);
+  SAFRA=s?s.nome:(_cacheGet('safra','')||''); if(SAFRA) _cacheSet('safra',SAFRA);
+  if(!netOk || !SAFRA) return;   // sem PROVA de sessão viva (offline, sessão caída, RLS devolvendo vazio) -> mantém as comandas que já estão no aparelho
   try{ if(!navigator.onLine) throw 0; const {data,error}=await _q(SB.from('comandas').select('*').eq('safra',SAFRA).neq('status','cancelada')); if(error) throw error; COMANDAS=data||[]; _cacheSet('comandas',COMANDAS);
     for(const c of COMANDAS){ if(c.status==='executada'){ try{ await _purgeComandaLocal(c.codigo); }catch(_){} } }   // admin finalizou -> limpa o local (só online, com o servidor confirmando)
   }catch(e){ COMANDAS=_cacheGet('comandas',[]); }
@@ -211,7 +249,7 @@ function render(){
   if(STEP==='fim') return renderFim();
 }
 function _botoesSair(){ return '<button class="lk" id="sair">sair</button> <button class="lk" id="troca" style="margin-left:14px">trocar operador</button>'; }
-function _bindSair(){ if($('sair'))$('sair').onclick=async()=>{ if(SB) await SB.auth.signOut(); location.reload(); }; if($('troca'))$('troca').onclick=()=>{ try{localStorage.removeItem('campo_oper');}catch(e){} OPER=null; STEP='quemsou'; render(); }; }
+function _bindSair(){ if($('sair'))$('sair').onclick=async()=>{ if(SB){ try{ await SB.auth.signOut(); }catch(e){} } OPER=null; STEP='login'; render(); };   /* volta pro e-mail/senha: único jeito de refazer a sessão de sync (o boot agora entra offline direto) */ if($('troca'))$('troca').onclick=()=>{ try{localStorage.removeItem('campo_oper');}catch(e){} OPER=null; STEP='quemsou'; render(); }; }
 
 function renderLogin(){
   $('app').innerHTML=`<div class="top"><h1><span class="l">🚜</span> Campo</h1><div class="d">Alabama Agro</div></div>
@@ -274,7 +312,7 @@ function renderHome(){
   _bindSairBar();
 }
 function _botoesSairBar(){ return `<button class="btn s" id="sair2">Sair</button><button class="btn s" id="troca2">Trocar operador</button>`; }
-function _bindSairBar(){ if($('sair2'))$('sair2').onclick=async()=>{ if(SB) await SB.auth.signOut(); location.reload(); }; if($('troca2'))$('troca2').onclick=()=>{ try{localStorage.removeItem('campo_oper');}catch(e){} OPER=null; STEP='quemsou'; render(); }; }
+function _bindSairBar(){ if($('sair2'))$('sair2').onclick=async()=>{ if(SB){ try{ await SB.auth.signOut(); }catch(e){} } OPER=null; STEP='login'; render(); };   /* idem: reconectar a sessão de sync */ if($('troca2'))$('troca2').onclick=()=>{ try{localStorage.removeItem('campo_oper');}catch(e){} OPER=null; STEP='quemsou'; render(); }; }
 
 /* ===== MELOSA — lançamento de DIESEL (identidade própria; vai p/ aprovação no Almoxarifado) ===== */
 let ABMEL=[], MELFORM=false;
@@ -654,7 +692,7 @@ function _onFix(pos){ const cur=pos.coords; GPS.acc=cur.accuracy; GPS._lastFixTs
   if(!SESS){ if(_papelApoio()){ SESS=_novaSessaoObj(); } else if(!_conjOK()){ GPS._lt=t; _hud(); _scheduleDraw(); return; } else { SESS=_novaSessaoObj(); } }   // apoio (calda/carregamento) nasce direto (telemetria); aplicador só com conjunto escolhido
   GPS._lt=t; GPS.pts.push({E,N:No,lat:cur.latitude,lon:cur.longitude,t,v:GPS.speed||0,tq:_tqSeqAberto()});
   _hud(); _scheduleDraw();
-  if(GPS.watchId!=null){ if(GPS.pts.length%40===0) _saveGps(false); else if(GPS.pts.length%5===0) _touchSess(); }   // local a cada 5 fixes, sync a cada 40
+  if(GPS.watchId!=null){ if(GPS.pts.length%40===0) _saveGps(false); else _touchSess(); }   // local a CADA ponto (sobrevive a fechar o app na força), sync a cada 40
 }
 function _recalcCells(){ GPS.cells=new Set(); GPS.areaHa=0; for(let i=1;i<GPS.pts.length;i++) _markCells(GPS.pts[i-1].E,GPS.pts[i-1].N,GPS.pts[i].E,GPS.pts[i].N); }
 function _implLarg(id){ const m=IMPS.find(x=>String(x.id)===String(id)); return m&&m.largura_trabalho?+m.largura_trabalho:0; }

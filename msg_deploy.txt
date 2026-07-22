@@ -1,1 +1,10 @@
-﻿Atividades: remove flash das 118 comandas do seed antigo
+﻿Campo offline-first: entra sem rede, grava cada ponto e nao perde mais o cadastro
+
+- boot vai direto para nome+PIN quando o aparelho ja tem cadastro (nunca mais trava no e-mail/senha)
+- cadastros sobem do aparelho na hora e atualizam em 2o plano, em paralelo (antes: 6 buscas em fila, ~24s de trava)
+- resposta vazia do servidor NAO apaga mais o cache local (sessao caida devolvia [] e trancava o operador do lado de fora)
+- trajeto gravado a cada ponto + flush ao ir para 2o plano/fechar (antes: a cada 5 pontos, nada ao ser morto)
+- Sair volta ao login: unica forma de refazer a sessao de sincronizacao
+- lista de operadores espelha o filtro visivel_coleta da coleta
+- funcionarios lido pela view restrita funcionarios_campo (sem salario/CPF/folha)
+- sw v37
