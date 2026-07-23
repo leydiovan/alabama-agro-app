@@ -1,15 +1,11 @@
-﻿Campo: comandas de qualquer safra + Atividades 3,5x mais rapido no boot
+﻿Campo: leitor de PDF proprio (a comanda abria em branco no app)
 
-Campo (sw v38):
-- comandas aparecem para o operador INDEPENDENTE DA SAFRA (podia estar terminando servico
-  da safra anterior); o card mostra a safra quando e diferente da atual
-- a execucao/abastecimento passa a gravar a safra DA COMANDA (antes gravava sempre a safra
-  corrente -> comanda de 2025/2026 lancaria execucao em 2026/2027)
-- so as comandas EM ABERTO sao baixadas; as finalizadas vem so o codigo (limpeza do aparelho)
-- fecha sozinho sessao que ficou aberta em dia anterior (app morto/bateria), com hora_fim
-  derivada do ultimo ponto do trajeto; sessao sem trabalho real e descartada
-  (a COMANDA continua na lista: so o admin finaliza)
+A WebView do Android NAO tem leitor de PDF: o <iframe src="...pdf"> abria uma
+pagina em branco dentro do APK (no navegador funcionava). Agora o PDF e desenhado
+em <canvas> pelo pdf.js, dentro do proprio app e OFFLINE.
 
-Atividades:
-- carga do boot paralelizada: 28 consultas que rodavam EM FILA agora disparam de uma vez
-  medido no navegador: 2154 ms -> 608 ms na janela de rede (mesmas 28 requisicoes)
+- pdf.js 3.11.174 (build legacy/UMD, Mozilla): no APK vem do vendor local,
+  no PWA vem do CDN e entra no shell do Service Worker (abre sem internet)
+- se o pdf.js faltar, cai no <iframe> de antes (navegador comum)
+- pagina se ajusta a largura da tela: sem rolagem lateral no tablet
+- sw v39

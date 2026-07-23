@@ -3,7 +3,7 @@
      => abre INSTANTÂNEO do cache (não trava em rede ruim) e atualiza em 2º plano.
      (efeito: depois de publicar, a versão nova entra no PRÓXIMO open online)
    - Supabase (dados/auth): sempre rede, nunca cacheado. */
-const CACHE = 'alabama-campo-v38';
+const CACHE = 'alabama-campo-v39';
 const SHELL = [
   './',
   'index.html',
@@ -12,7 +12,10 @@ const SHELL = [
   'icon.svg',
   'icon-192.png',
   'icon-512.png',
-  'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2'
+  'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2',
+  /* leitor de PDF (abre a comanda sem internet). No APK vem do vendor local; aqui, no PWA, do CDN. */
+  'https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/legacy/build/pdf.min.js',
+  'https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/legacy/build/pdf.worker.min.js'
 ];
 
 self.addEventListener('install', e => {
