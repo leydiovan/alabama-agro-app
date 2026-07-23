@@ -200,17 +200,25 @@ async function carregarSafra(){
   let s=safras.find(x=>x.inicio&&x.fim&&x.inicio<=h&&h<=x.fim);
   if(!s) s=safras.slice().sort((a,b)=>(b.ano||0)-(a.ano||0))[0];
   SAFRA=s?s.nome:(_cacheGet('safra','')||''); if(SAFRA) _cacheSet('safra',SAFRA);
-  if(!netOk || !SAFRA) return;   // sem PROVA de sessão viva (offline, sessão caída, RLS devolvendo vazio) -> mantém as comandas que já estão no aparelho
-  try{ if(!navigator.onLine) throw 0; const {data,error}=await _q(SB.from('comandas').select('*').eq('safra',SAFRA).neq('status','cancelada')); if(error) throw error; COMANDAS=data||[]; _cacheSet('comandas',COMANDAS);
-    for(const c of COMANDAS){ if(c.status==='executada'){ try{ await _purgeComandaLocal(c.codigo); }catch(_){} } }   // admin finalizou -> limpa o local (só online, com o servidor confirmando)
+  if(!netOk) return;   // sem PROVA de sessão viva (offline, sessão caída, RLS devolvendo vazio) -> mantém as comandas que já estão no aparelho
+  // COMANDAS DE QUALQUER SAFRA: o operador pode estar terminando serviço de uma safra anterior.
+  // Vêm só as EM ABERTO (leve); as finalizadas vêm à parte, só o código, para limpar o aparelho.
+  try{ if(!navigator.onLine) throw 0;
+    const [ab,fin]=await Promise.all([
+      _q(SB.from('comandas').select('*').neq('status','cancelada').neq('status','executada')),
+      _q(SB.from('comandas').select('codigo,safra').eq('status','executada'))
+    ]);
+    if(ab.error) throw ab.error;
+    COMANDAS=ab.data||[]; _cacheSet('comandas',COMANDAS);
+    if(!fin.error) for(const c of (fin.data||[])){ try{ await _purgeComandaLocal(c.codigo,c.safra); }catch(_){} }   // admin finalizou -> limpa o local (só online, com o servidor confirmando)
   }catch(e){ COMANDAS=_cacheGet('comandas',[]); }
 }
 /* apaga do aparelho os dados JÁ SINCRONIZADOS de uma comanda finalizada (segurança: nunca apaga dirty/não-enviado) */
-async function _purgeComandaLocal(codigo){
+async function _purgeComandaLocal(codigo,safra){
   try{ const ss=(await _idbAll('sessions')).filter(x=>String(x.comanda_codigo)===String(codigo)&&!x.dirty); for(const x of ss) await _idbDel('sessions',x.lid); }catch(e){}
   try{ const aa=(await _idbAll('abast')).filter(x=>String(x.comanda_codigo)===String(codigo)&&!x.dirty); for(const x of aa) await _idbDel('abast',x.lid); }catch(e){}
   try{ if(OPER&&OPER.id!=null) localStorage.removeItem('campo_cache_days_'+codigo+'_'+OPER.id); }catch(e){}
-  try{ await _idbDel('pdfs', _pdfPath(codigo, SAFRA)); }catch(e){}
+  try{ await _idbDel('pdfs', _pdfPath(codigo, safra||SAFRA)); }catch(e){}
 }
 async function carregarDia(){
   if(!OPER) return;
@@ -218,6 +226,32 @@ async function carregarDia(){
   EXECS={}; let _srvDia=null;
   try{ if(!navigator.onLine) throw 0; const {data,error}=await _q(SB.from('execucao_campo').select('*').eq('funcionario_id',OPER.id).eq('data',DIA)); if(error) throw error; _srvDia=data||[]; _srvDia.forEach(x=>{ if(x.comanda_codigo) EXECS[x.comanda_codigo]=x; }); _cacheSet('execs_'+DIA,EXECS); }catch(e){ EXECS=_cacheGet('execs_'+DIA,{})||{}; }
   try{ let loc=(await _idbAll('sessions')).filter(s=>String(s.funcionario_id)===String(OPER.id)&&s.data===DIA); if(_srvDia!==null) loc=await _reconcile(loc,_srvDia); loc.forEach(s=>{ EXECS[s.comanda_codigo]=s; }); }catch(e){}   // sessões locais (offline) + remove descartadas pelo admin
+  await _fecharSessoesPendentes();
+}
+/* distância total do trajeto salvo (m) — usada p/ decidir se a sessão teve trabalho real */
+function _trajDistM(tr){ let d=0; for(let i=1;i<tr.length;i++){ const a=tr[i-1],b=tr[i]; if(a[0]==null||b[0]==null) continue; const ua=latLngToUTM(a[0],a[1],23), ub=latLngToUTM(b[0],b[1],23); d+=Math.hypot(ub[0]-ua[0],ub[1]-ua[1]); } return d; }
+/* Fecha as MINHAS sessões que ficaram ABERTAS em dias anteriores (app morreu, bateria acabou, virou o dia).
+   Sem isso elas ficam 'aberto' e sem hora_fim para sempre — a jornada some, embora a área/custo entrem na aprovação.
+   hora_fim vem do ÚLTIMO PONTO gravado (cada ponto tem timestamp absoluto) — não é chute.
+   A COMANDA continua na lista: só o admin finaliza (pode ter outro operador nela). */
+async function _fecharSessoesPendentes(){
+  if(!OPER) return 0;
+  let n=0;
+  try{
+    const abertas=(await _idbAll('sessions')).filter(s=>String(s.funcionario_id)===String(OPER.id) && (s.data||'')<DIA && s.status==='aberto' && !s.hora_fim);
+    for(const s of abertas){
+      const tr=Array.isArray(s.trajeto)?s.trajeto:[];
+      const temTrab=((s.tanques||[]).length>0) || (tr.length>=2 && ((+s.area_ha||0)>=0.01 || _trajDistM(tr)>=25));   // mesmo critério de _sessTemTrabalho
+      if(!temTrab){ if(!s.serverId){ try{ await _idbDel('sessions',s.lid); }catch(e){} continue; } }   // fantasma nunca enviado -> some (não vira movimentação falsa)
+      const ult=tr.length?(+tr[tr.length-1][2]||0):0;
+      s.hora_fim = ult ? (function(d){ return String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0'); })(new Date(ult)) : nowHM();
+      s.status='enviada'; s.dirty=true; s._v=(s._v||0)+1; s.atualizado_em=new Date().toISOString();
+      try{ await _idbPut('sessions',s); }catch(e){}
+      await _syncSession(s); n++;
+    }
+  }catch(e){}
+  if(n) _st('✔ '+n+' trabalho de outro dia foi fechado automaticamente','#e67e22');
+  return n;
 }
 
 /* ---------- comandas do operador ---------- */
@@ -295,7 +329,7 @@ function renderHome(){
     const area=areaLote(c.lote_nome);
     return `<button class="cmd" data-cod="${esc(c.codigo)}">${stbadge}
       <div class="cod">${esc(c.codigo)} · ${esc(c.tipo_ativ||'—')}</div>
-      <div class="meta">Lote ${esc(c.lote_nome||'—')}${area?(' · '+area+' ha'):''}${c.prod_texto?(' · '+esc(c.prod_texto)):''}</div></button>`;
+      <div class="meta">Lote ${esc(c.lote_nome||'—')}${area?(' · '+area+' ha'):''}${c.prod_texto?(' · '+esc(c.prod_texto)):''}${(c.safra&&c.safra!==SAFRA)?(' · <b style="color:var(--gold)">safra '+esc(c.safra)+'</b>'):''}</div></button>`;
   }).join('');
   $('app').innerHTML=`<div class="top"><h1><span class="l">🚜</span> ${esc(OPER.nome)}</h1>
       <div class="d">${_dlabel(DIA)} · safra ${esc(SAFRA||'—')}</div>
@@ -370,7 +404,7 @@ async function _salvarAbastMelosa(){
   if(!l||l<=0){ _st('Informe os litros.','#e67e22'); return; }
   if(!dtv){ _st('Informe a data/hora.','#e67e22'); return; }
   const quando=new Date(dtv), agora=new Date(); if(quando>agora){ _st('A data/hora não pode ser no futuro.','#e67e22'); return; }
-  const reg={ lid:_lid(), serverId:null, dirty:true, comanda_codigo:cmd||null, safra:SAFRA, funcionario_id:+fun, operador_melosa_id:OPER.id, maquina_id:+maq, lote_nome:lote||null, litros:l, quando:quando.toISOString(), descricao:desc||null, tipo_atividade:null, uso_geral:false, status:'pendente', origem:'manual', enviado_por:USER_EMAIL||null };
+  const reg={ lid:_lid(), serverId:null, dirty:true, comanda_codigo:cmd||null, safra:((COMANDAS.find(c=>c.codigo===cmd)||{}).safra)||SAFRA, funcionario_id:+fun, operador_melosa_id:OPER.id, maquina_id:+maq, lote_nome:lote||null, litros:l, quando:quando.toISOString(), descricao:desc||null, tipo_atividade:null, uso_geral:false, status:'pendente', origem:'manual', enviado_por:USER_EMAIL||null };
   const b=$('m_save'); if(b){ b.disabled=true; b.textContent='Salvando…'; }
   try{ await _idbPut('abast',reg); }catch(e){}
   await _syncAbast(reg); MELFORM=false; await _carregarAbastMelosa(); _updPend();
@@ -419,7 +453,7 @@ async function _lancarAbast(){
   if(quando>agora){ _st('A data/hora não pode ser no futuro.','#e67e22'); return; }
   if(ABAST.length){ const prev=new Date(ABAST[ABAST.length-1].quando); if(quando<prev){ _st('Não pode ser antes do abastecimento anterior ('+fmtDT(prev)+').','#e67e22'); return; } }
   const maq=$('ab_maq')&&$('ab_maq').value;
-  const reg={ lid:_lid(), serverId:null, dirty:true, comanda_codigo:CUR.codigo, safra:SAFRA, funcionario_id:OPER.id, maquina_id:maq?+maq:null, lote_nome:CUR.lote_nome||null, litros:l, quando:quando.toISOString(), enviado_por:USER_EMAIL||null };
+  const reg={ lid:_lid(), serverId:null, dirty:true, comanda_codigo:CUR.codigo, safra:(CUR&&CUR.safra)||SAFRA, funcionario_id:OPER.id, maquina_id:maq?+maq:null, lote_nome:CUR.lote_nome||null, litros:l, quando:quando.toISOString(), enviado_por:USER_EMAIL||null };
   const b=$('ab_save'); if(b){ b.disabled=true; b.textContent='Salvando…'; }
   try{ await _idbPut('abast',reg); }catch(e){}            // local primeiro
   await _syncAbast(reg); ABFORM=false; await _carregarAbast(); _updPend();
@@ -764,7 +798,7 @@ async function _saveGps(final){ if(!SESS) return;
   SESS.dirty=true; SESS._v=(SESS._v||0)+1; try{ await _idbPut('sessions',SESS); }catch(e){}   // local primeiro (sobrevive offline)
   await _syncSession(SESS); _updPend();
 }
-function _novaSessaoObj(){ const lid=_lid(); return { lid, id:lid, serverId:null, dirty:true, _v:1, comanda_codigo:CUR.codigo, safra:SAFRA, funcionario_id:OPER.id, lote_nome:CUR.lote_nome||null, data:DIA, maquina_id:HDR.maquina_id?+HDR.maquina_id:null, implemento_id:HDR.implemento_id?+HDR.implemento_id:null, largura_m:_widthM()||0, papel:_papelOper(), tanques:[], diesel_motobomba:null, hora_inicio:nowHM(), hora_fim:null, status:'aberto', trajeto:[], area_ha:0, concluiu_lote:false, enviado_por:USER_EMAIL||null, atualizado_em:new Date().toISOString() }; }
+function _novaSessaoObj(){ const lid=_lid(); return { lid, id:lid, serverId:null, dirty:true, _v:1, comanda_codigo:CUR.codigo, safra:(CUR&&CUR.safra)||SAFRA, funcionario_id:OPER.id, lote_nome:CUR.lote_nome||null, data:DIA, maquina_id:HDR.maquina_id?+HDR.maquina_id:null, implemento_id:HDR.implemento_id?+HDR.implemento_id:null, largura_m:_widthM()||0, papel:_papelOper(), tanques:[], diesel_motobomba:null, hora_inicio:nowHM(), hora_fim:null, status:'aberto', trajeto:[], area_ha:0, concluiu_lote:false, enviado_por:USER_EMAIL||null, atualizado_em:new Date().toISOString() }; }
 async function _novaSessao(){            // (mantida p/ compat; o fluxo normal cria preguiçoso no 1º ponto)
   const s=_novaSessaoObj();
   try{ await _idbPut('sessions',s); }catch(e){}

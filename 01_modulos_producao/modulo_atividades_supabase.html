@@ -5947,11 +5947,45 @@ async function carregarDoSupabase(){
     if(!window.supabase){ _statusSB('⚠️ Lib Supabase não carregou (sem internet?)','#c0392b'); return; }
     _statusSB('⏳ Conectando ao Supabase…','#2c3e50');
     if(!SB) SB = window.supabase.createClient(SB_URL, SB_KEY);
+    /* PRE-CARGA EM PARALELO: dispara TODAS as consultas do boot de uma vez.
+       Antes eram ~24 idas e voltas EM FILA (~87 ms cada = ~2 s so de espera de rede); agora custam ~1.
+       O .catch devolve {error} (mesmo formato do Supabase), entao o tratamento de cada bloco continua igual. */
+    const _pf=(b)=>Promise.resolve(b).catch(e=>({error:e}));
+    const P={
+      lotes:_pf(SB.from('lotes').select('*')),
+      tiposAtiv:_pf(SB.from('tipos_atividade').select('*')),
+      produtos:_pf(SB.from('produtos').select('*')),
+      unidades:_pf(SB.from('unidades').select('*')),
+      fornecedores:_pf(SB.from('fornecedores').select('*')),
+      culturas:_pf(SB.from('culturas').select('*').order('nome')),
+      tecnologias:_pf(SB.from('tecnologias_semente').select('*')),
+      sufixos:_pf(SB.from('sufixos_semente').select('*')),
+      maqDep:_pf(SB.from('maquinas').select('nome,valor_aquisicao,vida_util_anos,residual_pct')),
+      impDep:_pf(SB.from('implementos').select('nome,valor_aquisicao,vida_util_anos,residual_pct')),
+      custosFixos:_pf(SB.from('custos_fixos').select('*').eq('safra',SAFRA)),
+      funcRh:_pf(SB.from('funcionarios').select('nome,tipo,ativo,salario,carteira,por_fora,empregador,custo_fixo,encargos_pct')),
+      empregadores:_pf(SB.from('empregadores').select('*')),
+      matriculas:_pf(SB.from('matriculas').select('*').order('nome')),
+      sedes:_pf(SB.from('sedes').select('*').order('nome')),
+      benfeitorias:_pf(SB.from('benfeitorias').select('*').order('nome')),
+      planPremissas:_pf(SB.from('plan_premissas').select('*').eq('safra',SAFRA)),
+      cronoIdeal:_pf(SB.from('config').select('valor').eq('chave','crono_ideal_'+SAFRA).single()),
+      funcionarios:_pf(SB.from('funcionarios').select('id,nome,tipo,ativo').order('nome')),
+      planejamento:_pf(SB.from('planejamento').select('*').eq('safra',SAFRA).order('id',{ascending:true})),
+      cotacoes:_pf(SB.from('cotacoes').select('*').eq('safra',SAFRA)),
+      dolar:_pf(SB.from('config').select('*').eq('chave','dolar').single()),
+      arred:_pf(SB.from('config').select('valor').eq('chave','arred_'+SAFRA).single()),
+      comandas:_pf(SB.from('comandas').select('*').eq('safra',SAFRA).order('seq_geral',{ascending:true})),
+      vertices:_pf(SB.from('vertices').select('id,codigo,longitude,latitude')),
+      matVertices:_pf(SB.from('matricula_vertices').select('matricula_id,vertice_id,ordem').order('ordem')),
+      almoxEnt:_pf(SB.from('almox_entradas').select('item_codigo,qtd,custo_unit')),
+      almoxSai:_pf(SB.from('almox_saidas').select('item_codigo,qtd'))
+    };
     try{ const {data:u}=await SB.auth.getUser(); USER_EMAIL=(u&&u.user&&u.user.email)||''; IS_ADMIN=ADMIN_EMAILS.includes(USER_EMAIL.toLowerCase()); }catch(e){}
 
     /* ----- LOTES do banco (fonte: módulo Cadastros) ----- */
     try{
-      const r=await SB.from('lotes').select('*');
+      const r=await P.lotes;
       if(!r.error && r.data && r.data.length){
         S.lotes = r.data.map(l=>({cod:l.cod, nome:l.nome, area:l.area, base:!!l.base, partes:l.partes||[], geom:l.geom||null, disposicao:l.disposicao||'colados', irrigado:!!l.irrigado}));
       }
@@ -5959,7 +5993,7 @@ async function carregarDoSupabase(){
 
     /* ----- TIPOS DE ATIVIDADE do banco (com imagens) ----- */
     try{
-      const r=await SB.from('tipos_atividade').select('*');
+      const r=await P.tiposAtiv;
       if(!r.error && r.data && r.data.length){
         S.cadTipos = r.data.map(t=>({nome:t.nome, perfil:t.perfil, diario:t.diario, contador:t.contador||0, img:t.img||''}));
       }
@@ -5967,18 +6001,18 @@ async function carregarDoSupabase(){
 
     /* ----- PRODUTOS do banco (fonte: módulo Cadastros) ----- */
     try{
-      const r=await SB.from('produtos').select('*');
+      const r=await P.produtos;
       if(!r.error && r.data && r.data.length){
         S.produtos = r.data.map(p=>({codigo:p.codigo, nome:p.nome, variedade:p.nome, sufixo:p.sufixo||'', comp:p.comp, tipo:p.classe||p.tipo, tipoBase:p.tipo, classe:p.classe, formulacao:p.formulacao, unidade:p.unidade, preco:p.preco, sementeTipo:p.semente_tipo||'', cultura:p.cultura||'', sementeEmb:p.semente_emb||'', sementesEmb:p.sementes_emb, pms:p.pms, tecnologias:(Array.isArray(p.tecnologias)?p.tecnologias:[]), ativos:(Array.isArray(p.ativos)&&p.ativos.length)?p.ativos:[], garantias:Array.isArray(p.garantias)?p.garantias:[]}));   /* usa só o ativo estruturado; não adivinha mais pelo comp */
       }
     }catch(e){ console.warn('produtos',e); }
 
     /* ----- UNIDADES (fator p/ converter população em bags etc.) ----- */
-    try{ const r=await SB.from('unidades').select('*'); if(!r.error&&r.data&&r.data.length) S.unidades=r.data.map(u=>({sim:u.sim,nome:u.nome,dim:u.dim,fator:+u.fator||1})); }catch(e){ console.warn('unidades',e); }
-    try{ const r=await SB.from('fornecedores').select('*'); if(!r.error&&r.data&&r.data.length) S.fornecedores=r.data.map(f=>({nome:f.nome})); }catch(e){ console.warn('fornecedores',e); }
-    try{ const r=await SB.from('culturas').select('*').order('nome'); if(!r.error&&r.data) S.culturas=r.data.map(c=>({id:c.id,nome:c.nome})); }catch(e){ console.warn('culturas',e); }
-    try{ const r=await SB.from('tecnologias_semente').select('*'); if(!r.error&&r.data) S.tecnologias=r.data.map(t=>({nome:t.nome,sigla:t.sigla||'',tipo:t.tipo||'',detentora:t.detentora||'',moleculas:Array.isArray(t.moleculas)?t.moleculas:[]})); }catch(e){ console.warn('tecnologias',e); }
-    try{ const r=await SB.from('sufixos_semente').select('*'); if(!r.error&&r.data) S.sufixos=r.data.map(s=>({sigla:s.sigla,nome:s.nome||'',detentora:s.detentora||'',culturas:Array.isArray(s.culturas)?s.culturas:[],traits:Array.isArray(s.traits)?s.traits:[]})); }catch(e){ console.warn('sufixos',e); }
+    try{ const r=await P.unidades; if(!r.error&&r.data&&r.data.length) S.unidades=r.data.map(u=>({sim:u.sim,nome:u.nome,dim:u.dim,fator:+u.fator||1})); }catch(e){ console.warn('unidades',e); }
+    try{ const r=await P.fornecedores; if(!r.error&&r.data&&r.data.length) S.fornecedores=r.data.map(f=>({nome:f.nome})); }catch(e){ console.warn('fornecedores',e); }
+    try{ const r=await P.culturas; if(!r.error&&r.data) S.culturas=r.data.map(c=>({id:c.id,nome:c.nome})); }catch(e){ console.warn('culturas',e); }
+    try{ const r=await P.tecnologias; if(!r.error&&r.data) S.tecnologias=r.data.map(t=>({nome:t.nome,sigla:t.sigla||'',tipo:t.tipo||'',detentora:t.detentora||'',moleculas:Array.isArray(t.moleculas)?t.moleculas:[]})); }catch(e){ console.warn('tecnologias',e); }
+    try{ const r=await P.sufixos; if(!r.error&&r.data) S.sufixos=r.data.map(s=>({sigla:s.sigla,nome:s.nome||'',detentora:s.detentora||'',culturas:Array.isArray(s.culturas)?s.culturas:[],traits:Array.isArray(s.traits)?s.traits:[]})); }catch(e){ console.warn('sufixos',e); }
     /* semente: nome de exibição = "variedade + sufixo"; traits derivados do sufixo (alimentam o alerta) */
     (S.produtos||[]).forEach(p=>{ if(p.tipoBase==='Semente' && p.sufixo){
       const suf=(S.sufixos||[]).find(s=>s.sigla===p.sufixo && (!s.culturas||!s.culturas.length||!p.cultura||s.culturas.includes(p.cultura))) || (S.sufixos||[]).find(s=>s.sigla===p.sufixo);
@@ -5986,43 +6020,43 @@ async function carregarDoSupabase(){
       if(suf && Array.isArray(suf.traits) && suf.traits.length) p.tecnologias=suf.traits.slice();
     }});
     /* ----- CUSTO FIXO: depreciação (máquinas/implementos) + itens da safra ----- */
-    try{ const r=await SB.from('maquinas').select('nome,valor_aquisicao,vida_util_anos,residual_pct'); if(!r.error&&r.data) S.maqDep=r.data.map(m=>({nome:m.nome,valorAquisicao:m.valor_aquisicao,vidaUtilAnos:m.vida_util_anos,residualPct:m.residual_pct})); }catch(e){ console.warn('maqDep',e); }
-    try{ const r=await SB.from('implementos').select('nome,valor_aquisicao,vida_util_anos,residual_pct'); if(!r.error&&r.data) S.impDep=r.data.map(m=>({nome:m.nome,valorAquisicao:m.valor_aquisicao,vidaUtilAnos:m.vida_util_anos,residualPct:m.residual_pct})); }catch(e){ console.warn('impDep',e); }
-    try{ const r=await SB.from('custos_fixos').select('*').eq('safra',SAFRA); if(!r.error&&r.data) S.custosFixos=r.data.map(c=>({id:c.id,categoria:c.categoria||'',descricao:c.descricao||'',valor:+c.valor||0,periodicidade:c.periodicidade||'anual',tipo:c.tipo||'caixa',rateio:c.rateio||'por_ha',rateioAlvo:c.rateio_alvo||'',obs:c.obs||''})); }catch(e){ console.warn('custosFixos',e); }
-    try{ const r=await SB.from('funcionarios').select('nome,tipo,ativo,salario,carteira,por_fora,empregador,custo_fixo,encargos_pct'); if(!r.error&&r.data) S.funcRh=r.data.map(f=>({nome:f.nome,tipo:f.tipo,ativo:f.ativo,salario:f.salario,carteira:f.carteira,porFora:f.por_fora,empregador:f.empregador||'',custoFixo:f.custo_fixo,encargosPct:f.encargos_pct})); }catch(e){ console.warn('funcRh',e); }
-    try{ const r=await SB.from('empregadores').select('*'); if(!r.error&&r.data) S.empregadores=r.data.map(e=>({nome:e.nome,inss:+e.inss_patronal_pct||0,sat:+e.sat_pct||0,terceiros:+e.terceiros_pct||0,fgts:+e.fgts_pct||0,funrural:!!e.funrural})); }catch(e){ console.warn('empregadores',e); }
-    try{ const r=await SB.from('matriculas').select('*').order('nome'); if(!r.error&&r.data) S.matriculas=r.data.map(m=>({id:m.id,nome:m.nome,numero:m.numero||'',area:m.area,geom:m.geom||null,obs:m.obs||''}));
+    try{ const r=await P.maqDep; if(!r.error&&r.data) S.maqDep=r.data.map(m=>({nome:m.nome,valorAquisicao:m.valor_aquisicao,vidaUtilAnos:m.vida_util_anos,residualPct:m.residual_pct})); }catch(e){ console.warn('maqDep',e); }
+    try{ const r=await P.impDep; if(!r.error&&r.data) S.impDep=r.data.map(m=>({nome:m.nome,valorAquisicao:m.valor_aquisicao,vidaUtilAnos:m.vida_util_anos,residualPct:m.residual_pct})); }catch(e){ console.warn('impDep',e); }
+    try{ const r=await P.custosFixos; if(!r.error&&r.data) S.custosFixos=r.data.map(c=>({id:c.id,categoria:c.categoria||'',descricao:c.descricao||'',valor:+c.valor||0,periodicidade:c.periodicidade||'anual',tipo:c.tipo||'caixa',rateio:c.rateio||'por_ha',rateioAlvo:c.rateio_alvo||'',obs:c.obs||''})); }catch(e){ console.warn('custosFixos',e); }
+    try{ const r=await P.funcRh; if(!r.error&&r.data) S.funcRh=r.data.map(f=>({nome:f.nome,tipo:f.tipo,ativo:f.ativo,salario:f.salario,carteira:f.carteira,porFora:f.por_fora,empregador:f.empregador||'',custoFixo:f.custo_fixo,encargosPct:f.encargos_pct})); }catch(e){ console.warn('funcRh',e); }
+    try{ const r=await P.empregadores; if(!r.error&&r.data) S.empregadores=r.data.map(e=>({nome:e.nome,inss:+e.inss_patronal_pct||0,sat:+e.sat_pct||0,terceiros:+e.terceiros_pct||0,fgts:+e.fgts_pct||0,funrural:!!e.funrural})); }catch(e){ console.warn('empregadores',e); }
+    try{ const r=await P.matriculas; if(!r.error&&r.data) S.matriculas=r.data.map(m=>({id:m.id,nome:m.nome,numero:m.numero||'',area:m.area,geom:m.geom||null,obs:m.obs||''}));
       const mById={}; (S.matriculas||[]).forEach(m=>{ m._vertices=[]; mById[m.id]=m; });
-      const [gv,jv]=await Promise.all([ SB.from('vertices').select('id,codigo,longitude,latitude'), SB.from('matricula_vertices').select('matricula_id,vertice_id,ordem').order('ordem') ]);
+      const [gv,jv]=await Promise.all([ P.vertices, P.matVertices ]);
       const vById={}; (gv.data||[]).forEach(v=>vById[v.id]=v);
       (jv.data||[]).forEach(j=>{ const g=vById[j.vertice_id], m=mById[j.matricula_id]; if(g&&m&&g.latitude!=null&&g.longitude!=null) m._vertices.push({lat:g.latitude,lon:g.longitude,cod:g.codigo||''}); });
     }catch(e){ console.warn('matriculas',e); }
-    try{ const r=await SB.from('sedes').select('*').order('nome'); if(!r.error&&r.data) S.sedes=r.data.map(s=>({id:s.id,nome:s.nome,matricula:s.matricula||'',geom:s.geom||null,obs:s.obs||''})); }catch(e){ console.warn('sedes',e); }
-    try{ const r=await SB.from('benfeitorias').select('*').order('nome'); if(!r.error&&r.data) S.benfeitorias=r.data.map(b=>({id:b.id,nome:b.nome,tipo:b.tipo||'',matricula:b.matricula||'',matriculas:Array.isArray(b.matriculas)?b.matriculas:[],rateioModo:b.rateio_modo||'manual',local:b.local||'sede',sede:b.sede||'',categoria:b.categoria||'',valor:b.valor,vidaUtilAnos:b.vida_util_anos,residualPct:b.residual_pct,geomTipo:b.geom_tipo||'ponto',geom:b.geom||null,obs:b.obs||''})); }catch(e){ console.warn('benfeitorias',e); }
+    try{ const r=await P.sedes; if(!r.error&&r.data) S.sedes=r.data.map(s=>({id:s.id,nome:s.nome,matricula:s.matricula||'',geom:s.geom||null,obs:s.obs||''})); }catch(e){ console.warn('sedes',e); }
+    try{ const r=await P.benfeitorias; if(!r.error&&r.data) S.benfeitorias=r.data.map(b=>({id:b.id,nome:b.nome,tipo:b.tipo||'',matricula:b.matricula||'',matriculas:Array.isArray(b.matriculas)?b.matriculas:[],rateioModo:b.rateio_modo||'manual',local:b.local||'sede',sede:b.sede||'',categoria:b.categoria||'',valor:b.valor,vidaUtilAnos:b.vida_util_anos,residualPct:b.residual_pct,geomTipo:b.geom_tipo||'ponto',geom:b.geom||null,obs:b.obs||''})); }catch(e){ console.warn('benfeitorias',e); }
     /* ----- PREMISSAS do planejamento (dashboard): produtividade/preço por cultura+ciclo ----- */
-    try{ const r=await SB.from('plan_premissas').select('*').eq('safra',SAFRA);
+    try{ const r=await P.planPremissas;
       if(r.error){ S.planPremErr=true; console.warn('plan_premissas',r.error.message); }
       else { S.planPremErr=false; S.planPremissas={}; const _m7=d=>d?String(d).slice(0,7):''; (r.data||[]).forEach(p=>{ S.planPremissas[p.cultura+'|'+(p.ciclo==='safrinha'?'safrinha':'safra')]={prod:(p.prod_kgha!=null?String(p.prod_kgha).replace('.',','):''), preco:(p.preco!=null?String(p.preco).replace('.',','):''), un:p.unidade_venda||'sc'}; }); }
     }catch(e){ S.planPremErr=true; console.warn('plan_premissas',e); }
     /* ----- CRONOGRAMA IDEAL (janelas por cultura×ciclo×regime; config por safra) ----- */
-    try{ const r=await SB.from('config').select('valor').eq('chave','crono_ideal_'+SAFRA).single();
+    try{ const r=await P.cronoIdeal;
       S.planCrono=(r.data&&r.data.valor)?JSON.parse(r.data.valor):[];
     }catch(e){ S.planCrono=S.planCrono||[]; }
-    try{ const r=await SB.from('funcionarios').select('id,nome,tipo,ativo').order('nome'); if(!r.error) S.funcionarios=(r.data||[]); }catch(e){ console.warn('funcionarios',e); }
+    try{ const r=await P.funcionarios; if(!r.error) S.funcionarios=(r.data||[]); }catch(e){ console.warn('funcionarios',e); }
 
     /* ----- PLANEJAMENTO da safra ----- */
     try{
-      const r=await SB.from('planejamento').select('*').eq('safra',SAFRA).order('id',{ascending:true});
+      const r=await P.planejamento;
       if(!r.error) S.planejamento=(r.data||[]).map(p=>({id:p.id, lote:p.lote, tipoAtiv:p.tipo_ativ, epoca:p.epoca||'', dataPrev:p.data_prev||'', estadio:p.estadio||'', cultura:p.cultura||'', ciclo:(p.ciclo==='safrinha'?'safrinha':'safra'), produtos:p.produtos||[], custos:p.custos||[], obs:p.obs||'', sementeKgha:p.semente_kgha, areaParcial:p.area_parcial, condicional:!!p.condicional, ordem:(p.ordem!=null?p.ordem:null), status:p.status||'planejado', comandaCodigo:p.comanda_codigo||''}));
     }catch(e){ console.warn('planejamento',e); }
 
     /* ----- COTAÇÕES (por safra) + config (dólar) ----- */
     try{
-      const r=await SB.from('cotacoes').select('*').eq('safra',SAFRA);
+      const r=await P.cotacoes;
       if(!r.error) S.cotacoes=(r.data||[]).map(c=>({id:c.id, produtoNome:c.produto_nome, fornecedor:c.fornecedor||'', marca:c.marca||'', preco:+c.preco||0, moeda:c.moeda||'BRL', prazo:c.prazo||'', concentracao:c.concentracao, ativo:c.ativo||'', fatorConv:c.fator_conv, unidade:c.unidade||'', obs:c.obs||'', escolhida:!!c.escolhida}));
     }catch(e){ console.warn('cotacoes',e); }
-    try{ const r=await SB.from('config').select('*').eq('chave','dolar').single(); if(r.data&&r.data.valor){ const d=parseFloat(String(r.data.valor).replace(',','.')); if(!isNaN(d)) S.dolar=d; } }catch(e){}
-    try{ const ra=await SB.from('config').select('valor').eq('chave','arred_'+SAFRA).single(); const o=(ra.data&&ra.data.valor)?JSON.parse(ra.data.valor):null;
+    try{ const r=await P.dolar; if(r.data&&r.data.valor){ const d=parseFloat(String(r.data.valor).replace(',','.')); if(!isNaN(d)) S.dolar=d; } }catch(e){}
+    try{ const ra=await P.arred; const o=(ra.data&&ra.data.valor)?JSON.parse(ra.data.valor):null;
       if(o&&typeof o==='object'){ S.arred={on:o.on!==false, val:o.val||{}}; }
       else { let lv={}; try{ lv=JSON.parse(localStorage.getItem('plc_arred_'+SAFRA)||'{}')||{}; }catch(e){} let lon=true; try{ lon=localStorage.getItem('plc_arred_on')!=='0'; }catch(e){}
         S.arred={on:lon, val:lv}; if(Object.keys(lv).length){ _salvarArredSB(); } }   // migra o localStorage antigo -> banco (1x)
@@ -6030,7 +6064,7 @@ async function carregarDoSupabase(){
 
     /* ----- SALDO do Almoxarifado (compartilhado; p/ lista de compras) ----- */
     try{
-      const [en,sa]=await Promise.all([SB.from('almox_entradas').select('item_codigo,qtd,custo_unit'), SB.from('almox_saidas').select('item_codigo,qtd')]);
+      const [en,sa]=await Promise.all([P.almoxEnt, P.almoxSai]);
       const saldo={}, cq={}, cv={};
       (en.data||[]).forEach(e=>{ const k=e.item_codigo; saldo[k]=(saldo[k]||0)+(+e.qtd||0); cq[k]=(cq[k]||0)+(+e.qtd||0); cv[k]=(cv[k]||0)+(+e.qtd||0)*(+e.custo_unit||0); });
       (sa.data||[]).forEach(s=>{ const k=s.item_codigo; saldo[k]=(saldo[k]||0)-(+s.qtd||0); });
@@ -6039,7 +6073,7 @@ async function carregarDoSupabase(){
     }catch(e){ console.warn('almox saldo',e); }
 
     /* ----- COMANDAS do banco (só da safra ativa) ----- */
-    const { data, error } = await SB.from('comandas').select('*').eq('safra',SAFRA).order('seq_geral',{ascending:true});
+    const { data, error } = await P.comandas;
     if(error){ _statusSB('❌ Erro: '+error.message,'#c0392b'); console.error(error); return; }
     // SEMPRE usa o banco como verdade (mesmo vazio): substitui o seed embutido
     S.comandas = (data||[]).map(_comandaDoBanco);

@@ -1,10 +1,15 @@
-﻿Campo offline-first: entra sem rede, grava cada ponto e nao perde mais o cadastro
+﻿Campo: comandas de qualquer safra + Atividades 3,5x mais rapido no boot
 
-- boot vai direto para nome+PIN quando o aparelho ja tem cadastro (nunca mais trava no e-mail/senha)
-- cadastros sobem do aparelho na hora e atualizam em 2o plano, em paralelo (antes: 6 buscas em fila, ~24s de trava)
-- resposta vazia do servidor NAO apaga mais o cache local (sessao caida devolvia [] e trancava o operador do lado de fora)
-- trajeto gravado a cada ponto + flush ao ir para 2o plano/fechar (antes: a cada 5 pontos, nada ao ser morto)
-- Sair volta ao login: unica forma de refazer a sessao de sincronizacao
-- lista de operadores espelha o filtro visivel_coleta da coleta
-- funcionarios lido pela view restrita funcionarios_campo (sem salario/CPF/folha)
-- sw v37
+Campo (sw v38):
+- comandas aparecem para o operador INDEPENDENTE DA SAFRA (podia estar terminando servico
+  da safra anterior); o card mostra a safra quando e diferente da atual
+- a execucao/abastecimento passa a gravar a safra DA COMANDA (antes gravava sempre a safra
+  corrente -> comanda de 2025/2026 lancaria execucao em 2026/2027)
+- so as comandas EM ABERTO sao baixadas; as finalizadas vem so o codigo (limpeza do aparelho)
+- fecha sozinho sessao que ficou aberta em dia anterior (app morto/bateria), com hora_fim
+  derivada do ultimo ponto do trajeto; sessao sem trabalho real e descartada
+  (a COMANDA continua na lista: so o admin finaliza)
+
+Atividades:
+- carga do boot paralelizada: 28 consultas que rodavam EM FILA agora disparam de uma vez
+  medido no navegador: 2154 ms -> 608 ms na janela de rede (mesmas 28 requisicoes)
