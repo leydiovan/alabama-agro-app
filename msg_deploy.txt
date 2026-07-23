@@ -1,11 +1,8 @@
-﻿Campo: leitor de PDF proprio (a comanda abria em branco no app)
+﻿Campo: pinca p/ zoom, arrastar p/ mover e 2 toques na comanda em PDF
 
-A WebView do Android NAO tem leitor de PDF: o <iframe src="...pdf"> abria uma
-pagina em branco dentro do APK (no navegador funcionava). Agora o PDF e desenhado
-em <canvas> pelo pdf.js, dentro do proprio app e OFFLINE.
-
-- pdf.js 3.11.174 (build legacy/UMD, Mozilla): no APK vem do vendor local,
-  no PWA vem do CDN e entra no shell do Service Worker (abre sem internet)
-- se o pdf.js faltar, cai no <iframe> de antes (navegador comum)
-- pagina se ajusta a largura da tela: sem rolagem lateral no tablet
-- sw v39
+- pinca (2 dedos) amplia de 1x a 5x, mantendo sob os dedos o mesmo ponto do documento
+- 1 dedo arrasta (tambem e como se rola a pagina); limites impedem faixa vazia na tela
+- 2 toques alternam entre pagina inteira e 2,5x
+- ao parar o gesto, a pagina e REDESENHADA na resolucao do zoom (so ampliar por CSS borra
+  o texto): medido 756x1069 -> 1748x2473 em 2,3x
+- sw v40

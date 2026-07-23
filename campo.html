@@ -507,14 +507,14 @@ async function abrirComandaDoc(){
   }
   const url=URL.createObjectURL(blob);
   ov.style.cssText='position:fixed;inset:0;z-index:1000;background:#161b22;color:#e6edf3;display:flex;flex-direction:column';
-  ov.innerHTML='<div style="height:52px;display:flex;align-items:center;gap:10px;padding:0 10px;flex:0 0 auto"><button class="btn s" id="docback" style="margin:0;padding:9px 14px">◀ Voltar</button><div style="font-weight:700">Comanda '+esc(cod)+'</div>'+(off?'<span class="muted" style="font-size:12px">(offline)</span>':'')+'<div style="flex:1"></div><button class="btn s" id="docopen" style="margin:0;padding:9px 14px">Abrir ⤢</button></div><div id="docbody" style="flex:1;overflow-y:auto;overflow-x:hidden;background:#525659;padding:0 6px;box-sizing:border-box;-webkit-overflow-scrolling:touch"></div>';
+  ov.innerHTML='<div style="height:52px;display:flex;align-items:center;gap:10px;padding:0 10px;flex:0 0 auto"><button class="btn s" id="docback" style="margin:0;padding:9px 14px">◀ Voltar</button><div style="font-weight:700">Comanda '+esc(cod)+'</div>'+(off?'<span class="muted" style="font-size:12px">(offline)</span>':'')+'<div style="flex:1"></div><button class="btn s" id="docopen" style="margin:0;padding:9px 14px">Abrir ⤢</button></div><div id="docbody" style="flex:1;position:relative;overflow:hidden;background:#525659;touch-action:none"><div id="docpages" style="position:absolute;left:0;top:0;width:100%;transform-origin:0 0;padding:0 6px;box-sizing:border-box"></div></div>';
   ov.querySelector('#docback').onclick=()=>{ try{URL.revokeObjectURL(url);}catch(e){} ov.remove(); };
   const ob=ov.querySelector('#docopen'); if(ob) ob.onclick=()=>{ try{ window.open(url,'_blank'); }catch(e){} };
-  await _pdfRender(blob, url, ov.querySelector('#docbody'));
+  await _pdfRender(blob, url, ov.querySelector('#docbody'), ov.querySelector('#docpages'));
 }
 /* Desenha o PDF em <canvas> (pdf.js). A WebView do Android NÃO tem leitor de PDF:
    <iframe src="...pdf"> abre EM BRANCO no APK. No navegador, se o pdf.js faltar, cai no iframe. */
-async function _pdfRender(blob, url, box){
+async function _pdfRender(blob, url, box, pages){
   const lib=window.pdfjsLib;
   if(!lib){ box.innerHTML='<iframe src="'+url+'" style="width:100%;height:100%;border:0;background:#fff"></iframe>'; return; }
   try{
@@ -522,20 +522,71 @@ async function _pdfRender(blob, url, box){
     const buf=await blob.arrayBuffer();
     const pdf=await lib.getDocument({data:buf}).promise;
     const larg=Math.max(320, Math.min(box.clientWidth||360, 1400)) - 12;   // ajusta à tela do tablet
+    const lista=[];
     for(let n=1;n<=pdf.numPages;n++){
       const pg=await pdf.getPage(n);
       const v1=pg.getViewport({scale:1});
-      const esc2=Math.min(3, Math.max(1, (larg/v1.width) * (window.devicePixelRatio||1)));   // nítido, sem estourar memória
-      const vp=pg.getViewport({scale:esc2});
+      const base=Math.max(1, (larg/v1.width) * (window.devicePixelRatio||1));   // 1:1 com os pixels da tela
       const cv=document.createElement('canvas');
-      cv.width=Math.floor(vp.width); cv.height=Math.floor(vp.height);
       cv.style.cssText='display:block;margin:6px auto;width:100%;max-width:100%;height:auto;background:#fff;box-shadow:0 2px 8px rgba(0,0,0,.5)';   // 100% = nunca sobra rolagem lateral (a barra vertical muda a largura depois)
-      box.appendChild(cv);
-      await pg.render({canvasContext:cv.getContext('2d'), viewport:vp}).promise;
+      pages.appendChild(cv);
+      lista.push({pg, base, cv});
+      await _pdfDesenha(lista[lista.length-1], 1);
     }
+    _pdfGestos(box, pages, lista);
   }catch(e){
     box.innerHTML='<div style="padding:24px;text-align:center;color:#e6edf3">Não foi possível abrir o PDF neste aparelho.<br><span class="muted" style="font-size:12px">'+esc(e.message||'')+'</span></div>';
   }
+}
+/* redesenha a página na resolução do zoom atual (só ampliar o canvas por CSS borra o texto) */
+async function _pdfDesenha(it, k){
+  const nit=Math.min(4, Math.max(1, k));                    // teto: memória do tablet
+  if(it._nit===nit || it._busy) return; it._busy=true;
+  try{
+    const vp=it.pg.getViewport({scale: it.base*nit});
+    it.cv.width=Math.floor(vp.width); it.cv.height=Math.floor(vp.height);
+    await it.pg.render({canvasContext:it.cv.getContext('2d'), viewport:vp}).promise;
+    it._nit=nit;
+  }catch(e){}
+  it._busy=false;
+}
+/* pinça p/ ampliar, arrastar p/ mover, 2 toques p/ alternar zoom */
+function _pdfGestos(box, pages, lista){
+  let k=1, tx=0, ty=0, ini=null, ultTap=0, redraw=null;
+  const alt=()=>pages.offsetHeight||1, larg=()=>box.clientWidth||1;
+  const aplica=()=>{
+    const maxX=0, minX=Math.min(0, larg()-larg()*k);        // não deixa sobrar faixa vazia na horizontal
+    const altT=alt()*k, minY=Math.min(0, box.clientHeight-altT);
+    tx=Math.max(minX, Math.min(maxX, tx));
+    ty=Math.max(minY, Math.min(0, ty));
+    pages.style.transform='translate('+tx+'px,'+ty+'px) scale('+k+')';
+  };
+  const nitidez=()=>{ clearTimeout(redraw); redraw=setTimeout(()=>{ lista.forEach(it=>_pdfDesenha(it,k)); }, 220); };   // só quando o dedo para
+  const dist=(t)=>Math.hypot(t[0].clientX-t[1].clientX, t[0].clientY-t[1].clientY);
+  const meio=(t)=>({x:(t[0].clientX+t[1].clientX)/2, y:(t[0].clientY+t[1].clientY)/2});
+  const zoomEm=(px,py,nk)=>{                                 // mantém sob o dedo o mesmo ponto do documento
+    const r=box.getBoundingClientRect(), x=px-r.left, y=py-r.top;
+    const kx=(x-tx)/k, ky=(y-ty)/k;
+    k=Math.max(1, Math.min(5, nk)); tx=x-kx*k; ty=y-ky*k; aplica();
+  };
+  box.addEventListener('touchstart',e=>{
+    if(e.touches.length===2){ ini={d:dist(e.touches), k, m:meio(e.touches)}; e.preventDefault(); }
+    else if(e.touches.length===1){
+      const ag=Date.now();
+      if(ag-ultTap<300){ zoomEm(e.touches[0].clientX, e.touches[0].clientY, k>1.2?1:2.5); nitidez(); e.preventDefault(); }
+      ultTap=ag; ini={x:e.touches[0].clientX, y:e.touches[0].clientY, tx, ty};
+    }
+  },{passive:false});
+  box.addEventListener('touchmove',e=>{
+    if(!ini) return;
+    if(e.touches.length===2 && ini.d){ const f=dist(e.touches)/ini.d; zoomEm(ini.m.x, ini.m.y, ini.k*f); e.preventDefault(); }
+    else if(e.touches.length===1 && ini.x!=null){
+      tx=ini.tx+(e.touches[0].clientX-ini.x); ty=ini.ty+(e.touches[0].clientY-ini.y); aplica(); e.preventDefault();
+    }
+  },{passive:false});
+  box.addEventListener('touchend',()=>{ if(ini&&ini.d) nitidez(); ini=null; },{passive:true});
+  box.addEventListener('wheel',e=>{ if(e.ctrlKey||e.metaKey){ zoomEm(e.clientX,e.clientY, k*(e.deltaY<0?1.15:0.87)); nitidez(); } else { ty-=e.deltaY; aplica(); } e.preventDefault(); },{passive:false});
+  aplica();
 }
 /* ===================== TELA DE TRABALHO (GPS — cobertura) ===================== */
 let GPS={watchId:null,pts:[],cells:new Set(),areaHa:0,speed:0,head:0,wake:null,acc:null,_lt:0,_dt:null,paintAuto:true,painting:false,inField:false};
