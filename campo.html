@@ -124,6 +124,8 @@ function _pdfPath(codigo,safra){ return 'comandas/'+String(safra||'').replace(/[
 /* CHAVE de comanda = SAFRA + CÓDIGO: o código sozinho REPETE entre safras (ex.: 001001 em 2025/2026 e 2026/2027). Casar só por código misturaria execuções de safras diferentes. */
 function _kExec(x){ return (x&&x.safra||'')+'∙'+(x&&x.comanda_codigo||''); }   // chave de um registro de execução/abastecimento
 function _kCmd(c){ return (c&&c.safra||'')+'∙'+(c&&c.codigo||''); }             // chave de uma comanda
+/* NÚMERO exibido = safra abreviada + código (ex.: 25/26-001001). Derivado da safra que a comanda já tem — não muda o dado (código repete entre safras). */
+function _numCmd(safra,codigo){ const s=String(safra||'').split('/').map(a=>a.trim().slice(-2)).filter(Boolean).join('/'); return (s?s+'-':'')+(codigo!=null?codigo:''); }
 function _idb(){ return new Promise((res,rej)=>{ let r; try{ r=indexedDB.open('campo-cache',2); }catch(e){ return rej(e); } r.onupgradeneeded=()=>{ const db=r.result; if(!db.objectStoreNames.contains('pdfs')) db.createObjectStore('pdfs'); if(!db.objectStoreNames.contains('sessions')) db.createObjectStore('sessions',{keyPath:'lid'}); if(!db.objectStoreNames.contains('abast')) db.createObjectStore('abast',{keyPath:'lid'}); }; r.onsuccess=()=>res(r.result); r.onerror=()=>rej(r.error); }); }
 function _idbPut(store,val){ return new Promise(async(res,rej)=>{ try{ const db=await _idb(); const tx=db.transaction(store,'readwrite'); tx.objectStore(store).put(val); tx.oncomplete=()=>res(1); tx.onerror=()=>rej(tx.error); }catch(e){ rej(e); } }); }
 function _idbAll(store){ return new Promise(async(res)=>{ try{ const db=await _idb(); const tx=db.transaction(store,'readonly'); const rq=tx.objectStore(store).getAll(); rq.onsuccess=()=>res(rq.result||[]); rq.onerror=()=>res([]); }catch(e){ res([]); } }); }
@@ -336,7 +338,7 @@ function renderHome(){
       : '<span class="pill st">a fazer</span>';
     const area=areaLote(c.lote_nome);
     return `<button class="cmd" data-cod="${esc(c.codigo)}">${stbadge}
-      <div class="cod">${esc(c.codigo)} · ${esc(c.tipo_ativ||'—')}</div>
+      <div class="cod">${esc(_numCmd(c.safra||SAFRA,c.codigo))} · ${esc(c.tipo_ativ||'—')}</div>
       <div class="meta">Lote ${esc(c.lote_nome||'—')}${area?(' · '+area+' ha'):''}${c.prod_texto?(' · '+esc(c.prod_texto)):''}${(c.safra&&c.safra!==SAFRA)?(' · <b style="color:var(--gold)">safra '+esc(c.safra)+'</b>'):''}</div></button>`;
   }).join('');
   $('app').innerHTML=`<div class="top"><h1><span class="l">🚜</span> ${esc(OPER.nome)}</h1>
@@ -368,7 +370,7 @@ function renderMelosa(){
   const maqOpt='<option value="">— máquina —</option>'+MAQS.map(m=>`<option value="${m.id}">${esc(_maqLabel(m))}</option>`).join('');
   const funOpt='<option value="">— operador da máquina —</option>'+FUNCS.map(f=>`<option value="${f.id}">${esc(f.nome)}</option>`).join('');
   const cmdAtivas=COMANDAS.filter(c=>c.status!=='executada'&&c.status!=='cancelada');
-  const cmdOpt='<option value="">— sem vínculo (vai pro pool) —</option>'+cmdAtivas.map(c=>`<option value="${esc(c.codigo)}">${esc(c.codigo)} · ${esc(c.tipo_ativ||'')}${c.lote_nome?(' · '+esc(c.lote_nome)):''}</option>`).join('');
+  const cmdOpt='<option value="">— sem vínculo (vai pro pool) —</option>'+cmdAtivas.map(c=>`<option value="${esc(c.codigo)}">${esc(_numCmd(c.safra||SAFRA,c.codigo))} · ${esc(c.tipo_ativ||'')}${c.lote_nome?(' · '+esc(c.lote_nome)):''}</option>`).join('');
   const loteOpt='<option value="">— lote —</option>'+(LOTES||[]).map(l=>`<option value="${esc(l.nome)}">${esc(l.nome)}</option>`).join('');
   const nowDT=nowLocalDT();
   const form = MELFORM ? `<div class="card" style="border-color:var(--gold)">
@@ -383,7 +385,7 @@ function renderMelosa(){
       <div class="hint" style="margin-top:6px">Sem comanda → fica no pool p/ vincular depois na aprovação. A descrição ajuda a identificar.</div>
     </div>` : '';
   const lista = ABMEL.length ? ABMEL.map(a=>{
-    const vinc = a.comanda_codigo?('🔗 '+esc(a.comanda_codigo)):'<span class="muted">sem vínculo</span>';
+    const vinc = a.comanda_codigo?('🔗 '+esc(_numCmd(a.safra||SAFRA,a.comanda_codigo))):'<span class="muted">sem vínculo</span>';
     const st = a.status==='aprovado'?'<span class="pill on st">aprovado</span>':(a.dirty?'<span class="pill st">⏳ enviar</span>':'<span class="pill go st">pendente</span>');
     return `<div class="card" style="margin-bottom:8px"><div style="display:flex;justify-content:space-between;gap:8px"><b>${esc(_maqNome(a.maquina_id))}</b><b class="gold">${(+a.litros).toLocaleString('pt-BR')} L</b></div>
       <div class="meta" style="font-size:13px">${vinc} · ${esc(_funNome(a.funcionario_id))} · ${fmtDT(a.quando)} ${st}</div>${a.descricao?('<div class="muted" style="font-size:12px;margin-top:2px">'+esc(a.descricao)+'</div>'):''}</div>`;
@@ -476,7 +478,7 @@ function renderExecMenu(){
   const hTrab=CUR_DAYS.reduce((s,r)=>{ const h=horasEntre(r.hora_inicio,r.hora_fim); return s+(h||0); },0);
   // ⛽ abastecimento agora é lançado pela MELOSA (fonte única) — ver renderMelosa()
   $('app').innerHTML=`
-    <div class="hbar"><div class="cd"><span class="l">📋</span> ${esc(c.codigo)}</div><span class="pill ${concl?'on':'go'}" style="margin-left:auto">${concl?'lote concluído':'em andamento'}</span></div>
+    <div class="hbar"><div class="cd"><span class="l">📋</span> ${esc(_numCmd(c.safra||SAFRA,c.codigo))}</div><span class="pill ${concl?'on':'go'}" style="margin-left:auto">${concl?'lote concluído':'em andamento'}</span></div>
     <div class="hsub">${esc(c.tipo_ativ||'—')} · Lote <b>${esc(c.lote_nome||'—')}</b>${area?(' · '+area+' ha'):''}</div>
     <div class="statline">
       <div class="s"><div class="v">${areaCum.toFixed(2)}</div><div class="l">ha</div></div>
@@ -1168,7 +1170,7 @@ function _renderCaldaTela(){
   $('app').innerHTML=`<div style="position:fixed;inset:0;display:flex;flex-direction:column;background:#0a0f18">
     <div style="flex:0 0 auto;display:flex;gap:8px;align-items:center;padding:8px 10px;background:#0d1117">
       <button class="btn s" id="voltar" style="width:auto;margin:0;padding:8px 14px">◀</button>
-      <div style="flex:1;min-width:0;overflow:hidden;white-space:nowrap;text-overflow:ellipsis">${_ehCarreg()?'🚜':'🧪'} <b>${esc(c.codigo)}</b> <span class="muted" style="font-size:13px">${_ehCarreg()?'carregamento':'calda'} · ${esc(c.lote_nome||'')}</span></div>
+      <div style="flex:1;min-width:0;overflow:hidden;white-space:nowrap;text-overflow:ellipsis">${_ehCarreg()?'🚜':'🧪'} <b>${esc(_numCmd(c.safra||SAFRA,c.codigo))}</b> <span class="muted" style="font-size:13px">${_ehCarreg()?'carregamento':'calda'} · ${esc(c.lote_nome||'')}</span></div>
     </div>
     <div style="flex:1;position:relative;min-height:0">
       <canvas id="cv" style="width:100%;height:100%;display:block;touch-action:none"></canvas>
@@ -1208,7 +1210,7 @@ function renderTrabalho(){
   $('app').innerHTML=`<div style="position:fixed;inset:0;display:flex;flex-direction:column;background:#0a0f18">
     <div style="flex:0 0 auto;display:flex;gap:8px;align-items:center;padding:8px 10px;background:#0d1117">
       <button class="btn s" id="voltar" style="width:auto;margin:0;padding:8px 14px">◀</button>
-      <div style="flex:1;min-width:0;overflow:hidden;white-space:nowrap;text-overflow:ellipsis"><b>${esc(c.codigo)}</b> <span class="muted" style="font-size:13px">${esc(c.lote_nome||'')}</span></div>
+      <div style="flex:1;min-width:0;overflow:hidden;white-space:nowrap;text-overflow:ellipsis"><b>${esc(_numCmd(c.safra||SAFRA,c.codigo))}</b> <span class="muted" style="font-size:13px">${esc(c.lote_nome||'')}</span></div>
     </div>
     <div style="flex:0 0 auto;display:flex;gap:8px;align-items:center;padding:6px 10px;background:#0d1117">
       <div id="conj_sum" style="flex:1;min-width:0;font-size:14px;line-height:1.2;overflow:hidden;white-space:nowrap;text-overflow:ellipsis">${_conjResumo()}</div>
@@ -1254,7 +1256,7 @@ function renderFim(){
   $('app').innerHTML=`<div class="center" style="margin-top:46px">
     <div class="big">✅</div>
     <h1 style="font-size:24px;margin:10px 0">Comanda enviada</h1>
-    <div class="muted">${esc(CUR.codigo)} · lote ${esc(CUR.lote_nome||'')}</div>
+    <div class="muted">${esc(_numCmd(CUR.safra||SAFRA,CUR.codigo))} · lote ${esc(CUR.lote_nome||'')}</div>
     <div class="muted" style="font-size:14px;margin-top:8px">Lote concluído e enviado para aprovação do administrador.</div>
     <button class="btn g huge" id="volta" style="max-width:340px;margin:24px auto 0">Voltar às comandas</button>
   </div>`;

@@ -406,7 +406,7 @@ function renderComandas(){
       ? `<span class="cost">${fmtR$(cst.total)}</span>`
       : `<span class="cost dim">—</span>`;
     return `<tr onclick="abrirFicha('${c.codigo}',${c.seqGeral})">
-      <td><span class="code">${c.codigo.slice(0,3)}<small>${c.codigo.slice(3)}</small></span></td>
+      <td><span class="code">${_numPref(c.safra)}${c.codigo.slice(0,3)}<small>${c.codigo.slice(3)}</small></span></td>
       <td><span class="tag" style="color:${cor};border-color:${cor}55">${esc(c.tipoAtiv)}</span></td>
       <td>${esc(c.loteNome||'—')} ${grp}</td>
       <td class="area">${fmtArea(area)} <small>ha</small></td>
@@ -473,6 +473,8 @@ function _recalcContadores(){
   Object.keys(maxT).forEach(tp=>{ S.contadores.porTipo[tp]=maxT[tp]; });
 }
 
+/* prefixo de safra abreviada p/ o número exibido: 2025/2026 -> "25/26-". Deriva da safra (o código repete entre safras). */
+function _numPref(safra){ const s=String(safra||SAFRA||'').split('/').map(a=>a.trim().slice(-2)).filter(Boolean).join('/'); return s?s+'-':''; }
 function proximoCodigo(tipo){
   const g=(S.contadores.geral||0)+1;
   const t=((S.contadores.porTipo||{})[tipo]||0)+1;
@@ -1789,7 +1791,7 @@ function abrirFicha(codigo,seq){
 
   $('#modal').innerHTML=`
     <div class="mhead">
-      <span class="code">${c.codigo.slice(0,3)}·${c.codigo.slice(3)}</span>
+      <span class="code">${_numPref(c.safra)}${c.codigo.slice(0,3)}·${c.codigo.slice(3)}</span>
       <span class="tag" style="color:${cor};border-color:${cor}55;font-size:11px">${esc(c.tipoAtiv)}</span>
       <span class="st st-${c.status.slice(0,4)}">${c.status}</span>
       <span class="x" onclick="fecharFicha()">✕</span>
@@ -2213,7 +2215,7 @@ function cabecalhoAereo(c){
   const voos = (area&&rend)? area/rend : null;
   const dados={
     tipoAtiv: esc(c.tipoAtiv),
-    codigo: 'Nº '+c.codigo.slice(0,3)+'·'+c.codigo.slice(3),
+    codigo: 'Nº '+_numPref(c.safra)+c.codigo.slice(0,3)+'·'+c.codigo.slice(3),
     lote: esc(c.loteNome||''),
     area: _txtArea(c),
     FAIXA: (c.faixa!=null&&c.faixa!=='')? fmt1(numUn(c.faixa).n) : '____',
@@ -2325,7 +2327,7 @@ function cabecalhoTerrestre(c){
   const tanques = (area&&rend)? area/rend : null;
   const dados={
     tipoAtiv: esc(c.tipoAtiv),
-    codigo: 'Nº '+c.codigo.slice(0,3)+'·'+c.codigo.slice(3),
+    codigo: 'Nº '+_numPref(c.safra)+c.codigo.slice(0,3)+'·'+c.codigo.slice(3),
     lote: esc(c.loteNome||''),
     area: _txtArea(c),
     FAIXA: (c.faixa!=null&&c.faixa!=='')? fmt1(numUn(c.faixa).n) : '____',
@@ -2513,7 +2515,7 @@ function cabecalhoAdubacao(c){
   const cargas = (area&&rend)? area/rend : null;
   const dados={
     tipoAtiv: esc(c.tipoAtiv),
-    codigo: 'Nº '+c.codigo.slice(0,3)+'·'+c.codigo.slice(3),
+    codigo: 'Nº '+_numPref(c.safra)+c.codigo.slice(0,3)+'·'+c.codigo.slice(3),
     lote: esc(c.loteNome||''),
     area: _txtArea(c),
     FAIXA: (c.faixa!=null&&c.faixa!=='')? fmt1(numUn(c.faixa).n) : '____',
@@ -2567,7 +2569,7 @@ function cabecalhoGradagem(c){
   const area=areaDe(c.loteNome);
   const dados={
     tipoAtiv: esc(c.tipoAtiv),
-    codigo: 'Nº '+c.codigo.slice(0,3)+'·'+c.codigo.slice(3),
+    codigo: 'Nº '+_numPref(c.safra)+c.codigo.slice(0,3)+'·'+c.codigo.slice(3),
     lote: esc(c.loteNome||''),
     area: fmtArea(area)+' Ha',
     EXECUTAR: c.dataExecucao? fmtData(c.dataExecucao) : '____/____/______'
@@ -2634,7 +2636,7 @@ function cabecalhoPlantio(c){
   const area=areaDe(c.loteNome);
   const dados={
     tipoAtiv: esc(c.tipoAtiv),
-    codigo: 'Nº '+c.codigo.slice(0,3)+'·'+c.codigo.slice(3),
+    codigo: 'Nº '+_numPref(c.safra)+c.codigo.slice(0,3)+'·'+c.codigo.slice(3),
     lote: esc(c.loteNome||''),
     area: fmtArea(area)+' Ha',
     EXECUTAR: c.dataExecucao? fmtData(c.dataExecucao) : '____/____/______'
@@ -2697,7 +2699,7 @@ function cabecalhoSubsolagem(c){
   const area=areaDe(c.loteNome);
   const dados={
     tipoAtiv: esc(c.tipoAtiv),
-    codigo: 'Nº '+c.codigo.slice(0,3)+'·'+c.codigo.slice(3),
+    codigo: 'Nº '+_numPref(c.safra)+c.codigo.slice(0,3)+'·'+c.codigo.slice(3),
     lote: esc(c.loteNome||''),
     area: fmtArea(area)+' Ha',
     EXECUTAR: c.dataExecucao? fmtData(c.dataExecucao) : '____/____/______'
@@ -2759,7 +2761,7 @@ function cabecalhoColheita(c){
   const area=areaDe(c.loteNome);
   const dados={
     tipoAtiv: esc(c.tipoAtiv),
-    codigo: 'Nº '+c.codigo.slice(0,3)+'·'+c.codigo.slice(3),
+    codigo: 'Nº '+_numPref(c.safra)+c.codigo.slice(0,3)+'·'+c.codigo.slice(3),
     lote: esc(c.loteNome||''),
     area: fmtArea(area)+' Ha',
     EXECUTAR: c.dataExecucao? fmtData(c.dataExecucao) : '____/____/______'
@@ -2874,7 +2876,7 @@ function cabecalhoFibras(c){
   const area=areaDe(c.loteNome);
   const dados={
     tipoAtiv: esc(c.tipoAtiv),
-    codigo: 'Nº '+c.codigo.slice(0,3)+'·'+c.codigo.slice(3),
+    codigo: 'Nº '+_numPref(c.safra)+c.codigo.slice(0,3)+'·'+c.codigo.slice(3),
     lote: esc(c.loteNome||''),
     area: fmtArea(area)+' Ha',
     EXECUTAR: c.dataExecucao? fmtData(c.dataExecucao) : '____/____/______'

@@ -1,12 +1,10 @@
-﻿Campo: nomes de maquina claros, implemento opcional e comandas por safra+codigo
+﻿Comanda: numero unico por safra (25/26-001001) na exibicao
 
-- MAQUINA: dropdowns e mapa passam a mostrar ID(frota) + MARCA + MODELO
-  (havia 3 "Colhedora Cotton" identicas no nome; agora COL-003 John Deere 9970 etc.)
-- IMPLEMENTO OPCIONAL: so Trator puxa implemento. Colhedora/autopropelida/adubadeira
-  nao pedem mais implemento (o campo some e nao bloqueia). Largura continua obrigatoria.
-- SAFRA+CODIGO: o codigo de comanda repete entre safras (001001 em 25/26 e 26/27).
-  Casar so por codigo misturava execucoes/abastecimentos de safras diferentes.
-  Agora tudo casa por safra+codigo (execucao, abastecimento, cache local, conjunto).
-- GPS: anti-salto (descarta teleporte do sinal) + piso de 2 m entre pontos (= celula de area),
-  reduz o zigue-zague. CONSERVADOR - conferir a area medida em campo.
-- sw v41
+O codigo (GGG+TTT) repete a cada safra. Agora o numero EXIBIDO leva a safra
+abreviada na frente: "25/26-001001". Derivado da safra que a comanda ja tem —
+o dado (coluna codigo) NAO muda, historico intacto, PDF path intacto.
+
+- campo.html: card, tela da comanda, barras de trabalho, vinculo de abastecimento
+- Atividades (admin): lista, ficha e cabecalho do PDF ("No 25/26-958·001")
+- so exibicao; a chave interna e a integridade seguem por safra+codigo
+- sw v42
