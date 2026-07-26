@@ -1,10 +1,10 @@
-﻿Comanda: numero unico por safra (25/26-001001) na exibicao
+﻿Campo: ponto de heartbeat parado (distingue parada de perda de GPS)
 
-O codigo (GGG+TTT) repete a cada safra. Agora o numero EXIBIDO leva a safra
-abreviada na frente: "25/26-001001". Derivado da safra que a comanda ja tem —
-o dado (coluna codigo) NAO muda, historico intacto, PDF path intacto.
-
-- campo.html: card, tela da comanda, barras de trabalho, vinculo de abastecimento
-- Atividades (admin): lista, ficha e cabecalho do PDF ("No 25/26-958·001")
-- so exibicao; a chave interna e a integridade seguem por safra+codigo
-- sw v42
+Ate agora, maquina parada NAO gravava ponto (filtro de movimento) -> um buraco no
+trajeto era ambiguo: parada real OU GPS/app morto? Agora, com sessao ativa, grava 1 ponto
+a cada 30s no MESMO lugar (v=0) enquanto parado. Distancia 0 -> NAO infla area nem distancia.
+Efeito: um GAP de verdade passa a significar perda de GPS (nao parada). Auditoria fica objetiva.
+- _recalcCells / _distTotalM / _addCells ignoram pontos v=0 (nao pintam nem somam)
+- heartbeat so com SESS aberta (nao cria sessao fantasma)
+- verificado no navegador: parado nao muda area (0.028->0.028), movimento volta a pintar
+- sw v43

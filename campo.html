@@ -597,6 +597,7 @@ function _pdfGestos(box, pages, lista){
 }
 /* ===================== TELA DE TRABALHO (GPS — cobertura) ===================== */
 let GPS={watchId:null,pts:[],cells:new Set(),areaHa:0,speed:0,head:0,wake:null,acc:null,_lt:0,_dt:null,paintAuto:true,painting:false,inField:false};
+const HEARTBEAT_MS=30000;   // parado: grava 1 ponto a cada 30s (mesmo lugar, v=0) p/ provar que o app está vivo — assim um GAP de verdade = perda de GPS, não parada
 let VIEW={follow:true,zoom:1,cx:null,cy:null};
 let SESS=null, DAYSEGS=[];     // SESS = sessão ativa (conjunto atual); DAYSEGS = sessões já feitas (desenho)
 const CELL=2; // m — resolução da cobertura
@@ -741,7 +742,7 @@ function _py(N){ return _CH/2 - (N-VIEW.cy)*_sc(); }
 function _scheduleDraw(){ if(GPS._dt) return; GPS._dt=setTimeout(()=>{ GPS._dt=null; _drawMapa(); },120); }
 function _pathPoly(ctx,poly){ ctx.beginPath(); poly.forEach((p,i)=>{ const X=_px(p[0]),Y=_py(p[1]); i?ctx.lineTo(X,Y):ctx.moveTo(X,Y); }); ctx.closePath(); }
 let _VELC=null; let _DAYCELLS=new Set();
-function _addCells(pts,hw,poly,set){ if(hw<=0||!pts) return; for(let i=1;i<pts.length;i++){ const a=pts[i-1],b=pts[i]; const i0=Math.floor((Math.min(a.E,b.E)-hw)/CELL),i1=Math.floor((Math.max(a.E,b.E)+hw)/CELL),j0=Math.floor((Math.min(a.N,b.N)-hw)/CELL),j1=Math.floor((Math.max(a.N,b.N)+hw)/CELL); for(let x=i0;x<=i1;x++)for(let y=j0;y<=j1;y++){ const cE=(x+0.5)*CELL,cN=(y+0.5)*CELL; if(_segDist(cE,cN,a.E,a.N,b.E,b.N)<=hw&&(!poly||_inPoly(cE,cN,poly))) set.add(x+'_'+y); } } }
+function _addCells(pts,hw,poly,set){ if(hw<=0||!pts) return; for(let i=1;i<pts.length;i++){ const a=pts[i-1],b=pts[i]; if(b.v!=null&&+b.v<=0) continue; const i0=Math.floor((Math.min(a.E,b.E)-hw)/CELL),i1=Math.floor((Math.max(a.E,b.E)+hw)/CELL),j0=Math.floor((Math.min(a.N,b.N)-hw)/CELL),j1=Math.floor((Math.max(a.N,b.N)+hw)/CELL); for(let x=i0;x<=i1;x++)for(let y=j0;y<=j1;y++){ const cE=(x+0.5)*CELL,cN=(y+0.5)*CELL; if(_segDist(cE,cN,a.E,a.N,b.E,b.N)<=hw&&(!poly||_inPoly(cE,cN,poly))) set.add(x+'_'+y); } } }
 function _buildDayCells(){ _DAYCELLS=new Set(); const poly=_polyUTM(); (DAYSEGS||[]).forEach(s=>_addCells(s.pts,(s.larg||0)/2,poly,_DAYCELLS)); }
 function _coverAreaHa(){ let n=_DAYCELLS.size; GPS.cells.forEach(k=>{ if(!_DAYCELLS.has(k)) n++; }); return n*CELL*CELL/10000; }   // UNIÃO ao vivo (não soma sobreposição)
 function _unionAreaHa(rows){ const set=new Set(),poly=_polyUTM(); (rows||[]).forEach(r=>_addCells(_rowPts(r),_rowLarg(r)/2,poly,set)); return set.size*CELL*CELL/10000; }
@@ -811,7 +812,10 @@ function _onFix(pos){ const cur=pos.coords; GPS.acc=cur.accuracy; GPS._lastFixTs
     // parado / oscilação do GPS / precisão ruim -> NÃO registra ponto (não infla área nem trajeto)
     // piso de 2 m = tamanho da célula de área: cortar tremores menores reduz o zigue-zague sem perder cobertura.
     const movendo = d>=2 && (cur.accuracy==null||cur.accuracy<=20) && (cur.speed==null||cur.speed>=0.5);
-    if(!movendo){ GPS.speed=0; GPS._lt=t; _hud(); _scheduleDraw(); return; }
+    if(!movendo){ GPS.speed=0; GPS._lt=t;
+      // HEARTBEAT parado: grava ponto no MESMO lugar do último (v=0) a cada 30s -> distância 0 (não infla área/dist) mas prova que o app está vivo parado
+      if(SESS && (t-(last.t||0))>=HEARTBEAT_MS){ GPS.pts.push({E:last.E,N:last.N,lat:last.lat,lon:last.lon,t,v:0,tq:_tqSeqAberto()}); _touchSess(); }
+      _hud(); _scheduleDraw(); return; }
     GPS.head=Math.atan2(E-last.E,No-last.N);
     if(_paintOn()) _markCells(last.E,last.N,E,No);
   } else if(cur.speed!=null&&cur.speed>=0) GPS.speed=cur.speed*3.6;
@@ -820,7 +824,7 @@ function _onFix(pos){ const cur=pos.coords; GPS.acc=cur.accuracy; GPS._lastFixTs
   _hud(); _scheduleDraw();
   if(GPS.watchId!=null){ if(GPS.pts.length%40===0) _saveGps(false); else _touchSess(); }   // local a CADA ponto (sobrevive a fechar o app na força), sync a cada 40
 }
-function _recalcCells(){ GPS.cells=new Set(); GPS.areaHa=0; for(let i=1;i<GPS.pts.length;i++) _markCells(GPS.pts[i-1].E,GPS.pts[i-1].N,GPS.pts[i].E,GPS.pts[i].N); }
+function _recalcCells(){ GPS.cells=new Set(); GPS.areaHa=0; for(let i=1;i<GPS.pts.length;i++){ if((GPS.pts[i].v||0)<=0) continue; _markCells(GPS.pts[i-1].E,GPS.pts[i-1].N,GPS.pts[i].E,GPS.pts[i].N); } }   // v=0 = heartbeat parado -> não pinta
 function _implLarg(id){ const m=IMPS.find(x=>String(x.id)===String(id)); return m&&m.largura_trabalho?+m.largura_trabalho:0; }
 function _rowLarg(r){ return (r&&+r.largura_m>0)?+r.largura_m:_implLarg(r&&r.implemento_id); }   // largura real da sessão (fallback: cadastro do implemento p/ linhas antigas)
 function _rowPts(row){ const out=[]; if(Array.isArray(row.trajeto)) row.trajeto.forEach(p=>{ if(p[0]==null) return; const u=latLngToUTM(p[0],p[1],23); out.push({E:u[0],N:u[1],v:p[3],tq:p[4]||0}); }); return out; }
@@ -882,7 +886,7 @@ async function _syncAll(){ if(!navigator.onLine||!SB) return; const act=SESS&&SE
   }catch(e){} await _updPend();
 }
 function _touchSess(){ if(!SESS) return; SESS.trajeto=GPS.pts.map(p=>[+p.lat.toFixed(6),+p.lon.toFixed(6),p.t||0,+(p.v||0).toFixed(1),p.tq||0]); SESS.area_ha=+GPS.areaHa.toFixed(2); SESS.atualizado_em=new Date().toISOString(); SESS.dirty=true; SESS._v=(SESS._v||0)+1; _idbPut('sessions',SESS); }   // só local (a cada poucos fixes) — sobrevive a crash
-function _distTotalM(){ let d=0; for(let i=1;i<GPS.pts.length;i++) d+=Math.hypot(GPS.pts[i].E-GPS.pts[i-1].E, GPS.pts[i].N-GPS.pts[i-1].N); return d; }
+function _distTotalM(){ let d=0; for(let i=1;i<GPS.pts.length;i++){ if((GPS.pts[i].v||0)<=0) continue; d+=Math.hypot(GPS.pts[i].E-GPS.pts[i-1].E, GPS.pts[i].N-GPS.pts[i-1].N); } return d; }   // ignora heartbeat parado (v=0)
 function _sessTemTrabalho(){ if(_tanquesArr().length>0) return true; return GPS.pts.length>=2 && ((+GPS.areaHa||0)>=0.01 || _distTotalM()>=25); }   // sessão com tanques/caldas sempre conta   // trabalho REAL: >=2 pontos E (área>=0,01 ha OU andou >=25 m) — corta entra/sai e oscilação do GPS
 async function _saveGps(final){ if(!SESS) return;
   if(final && !_sessTemTrabalho()){ if(!SESS.serverId){ try{ await _idbDel('sessions',SESS.lid); }catch(e){} } return; }   // sem trabalho real -> não grava nem envia (nada de movimentação fantasma)
