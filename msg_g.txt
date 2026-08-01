@@ -1,3 +1,0 @@
-﻿Resultados: filtro Todas combina culturas por lote (1 linha/lote); por cultura separa; area distinta
-
-Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>

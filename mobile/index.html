@@ -1,0 +1,490 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,maximum-scale=1">
+<meta name="theme-color" content="#080d18">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>Alabama Agro — Mobile</title>
+<!--
+  LINHA MOBILE — app de CONSULTA para escritório e proprietários.
+
+  PRINCÍPIOS (valem para todas as telas que entrarem aqui)
+    · SOMENTE LEITURA. Nada nesta linha altera dado. Quem opera usa o tablet
+      de campo (campo.html) e quem administra usa os módulos do hub.
+    · Feito para o polegar: navegação inferior, alvos grandes, sem hover.
+    · Uma tela por assunto, sem menus aninhados.
+    · Estados honestos: "sem dado" e "carregando" aparecem como tal; a tela
+      nunca inventa número.
+
+  MAPA — DECISÃO DELIBERADA (não é descuido)
+    Esta linha NÃO usa o mapa_ferramenta_geral.js. A regra "MAPA = FERRAMENTA
+    ÚNICA" do CLAUDE.md existe para impedir CÓPIAS divergentes do mesmo mapa
+    entre módulos de desktop — e continua valendo lá. Aqui o contexto é outro:
+    as ferramentas gerais (buscar imagem por data, corrigir cores, medir com
+    vértices, tela cheia) são de ANÁLISE em tela grande; num celular elas não
+    cabem nem servem. O mapa daqui é mínimo de propósito: satélite + lotes +
+    estações + a variável escolhida. Se precisar de análise, é no desktop.
+    Decidido com o dono em 01/08/2026.
+
+  DADO
+    Supabase (mesmas tabelas do módulo Clima: clima_atual, clima_horario,
+    clima_estacoes). Origem física: estação -> LoRa -> gateway -> Pi -> sync.
+-->
+<style>
+:root{
+  --bg:#080d18; --bg2:#0d1526; --bg3:#111e35; --bg4:#162540;
+  --border:#1f3354; --border2:#2c4a78;
+  --text:#e8edf5; --muted:#6b8bb0; --muted2:#3d5a80;
+  --ok:#00c896; --warn:#ffb300; --err:#ff4444; --gold:#ffc107; --azul:#38bdf8;
+  --nav:72px;
+}
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+html,body{height:100%}
+body{background:var(--bg);color:var(--text);
+  font:15px/1.45 -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,system-ui,sans-serif;
+  overscroll-behavior-y:none}
+
+/* ---------- cabeçalho ---------- */
+header{position:sticky;top:0;z-index:50;background:rgba(8,13,24,.92);backdrop-filter:blur(12px);
+  border-bottom:1px solid var(--border);padding:calc(env(safe-area-inset-top) + 12px) 16px 12px}
+.hrow{display:flex;align-items:center;gap:10px}
+.marca{font-size:17px;font-weight:800;letter-spacing:-.01em}
+.marca .l{color:var(--gold)}
+.tag{margin-left:auto;font-size:11px;font-weight:700;padding:5px 11px;border-radius:20px;white-space:nowrap}
+.tag.ok{background:#052e22;color:#3fe0b0} .tag.old{background:#3a2a00;color:var(--gold)}
+.tag.err{background:#3a0f0f;color:#ff8080} .tag.wait{background:#12203a;color:var(--muted)}
+
+/* ---------- conteúdo ---------- */
+main{padding:14px 16px calc(var(--nav) + env(safe-area-inset-bottom) + 20px)}
+.sec{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;
+  font-weight:700;margin:22px 0 10px}
+.sec:first-child{margin-top:4px}
+
+/* chips de período */
+.chips{display:flex;gap:8px;overflow-x:auto;padding-bottom:2px;-webkit-overflow-scrolling:touch}
+.chips::-webkit-scrollbar{display:none}
+.chip{flex:none;background:var(--bg2);border:1px solid var(--border);color:var(--muted);
+  border-radius:22px;padding:9px 16px;font:600 13px inherit;cursor:pointer;min-height:40px}
+.chip.on{background:var(--gold);border-color:var(--gold);color:#1a1100}
+
+/* cartão principal */
+.hero{background:linear-gradient(160deg,var(--bg3),var(--bg2));border:1px solid var(--border);
+  border-radius:20px;padding:20px;margin-top:12px}
+.hero .top{display:flex;align-items:flex-start;gap:12px}
+.hero .t{font-size:52px;font-weight:800;line-height:1;letter-spacing:-.03em;font-variant-numeric:tabular-nums}
+.hero .t .u{font-size:20px;font-weight:600;color:var(--muted);margin-left:3px}
+.hero .ic{font-size:40px;margin-left:auto;line-height:1}
+.hero .quem{font-size:13px;color:var(--muted);margin-top:8px}
+
+/* grade de cartões */
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:11px;margin-top:11px}
+.card{background:var(--bg2);border:1px solid var(--border);border-radius:16px;padding:14px}
+.card.w{grid-column:1/-1}
+.card .lb{font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;
+  font-weight:700;display:flex;align-items:center;gap:5px}
+.card .vl{font-size:26px;font-weight:800;margin-top:6px;line-height:1.05;font-variant-numeric:tabular-nums}
+.card .vl .u{font-size:12px;font-weight:500;color:var(--muted);margin-left:2px}
+.card .ex{font-size:12px;color:var(--muted);margin-top:4px}
+.seta{font-size:28px;line-height:1;vertical-align:-3px}
+
+/* lista de estações */
+.item{display:flex;align-items:center;gap:12px;background:var(--bg2);border:1px solid var(--border);
+  border-radius:14px;padding:14px;margin-bottom:9px;min-height:60px}
+.item.off{opacity:.45}
+.dot{width:10px;height:10px;border-radius:50%;flex:none}
+.item .nm{font-weight:600;font-size:14px}
+.item .sb{font-size:12px;color:var(--muted);margin-top:2px}
+.item .vr{margin-left:auto;font-weight:800;font-size:17px;font-variant-numeric:tabular-nums}
+
+/* gráfico */
+.chart{height:130px}
+
+/* mapa (mínimo, de toque — ver nota no topo do arquivo) */
+#mapa{height:min(56vh,420px);border-radius:16px;overflow:hidden;border:1px solid var(--border);
+  margin-top:11px;background:var(--bg3)}
+.legm{display:flex;align-items:center;gap:9px;margin-top:9px;font-size:11px;color:var(--muted)}
+.legm .barra{flex:1;height:8px;border-radius:4px}
+
+/* navegação inferior */
+nav{position:fixed;left:0;right:0;bottom:0;z-index:60;display:flex;
+  background:rgba(8,13,24,.96);backdrop-filter:blur(14px);border-top:1px solid var(--border);
+  padding-bottom:env(safe-area-inset-bottom)}
+nav button{flex:1;background:none;border:0;color:var(--muted2);padding:10px 4px 12px;
+  font:600 10px inherit;cursor:pointer;display:flex;flex-direction:column;align-items:center;
+  gap:4px;min-height:var(--nav)}
+nav button .i{font-size:21px;line-height:1;filter:grayscale(1) opacity(.6)}
+nav button.on{color:var(--gold)}
+nav button.on .i{filter:none}
+
+.vazio{text-align:center;color:var(--muted);padding:60px 20px}
+.vazio .i{font-size:44px;opacity:.4;display:block;margin-bottom:12px}
+.muted{color:var(--muted)}
+
+/* login */
+.login{min-height:100dvh;display:flex;flex-direction:column;justify-content:center;padding:28px 22px}
+.login h1{font-size:24px;font-weight:800;margin-bottom:4px}
+.login p{color:var(--muted);font-size:13px;margin-bottom:26px}
+.login label{display:block;font-size:11px;font-weight:700;color:var(--muted);
+  text-transform:uppercase;letter-spacing:.06em;margin:14px 0 6px}
+.login input{width:100%;background:var(--bg2);border:1px solid var(--border);border-radius:12px;
+  padding:14px;color:var(--text);font-size:16px;min-height:50px}
+.login input:focus{outline:none;border-color:var(--gold)}
+.login button{width:100%;margin-top:22px;background:var(--gold);color:#1a1100;border:0;
+  border-radius:12px;padding:15px;font:800 15px inherit;min-height:52px;cursor:pointer}
+.login .msg{margin-top:14px;font-size:13px;text-align:center;min-height:20px}
+</style>
+</head>
+<body>
+<div id="app"><div class="vazio" style="padding-top:120px">Carregando…</div></div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script>
+const SB_URL='https://ngdidjtfgmtkdkvqwfjf.supabase.co';
+const SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5nZGlkanRmZ210a2RrdnF3ZmpmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NTU5MDYsImV4cCI6MjA5NjUzMTkwNn0.OW9hGEFTvSYx_THv3DR9pt8xIVC0B9Pw2bTDGD6TBLk';
+
+let SB=null, TELA='clima', PERIODO='agora', VARMAPA='temp';
+let ESTACOES=[], ATUAL=[], HORAS=[], LOTES=[];
+let _map=null, _heat=null, _lotesL=null, _estL=null;
+const $=s=>document.querySelector(s);
+const el=id=>document.getElementById(id);
+
+/* ---------- utilidades ---------- */
+const num=v=>(v===null||v===undefined||v==='')?null:(isNaN(+v)?null:+v);
+const f=(v,c)=>v===null||v===undefined?'—':(+v).toFixed(c===undefined?1:c);
+const dirNome=g=>g===null?'':['N','NE','L','SE','S','SO','O','NO'][Math.round(g/45)%8];
+/* a seta aponta para ONDE o vento VAI — a direção medida é de onde ele VEM */
+const dirSeta=g=>g===null?'':['↓','↙','←','↖','↑','↗','→','↘'][Math.round(g/45)%8];
+function idade(s){ if(s===null) return '—'; if(s<90) return 'agora';
+  if(s<3600) return Math.floor(s/60)+' min'; const h=Math.floor(s/3600);
+  return h<24?h+' h':Math.floor(h/24)+' d'; }
+function hhmm(iso){ if(!iso) return '—'; const d=new Date(iso); if(isNaN(d)) return '—';
+  const hm=d.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});
+  return d.toDateString()===new Date().toDateString()?hm
+    :String(d.getDate()).padStart(2,'0')+'/'+String(d.getMonth()+1).padStart(2,'0')+' '+hm; }
+
+const PERIODOS={agora:{lbl:'Agora',h:0},'24h':{lbl:'24 h',h:24},
+                '7d':{lbl:'7 dias',h:168},'30d':{lbl:'30 dias',h:720}};
+const VARS={
+  temp: {lbl:'Temperatura',un:'°C',c:'temp',ch:'temp',dec:1,ic:'🌡',
+         grad:[[59,130,246],[56,189,248],[34,197,94],[250,204,21],[249,115,22],[239,68,68]]},
+  umid: {lbl:'Umidade',un:'%',c:'umidade',ch:'umidade',dec:0,ic:'💧',piso:0,
+         grad:[[249,115,22],[250,204,21],[34,197,94],[56,189,248],[59,130,246]]},
+  vento:{lbl:'Vento',un:'km/h',c:'vento_kmh',ch:'vento_kmh',dec:1,ic:'🍃',piso:0,
+         grad:[[148,163,184],[52,211,153],[250,204,21],[249,115,22],[239,68,68]]},
+  chuva:{lbl:'Chuva',un:'mm',c:'chuva_24h',ch:'chuva_mm',dec:1,ic:'🌧',piso:0,acum:true,
+         grad:[[148,163,184],[125,211,252],[56,189,248],[59,130,246],[37,99,235]]},
+  pres: {lbl:'Pressão',un:'hPa',c:'pressao',ch:'pressao',dec:1,ic:'📊',conv:v=>v/100,
+         grad:[[124,58,237],[59,130,246],[34,197,94],[250,204,21],[249,115,22]]}
+};
+function est(id){ return ESTACOES.find(x=>x.id===id)||{}; }
+
+/* direção que ventou por MAIS TEMPO (média de ângulo devolveria direção que
+   nunca ocorreu: 4 h de NE + 3 h de NO daria norte) */
+function dirMedia(ds){ const v=ds.filter(d=>d!==null&&!isNaN(d)); if(!v.length) return null;
+  const x=v.reduce((s,d)=>s+Math.cos(d*Math.PI/180),0), y=v.reduce((s,d)=>s+Math.sin(d*Math.PI/180),0);
+  return (Math.atan2(y,x)*180/Math.PI+360)%360; }
+function dirPredominante(rows){
+  const p=new Array(8).fill(0), a=Array.from({length:8},()=>[]);
+  rows.forEach(r=>{ const d=num(r.vento_dir); if(d===null) return;
+    const i=Math.round(((d%360)+360)%360/45)%8; p[i]+=(num(r.amostras)||1); a[i].push(d); });
+  let im=-1,mx=0; p.forEach((v,i)=>{ if(v>mx){mx=v;im=i;} });
+  if(im<0) return null;
+  const tot=p.reduce((s,v)=>s+v,0);
+  return {dir:dirMedia(a[im]), fatia:tot?mx/tot:0};
+}
+function valores(varKey){
+  const cfg=VARS[varKey];
+  if(PERIODO==='agora'){
+    return ATUAL.map(x=>{ let v=num(x[cfg.c]); if(v!==null&&cfg.conv) v=cfg.conv(v);
+      return {id:x.estacao_id, v, dir:num(x.vento_dir), e:est(x.estacao_id)}; })
+      .filter(x=>x.v!==null && num(x.e.lat)!==null);
+  }
+  const lim=Date.now()-PERIODOS[PERIODO].h*3600e3, por={};
+  HORAS.forEach(r=>{ const t=new Date(r.hora).getTime();
+    if(isNaN(t)||t<lim) return; (por[r.estacao_id]=por[r.estacao_id]||[]).push(r); });
+  return Object.keys(por).map(id=>{
+    const rows=por[id], vs=rows.map(r=>num(r[cfg.ch])).filter(v=>v!==null);
+    if(!vs.length) return null;
+    // chuva SOMA no período; o resto tira MÉDIA
+    let v=cfg.acum?vs.reduce((a,b)=>a+b,0):vs.reduce((a,b)=>a+b,0)/vs.length;
+    if(cfg.conv) v=cfg.conv(v);
+    const pd=dirPredominante(rows);
+    return {id:+id, v, dir:pd?pd.dir:null, fatia:pd?pd.fatia:null, e:est(+id)};
+  }).filter(x=>x && num(x.e.lat)!==null);
+}
+function media(varKey){ const p=valores(varKey);
+  return p.length?{v:p.reduce((s,x)=>s+x.v,0)/p.length, dir:p[0].dir, fatia:p[0].fatia, n:p.length}:null; }
+
+/* ---------- dados ---------- */
+async function carregar(){
+  try{
+    const [e,a,h,l]=await Promise.all([
+      SB.from('clima_estacoes').select('*').order('id'),
+      SB.from('clima_atual').select('*'),
+      SB.from('clima_horario').select('*').gte('hora',new Date(Date.now()-31*864e5).toISOString()).order('hora'),
+      LOTES.length?Promise.resolve({data:null}):SB.from('lotes').select('nome,geom').not('referencia','is',true)
+    ]);
+    ESTACOES=e.data||[]; ATUAL=a.data||[]; HORAS=h.data||[];
+    if(l&&l.data) LOTES=(l.data||[]).map(x=>{ const g=x.geom;
+      if(!g||!Array.isArray(g.ring)||g.ring.length<3) return null;
+      return {nome:x.nome, ring:g.ring.map(p=>utm2ll(+p[0],+p[1]))}; }).filter(Boolean);
+    pinta();
+  }catch(err){ el('app').innerHTML=`<div class="vazio"><span class="i">⚠️</span>${err.message}</div>`; }
+}
+function utm2ll(E,N){
+  const a=6378137,fl=1/298.257223563,e2=fl*(2-fl),ep2=e2/(1-e2),k0=.9996;
+  const e1=(1-Math.sqrt(1-e2))/(1+Math.sqrt(1-e2));
+  const x=E-5e5, y=N-1e7, M=y/k0, mu=M/(a*(1-e2/4-3*e2*e2/64-5*e2**3/256));
+  const p1=mu+(3*e1/2-27*e1**3/32)*Math.sin(2*mu)+(21*e1*e1/16-55*e1**4/32)*Math.sin(4*mu)+(151*e1**3/96)*Math.sin(6*mu);
+  const C1=ep2*Math.cos(p1)**2,T1=Math.tan(p1)**2,N1=a/Math.sqrt(1-e2*Math.sin(p1)**2),
+        R1=a*(1-e2)/Math.pow(1-e2*Math.sin(p1)**2,1.5),D=x/(N1*k0);
+  const lat=p1-(N1*Math.tan(p1)/R1)*(D*D/2-(5+3*T1+10*C1-4*C1*C1-9*ep2)*D**4/24+(61+90*T1+298*C1+45*T1*T1-252*ep2-3*C1*C1)*D**6/720);
+  const l0=(23*6-183)*Math.PI/180;
+  const lon=l0+(D-(1+2*T1+C1)*D**3/6+(5-2*C1+28*T1-3*C1*C1+8*ep2+24*T1*T1)*D**5/120)/Math.cos(p1);
+  return [lat*180/Math.PI, lon*180/Math.PI];
+}
+
+/* ---------- telas ---------- */
+function statusTag(){
+  const vivas=ATUAL.filter(x=>x.temp!==null);
+  if(!vivas.length) return '<span class="tag wait">aguardando</span>';
+  const nova=Math.min(...vivas.map(x=>x.idade_s===null?9e9:x.idade_s));
+  return nova<600 ? `<span class="tag ok">● ao vivo · ${idade(nova)}</span>`
+                  : `<span class="tag old">⚠ ${idade(nova)}</span>`;
+}
+/* O ícone reflete a TEMPERATURA. A chuva só entra quando é volume relevante
+   (>5 mm no período) — usar o acumulado de 24 h como gatilho fazia o app
+   desenhar nuvem de chuva por causa de 0,7 mm caídos de madrugada, com sol
+   na hora da consulta. Ícone que contradiz o número ao lado destrói confiança. */
+function icone(t,ch){
+  if(ch>5) return '🌧';
+  if(t===null) return '🌤';
+  return t>=32?'🔥':t>=26?'☀️':t>=18?'🌤':'🌥';
+}
+
+function telaClima(){
+  const vivas=ATUAL.filter(x=>x.temp!==null);
+  if(!vivas.length) return `<div class="vazio"><span class="i">📡</span>
+      Nenhuma estação enviou leitura ainda.<br><span style="font-size:13px">
+      Assim que a primeira chegar, aparece aqui.</span></div>`;
+  const t=media('temp'), u=media('umid'), v=media('vento'), c=media('chuva'), p=media('pres');
+  const per=PERIODOS[PERIODO].lbl;
+  const quem = PERIODO==='agora'
+    ? (vivas.length>1?`média de ${vivas.length} estações · ${hhmm(vivas[0].medido_em)}`
+                     :`${est(vivas[0].estacao_id).nome||'Estação'} · ${hhmm(vivas[0].medido_em)}`)
+    : `${per}${vivas.length>1?` · média de ${vivas.length} estações`:''}`;
+
+  return `
+  <div class="chips">${Object.keys(PERIODOS).map(k=>
+      `<button class="chip ${PERIODO===k?'on':''}" data-per="${k}">${PERIODOS[k].lbl}</button>`).join('')}</div>
+
+  <div class="hero">
+    <div class="top">
+      <div><div class="t">${f(t&&t.v,1)}<span class="u">°C</span></div></div>
+      <div class="ic">${icone(t&&t.v, c?c.v:0)}</div>
+    </div>
+    <div class="quem">${quem}</div>
+  </div>
+
+  <div class="grid">
+    <div class="card"><div class="lb">💧 Umidade</div>
+      <div class="vl">${f(u&&u.v,0)}<span class="u">%</span></div></div>
+    <div class="card"><div class="lb">🍃 Vento</div>
+      <div class="vl">${f(v&&v.v,1)}<span class="u">km/h</span></div></div>
+    <div class="card"><div class="lb">🧭 ${PERIODO==='agora'?'Direção':'Predominante'}</div>
+      <div class="vl">${v&&v.dir!==null?`${dirNome(v.dir)} <span class="seta">${dirSeta(v.dir)}</span>`:'—'}</div>
+      ${v&&v.fatia!=null?`<div class="ex">${Math.round(v.fatia*100)}% do tempo</div>`:''}</div>
+    <div class="card"><div class="lb">🌧 Chuva ${PERIODO==='agora'?'24 h':'acum.'}</div>
+      <div class="vl">${f(c&&c.v,1)}<span class="u">mm</span></div></div>
+    <div class="card w"><div class="lb">📊 Pressão</div>
+      <div class="vl">${f(p&&p.v,1)}<span class="u">hPa</span></div></div>
+  </div>
+
+  <div class="sec">Temperatura — últimas horas</div>
+  <div class="card w">${grafico()}</div>
+
+  <div class="sec">Mapa</div>
+  <div class="chips">${Object.keys(VARS).map(k=>
+      `<button class="chip ${VARMAPA===k?'on':''}" data-vm="${k}">${VARS[k].ic} ${VARS[k].lbl}</button>`).join('')}</div>
+  <div id="mapa"></div>
+  <div class="legm" id="legm"></div>
+
+  <div class="sec">Estações</div>
+  ${ESTACOES.map(s=>{ const d=ATUAL.find(x=>x.estacao_id===s.id), viva=d&&d.temp!==null;
+    return `<div class="item ${viva?'':'off'}">
+      <span class="dot" style="background:${viva?(d.online?'var(--ok)':'var(--warn)'):'var(--muted2)'}"></span>
+      <div><div class="nm">${s.nome||('Estação '+s.id)}</div>
+        <div class="sb">${viva?`${f(d.umidade,0)}% · ${f(d.vento_kmh,1)} km/h ${dirNome(d.vento_dir)} · ${idade(d.idade_s)}`
+                            :'ainda não instalada'}</div></div>
+      <div class="vr">${viva?f(d.temp,1)+'°':'—'}</div></div>`; }).join('')}`;
+}
+
+function grafico(){
+  const s=HORAS.filter(h=>num(h.temp)!==null).slice(-24);
+  if(s.length<2) return `<div class="muted" style="text-align:center;padding:32px 0;font-size:13px">
+      ${s.length?'só 1 leitura — ainda não dá para traçar':'sem histórico ainda'}</div>`;
+  const v=s.map(h=>+h.temp), W=340,H=120, mn=Math.min(...v), mx=Math.max(...v), amp=(mx-mn)||1;
+  const pts=v.map((x,i)=>[(i/(v.length-1))*W, H-((x-mn)/amp)*(H-24)-12]);
+  const ln='M '+pts.map(p=>p[0].toFixed(1)+' '+p[1].toFixed(1)).join(' L ');
+  return `<svg class="chart" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" style="width:100%">
+    <defs><linearGradient id="gt" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#ff7a45" stop-opacity=".38"/>
+      <stop offset="100%" stop-color="#ff7a45" stop-opacity="0"/></linearGradient></defs>
+    <path d="${ln} L ${W} ${H} L 0 ${H} Z" fill="url(#gt)"/>
+    <path d="${ln}" fill="none" stroke="#ff7a45" stroke-width="2.4" stroke-linejoin="round"/>
+  </svg>
+  <div class="ex" style="display:flex;justify-content:space-between;margin-top:6px">
+    <span>mín ${f(mn,1)}°</span><span>${v.length} h</span><span>máx ${f(mx,1)}°</span></div>`;
+}
+
+function emBreve(nome,ic){
+  return `<div class="vazio"><span class="i">${ic}</span><b>${nome}</b><br>
+    <span style="font-size:13px">Em breve nesta linha.</span></div>`;
+}
+
+/* ---------- mapa (mínimo, de toque) ---------- */
+let _lf=false;
+function leaflet(cb){
+  if(window.L) return cb();
+  if(_lf){ const t=setInterval(()=>{ if(window.L){ clearInterval(t); cb(); } },120); return; }
+  _lf=true;
+  const c=document.createElement('link'); c.rel='stylesheet';
+  c.href='https://unpkg.com/leaflet@1.9.4/dist/leaflet.css'; document.head.appendChild(c);
+  const j=document.createElement('script'); j.src='https://unpkg.com/leaflet@1.9.4/dist/leaflet.js';
+  j.onload=()=>cb(); j.onerror=()=>{ const m=el('mapa');
+    if(m) m.innerHTML='<div class="vazio" style="padding:40px 20px">mapa indisponível (sem internet)</div>'; };
+  document.head.appendChild(j);
+}
+function bbox(){
+  let a=90,b=-90,c=180,d=-180,ok=false;
+  LOTES.forEach(l=>l.ring.forEach(p=>{ ok=true; a=Math.min(a,p[0]);b=Math.max(b,p[0]);c=Math.min(c,p[1]);d=Math.max(d,p[1]); }));
+  return ok?{minLat:a,maxLat:b,minLon:c,maxLon:d}:null;
+}
+function corDe(v,mn,mx,g){ if(v===null||mx===mn) return [120,130,150];
+  const t=Math.max(0,Math.min(1,(v-mn)/(mx-mn))), p=t*(g.length-1),
+        i=Math.min(g.length-2,Math.floor(p)), k=p-i;
+  return [0,1,2].map(c=>Math.round(g[i][c]*(1-k)+g[i+1][c]*k)); }
+function idw(lat,lon,pts){ let n=0,d=0;
+  for(const p of pts){ const q=(lat-+p.e.lat)**2+(lon-+p.e.lon)**2;
+    if(q<1e-10) return p.v; const w=1/q; n+=w*p.v; d+=w; }
+  return d?n/d:null; }
+function mascara(bb,W,H){
+  const cv=document.createElement('canvas'); cv.width=W; cv.height=H;
+  const x=cv.getContext('2d');
+  if(!LOTES.length){ x.fillStyle='#fff'; x.fillRect(0,0,W,H); return cv; }
+  x.fillStyle='#fff';
+  LOTES.forEach(l=>{ x.beginPath();
+    l.ring.forEach((p,i)=>{ const px=((p[1]-bb.minLon)/(bb.maxLon-bb.minLon))*W,
+                                  py=((bb.maxLat-p[0])/(bb.maxLat-bb.minLat))*H;
+      i?x.lineTo(px,py):x.moveTo(px,py); }); x.closePath(); x.fill(); });
+  return cv;
+}
+function desenhaMapa(){
+  const m=el('mapa'); if(!m||!window.L) return;
+  if(!_map){
+    _map=L.map(m,{zoomControl:false,attributionControl:false});
+    L.tileLayer('https://{s}.google.com/vt/lyrs=s&x={x}&y={y}&z={z}',
+      {subdomains:['mt0','mt1','mt2','mt3'],maxZoom:20}).addTo(_map);
+    L.control.zoom({position:'bottomright'}).addTo(_map);
+    const bb=bbox();
+    if(bb) _map.fitBounds([[bb.minLat,bb.minLon],[bb.maxLat,bb.maxLon]],{padding:[14,14]});
+    else _map.setView([-12.62,-44.72],11);
+  }
+  if(_lotesL){ _map.removeLayer(_lotesL); }
+  _lotesL=L.layerGroup(LOTES.map(l=>L.polygon(l.ring,
+      {color:'#ff4444',weight:1.1,opacity:.8,fill:false,interactive:false}))).addTo(_map);
+
+  if(_heat){ _map.removeLayer(_heat); _heat=null; }
+  const cfg=VARS[VARMAPA], pts=valores(VARMAPA), bb=bbox();
+  if(pts.length&&bb){
+    let mn=Math.min(...pts.map(p=>p.v)), mx=Math.max(...pts.map(p=>p.v));
+    if(mn===mx){ mn-=1; mx+=1; }
+    if(cfg.piso!==undefined&&mn<cfg.piso) mn=cfg.piso;
+    const CW=180,CH=180;
+    const cv=document.createElement('canvas'); cv.width=CW; cv.height=CH;
+    const cx=cv.getContext('2d'), img=cx.createImageData(CW,CH);
+    for(let i=0;i<CH;i++){ const lat=bb.maxLat-(i/(CH-1))*(bb.maxLat-bb.minLat);
+      for(let j=0;j<CW;j++){ const lon=bb.minLon+(j/(CW-1))*(bb.maxLon-bb.minLon), k=(i*CW+j)*4;
+        const v=idw(lat,lon,pts); if(v===null){ img.data[k+3]=0; continue; }
+        const c=corDe(v,mn,mx,cfg.grad);
+        img.data[k]=c[0];img.data[k+1]=c[1];img.data[k+2]=c[2];img.data[k+3]=255; } }
+    cx.putImageData(img,0,0);
+    const OW=700, OH=Math.round(OW*CH/CW);
+    const out=document.createElement('canvas'); out.width=OW; out.height=OH;
+    const ox=out.getContext('2d'); ox.imageSmoothingEnabled=true; ox.imageSmoothingQuality='high';
+    ox.drawImage(cv,0,0,OW,OH);
+    ox.globalCompositeOperation='destination-in'; ox.drawImage(mascara(bb,OW,OH),0,0);
+    _heat=L.imageOverlay(out.toDataURL(),[[bb.minLat,bb.minLon],[bb.maxLat,bb.maxLon]],{opacity:.72}).addTo(_map);
+    const g=cfg.grad.map((c,i)=>`rgb(${c[0]},${c[1]},${c[2]}) ${(i/(cfg.grad.length-1))*100}%`).join(',');
+    const lm=el('legm'); if(lm) lm.innerHTML=`<span>${f(mn,cfg.dec)}</span>
+      <div class="barra" style="background:linear-gradient(90deg,${g})"></div>
+      <span>${f(mx,cfg.dec)} ${cfg.un}</span>`;
+  }
+  if(_estL){ _map.removeLayer(_estL); }
+  _estL=L.layerGroup(ESTACOES.filter(s=>num(s.lat)!==null).map(s=>{
+    const d=ATUAL.find(x=>x.estacao_id===s.id), viva=d&&d.temp!==null;
+    return L.circleMarker([+s.lat,+s.lon],{radius:9,color:'#fff',weight:2,
+      fillColor:viva?(d.online?'#00c896':'#ffb300'):'#3d5a80',fillOpacity:.95});
+  })).addTo(_map);
+  setTimeout(()=>{ try{ _map.invalidateSize(); }catch(e){} },120);
+}
+
+/* ---------- render ---------- */
+const ABAS=[['clima','🌦','Clima'],['rel','📊','Relatórios'],
+            ['tel','📡','Telemetria'],['ativ','📋','Atividades']];
+function pinta(){
+  const corpo = TELA==='clima' ? telaClima()
+    : TELA==='rel' ? emBreve('Relatórios','📊')
+    : TELA==='tel' ? emBreve('Telemetria','📡') : emBreve('Atividades','📋');
+  el('app').innerHTML=`
+    <header><div class="hrow"><div class="marca"><span class="l">🌿</span> Alabama Agro</div>
+      ${statusTag()}</div></header>
+    <main>${corpo}</main>
+    <nav>${ABAS.map(([k,i,n])=>`<button data-aba="${k}" class="${TELA===k?'on':''}">
+      <span class="i">${i}</span>${n}</button>`).join('')}</nav>`;
+
+  document.querySelectorAll('[data-aba]').forEach(b=>b.onclick=()=>{
+    TELA=b.dataset.aba; _map=null; pinta(); window.scrollTo(0,0); });
+  document.querySelectorAll('[data-per]').forEach(b=>b.onclick=()=>{ PERIODO=b.dataset.per; pinta(); });
+  document.querySelectorAll('[data-vm]').forEach(b=>b.onclick=()=>{ VARMAPA=b.dataset.vm; pinta(); });
+  if(TELA==='clima' && ATUAL.some(x=>x.temp!==null)) leaflet(desenhaMapa);
+}
+
+/* ---------- login ---------- */
+function telaLogin(msg){
+  el('app').innerHTML=`<div class="login">
+    <h1><span style="color:var(--gold)">🌿</span> Alabama Agro</h1>
+    <p>Consulta — escritório e proprietários</p>
+    <label>E-mail</label><input id="em" type="email" autocomplete="username" inputmode="email">
+    <label>Senha</label><input id="pw" type="password" autocomplete="current-password">
+    <button id="btn">Entrar</button>
+    <div class="msg" style="color:var(--err)">${msg||''}</div></div>`;
+  const entrar=async()=>{
+    const e=el('em').value.trim(), s=el('pw').value;
+    if(!e||!s) return telaLogin('Preencha e-mail e senha.');
+    el('btn').textContent='Entrando…'; el('btn').disabled=true;
+    const {error}=await SB.auth.signInWithPassword({email:e,password:s});
+    if(error) return telaLogin(error.message);
+    iniciar();
+  };
+  el('btn').onclick=entrar;
+  el('pw').onkeydown=ev=>{ if(ev.key==='Enter') entrar(); };
+}
+
+async function iniciar(){
+  el('app').innerHTML='<div class="vazio" style="padding-top:120px">Carregando…</div>';
+  await carregar();
+  setInterval(async()=>{ if(document.visibilityState==='visible') await carregar(); }, 120000);
+}
+
+(async function(){
+  if(!window.supabase){ el('app').innerHTML='<div class="vazio"><span class="i">⚠️</span>Sem internet</div>'; return; }
+  SB=window.supabase.createClient(SB_URL,SB_KEY);
+  const {data}=await SB.auth.getSession();
+  if(data&&data.session) iniciar(); else telaLogin();
+})();
+</script>
+</body>
+</html>

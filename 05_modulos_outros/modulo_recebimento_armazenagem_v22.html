@@ -217,12 +217,16 @@ main{padding:8px 22px 28px;max-width:none;}
   fardão e rolinho (unidade a unidade, @). O cadastrado entra no estoque em memória nesta sessão.
 </p>
 
+<script src="../mapa_ferramenta_geral.js"></script>
 <script>
 let _uid=0; const U=()=>'cg'+(_uid++);
 const KG_SC=60, ARROBA_KG=15, TARGET=13.75, TLO=13.4, THI=14.0;
 const nf=n=>n.toLocaleString('pt-BR');
 
 // ===== cor de umidade (vermelho seco -> amarelo alvo -> verde) =====
+/* UTM 23S ↔ lat/lon — o pátio guarda tudo em UTM; o mapa universal (Leaflet) precisa de lat/lon */
+function _utmToLatLng(E,N,zona,south){ if(zona==null)zona=23; if(south==null)south=true; const a=6378137,f=1/298.257223563,e2=f*(2-f),ep2=e2/(1-e2),k0=.9996; const e1=(1-Math.sqrt(1-e2))/(1+Math.sqrt(1-e2)); const x=E-5e5; let y=N; if(south)y-=1e7; const M=y/k0, mu=M/(a*(1-e2/4-3*e2*e2/64-5*e2**3/256)); const p1=mu+(3*e1/2-27*e1**3/32)*Math.sin(2*mu)+(21*e1*e1/16-55*e1**4/32)*Math.sin(4*mu)+(151*e1**3/96)*Math.sin(6*mu); const C1=ep2*Math.cos(p1)**2,T1=Math.tan(p1)**2,N1=a/Math.sqrt(1-e2*Math.sin(p1)**2),R1=a*(1-e2)/Math.pow(1-e2*Math.sin(p1)**2,1.5),D=x/(N1*k0); const lat=p1-(N1*Math.tan(p1)/R1)*(D*D/2-(5+3*T1+10*C1-4*C1*C1-9*ep2)*D**4/24+(61+90*T1+298*C1+45*T1*T1-252*ep2-3*C1*C1)*D**6/720); const l0=(zona*6-183)*Math.PI/180; const lon=l0+(D-(1+2*T1+C1)*D**3/6+(5-2*C1+28*T1-3*C1*C1+8*ep2+24*T1*T1)*D**5/120)/Math.cos(p1); return [lat*180/Math.PI, lon*180/Math.PI]; }
+function _latLngToUtm(lat,lon,zona,south){ if(zona==null)zona=23; if(south==null)south=true; const a=6378137,f=1/298.257223563,e2=f*(2-f),ep2=e2/(1-e2),k0=.9996; const la=lat*Math.PI/180, lo=lon*Math.PI/180, l0=(zona*6-183)*Math.PI/180; const N=a/Math.sqrt(1-e2*Math.sin(la)**2), T=Math.tan(la)**2, C=ep2*Math.cos(la)**2, A=Math.cos(la)*(lo-l0); const M=a*((1-e2/4-3*e2*e2/64-5*e2**3/256)*la-(3*e2/8+3*e2*e2/32+45*e2**3/1024)*Math.sin(2*la)+(15*e2*e2/256+45*e2**3/1024)*Math.sin(4*la)-(35*e2**3/3072)*Math.sin(6*la)); let E=k0*N*(A+(1-T+C)*A**3/6+(5-18*T+T*T+72*C-58*ep2)*A**5/120)+5e5; let Nn=k0*(M+N*Math.tan(la)*(A*A/2+(5-T+9*C+4*C*C)*A**4/24+(61-58*T+T*T+600*C-330*ep2)*A**6/720)); if(south)Nn+=1e7; return {x:E, y:Nn}; }
 function uColor(u){
   let h,s=68,l=46;
   if(u<=10){h=2;}
@@ -627,191 +631,137 @@ function mapHTML(){
     <span class="spacer"></span>
     <span class="lbl">Tamanho</span>
     <div class="seg sizeseg" id="silosize"><button data-x="1" class="on">1×</button><button data-x="2">2×</button><button data-x="3">3×</button></div>
-    <div class="zoomctl"><button id="zoom-out" class="zb">−</button><button id="zoom-in" class="zb">+</button><button id="zoom-reset" class="zb" title="ajustar">⟳</button></div>
   </div>
   <div class="mapwrap">
-    <div id="mapsvg" class="mapsvg"></div>
+    <div id="patio_map" style="position:absolute;inset:0;background:#0a1322;border:1px solid var(--border,#22345a);border-radius:12px;overflow:hidden"></div>
     <div id="mapinfo" class="mapinfo hidden"></div>
   </div>
-  <div class="maptip">scroll = zoom · arrastar = mover o mapa · clique no ícone = detalhes · ao aproximar, o silo vira escala real</div>`;
+  <div class="maptip">scroll = zoom · arrastar = mover · clique no ícone = detalhes · barra 🛰️ no topo: camadas (Croqui/Satélite) · buscar imagem · corrigir cores · medir</div>`;
 }
 
-function buildMarkers(){
-  if(!mapProj) return '';
-  const P=mapProj, PX=x=>P.offX+(x-P.minX)*P.sU, PY=y=>P.offY+(P.maxY-y)*P.sU;
-  const layers={silo:gv('lay-silo'),fardao:gv('lay-fardao'),rolinho:gv('lay-rolinho')};
-  const showLoaded=gv('lay-carregados');
-  const showLab=mapT.scale>=LABELZOOM;
+/* ===== MAPA DO PÁTIO sobre o UNIVERSAL (Leaflet) — recebimento/armazenagem =====
+   O universal (mapa_ferramenta_geral.js) dá o mapa + camadas (padrão Croqui limpo) + medir/buscar/cores.
+   O ESPECÍFICO do pátio (lotes + silos/fardões/rolinhos/armazém em escala real + posicionar/rotacionar) fica por cima. */
+let PMAP=null, PGL=null, PGI=null, PMK={};   // mapa, layergroup lotes, layergroup itens, marcadores por 'type|id'
+
+function _pxPerM(){ if(!PMAP) return 1; const c=PMAP.getCenter(), z=PMAP.getZoom(); const dpx=Math.abs(PMAP.project([c.lat,c.lng+0.002],z).x-PMAP.project(c,z).x); const dm=PMAP.distance(c,[c.lat,c.lng+0.002]); return dm>0?dpx/dm:1; }
+
+function patioItems(){
   const items=[];
   if(pendingEntry && pendingEntry.x!=null){ items.push({type:pendingEntry.kind, draft:true, ref:{id:'__draft__', cap:pendingEntry.cap||3000, umean:pendingEntry.umean||13.75, opts:pendingEntry.opts||{}, rot:pendingEntry.rot||0}, x:+pendingEntry.x, y:+pendingEntry.y}); }
   S.silos.forEach(s=>{ if(s.x!=null&&s.y!=null) items.push({type:'silo',ref:s,x:+s.x,y:+s.y}); });
   S.cotton.forEach(c=>{ if(c.x!=null&&c.y!=null) items.push({type:c.kind,ref:c,x:+c.x,y:+c.y}); });
-  items.push({type:'armazem', armazem:true, ref:{id:'Armazém', rot:ARM.rot||0}, x:ARM.x, y:ARM.y});
-  let mk='';
-  items.forEach(it=>{
-    if(!it.draft && !it.armazem && !layers[it.type]) return;
-    const ref=it.ref,id=String(ref.id),car=!it.draft&&!!ref.carregado,X=PX(it.x).toFixed(1),Y=PY(it.y).toFixed(1),rot=ref.rot||0;
-    if(car && !showLoaded) return;
-    const adj=ADJ&&ADJ.id===id&&ADJ.type===it.type;
-    const stroke=car?'#7d9cc4':'#0a1322';
-    let inner, half;
-    if(it.armazem){
-      const L=ARM.L*P.sU*mapT.scale*siloFactor, W=ARM.W*P.sU*mapT.scale*siloFactor;
-      if(L<ARMINL){
-        inner=`<path d="M-15 8 L-15 -2 L0 -11 L15 -2 L15 8 Z" fill="#c9d4e3" stroke="#0a1322" stroke-width="1.2"/><path d="M-15 -2 L0 -11 L15 -2" fill="none" stroke="#0a1322" stroke-width="1"/><rect x="-4" y="1" width="8" height="7" fill="#6d8bb5" stroke="#0a1322" stroke-width="0.7"/>`; half=16;
-      } else { const ww=Math.max(W,6);
-        inner=`<rect x="${(-L/2).toFixed(1)}" y="${(-ww/2).toFixed(1)}" width="${L.toFixed(1)}" height="${ww.toFixed(1)}" rx="2" fill="#c9d4e3" stroke="#0a1322" stroke-width="1" vector-effect="non-scaling-stroke"/><line x1="${(-L/2).toFixed(1)}" y1="0" x2="${(L/2).toFixed(1)}" y2="0" stroke="#6d8bb5" stroke-width="1.2" vector-effect="non-scaling-stroke"/><rect x="${(-L/2).toFixed(1)}" y="${(-ww/2).toFixed(1)}" width="${(L*0.12).toFixed(1)}" height="${ww.toFixed(1)}" fill="#6d8bb5" opacity=".5"/>`; half=L/2; }
-    } else if(it.type==='silo'){
-      const fill=car?'none':uColor(ref.umean), tf=car?'none':'#ffe082';
-      const Lpx=(ref.cap/BAG_SC_PER_M)*P.sU*mapT.scale*siloFactor;
-      if(Lpx<SILMINL){
-        inner=`<rect x="-12" y="-5" width="24" height="10" rx="5" fill="${fill}" stroke="${stroke}" stroke-width="1.5"/><path d="M13 0 L19 -4.5 L19 4.5 Z" fill="${tf}" stroke="${stroke}" stroke-width="1"/>`; half=12;
-      } else {
-        const L=Lpx, W=Math.max(BAG_W_M*P.sU*mapT.scale*siloFactor,3), tri=Math.max(W*0.9,5);
-        inner=`<rect x="${(-L/2).toFixed(1)}" y="${(-W/2).toFixed(1)}" width="${L.toFixed(1)}" height="${W.toFixed(1)}" rx="${(W/2).toFixed(1)}" fill="${fill}" stroke="${stroke}" stroke-width="1" vector-effect="non-scaling-stroke"/><path d="M${(L/2).toFixed(1)} 0 L${(L/2+tri).toFixed(1)} ${(-tri).toFixed(1)} L${(L/2+tri).toFixed(1)} ${tri.toFixed(1)} Z" fill="${tf}" stroke="${stroke}" stroke-width="1" vector-effect="non-scaling-stroke"/>`;
-        half=L/2;
-      }
-    } else if(it.type==='fardao'){ const col=(ref.opts&&ref.opts.tarp)||'#2f6db0', fill=car?'none':col;
-      const L=FARD_L_M*P.sU*mapT.scale*siloFactor, W=FARD_W_M*P.sU*mapT.scale*siloFactor;
-      if(L<COTMINL){ inner=`<rect x="-10" y="2" width="20" height="4" fill="${car?'none':'#e4d7b8'}"/><path d="M-10 3 L10 3 L10 -3 Q10 -7 6 -7 L-6 -7 Q-10 -7 -10 -3 Z" fill="${fill}" stroke="${stroke}" stroke-width="1.4"/>`; half=10; }
-      else { const ww=Math.max(W,4);
-        inner=`<rect x="${(-L/2).toFixed(1)}" y="${(-ww/2).toFixed(1)}" width="${L.toFixed(1)}" height="${ww.toFixed(1)}" rx="2" fill="${fill}" stroke="${stroke}" stroke-width="1" vector-effect="non-scaling-stroke"/><line x1="${(-L/2).toFixed(1)}" y1="0" x2="${(L/2).toFixed(1)}" y2="0" stroke="${stroke}" stroke-width="1" opacity=".3" vector-effect="non-scaling-stroke"/>`; half=L/2; }
-    } else { const fill=car?'none':'#f2c200', cf=car?'none':'#f3f1e7';
-      const L=ROL_L_M*P.sU*mapT.scale*siloFactor, W=ROL_W_M*P.sU*mapT.scale*siloFactor;
-      if(L<COTMINL){ inner=`<circle r="6.5" fill="${cf}" stroke="${car?stroke:'#f2c200'}" stroke-width="3"/>`; half=8; }
-      else { const ww=Math.max(W,5), cr=ww/2*0.66;
-        inner=`<rect x="${(-L/2).toFixed(1)}" y="${(-ww/2).toFixed(1)}" width="${L.toFixed(1)}" height="${ww.toFixed(1)}" rx="${(ww/2).toFixed(1)}" fill="${fill}" stroke="${stroke}" stroke-width="1" vector-effect="non-scaling-stroke"/><circle cx="${(-L/2+ww/2).toFixed(1)}" cy="0" r="${cr.toFixed(1)}" fill="${cf}" stroke="${car?stroke:'none'}" stroke-width="1"/><circle cx="${(L/2-ww/2).toFixed(1)}" cy="0" r="${cr.toFixed(1)}" fill="${cf}" stroke="${car?stroke:'none'}" stroke-width="1"/>`; half=L/2; }
-    }
-    const ring=adj?`<circle r="${(half+8).toFixed(1)}" fill="none" stroke="#ffc107" stroke-width="2" stroke-dasharray="3 3" vector-effect="non-scaling-stroke"/>`:'';
-    const handle=adj?`<g class="rothandle"><line x1="0" y1="0" x2="${(half+16).toFixed(1)}" y2="0" stroke="#ffc107" stroke-width="1.5" vector-effect="non-scaling-stroke"/><circle cx="${(half+16).toFixed(1)}" cy="0" r="5.5" fill="#ffc107" stroke="#0a1322" stroke-width="1"/></g>`:'';
-    const bR=Math.max(5.5,Math.min(half*0.34,17));
-    const badge=car?`<g transform="translate(${(half-1).toFixed(1)},${(-half-1).toFixed(1)})"><circle r="${bR.toFixed(1)}" fill="#00c896" stroke="#0a1322" stroke-width="1"/><path d="M${(-0.45*bR).toFixed(1)} 0 L${(-0.12*bR).toFixed(1)} ${(0.37*bR).toFixed(1)} L${(0.48*bR).toFixed(1)} ${(-0.4*bR).toFixed(1)}" fill="none" stroke="#06281f" stroke-width="${Math.max(1.4,bR*0.3).toFixed(1)}" stroke-linecap="round" stroke-linejoin="round"/></g>`:'';
-    const lF=Math.max(9,Math.min(half*0.42,26));
-    const lab=(showLab && !it.draft)?`<text class="mklab" x="0" y="${(half+lF*1.15).toFixed(1)}" text-anchor="middle" style="font-size:${lF.toFixed(1)}px;stroke-width:${(lF*0.28).toFixed(1)}px">${id}</text>`:'';
-    mk+=`<g class="mk${adj?' adj':''}${car?' carregado':''}" data-type="${it.type}" data-id="${id}" data-bx="${X}" data-by="${Y}" transform="translate(${X},${Y})">${ring}<g class="mkrot" transform="rotate(${rot})">${inner}${handle}</g>${badge}${lab}</g>`;
-  });
-  return mk;
+  if(ARM.x!=null&&ARM.y!=null) items.push({type:'armazem', armazem:true, ref:{id:'Armazém', rot:ARM.rot||0}, x:ARM.x, y:ARM.y});
+  return items;
 }
-function drawMap(){
-  const host=document.getElementById('mapsvg'); if(!host) return;
-  MAPW=host.clientWidth||860; MAPH=host.clientHeight||580;
-  const layers={lotes:gv('lay-lotes')};
-  const xs=[], ys=[];
-  S.silos.forEach(s=>{ if(s.x!=null&&s.y!=null){xs.push(+s.x);ys.push(+s.y);} });
-  S.cotton.forEach(c=>{ if(c.x!=null&&c.y!=null){xs.push(+c.x);ys.push(+c.y);} });
-  LOTES.forEach(L=>L.p.forEach(p=>{xs.push(p[0]);ys.push(p[1]);}));
-  if(!xs.length){ host.innerHTML='<div class="mapempty">Sem itens georreferenciados ainda.</div>'; return; }
-  let minX=Math.min(...xs),maxX=Math.max(...xs),minY=Math.min(...ys),maxY=Math.max(...ys);
-  const dX=(maxX-minX)||100, dY=(maxY-minY)||100;
-  minX-=dX*0.06; maxX+=dX*0.06; minY-=dY*0.06; maxY+=dY*0.06;
-  const availW=MAPW-2*MAPM, availH=MAPH-2*MAPM, dXr=maxX-minX, dYr=maxY-minY;
-  const sU=Math.min(availW/dXr, availH/dYr);
-  const offX=MAPM+(availW-dXr*sU)/2, offY=MAPM+(availH-dYr*sU)/2;
-  const PX=x=>(offX+(x-minX)*sU), PY=y=>(offY+(maxY-y)*sU);
-  mapBaseMpp=1/sU; mapProj={minX,maxX,minY,maxY,offX,offY,sU};
 
-  let zones='';
-  if(layers.lotes){
-    LOTES.forEach(L=>{
-      const hue=hashHue(L.n);
-      const d='M'+L.p.map(p=>PX(p[0]).toFixed(1)+' '+PY(p[1]).toFixed(1)).join(' L')+' Z';
-      const cx=L.p.reduce((a,p)=>a+p[0],0)/L.p.length, cy=L.p.reduce((a,p)=>a+p[1],0)/L.p.length;
-      const isSede=L.n==='SEDE 01'; const lx=isSede?cx+170:cx, ly=cy;
-      zones+=`<path d="${d}" fill="hsla(${hue} 55% 50% / .12)" stroke="hsla(${hue} 60% 64% / .75)" stroke-width="1.4" vector-effect="non-scaling-stroke" pointer-events="none"/>`;
-      zones+=`<text x="${PX(lx).toFixed(1)}" y="${PY(ly).toFixed(1)}" class="zlab" text-anchor="middle" fill="hsl(${hue} 72% 78%)" pointer-events="none">${L.n.replace(/^Lote ?/,'')}</text>`;
-    });
+/* SVG interno do item (mesmas formas do mapa antigo), dimensionado pela escala real do zoom atual */
+function _itemInner(it, pm){
+  const ref=it.ref, car=!it.draft&&!!ref.carregado, rot=ref.rot||0;
+  const stroke=car?'#7d9cc4':'#0a1322'; let inner, half;
+  if(it.armazem){
+    const L=ARM.L*pm, W=ARM.W*pm;
+    if(L<ARMINL){ inner=`<path d="M-15 8 L-15 -2 L0 -11 L15 -2 L15 8 Z" fill="#c9d4e3" stroke="#0a1322" stroke-width="1.2"/><path d="M-15 -2 L0 -11 L15 -2" fill="none" stroke="#0a1322" stroke-width="1"/><rect x="-4" y="1" width="8" height="7" fill="#6d8bb5" stroke="#0a1322" stroke-width="0.7"/>`; half=16; }
+    else { const ww=Math.max(W,6); inner=`<rect x="${(-L/2).toFixed(1)}" y="${(-ww/2).toFixed(1)}" width="${L.toFixed(1)}" height="${ww.toFixed(1)}" rx="2" fill="#c9d4e3" stroke="#0a1322" stroke-width="1"/><line x1="${(-L/2).toFixed(1)}" y1="0" x2="${(L/2).toFixed(1)}" y2="0" stroke="#6d8bb5" stroke-width="1.2"/><rect x="${(-L/2).toFixed(1)}" y="${(-ww/2).toFixed(1)}" width="${(L*0.12).toFixed(1)}" height="${ww.toFixed(1)}" fill="#6d8bb5" opacity=".5"/>`; half=L/2; }
+  } else if(it.type==='silo'){
+    const fill=car?'none':uColor(ref.umean), tf=car?'none':'#ffe082'; const Lpx=(ref.cap/BAG_SC_PER_M)*pm;
+    if(Lpx<SILMINL){ inner=`<rect x="-12" y="-5" width="24" height="10" rx="5" fill="${fill}" stroke="${stroke}" stroke-width="1.5"/><path d="M13 0 L19 -4.5 L19 4.5 Z" fill="${tf}" stroke="${stroke}" stroke-width="1"/>`; half=12; }
+    else { const L=Lpx, W=Math.max(BAG_W_M*pm,3), tri=Math.max(W*0.9,5); inner=`<rect x="${(-L/2).toFixed(1)}" y="${(-W/2).toFixed(1)}" width="${L.toFixed(1)}" height="${W.toFixed(1)}" rx="${(W/2).toFixed(1)}" fill="${fill}" stroke="${stroke}" stroke-width="1"/><path d="M${(L/2).toFixed(1)} 0 L${(L/2+tri).toFixed(1)} ${(-tri).toFixed(1)} L${(L/2+tri).toFixed(1)} ${tri.toFixed(1)} Z" fill="${tf}" stroke="${stroke}" stroke-width="1"/>`; half=L/2; }
+  } else if(it.type==='fardao'){ const col=(ref.opts&&ref.opts.tarp)||'#2f6db0', fill=car?'none':col; const L=FARD_L_M*pm, W=FARD_W_M*pm;
+    if(L<COTMINL){ inner=`<rect x="-10" y="2" width="20" height="4" fill="${car?'none':'#e4d7b8'}"/><path d="M-10 3 L10 3 L10 -3 Q10 -7 6 -7 L-6 -7 Q-10 -7 -10 -3 Z" fill="${fill}" stroke="${stroke}" stroke-width="1.4"/>`; half=10; }
+    else { const ww=Math.max(W,4); inner=`<rect x="${(-L/2).toFixed(1)}" y="${(-ww/2).toFixed(1)}" width="${L.toFixed(1)}" height="${ww.toFixed(1)}" rx="2" fill="${fill}" stroke="${stroke}" stroke-width="1"/>`; half=L/2; }
+  } else { const fill=car?'none':'#f2c200', cf=car?'none':'#f3f1e7'; const L=ROL_L_M*pm, W=ROL_W_M*pm;
+    if(L<COTMINL){ inner=`<circle r="6.5" fill="${cf}" stroke="${car?stroke:'#f2c200'}" stroke-width="3"/>`; half=8; }
+    else { const ww=Math.max(W,5), cr=ww/2*0.66; inner=`<rect x="${(-L/2).toFixed(1)}" y="${(-ww/2).toFixed(1)}" width="${L.toFixed(1)}" height="${ww.toFixed(1)}" rx="${(ww/2).toFixed(1)}" fill="${fill}" stroke="${stroke}" stroke-width="1"/><circle cx="${(-L/2+ww/2).toFixed(1)}" cy="0" r="${cr.toFixed(1)}" fill="${cf}"/><circle cx="${(L/2-ww/2).toFixed(1)}" cy="0" r="${cr.toFixed(1)}" fill="${cf}"/>`; half=L/2; }
   }
-  let grid='';
-  for(let k=0;k<=4;k++){
-    const gx=PX(minX+(maxX-minX)*k/4), gy=PY(minY+(maxY-minY)*k/4);
-    grid+=`<line x1="${gx.toFixed(1)}" y1="0" x2="${gx.toFixed(1)}" y2="${MAPH}" stroke="rgba(255,255,255,.04)" pointer-events="none"/>`+
-          `<line x1="0" y1="${gy.toFixed(1)}" x2="${MAPW}" y2="${gy.toFixed(1)}" stroke="rgba(255,255,255,.04)" pointer-events="none"/>`;
+  const adj=ADJ&&ADJ.id===String(ref.id)&&ADJ.type===it.type;
+  const ring=adj?`<circle r="${(half+8).toFixed(1)}" fill="none" stroke="#ffc107" stroke-width="2" stroke-dasharray="3 3"/>`:'';
+  const bR=Math.max(5.5,Math.min(half*0.34,17));
+  const badge=car?`<g transform="translate(${(half-1).toFixed(1)},${(-half-1).toFixed(1)})"><circle r="${bR.toFixed(1)}" fill="#00c896" stroke="#0a1322" stroke-width="1"/><path d="M${(-0.45*bR).toFixed(1)} 0 L${(-0.12*bR).toFixed(1)} ${(0.37*bR).toFixed(1)} L${(0.48*bR).toFixed(1)} ${(-0.4*bR).toFixed(1)}" fill="none" stroke="#06281f" stroke-width="${Math.max(1.4,bR*0.3).toFixed(1)}" stroke-linecap="round" stroke-linejoin="round"/></g>`:'';
+  const lF=Math.max(9,Math.min(half*0.42,26)), showLab=_pxPerM()>=0.7;
+  const lab=(showLab&&!it.draft)?`<text x="0" y="${(half+lF*1.15).toFixed(1)}" text-anchor="middle" fill="#e8eefb" stroke="#0a1322" style="font-size:${lF.toFixed(1)}px;stroke-width:${(lF*0.28).toFixed(1)}px;paint-order:stroke">${String(ref.id)}</text>`:'';
+  const R=Math.ceil(half+Math.max(20,lF*1.4));
+  return `<svg width="${2*R}" height="${2*R}" viewBox="${-R} ${-R} ${2*R} ${2*R}" style="overflow:visible">${ring}<g transform="rotate(${rot})">${inner}</g>${badge}${lab}</svg>`;
+}
+
+function patioRenderItems(){
+  if(!PMAP||!PGI) return; PGI.clearLayers(); PMK={};
+  const layers={silo:gv('lay-silo'),fardao:gv('lay-fardao'),rolinho:gv('lay-rolinho')};
+  const showLoaded=gv('lay-carregados'); const pm=_pxPerM()*(typeof siloFactor!=='undefined'?siloFactor:1);
+  patioItems().forEach(it=>{
+    if(!it.draft && !it.armazem && !layers[it.type]) return;
+    const car=!it.draft&&!!it.ref.carregado; if(car&&!showLoaded) return;
+    const ll=_utmToLatLng(it.x,it.y,23,true);
+    const html=_itemInner(it,pm);
+    const icon=L.divIcon({className:'patio-mk', html, iconSize:null});
+    const draggable = it.draft || !!(ADJ && ADJ.id===String(it.ref.id) && ADJ.type===it.type);
+    const mk=L.marker(ll,{icon, draggable, zIndexOffset: it.draft?1000:0}).addTo(PGI);
+    const key=it.type+'|'+String(it.ref.id); PMK[key]=mk;
+    if(draggable){ mk.on('drag',e=>{ const u=_latLngToUtm(e.latlng.lat,e.latlng.lng,23,true); const g=getItem(it.type,String(it.ref.id)); if(g){ g.x=Math.round(u.x); g.y=Math.round(u.y);} const xy=document.getElementById('ir-xy'); if(xy&&g) xy.textContent=g.x+' , '+g.y; }); }
+    else { mk.on('click',()=>{ if(!pendingEntry) showMapInfo(it.type,String(it.ref.id)); }); }
+  });
+}
+
+function patioRenderLotes(){
+  if(!PMAP||!PGL) return; PGL.clearLayers();
+  if(!gv('lay-lotes')) return;
+  LOTES.forEach(L2=>{ const hue=hashHue(L2.n); const ll=L2.p.map(p=>_utmToLatLng(p[0],p[1],23,true));
+    L.polygon(ll,{color:`hsl(${hue} 60% 64%)`,weight:1.4,fillColor:`hsl(${hue} 55% 50%)`,fillOpacity:.12}).addTo(PGL);
+    const cx=L2.p.reduce((a,p)=>a+p[0],0)/L2.p.length, cy=L2.p.reduce((a,p)=>a+p[1],0)/L2.p.length; const c=_utmToLatLng(cx,cy,23,true);
+    L.marker(c,{interactive:false,icon:L.divIcon({className:'patio-lote-lab',html:`<span style="color:hsl(${hue} 72% 80%);font:700 12px system-ui;text-shadow:0 1px 3px #000;white-space:nowrap">${L2.n.replace(/^Lote ?/,'')}</span>`})}).addTo(PGL);
+  });
+}
+
+function drawMap(){
+  const el=document.getElementById('patio_map'); if(!el) return;
+  _leafletReadyPatio(()=>{
+    if(!window._mgCriar){ el.innerHTML='<div class="mapempty">Ferramenta de mapa não carregou (mapa_ferramenta_geral.js).</div>'; return; }
+    if(PMAP && PMAP.getContainer()!==el){ try{PMAP.remove();}catch(e){} PMAP=null; PGL=null; PGI=null; }   // route() recria o DOM → recria o mapa
+    const pts=[]; LOTES.forEach(L2=>L2.p.forEach(p=>pts.push(_utmToLatLng(p[0],p[1],23,true))));
+    S.silos.forEach(s=>{ if(s.x!=null&&s.y!=null) pts.push(_utmToLatLng(+s.x,+s.y,23,true)); });
+    S.cotton.forEach(c=>{ if(c.x!=null&&c.y!=null) pts.push(_utmToLatLng(+c.x,+c.y,23,true)); });
+    if(!PMAP){
+      const inst=_mgCriar(el,{pfx:'patio', baseInicial:'Croqui (limpo)'});
+      PMAP=inst.map; PGL=L.layerGroup().addTo(PMAP); PGI=L.layerGroup().addTo(PMAP);
+      L.control.scale({imperial:false,position:'bottomright'}).addTo(PMAP);
+      PMAP.on('zoomend', patioRenderItems);
+      if(pts.length){ try{ PMAP.fitBounds(L.latLngBounds(pts),{padding:[30,30],maxZoom:18}); }catch(e){} } else PMAP.setView([-12.6,-44.7],13);
+    } else { try{ PMAP.invalidateSize(); }catch(e){} }
+    if(pendingEntry && pendingEntry.x==null && PMAP){ const c=PMAP.getCenter(), u=_latLngToUtm(c.lat,c.lng,23,true); pendingEntry.x=Math.round(u.x); pendingEntry.y=Math.round(u.y); const xy=document.getElementById('ir-xy'); if(xy) xy.textContent=pendingEntry.x+' , '+pendingEntry.y; }
+    patioRenderLotes(); patioRenderItems();
+  });
+}
+function _leafletReadyPatio(cb){   // este módulo era SVG puro: carrega o Leaflet sozinho (não depende de _leafletReady)
+  const ready=()=>window.L&&window._mgCriar;
+  if(ready()){ cb(); return; }
+  if(!window.L && !document.getElementById('_leaflet_js')){
+    const css=document.createElement('link'); css.rel='stylesheet'; css.href='https://unpkg.com/leaflet@1.9.4/dist/leaflet.css'; document.head.appendChild(css);
+    const js=document.createElement('script'); js.id='_leaflet_js'; js.src='https://unpkg.com/leaflet@1.9.4/dist/leaflet.js'; document.head.appendChild(js);
   }
-  const north=`<g transform="translate(${MAPW-26},28)"><circle r="13" fill="rgba(8,15,26,.7)" stroke="#2c4a78"/><path d="M0 -8 L4 5 L0 2 L-4 5 Z" fill="#ffc107"/><text x="0" y="-16" class="glab" text-anchor="middle">N</text></g>`;
-  host.innerHTML=`<svg viewBox="0 0 ${MAPW} ${MAPH}" xmlns="http://www.w3.org/2000/svg">
-    <rect class="mapbg" x="0" y="0" width="${MAPW}" height="${MAPH}" fill="#0a1322"/>
-    <g id="mapview">${zones}${grid}</g>
-    <g id="markers">${buildMarkers()}</g>
-    <g id="mapoverlay">${north}<g id="scalebar"></g></g></svg>`;
-  applyTransform(); attachMapInteractions();
+  let n=0; (function w(){ if(ready()||n++>100){ if(!ready()){ const el=document.getElementById('patio_map'); if(el) el.innerHTML='<div class="mapempty" style="padding:20px">Sem internet para carregar o mapa. Conecte-se e reabra a aba.</div>'; return; } cb(); } else setTimeout(w,80); })();
 }
-function renderMarkers(){ const mg=document.getElementById('markers'); if(mg) mg.innerHTML=buildMarkers(); applyTransform(); }
-function updateScalebar(){
-  const sbg=document.getElementById('scalebar'); if(!sbg) return;
-  const mpp=mapBaseMpp/mapT.scale;
-  const targets=[20,50,100,200,500,1000,2000,5000]; let dist=targets[0];
-  targets.forEach(t=>{ if(Math.abs(t/mpp-130)<Math.abs(dist/mpp-130)) dist=t; });
-  const px=dist/mpp;
-  sbg.innerHTML=`<g transform="translate(${(MAPW-px-20).toFixed(1)},${MAPH-24})"><line x1="0" y1="0" x2="${px.toFixed(1)}" y2="0" stroke="#cdd9ec" stroke-width="2"/><line x1="0" y1="-4" x2="0" y2="4" stroke="#cdd9ec" stroke-width="2"/><line x1="${px.toFixed(1)}" y1="-4" x2="${px.toFixed(1)}" y2="4" stroke="#cdd9ec" stroke-width="2"/><text x="${(px/2).toFixed(1)}" y="-7" class="glab" text-anchor="middle">${dist>=1000?(dist/1000)+' km':dist+' m'}</text></g>`;
-}
-function applyTransform(){
-  const v=document.getElementById('mapview'); if(v) v.setAttribute('transform',`translate(${mapT.tx} ${mapT.ty}) scale(${mapT.scale})`);
-  const mg=document.getElementById('markers');
-  if(mg){ [...mg.children].forEach(g=>{ const bx=+g.getAttribute('data-bx'), by=+g.getAttribute('data-by');
-    g.setAttribute('transform',`translate(${(bx*mapT.scale+mapT.tx).toFixed(1)},${(by*mapT.scale+mapT.ty).toFixed(1)})`); }); }
-  updateScalebar();
-}
-function zoomAt(sx,sy,factor){
-  const ns=clamp(mapT.scale*factor,MINS,MAXS);
-  mapT.tx = sx-(sx-mapT.tx)*(ns/mapT.scale);
-  mapT.ty = sy-(sy-mapT.ty)*(ns/mapT.scale);
-  mapT.scale=ns; renderMarkers();
-}
-function attachMapInteractions(){
-  const svg=document.querySelector('#mapsvg svg'); if(!svg) return;
-  const toSvg=evt=>{const r=svg.getBoundingClientRect();const f=MAPW/r.width;return {x:(evt.clientX-r.left)*f, y:(evt.clientY-r.top)*f};};
-  svg.addEventListener('contextmenu',e=>e.preventDefault());
-  svg.addEventListener('dragstart',e=>e.preventDefault());
-  svg.addEventListener('wheel',e=>{e.preventDefault();const p=toSvg(e);zoomAt(p.x,p.y, e.deltaY<0?1.15:1/1.15);},{passive:false});
-  let mode=null,p0=null,downT=null,moved=0;
-  svg.addEventListener('pointerdown',e=>{
-    e.preventDefault();
-    const rh=e.target.closest('.rothandle'); downT=e.target.closest('.mk'); moved=0;
-    if(ADJ && rh && downT && downT.dataset.id===ADJ.id && downT.dataset.type===ADJ.type){ mode='rotate'; }
-    else if(ADJ && downT && downT.dataset.id===ADJ.id && downT.dataset.type===ADJ.type){ mode='drag'; }
-    else { mode='pan'; p0={cx:e.clientX,cy:e.clientY,tx:mapT.tx,ty:mapT.ty,f:MAPW/svg.getBoundingClientRect().width}; }
-  });
-  svg.addEventListener('pointermove',e=>{
-    if(!mode) return;
-    moved+=Math.abs(e.movementX)+Math.abs(e.movementY);
-    if(mode==='pan'){ mapT.tx=p0.tx+(e.clientX-p0.cx)*p0.f; mapT.ty=p0.ty+(e.clientY-p0.cy)*p0.f; applyTransform(); }
-    else if(mode==='drag'){ const p=toSvg(e); const bx=(p.x-mapT.tx)/mapT.scale, by=(p.y-mapT.ty)/mapT.scale; const u=baseToUTM(bx,by);
-      const it=getItem(ADJ.type,ADJ.id); it.x=Math.round(u.x); it.y=Math.round(u.y);
-      const g=svg.querySelector(`.mk[data-id="${ADJ.id}"][data-type="${ADJ.type}"]`);
-      if(g){ g.setAttribute('data-bx',bx.toFixed(2)); g.setAttribute('data-by',by.toFixed(2)); g.setAttribute('transform',`translate(${p.x.toFixed(1)},${p.y.toFixed(1)})`); }
-      const xy=document.getElementById('ir-xy'); if(xy) xy.textContent=it.x+' , '+it.y;
-    } else if(mode==='rotate'){ const g=svg.querySelector(`.mk[data-id="${ADJ.id}"][data-type="${ADJ.type}"]`); if(!g)return;
-      const bx=+g.getAttribute('data-bx'),by=+g.getAttribute('data-by'); const cx=bx*mapT.scale+mapT.tx, cy=by*mapT.scale+mapT.ty;
-      const p=toSvg(e); setRot(Math.atan2(p.y-cy,p.x-cx)*180/Math.PI);
-    }
-  });
-  const end=()=>{ if(mode==='pan' && moved<=5 && downT && !pendingEntry){ showMapInfo(downT.dataset.type, downT.dataset.id); } mode=null; };
-  svg.addEventListener('pointerup',end);
-  svg.addEventListener('pointerleave',()=>{mode=null;});
-}
+
 function bindMap(){
-  mapT={scale:1,tx:0,ty:0}; ADJ=null; SELECTED=null; siloFactor=1;
-  ['lay-lotes','lay-silo','lay-fardao','lay-rolinho','lay-carregados'].forEach(id=>{const e=document.getElementById(id); if(e)e.addEventListener('change',drawMap);});
-  const zi=document.getElementById('zoom-in'), zo=document.getElementById('zoom-out'), zr=document.getElementById('zoom-reset');
-  if(zi) zi.addEventListener('click',()=>zoomAt(MAPW/2,MAPH/2,1.3));
-  if(zo) zo.addEventListener('click',()=>zoomAt(MAPW/2,MAPH/2,1/1.3));
-  if(zr) zr.addEventListener('click',()=>{mapT={scale:1,tx:0,ty:0};renderMarkers();});
+  ADJ=null; SELECTED=null; if(typeof siloFactor!=='undefined') siloFactor=1;
+  ['lay-lotes','lay-silo','lay-fardao','lay-rolinho','lay-carregados'].forEach(id=>{const e=document.getElementById(id); if(e)e.addEventListener('change',()=>{ patioRenderLotes(); patioRenderItems(); });});
   const ss=document.getElementById('silosize');
-  if(ss) ss.addEventListener('click',e=>{const b=e.target.closest('button');if(!b)return;siloFactor=+b.dataset.x;[...ss.children].forEach(x=>x.classList.toggle('on',x===b));renderMarkers();});
+  if(ss) ss.addEventListener('click',e=>{const b=e.target.closest('button');if(!b)return;siloFactor=+b.dataset.x;[...ss.children].forEach(x=>x.classList.toggle('on',x===b));patioRenderItems();});
   drawMap();
 }
+
+/* posicionar/rotacionar (específico) — arrasta o marcador no Leaflet; rotação pelo card */
 function enterAdjust(type,id){
   ADJ={type,id}; const it=getItem(type,id);
-  if(it.x==null||it.y==null){ const cx=MAPW/2,cy=MAPH/2,bx=(cx-mapT.tx)/mapT.scale,by=(cy-mapT.ty)/mapT.scale,u=baseToUTM(bx,by); it.x=Math.round(u.x); it.y=Math.round(u.y); }
+  if(it.x==null||it.y==null){ const c=PMAP?PMAP.getCenter():{lat:-12.6,lng:-44.7}; const u=_latLngToUtm(c.lat,c.lng,23,true); it.x=Math.round(u.x); it.y=Math.round(u.y); }
   if(it.rot==null) it.rot=0;
-  drawMap(); showMapInfo(type,id);
+  patioRenderItems(); showMapInfo(type,id);
 }
-function exitAdjust(){ const a=ADJ; ADJ=null; drawMap(); if(a){ salvarPosSB(a.type,a.id); showMapInfo(a.type,a.id); } }
-function updateMarkerRot(){ if(!ADJ)return; const svg=document.querySelector('#mapsvg svg'); if(!svg)return;
-  const g=svg.querySelector(`.mk[data-id="${ADJ.id}"][data-type="${ADJ.type}"] .mkrot`); if(g) g.setAttribute('transform',`rotate(${getItem(ADJ.type,ADJ.id).rot||0})`); }
-function setRot(v){ if(!ADJ)return; const it=getItem(ADJ.type,ADJ.id); it.rot=((Math.round(v)%360)+360)%360; updateMarkerRot();
+function exitAdjust(){ const a=ADJ; ADJ=null; patioRenderItems(); if(a){ salvarPosSB(a.type,a.id); showMapInfo(a.type,a.id); } }
+function updateMarkerRot(){ patioRenderItems(); }
+function setRot(v){ if(!ADJ&&!pendingEntry)return; const it=ADJ?getItem(ADJ.type,ADJ.id):pendingEntry; it.rot=((Math.round(v)%360)+360)%360; patioRenderItems();
   const rv=document.getElementById('rotval'); if(rv) rv.textContent=it.rot; const sl=document.getElementById('rot-slider'); if(sl&&document.activeElement!==sl) sl.value=it.rot; }
-function rotateAdj(d){ if(!ADJ)return; setRot((getItem(ADJ.type,ADJ.id).rot||0)+d); }
+function rotateAdj(d){ const it=ADJ?getItem(ADJ.type,ADJ.id):pendingEntry; if(!it)return; setRot((it.rot||0)+d); }
+
 function captureForm(kind){
   const v=id=>{const e=document.getElementById(id);return e?e.value:'';};
   if(kind==='silo'){ PF.sid=v('f-sid');PF.slote=v('f-slote');PF.scap=v('f-scap');PF.sx=v('f-sx');PF.sy=v('f-sy'); }
@@ -928,8 +878,7 @@ function route(){
   if(VIEW==='estoque'){ main.innerHTML=estoqueHTML(); bindEstoque(); }
   else if(VIEW==='mapa'){ main.innerHTML=mapHTML(); bindMap();
     if(pendingEntry){ ADJ={type:pendingEntry.kind,id:'__draft__'};
-      if(pendingEntry.x==null){ const bx=(MAPW/2-mapT.tx)/mapT.scale, by=(MAPH/2-mapT.ty)/mapT.scale, u=baseToUTM(bx,by); pendingEntry.x=Math.round(u.x); pendingEntry.y=Math.round(u.y); }
-      if(pendingEntry.rot==null) pendingEntry.rot=0;
+      if(pendingEntry.rot==null) pendingEntry.rot=0;   // posição default = centro do mapa (definida no drawMap, já em lat/lon)
       drawMap(); showDraftCard();
     }
   }

@@ -147,6 +147,7 @@ main{padding:16px 22px 60px;}
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="../mapa_ferramenta_geral.js"></script>
 </head>
 <body style="-webkit-print-color-adjust:exact;print-color-adjust:exact">
 <header class="noprint">
@@ -533,23 +534,6 @@ function renderNova(){
         <label class="btn sm" style="cursor:pointer">📄 Importar KML<input type="file" id="nv_parc_kml" accept=".kml,.kmz,application/vnd.google-earth.kml+xml" style="display:none" onchange="_parcKmlFile(this.files&&this.files[0])"></label>
         <span id="nv_parc_areatxt" class="hint"></span>
       </div>
-      <div class="actions" style="gap:8px;flex-wrap:wrap;align-items:center;margin-top:4px">
-        <span class="hint">🛰️ Sentinel-2 por data:</span>
-        <select id="nv_parc_s2date" onchange="_parcS2Pick(this.value)" style="max-width:250px"><option value="">— busque as passagens —</option></select>
-        <button type="button" class="btn sm" onclick="_parcS2Buscar()">🔄 buscar passagens</button>
-        <label class="hint" style="display:inline-flex;align-items:center;gap:4px">máx nuvem <input id="nv_parc_s2cc" type="number" value="20" min="0" max="100" style="width:56px"> %</label>
-        <span class="hint">(imagem recente e sem nuvem; escolha a data)</span>
-      </div>
-      <details style="margin-top:4px"><summary class="hint" style="cursor:pointer">⚙️ Ajuste de cor (Gain · Gamma · Red · Green · Blue) — igual ao Copernicus Browser</summary>
-        <div class="actions" style="gap:10px 14px;flex-wrap:wrap;align-items:center;margin-top:6px">
-          <label class="hint" style="display:inline-flex;align-items:center;gap:5px">Gain <input id="nv_fx_gain" type="range" min="0.5" max="5" step="0.1" value="3.6" oninput="_parcS2Fx()" style="width:120px"><b id="nv_fx_gainv" style="min-width:26px">3.6</b></label>
-          <label class="hint" style="display:inline-flex;align-items:center;gap:5px">Gamma <input id="nv_fx_gamma" type="range" min="0.2" max="2" step="0.05" value="1.5" oninput="_parcS2Fx()" style="width:120px"><b id="nv_fx_gammav" style="min-width:30px">1.50</b></label>
-          <span class="hint" style="display:inline-flex;align-items:center;gap:3px;color:#ff8a8a">Red <input id="nv_fx_rmin" type="number" step="0.01" min="0" max="1" value="0" oninput="_parcS2Fx()" style="width:58px">–<input id="nv_fx_rmax" type="number" step="0.01" min="0" max="1" value="0.45" oninput="_parcS2Fx()" style="width:58px"></span>
-          <span class="hint" style="display:inline-flex;align-items:center;gap:3px;color:#7fe0a0">Green <input id="nv_fx_gmin" type="number" step="0.01" min="0" max="1" value="0.1" oninput="_parcS2Fx()" style="width:58px">–<input id="nv_fx_gmax" type="number" step="0.01" min="0" max="1" value="0.7" oninput="_parcS2Fx()" style="width:58px"></span>
-          <span class="hint" style="display:inline-flex;align-items:center;gap:3px;color:#8ab6ff">Blue <input id="nv_fx_bmin" type="number" step="0.01" min="0" max="1" value="0.25" oninput="_parcS2Fx()" style="width:58px">–<input id="nv_fx_bmax" type="number" step="0.01" min="0" max="1" value="1" oninput="_parcS2Fx()" style="width:58px"></span>
-          <button type="button" class="btn sm" onclick="_parcS2FxReset()">↺ Alabama</button>
-        </div>
-      </details>
       <div id="nv_parc_map" style="height:420px;border:1px solid #2c4a78;border-radius:8px;margin-top:6px;background:#0e1830"></div>
     </div>
     <div id="nv_campostipo"></div>
@@ -1024,39 +1008,10 @@ function _parcMapInit(){
   _leafletReady(err=>{
     if(err){ el.innerHTML='<div class="hint" style="padding:14px">Sem internet para carregar o mapa de satélite. Conecte-se e reabra, ou informe a área parcial por hectares.</div>'; return; }
     if(_parcMap){ setTimeout(()=>{ _parcMap.invalidateSize(); _parcFit(); },60); return; }
-    _parcMap=L.map(el,{zoomControl:true,attributionControl:true});
-    // camadas de satélite selecionáveis
-    const esri=L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
-      {maxZoom:21,maxNativeZoom:18,attribution:'Imagery © Esri'});
-    const eox=(y)=>L.tileLayer('https://tiles.maps.eox.at/wmts/1.0.0/s2cloudless-'+y+'_3857/default/g/{z}/{y}/{x}.jpg',
-      {maxZoom:21,maxNativeZoom:16,attribution:'Sentinel-2 cloudless '+y+' © EOX'});
-    // Sentinel-2 por data (Copernicus/CDSE) — TRUE_COLOR com REALCE (highlight-compress), sem marca d'água
-    const _hoje=new Date(), _de=new Date(_hoje.getTime()-120*864e5);
-    const _iso=d=>d.toISOString().slice(0,10);
-    const s2live=L.tileLayer.wms('https://sh.dataspace.copernicus.eu/ogc/wms/'+_SH_INSTANCE,{
-      layers:'TRUE_COLOR', format:'image/png', version:'1.3.0', maxZoom:21, maxNativeZoom:16,
-      attribution:'Sentinel-2 L2A © Copernicus/CDSE', TIME:_iso(_de)+'/'+_iso(_hoje), MAXCC:'20', PRIORITY:'mostRecent',
-      showLogo:false, UPSAMPLING:'BICUBIC', evalscript:btoa(_parcS2FxScript())});   // ajuste de cor "Alabama" (Gain/Gamma/RGB) igual ao Copernicus Browser
-    _parcS2Layer=s2live;
-    // demais visualizações da MESMA data (índices de vigor) — compartilham TIME com a cor natural
-    const s2idx=(lyr)=>L.tileLayer.wms('https://sh.dataspace.copernicus.eu/ogc/wms/'+_SH_INSTANCE,{
-      layers:lyr, format:'image/png', version:'1.3.0', maxZoom:21, maxNativeZoom:16,
-      attribution:'Sentinel-2 L2A © Copernicus/CDSE', TIME:_iso(_de)+'/'+_iso(_hoje), MAXCC:'20', PRIORITY:'mostRecent', showLogo:false, UPSAMPLING:'BICUBIC'});
-    const s2ndvi=s2idx('VEGETATION_INDEX'), s2agri=s2idx('AGRICULTURE'), s2moist=s2idx('MOISTURE_INDEX'), s2cir=s2idx('COLOR_INFRARED');
-    _parcS2Variants=[s2live, s2ndvi, s2agri, s2moist, s2cir];
-    const eox24=eox('2024'), eox23=eox('2023');
-    _parcBases=[esri, s2live, s2ndvi, s2agri, s2moist, s2cir, eox24, eox23];
-    esri.addTo(_parcMap);   // padrão: alta resolução (melhor pro desenho)
-    L.control.layers({
-      'Esri — alta resolução': esri,
-      'Sentinel-2 — cor natural (data)': s2live,
-      'Sentinel-2 — NDVI (vigor)': s2ndvi,
-      'Sentinel-2 — Agricultura': s2agri,
-      'Sentinel-2 — Umidade': s2moist,
-      'Sentinel-2 — Infravermelho': s2cir,
-      'Sentinel-2 cloudless 2024': eox24,
-      'Sentinel-2 cloudless 2023': eox23
-    }, null, {position:'topright', collapsed:true}).addTo(_parcMap);
+    // === MAPA GERAL (fábrica única): camadas + ferramentas gerais (buscar imagem / corrigir cores) ===
+    // base inicial = Esri alta resolução (melhor pro desenho); centro p/ buscar imagem = centroide do lote
+    const _pInst=_mgCriar(el,{pfx:'parc', baseInicial:'Satélite (Esri)', centerFn:_parcLoteCentroLL});
+    _parcMap=_pInst.map;
     // contorno do lote (referência, não editável)
     const loteNome=$('#nv_lote')?.value; const info=_geomsDoLote(loteNome);
     (info.geoms||[]).forEach(g=>{ const ll=(g.p||[]).map(([E,N])=>_utmToLatLon(E,N,23));
@@ -1154,19 +1109,7 @@ function _parcKmlFile(file){
 /* Ajuste de cor idêntico ao Copernicus Browser: Gain, Gamma e faixa por canal (Red/Green/Blue).
    Base = cor natural (2.5×reflectância); v = mn + pow(2.5*refl*gain, gamma)*(mx-mn), por canal. */
 function _parcFxVal(id, def){ const el=$('#'+id); if(!el) return def; const v=parseFloat(String(el.value).replace(',','.')); return isNaN(v)?def:v; }
-function _parcS2FxScript(){
-  const g=_parcFxVal('nv_fx_gain',3.6), gm=_parcFxVal('nv_fx_gamma',1.5);
-  const rn=_parcFxVal('nv_fx_rmin',0), rx=_parcFxVal('nv_fx_rmax',0.45);
-  const gn=_parcFxVal('nv_fx_gmin',0.1), gx=_parcFxVal('nv_fx_gmax',0.7);
-  const bn=_parcFxVal('nv_fx_bmin',0.25), bx=_parcFxVal('nv_fx_bmax',1);
-  return '//VERSION=3\n'
-    +'function setup(){return {input:["B04","B03","B02","dataMask"],output:{bands:4}};}\n'
-    +'function adj(refl,g,gm,mn,mx){var v=2.5*refl;v=v*g;v=Math.pow(Math.max(0,v),gm);v=mn+v*(mx-mn);return Math.max(0,Math.min(1,v));}\n'
-    +'function evaluatePixel(s){return [adj(s.B04,'+g+','+gm+','+rn+','+rx+'),adj(s.B03,'+g+','+gm+','+gn+','+gx+'),adj(s.B02,'+g+','+gm+','+bn+','+bx+'),s.dataMask];}';
-}
-function _parcFxLabels(){ const a=$('#nv_fx_gainv'); if(a) a.textContent=_parcFxVal('nv_fx_gain',3.6).toFixed(1); const b=$('#nv_fx_gammav'); if(b) b.textContent=_parcFxVal('nv_fx_gamma',1.5).toFixed(2); }
-function _parcS2Fx(){ _parcFxLabels(); if(_parcS2Layer){ _parcS2Layer.setParams({evalscript:btoa(_parcS2FxScript())}); } }
-function _parcS2FxReset(){ const S2D={nv_fx_gain:3.6,nv_fx_gamma:1.5,nv_fx_rmin:0,nv_fx_rmax:0.45,nv_fx_gmin:0.1,nv_fx_gmax:0.7,nv_fx_bmin:0.25,nv_fx_bmax:1}; Object.keys(S2D).forEach(id=>{ const e=$('#'+id); if(e) e.value=S2D[id]; }); _parcS2Fx(); }
+/* MAPA GERAL: a ferramenta única mora em mapa_ferramenta_geral.js (puxada por <script src>). NAO duplicar aqui. */
 function _parcSetBase(layer){   // troca a camada de fundo mantendo só uma
   if(!_parcMap||!layer) return;
   _parcBases.forEach(b=>{ if(b!==layer && _parcMap.hasLayer(b)) _parcMap.removeLayer(b); });
@@ -1182,17 +1125,8 @@ async function _parcS2Buscar(){   // lista as passagens recentes (data + % nuvem
   const sel=$('#nv_parc_s2date'); const maxcc=Math.max(0,Math.min(100,+($('#nv_parc_s2cc')?.value||20)));
   if(sel) sel.innerHTML='<option value="">buscando passagens…</option>';
   try{
-    const de=new Date(Date.now()-180*864e5).toISOString().slice(0,10);
-    const filtro="Collection/Name eq 'SENTINEL-2' and contains(Name,'MSIL2A') and OData.CSC.Intersects(area=geography'SRID=4326;POINT("+c[1]+" "+c[0]+")') and ContentDate/Start gt "+de+"T00:00:00.000Z";
-    const url="https://catalogue.dataspace.copernicus.eu/odata/v1/Products?$filter="+encodeURIComponent(filtro)+"&$orderby=ContentDate/Start desc&$top=50&$expand=Attributes";
-    const r=await fetch(url); const j=await r.json();
-    const seen={}; const passes=[];
-    (j.value||[]).forEach(p=>{ const cc=(p.Attributes||[]).find(a=>a.Name==='cloudCover'); const cloud=cc?Math.round(cc.Value):null;
-      const date=((p.ContentDate&&p.ContentDate.Start)||'').slice(0,10);
-      if(!date||seen[date]) return; seen[date]=1; if(cloud!=null && cloud>maxcc) return; passes.push({date,cloud}); });
-    _parcPasses=passes;
-    if(sel){ sel.innerHTML='<option value="">— '+passes.length+' passagens ≤'+maxcc+'% nuvem —</option>'
-      +passes.map(p=>'<option value="'+p.date+'">'+p.date+' · '+(p.cloud!=null?p.cloud+'% nuvem':'nuvem ?')+'</option>').join(''); }
+    const passes=await _s2BuscarPassagens(c, maxcc); _parcPasses=passes;
+    if(sel) sel.innerHTML=_s2OptionsHTML(passes, maxcc);
     if(!passes.length) alert('Nenhuma passagem com ≤'+maxcc+'% de nuvem nos últimos 6 meses. Aumente o "máx nuvem".');
     else _parcS2Pick(passes[0].date, sel);   // já mostra a mais recente
   }catch(e){ if(sel) sel.innerHTML='<option value="">erro ao buscar</option>'; alert('Erro ao buscar passagens (Copernicus): '+e.message); }
@@ -1525,15 +1459,9 @@ async function _benfDel(id){ const b=(S.benfeitorias||[]).find(x=>x.id===id); if
 function _benfMapInit(){ const el=$('#benf_map'); if(!el) return;
   _leafletReady(err=>{ if(err){ el.innerHTML='<div class="hint" style="padding:14px">Sem internet para o mapa de satélite.</div>'; return; }
     if(_benfMap){ try{ _benfView={c:_benfMap.getCenter(),z:_benfMap.getZoom()}; }catch(e){} try{_benfMap.remove();}catch(e){} } _benfMk=[]; _benfLayer=null; _benfHandles=[];
-    _benfMap=L.map(el,{zoomControl:true,maxZoom:22,doubleClickZoom:false});
-    const google=L.tileLayer('https://{s}.google.com/vt/lyrs=s&x={x}&y={y}&z={z}',{maxZoom:22,maxNativeZoom:21,subdomains:['mt0','mt1','mt2','mt3'],attribution:'Imagery © Google'});
-    const esri=L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',{maxZoom:22,maxNativeZoom:19,attribution:'Imagery © Esri'});
-    const _h=new Date(), _d=new Date(_h.getTime()-120*864e5), _iso=x=>x.toISOString().slice(0,10);
-    const s2=L.tileLayer.wms('https://sh.dataspace.copernicus.eu/ogc/wms/'+_SH_INSTANCE,{layers:'TRUE_COLOR',format:'image/png',version:'1.3.0',maxZoom:22,maxNativeZoom:16,attribution:'Sentinel-2 © CDSE',TIME:_iso(_d)+'/'+_iso(_h),MAXCC:'20',PRIORITY:'mostRecent',showLogo:false,GAIN:'2.4',GAMMA:'0.7'});
-    const croqui=L.tileLayer('data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==',{maxZoom:22,attribution:'Croqui'});
-    const BASES={'Satélite (Google)':google,'Satélite (Esri)':esri,'Sentinel-2 recente':s2,'Croqui (limpo)':croqui};
-    (BASES[_benfBaseName]||google).addTo(_benfMap);
-    L.control.layers(BASES,null,{position:'topright',collapsed:true}).addTo(_benfMap);
+    // === MAPA GERAL (fábrica única): camadas + ferramentas gerais (buscar imagem / corrigir cores) ===
+    const _bfInst=_mgCriar(el,{pfx:'bf', baseInicial:_benfBaseName, doubleClickZoom:false});
+    _benfMap=_bfInst.map;
     // botão: liga/desliga os vértices das matrículas
     const _vc=L.control({position:'topright'}); _vc.onAdd=function(){ const d=L.DomUtil.create('div','leaflet-bar'); const a=L.DomUtil.create('a','',d); a.href='#'; a.title='Mostrar/ocultar vértices das matrículas'; a.innerHTML='📍'; a.style.cssText='width:30px;height:30px;line-height:30px;text-align:center;font-size:15px;text-decoration:none;background:'+(_benfShowVerts?'#f0b400':'#fff'); L.DomEvent.on(a,'click',function(e){ L.DomEvent.stop(e); _benfShowVerts=!_benfShowVerts; a.style.background=_benfShowVerts?'#f0b400':'#fff'; _benfDrawAll(); }); return d; }; _vc.addTo(_benfMap);
     // botão: liga/desliga os rótulos (códigos) dos vértices
@@ -1553,6 +1481,7 @@ function _benfMapInit(){ const el=$('#benf_map'); if(!el) return;
       try{ _benfMap.getContainer().classList.toggle('zlab', _benfMap.getZoom()>=15); }catch(e){} },80);
   });
 }
+/* Benfeitorias: as ferramentas GERAIS (buscar imagem / corrigir cores / camadas) vêm da fábrica _mgCriar (pfx 'bf'). */
 function _benfDrawAll(){ if(!_benfMap) return; _benfMk.forEach(m=>_benfMap.removeLayer(m)); _benfMk=[];
   // BASE: lotes (só base, agrupamentos não) — o mapa mostrando o banco
   (S.lotes||[]).forEach(l=>{ if(l.base && l.geom && Array.isArray(l.geom.ring) && l.geom.ring.length>=3){ const ll=l.geom.ring.map(([E,N])=>_utmToLatLon(E,N,23)); const poly=L.polygon(ll,{color:'#6fae7a',weight:1,fill:false,opacity:.55,interactive:false}).addTo(_benfMap); _benfMk.push(poly); } });
@@ -1654,15 +1583,13 @@ function _benfUpdateToolbar(){ const tb=$('#bf_toolbar'); if(!tb) return; let ht
         +' <button type="button" class="btn sm" id="bf_tPoly">▰ Contorno</button>'
         +' <button type="button" class="btn sm" id="bf_tCirc">⭕ Círculo</button>'
         +' <button type="button" class="btn sm" id="bf_tImp">📄 KML</button>'
-        +' <button type="button" class="btn sm" id="bf_measure">📏 Medir</button>'
         +' <button type="button" class="btn sm danger" id="bf_desel">✕ Fechar</button>';
     } else if(selS){ const st=selS.geom?'<span style="color:#7fe0a0">▰ com perímetro</span>':'<span style="color:var(--warn,#e0a33a)">⚠ sem perímetro</span>';
       html='<b style="color:#ffd24a">🏠 '+esc(selS.nome)+'</b> '+st
         +' <button type="button" class="btn sm" id="bf_tSedePer">🖊️ Perímetro</button>'
-        +' <button type="button" class="btn sm" id="bf_measure">📏 Medir</button>'
         +' <button type="button" class="btn sm danger" id="bf_desel">✕ Fechar</button>';
     } else {
-      html='<button type="button" class="btn sm" id="bf_measure" title="Medir distância/área">📏 Medir</button> <span class="hint">Clique numa benfeitoria (na lista ✎ ou no mapa) para posicioná-la; ou numa sede para o perímetro.</span>';
+      html='<span class="hint">Clique numa benfeitoria (na lista ✎ ou no mapa) para posicioná-la; ou numa sede para o perímetro. O 📏 medir fica na barra do mapa (ferramenta geral).</span>';
     }
   }
   tb.innerHTML=html;
@@ -5537,40 +5464,86 @@ let APCMAP={}, _APCEXTRA={};   // estado do mapa por comanda: {zoom, ox, oy, sel
 let APCAREA={};   // modo da área por comanda na aprovação: 'campo' (medido GPS, padrão) | 'comanda' (área planejada rateada)
 function _apcState(key){ return APCMAP[key]||(APCMAP[key]={zoom:1,ox:0,oy:0,sel:null,mode:'cob'}); }
 function _apcVelColor(v){ if(v==null||isNaN(v)) return 'rgba(170,170,170,.6)'; const c=Math.max(0,Math.min(15,+v)); const h=240-(c/15)*240; return 'hsla('+h.toFixed(0)+',85%,50%,.75)'; }
+let _apcPfxN=0;
+/* ===== APROVAÇÃO/COMANDA (#5) sobre o UNIVERSAL =====
+   Leaflet embaixo (base Croqui limpo) + canvas no overlayPane do Leaflet por cima.
+   Pan = de graça (Leaflet transforma o pane); redesenho só em zoom/moveend (cobertura = milhares de células).
+   Projeção: latLngToLayerPoint (estável no pan). Reaproveita todo o desenho antigo (ring/segs/cob/vel/tq/timeline). */
+
+// prep: além de E,N (usado nas células em UTM), guarda lat/lon p/ projetar no Leaflet
 function _apcPrep(g){
   const ring=_apcLoteRing(g.rows[0]?g.rows[0].lote_nome:'');
-  const segs=g.rows.filter(r=>Array.isArray(r.trajeto)&&r.trajeto.length>1).map(r=>({ id:String(r.id), papel:r.papel, pts:r.trajeto.filter(p=>p&&p[0]!=null).map(p=>{const u=_apcUTM(p[0],p[1],23);return {E:u[0],N:u[1],v:(p[3]!=null?+p[3]:null),t:(p[2]!=null?+p[2]:0)};}), larg:(+r.largura_m>0?+r.largura_m:((APC&&APC.impLarg&&APC.impLarg[r.implemento_id])||0)) }));
+  const segs=g.rows.filter(r=>Array.isArray(r.trajeto)&&r.trajeto.length>1).map(r=>({ id:String(r.id), papel:r.papel, pts:r.trajeto.filter(p=>p&&p[0]!=null).map(p=>{const u=_apcUTM(p[0],p[1],23);return {E:u[0],N:u[1],lat:+p[0],lon:+p[1],v:(p[3]!=null?+p[3]:null),t:(p[2]!=null?+p[2]:0)};}), larg:(+r.largura_m>0?+r.largura_m:((APC&&APC.impLarg&&APC.impLarg[r.implemento_id])||0)) }));
   let minE=Infinity,maxE=-Infinity,minN=Infinity,maxN=-Infinity; const acc=(E,N)=>{ if(E<minE)minE=E; if(E>maxE)maxE=E; if(N<minN)minN=N; if(N>maxN)maxN=N; };
   if(ring) ring.forEach(p=>acc(p[0],p[1])); segs.forEach(s=>s.pts.forEach(p=>acc(p.E,p.N)));
-  let tMin=Infinity,tMax=-Infinity; segs.forEach(s=>s.pts.forEach(p=>{ if(p.t>0){ if(p.t<tMin)tMin=p.t; if(p.t>tMax)tMax=p.t; } }));   // linha do tempo (reprodução do trajeto)
-  return {ring,segs,rows:g.rows,minE,minN,maxE,maxN,tMin:isFinite(tMin)?tMin:0,tMax:isFinite(tMax)?tMax:0,ok:isFinite(minE)};
+  const ringLL = ring? ring.map(([E,N])=>_utmToLatLon(E,N,23)) : null;
+  const pts4=[]; if(ringLL) ringLL.forEach(ll=>pts4.push(ll)); segs.forEach(s=>s.pts.forEach(p=>pts4.push([p.lat,p.lon])));
+  let tMin=Infinity,tMax=-Infinity; segs.forEach(s=>s.pts.forEach(p=>{ if(p.t>0){ if(p.t<tMin)tMin=p.t; if(p.t>tMax)tMax=p.t; } }));
+  return {ring,ringLL,segs,rows:g.rows,minE,minN,maxE,maxN,llbounds:pts4,tMin:isFinite(tMin)?tMin:0,tMax:isFinite(tMax)?tMax:0,ok:isFinite(minE)};
 }
-function _apcDrawMapa(cv,g){
-  if(!cv||!cv.clientWidth) return;
-  const key=(cv.dataset&&cv.dataset.apcmap)||(g.codigo+'|'+(g.safra||'')); const st=_apcState(key); if(!st._prep) st._prep=_apcPrep(g); const P=st._prep;
-  const dpr=window.devicePixelRatio||1, W=cv.clientWidth, H=cv.clientHeight||220;
-  cv.width=W*dpr; cv.height=H*dpr; const ctx=cv.getContext('2d'); ctx.setTransform(dpr,0,0,dpr,0,0); ctx.clearRect(0,0,W,H);
-  if(!P.ok){ ctx.fillStyle='#8b949e'; ctx.font='13px system-ui'; ctx.fillText('Sem mapa (talhão sem polígono ou sessão sem trajeto)',12,28); return; }
-  const pad=12, spanE=Math.max(1,P.maxE-P.minE), spanN=Math.max(1,P.maxN-P.minN), sc0=Math.min((W-2*pad)/spanE,(H-2*pad)/spanN), sc=sc0*st.zoom;
-  st._sc0=sc0; st._pad=pad; st._W=W; st._H=H;   // p/ zoom centrado no cursor
-  const px=E=>pad+(E-P.minE)*sc+st.ox, py=N=>H-pad-(N-P.minN)*sc+st.oy;
-  if(P.ring){ ctx.beginPath(); P.ring.forEach((p,i)=>{const X=px(p[0]),Y=py(p[1]); i?ctx.lineTo(X,Y):ctx.moveTo(X,Y);}); ctx.closePath(); ctx.fillStyle='rgba(60,90,40,.18)'; ctx.fill(); ctx.lineWidth=1.5; ctx.strokeStyle='#7ee787'; ctx.stroke(); }
-  if(st.t!=null && P.tMax>P.tMin && st.t<P.tMax){   // TIMELINE: reproduz o trajeto até o tempo de corte + marcador da posição atual (pulverizador âmbar, calda azul)
-    const tc=st.t; ctx.lineJoin='round'; ctx.lineCap='round';
-    P.segs.forEach(s=>{ if(s.pts.length<2) return; const calda=_apcEhApoio(s.papel); ctx.strokeStyle=calda?'rgba(56,160,255,.95)':'rgba(255,193,7,.95)'; ctx.lineWidth=calda?2.5:Math.max(2,(s.larg||0)*sc); if(calda)ctx.setLineDash([7,5]); ctx.beginPath(); let started=false,lastP=null; for(const p of s.pts){ if(p.t>tc) break; const X=px(p.E),Y=py(p.N); started?ctx.lineTo(X,Y):ctx.moveTo(X,Y); started=true; lastP=p; } if(started)ctx.stroke(); ctx.setLineDash([]); if(lastP){ ctx.fillStyle=calda?'#58a6ff':'#ffd33d'; ctx.strokeStyle='#0d1117'; ctx.lineWidth=1.5; ctx.beginPath(); ctx.arc(px(lastP.E),py(lastP.N),5,0,Math.PI*2); ctx.fill(); ctx.stroke(); } });
-    return;
-  }
-  P.segs.filter(s=>_apcEhApoio(s.papel) && s.pts.length>1).forEach(s=>{ ctx.strokeStyle=(st.sel&&st.sel!==s.id)?'rgba(56,160,255,.25)':'rgba(56,160,255,.9)'; ctx.lineWidth=2.5; ctx.setLineDash([7,5]); ctx.beginPath(); s.pts.forEach((p,i)=>{const X=px(p.E),Y=py(p.N); i?ctx.lineTo(X,Y):ctx.moveTo(X,Y);}); ctx.stroke(); ctx.setLineDash([]); });   // rota da CALDA (telemetria; anda fora do talhão -> desenhada SEM clip, tracejada azul)
-  ctx.save(); if(P.ring){ ctx.beginPath(); P.ring.forEach((p,i)=>{const X=px(p[0]),Y=py(p[1]); i?ctx.lineTo(X,Y):ctx.moveTo(X,Y);}); ctx.closePath(); ctx.clip(); }
+
+// garante o mapa Leaflet + canvas no overlayPane; roda 1x por host
+function _apcEnsureMap(host,key,P,done){
+  const base=host.querySelector('.apcbase'); const st=_apcState(key);
+  if(st._map && st._map.getContainer()===base){ done&&done(); return; }
+  if(st._map){ try{st._map.remove();}catch(e){} st._map=null; }
+  const go=()=>{
+    if(!window._mgCriar||!window.L){ return; }
+    const pfx='apc'+(_apcPfxN++);
+    const inst=_mgCriar(base,{pfx, baseInicial:'Croqui (limpo)'});
+    st._map=inst.map; st._pfx=pfx;
+    const cv=L.DomUtil.create('canvas','apc-ovl',st._map.getPanes().overlayPane); cv.style.position='absolute';
+    st._cv=cv;
+    st._map.on('moveend zoomend viewreset resize', ()=>_apcRedraw(key));
+    st._map.on('zoomstart movestart', ()=>{ if(st._cv) st._cv.style.opacity='0.35'; });
+    st._map.on('moveend zoomend', ()=>{ if(st._cv) st._cv.style.opacity='1'; });
+    if(P && P.llbounds && P.llbounds.length){ try{ st._map.fitBounds(L.latLngBounds(P.llbounds),{padding:[24,24],maxZoom:19}); }catch(e){} }
+    setTimeout(()=>{ try{st._map.invalidateSize();}catch(e){} done&&done(); }, 60);
+  };
+  if(window.L&&window._mgCriar) go(); else _leafletReady(()=>{ let n=0; (function w(){ if((window.L&&window._mgCriar)||n++>60){ go(); } else setTimeout(w,80); })(); });
+}
+
+function _apcDrawMapa(host,g){
+  if(!host) return;
+  // compat: se vier o <canvas> antigo por engano, sobe pro wrapper
+  if(host.tagName==='CANVAS'){ host=host.closest('[data-apcmap]')||host; }
+  const key=(host.dataset&&host.dataset.apcmap)||(g.codigo+'|'+(g.safra||'')); const st=_apcState(key);
+  if(!st._prep) st._prep=_apcPrep(g); const P=st._prep;
+  _apcEnsureMap(host,key,P,()=>_apcPaint(key,g));
+  if(st._map&&st._cv) _apcPaint(key,g);
+}
+
+function _apcPaint(key,g){
+  const st=_apcState(key); const map=st._map, cv=st._cv, P=st._prep; if(!map||!cv||!P) return;
+  const size=map.getSize(); const dpr=window.devicePixelRatio||1;
+  const topLeft=map.containerPointToLayerPoint([0,0]); L.DomUtil.setPosition(cv, topLeft);
+  cv.width=size.x*dpr; cv.height=size.y*dpr; cv.style.width=size.x+'px'; cv.style.height=size.y+'px';
+  const ctx=cv.getContext('2d'); ctx.setTransform(dpr,0,0,dpr,0,0); ctx.clearRect(0,0,size.x,size.y);
+  if(!P.ok) return;
+  const o=map.containerPointToLayerPoint([0,0]);   // origem do canvas em layer-point
+  const PX=(lat,lon)=>{ const q=map.latLngToLayerPoint([lat,lon]); return [q.x-o.x, q.y-o.y]; };
+  const pxm=()=>{ const c=map.getCenter(); const a=map.latLngToLayerPoint(c), b=map.latLngToLayerPoint([c.lat,c.lng+0.002]); const dpx=Math.abs(b.x-a.x); const dm=map.distance(c,[c.lat,c.lng+0.002]); return dm>0?dpx/dm:1; };
+  const pm=pxm();
+  const pxE=(E,N)=>{ const ll=_utmToLatLon(E,N,23); return PX(ll[0],ll[1]); };   // p/ células em UTM
+  // talhão
+  if(P.ringLL){ ctx.beginPath(); P.ringLL.forEach((ll,i)=>{const q=PX(ll[0],ll[1]); i?ctx.lineTo(q[0],q[1]):ctx.moveTo(q[0],q[1]);}); ctx.closePath(); ctx.fillStyle='rgba(60,90,40,.18)'; ctx.fill(); ctx.lineWidth=1.5; ctx.strokeStyle='#7ee787'; ctx.stroke(); }
+  // TIMELINE
+  if(st.t!=null && P.tMax>P.tMin && st.t<P.tMax){ const tc=st.t; ctx.lineJoin='round'; ctx.lineCap='round';
+    P.segs.forEach(s=>{ if(s.pts.length<2) return; const calda=_apcEhApoio(s.papel); ctx.strokeStyle=calda?'rgba(56,160,255,.95)':'rgba(255,193,7,.95)'; ctx.lineWidth=calda?2.5:Math.max(2,(s.larg||0)*pm); if(calda)ctx.setLineDash([7,5]); ctx.beginPath(); let started=false,last=null; for(const p of s.pts){ if(p.t>tc) break; const q=PX(p.lat,p.lon); started?ctx.lineTo(q[0],q[1]):ctx.moveTo(q[0],q[1]); started=true; last=p; } if(started)ctx.stroke(); ctx.setLineDash([]); if(last){ const q=PX(last.lat,last.lon); ctx.fillStyle=calda?'#58a6ff':'#ffd33d'; ctx.strokeStyle='#0d1117'; ctx.lineWidth=1.5; ctx.beginPath(); ctx.arc(q[0],q[1],5,0,Math.PI*2); ctx.fill(); ctx.stroke(); } });
+    return; }
+  // calda (apoio) — sem clip
+  P.segs.filter(s=>_apcEhApoio(s.papel)&&s.pts.length>1).forEach(s=>{ ctx.strokeStyle=(st.sel&&st.sel!==s.id)?'rgba(56,160,255,.25)':'rgba(56,160,255,.9)'; ctx.lineWidth=2.5; ctx.setLineDash([7,5]); ctx.beginPath(); s.pts.forEach((p,i)=>{const q=PX(p.lat,p.lon); i?ctx.lineTo(q[0],q[1]):ctx.moveTo(q[0],q[1]);}); ctx.stroke(); ctx.setLineDash([]); });
+  ctx.save(); if(P.ringLL){ ctx.beginPath(); P.ringLL.forEach((ll,i)=>{const q=PX(ll[0],ll[1]); i?ctx.lineTo(q[0],q[1]):ctx.moveTo(q[0],q[1]);}); ctx.closePath(); ctx.clip(); }
   ctx.lineJoin='round'; ctx.lineCap='round';
-  if(st.mode==='tq'){ if(!st._tqmap){ st._tqmap=new Map(); st._tqC=_apcCellsByTq(P.rows, P.ring, st._tqmap); } const C=st._tqC||2, w=C*sc+0.7; st._tqmap.forEach((tq,k)=>{ const u=k.split('_'); const cE=(+u[0]+0.5)*C, cN=(+u[1]+0.5)*C; ctx.fillStyle=_apcTqColor(tq); ctx.fillRect(px(cE-C/2), py(cN+C/2), w, w); }); ctx.restore(); return; }   // Fase 4: cobertura colorida por tanque (célula adaptativa)
-  P.segs.forEach(s=>{ if(_apcEhApoio(s.papel)) return; if(s.pts.length<2) return; const dim=st.sel&&st.sel!==s.id; const lw=Math.max(2,(s.larg||0)*sc);   // calda já foi desenhada (telemetria, fora do clip)
-    if(st.mode==='vel'){ for(let i=1;i<s.pts.length;i++){ ctx.strokeStyle=dim?'rgba(120,120,120,.15)':_apcVelColor(s.pts[i].v); ctx.lineWidth=lw; ctx.beginPath(); ctx.moveTo(px(s.pts[i-1].E),py(s.pts[i-1].N)); ctx.lineTo(px(s.pts[i].E),py(s.pts[i].N)); ctx.stroke(); } }
-    else { ctx.strokeStyle=dim?'rgba(255,193,7,.12)':(st.sel===s.id?'rgba(56,160,255,.9)':'rgba(255,193,7,.6)'); ctx.lineWidth=lw; ctx.beginPath(); s.pts.forEach((p,i)=>{const X=px(p.E),Y=py(p.N); i?ctx.lineTo(X,Y):ctx.moveTo(X,Y);}); ctx.stroke(); }
+  if(st.mode==='tq'){ if(!st._tqmap){ st._tqmap=new Map(); st._tqC=_apcCellsByTq(P.rows,P.ring,st._tqmap); } const C=st._tqC||2, w=C*pm+0.7; st._tqmap.forEach((tq,k)=>{ const u=k.split('_'); const cE=(+u[0]+0.5)*C, cN=(+u[1]+0.5)*C; const q=pxE(cE,cN); ctx.fillStyle=_apcTqColor(tq); ctx.fillRect(q[0]-w/2, q[1]-w/2, w, w); }); ctx.restore(); return; }
+  P.segs.forEach(s=>{ if(_apcEhApoio(s.papel)) return; if(s.pts.length<2) return; const dim=st.sel&&st.sel!==s.id; const lw=Math.max(2,(s.larg||0)*pm);
+    if(st.mode==='vel'){ for(let i=1;i<s.pts.length;i++){ ctx.strokeStyle=dim?'rgba(120,120,120,.15)':_apcVelColor(s.pts[i].v); ctx.lineWidth=lw; ctx.beginPath(); const a=PX(s.pts[i-1].lat,s.pts[i-1].lon),b=PX(s.pts[i].lat,s.pts[i].lon); ctx.moveTo(a[0],a[1]); ctx.lineTo(b[0],b[1]); ctx.stroke(); } }
+    else { ctx.strokeStyle=dim?'rgba(255,193,7,.12)':(st.sel===s.id?'rgba(56,160,255,.9)':'rgba(255,193,7,.6)'); ctx.lineWidth=lw; ctx.beginPath(); s.pts.forEach((p,i)=>{const q=PX(p.lat,p.lon); i?ctx.lineTo(q[0],q[1]):ctx.moveTo(q[0],q[1]);}); ctx.stroke(); }
   });
   ctx.restore();
 }
-function _apcRedraw(key){ try{ const cv=document.querySelector('[data-apcmap="'+(window.CSS&&CSS.escape?CSS.escape(key):key)+'"]'); const g=(APC&&APC.comandas.find(x=>(x.codigo+'|'+(x.safra||''))===key))||_APCEXTRA[key]; if(cv&&g) _apcDrawMapa(cv,g); }catch(e){} }
+
+function _apcRedraw(key){ try{ const st=_apcState(key); if(st._map&&st._cv){ _apcPaint(key); return; } const host=document.querySelector('[data-apcmap="'+(window.CSS&&CSS.escape?CSS.escape(key):key)+'"]'); const g=(APC&&APC.comandas.find(x=>(x.codigo+'|'+(x.safra||''))===key))||_APCEXTRA[key]; if(host&&g) _apcDrawMapa(host,g); }catch(e){} }
 /* ---- linha do tempo (reprodução do trajeto) ---- */
 function _apcPlayBtn(key){ try{ document.querySelectorAll('[data-apcplay]').forEach(b=>{ if(b.dataset.apcplay===key) b.textContent=_apcState(key).playing?'⏸':'▶'; }); }catch(e){} }
 function _apcTimeBar(key){ try{ const st=_apcState(key),P=st._prep; document.querySelectorAll('[data-apctime]').forEach(inp=>{ if(inp.dataset.apctime===key){ inp.value=(st.t==null||!P||!(P.tMax>P.tMin))?1000:Math.round((st.t-P.tMin)/(P.tMax-P.tMin)*1000); } }); }catch(e){} }
@@ -5676,7 +5649,7 @@ function renderAprovCampo(){
           <button class="btn sm" data-apcmode="${_apcEsc(mkey)}" data-apctq="${temTq?1:0}">camada: ${mst.mode==='vel'?'velocidade':(mst.mode==='tq'?'tanque':'cobertura')}</button>
           ${mst.sel?`<button class="btn sm" data-apcselc="${_apcEsc(mkey)}">✕ destaque</button>`:''}
         </div>
-        <canvas data-apcmap="${_apcEsc(mkey)}" style="width:100%;flex:1;min-height:340px;display:block;background:#0d1117;border-radius:8px;touch-action:none"></canvas>
+        <div data-apcmap="${_apcEsc(mkey)}" style="width:100%;flex:1;min-height:340px;position:relative;background:#0d1117;border-radius:8px;overflow:hidden"><div class="apcbase" style="position:absolute;inset:0"></div></div>
         <div style="display:flex;gap:8px;align-items:center;margin-top:6px"><button class="btn sm" data-apcplay="${_apcEsc(mkey)}" style="width:auto;margin:0;min-width:40px">▶</button><input type="range" min="0" max="1000" value="1000" data-apctime="${_apcEsc(mkey)}" style="flex:1" title="linha do tempo da operação"></div>
         <div class="muted" style="font-size:11px;margin-top:4px">arraste/scroll/pinça p/ zoom · clique numa linha p/ destacar · ▶ reproduz o trajeto no tempo</div>
         ${(temTq&&mst.mode==='tq')?_apcTqLegenda(linhasTq):''}
@@ -5699,13 +5672,13 @@ function bindAprovCampo(){
 function _apcBindMap(root,aprov){
   root=root||document; const qa=s=>[].slice.call(root.querySelectorAll(s));
   const mark=(k)=>{ const sel=_apcState(k).sel; qa('[data-apcsel]').forEach(tr=>{ if(tr.dataset.apckey===k) tr.style.background=(String(sel)===String(tr.dataset.apcsel))?'#16324a':''; }); };
-  qa('[data-apczoom]').forEach(b=>b.onclick=()=>{ const k=b.dataset.apckey, st=_apcState(k), op=b.dataset.apczoom; if(op==='0'){ st.zoom=1; st.ox=0; st.oy=0; _apcRedraw(k); } else { _apcZoomAt(k, op==='+'?1.3:1/1.3, (st._W||300)/2, (st._H||220)/2); } });
+  qa('[data-apczoom]').forEach(b=>b.onclick=()=>{ const k=b.dataset.apckey, st=_apcState(k), op=b.dataset.apczoom; if(!st._map) return; if(op==='0'){ const P=st._prep; if(P&&P.llbounds&&P.llbounds.length){ try{ st._map.fitBounds(L.latLngBounds(P.llbounds),{padding:[24,24],maxZoom:19}); }catch(e){} } } else { st._map.setZoom(st._map.getZoom()+(op==='+'?1:-1)); } });
   qa('[data-apcmode]').forEach(b=>b.onclick=()=>{ const k=b.dataset.apcmode, st=_apcState(k), hasTq=b.dataset.apctq==='1'; st.mode = st.mode==='cob'?'vel':(st.mode==='vel'?(hasTq?'tq':'cob'):'cob'); if(aprov){ render(); } else { b.textContent='camada: '+(st.mode==='vel'?'velocidade':(st.mode==='tq'?'tanque':'cobertura')); _apcRedraw(k); } });   // cobertura -> velocidade -> tanque (só oferece 'tanque' quando há tanque)
   qa('[data-apcselc]').forEach(b=>b.onclick=()=>{ const k=b.dataset.apcselc; _apcState(k).sel=null; if(aprov) render(); else { mark(k); _apcRedraw(k); } });
   qa('[data-apcsel]').forEach(tr=>tr.onclick=(e)=>{ if(e.target.closest('button')) return; const k=tr.dataset.apckey, id=tr.dataset.apcsel, st=_apcState(k); st.sel=(String(st.sel)===String(id))?null:id; if(aprov) render(); else { mark(k); _apcRedraw(k); } });
   qa('[data-apctime]').forEach(inp=>{ inp.oninput=()=>{ const k=inp.dataset.apctime, st=_apcState(k), P=st._prep; _apcStop(k); if(P&&P.tMax>P.tMin){ const f=+inp.value/1000; st.t=(f>=0.999)?null:(P.tMin+f*(P.tMax-P.tMin)); } else st.t=null; _apcRedraw(k); }; });   // barra do tempo
   qa('[data-apcplay]').forEach(b=>b.onclick=()=>_apcPlay(b.dataset.apcplay));   // play/pause
-  qa('[data-apcmap]').forEach(cv=>{ const k=cv.dataset.apcmap; const g=(APC&&APC.comandas.find(x=>(x.codigo+'|'+(x.safra||''))===k))||_APCEXTRA[k]; if(g){ _apcBindCanvas(cv,k); try{ _apcDrawMapa(cv,g); }catch(e){ console.warn('apcmap',e); } _apcPlayBtn(k); _apcTimeBar(k); } });
+  qa('[data-apcmap]').forEach(cv=>{ const k=cv.dataset.apcmap; const g=(APC&&APC.comandas.find(x=>(x.codigo+'|'+(x.safra||''))===k))||_APCEXTRA[k]; if(g){ try{ _apcDrawMapa(cv,g); }catch(e){ console.warn('apcmap',e); } _apcPlayBtn(k); _apcTimeBar(k); } });
 }
 async function _verMapaComanda(codigo,safra){
   const ov=document.createElement('div'); ov.id='mapaov';
@@ -5730,7 +5703,7 @@ async function _verMapaComanda(codigo,safra){
       <button class="btn sm" data-apcselc="${_apcEsc(key)}">✕ destaque</button>
       <span style="color:#8b949e;font-size:11px">arraste/scroll/pinça p/ zoom · toque numa linha p/ destacar</span>
     </div>
-    <canvas data-apcmap="${_apcEsc(key)}" style="width:100%;height:58vh;display:block;background:#0d1117;touch-action:none"></canvas>
+    <div data-apcmap="${_apcEsc(key)}" style="width:100%;height:58vh;position:relative;background:#0d1117;overflow:hidden"><div class="apcbase" style="position:absolute;inset:0"></div></div>
     <div style="display:flex;gap:8px;align-items:center;padding:6px 10px"><button class="btn sm" data-apcplay="${_apcEsc(key)}" style="width:auto;margin:0;min-width:40px">▶</button><input type="range" min="0" max="1000" value="1000" data-apctime="${_apcEsc(key)}" style="flex:1" title="linha do tempo da operação"></div>
     <div style="flex:1;min-height:0;overflow:auto;border-top:1px solid #30363d"><table class="tbl"><thead><tr><th>Data</th><th>Operador</th><th>Máquina</th><th>Início</th><th style="text-align:right">Área</th></tr></thead><tbody>${linhas}</tbody></table></div>
   </div>`;

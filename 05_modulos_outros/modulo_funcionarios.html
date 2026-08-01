@@ -102,17 +102,18 @@ function ovl(a1,a2,b1,b2){ return Math.max(0, Math.min(a2,b2)-Math.max(a1,b1)); 
 const _ult=(y,m)=>new Date(y,m,0).getDate();   // último dia do mês (m 1-12)
 
 /* ---------- núcleo do cálculo de ponto (regra da fazenda) ---------- */
-function janelaDoDia(dateStr, feriado){
-  if(feriado) return [];                                  // feriado: tudo extra
+function janelaDoDia(dateStr, feriado, diarista){
+  if(diarista){ const j=(S.cfg.jornada||{})['1']||[["07:00","12:00"],["13:30","18:00"]]; return j.map(par=>[t2m(par[0]),t2m(par[1])]); }   // DIARISTA: dia útil TODO dia (ignora sáb/dom/feriado) → HE só almoço + após 18h
+  if(feriado) return [];                                  // registrado: feriado = dia todo extra
   const d=new Date(dateStr+'T12:00:00'); const dow=d.getDay();
   const j=(S.cfg.jornada||{})[String(dow)]||[];
   return j.map(par=>[t2m(par[0]),t2m(par[1])]);
 }
-function calcDia(p){
-  // p: {data, marcacoes:[{ent,sai}], feriado, folga, falta, sem_he, ha}
+function calcDia(p, diarista){
+  // p: {data, marcacoes:[{ent,sai}], feriado, folga, falta, sem_he, ha}; diarista=true → dia útil todo dia, sem "a menos"
   const r={ worked:0, normal:0, extra:0, falta:!!p.falta, janela:0, faltaJornada:0 };
   r.ha=+p.ha||0; r.valorHa=(p.valor_ha!=null&&p.valor_ha!=='')?+p.valor_ha:0; r.comissao=r.ha*r.valorHa;   // comissao por hectare do dia
-  const jan=janelaDoDia(p.data, p.feriado||p.folga);       // feriado/folga: janela vazia -> tudo vira HE se trabalhar
+  const jan=janelaDoDia(p.data, p.feriado||p.folga, diarista);   // feriado/folga: janela vazia -> tudo vira HE (registrado); diarista = dia útil
   jan.forEach(w=>{ r.janela += (w[1]-w[0]); });
   if(p.falta||p.folga){ return r; }                        // falta/folga: sem hora a menos
   const tem=(p.marcacoes||[]).some(x=>x&&(x.ent||x.sai));
@@ -127,7 +128,7 @@ function calcDia(p){
   if(r.extra<=tol) r.extra=0;                              // tolerância
   if(p.sem_he) r.extra=0;                                  // dia de aplicação: comissão, sem HE
   // "hora a menos" só nos dias que a pessoa VEIO (tem marcação) — quem faltou não conta a menos (diarista não recebe e pronto)
-  r.faltaJornada = tem ? Math.max(0, r.janela - r.normal) : 0;
+  r.faltaJornada = (diarista) ? 0 : (tem ? Math.max(0, r.janela - r.normal) : 0);   // diarista não tem "hora a menos"
   if(r.faltaJornada<=tol) r.faltaJornada=0;
   return r;
 }
@@ -354,7 +355,7 @@ function pontoHTML(){
     for(let d=1; d<=dias; d++){
       const ds=MES+'-'+String(d).padStart(2,'0'); const p=S.ponto[ds]||{data:ds,marcacoes:[]};
       const dow=new Date(ds+'T12:00:00').getDay(); const fer=!!p.feriado||!!S.feriados[ds];
-      const r=calcDia({data:ds,marcacoes:p.marcacoes||[],feriado:fer,folga:p.folga,falta:p.falta,sem_he:p.sem_he,ha:p.ha,valor_ha:p.valor_ha});
+      const r=calcDia({data:ds,marcacoes:p.marcacoes||[],feriado:fer,folga:p.folga,falta:p.falta,sem_he:p.sem_he,ha:p.ha,valor_ha:p.valor_ha}, f.tipo==='diarista');
       if(!p.falta && !p.folga && (p.marcacoes||[]).length) tDias++;
       tExtra+=r.extra; if(p.falta) tFalta++; tFaltaJ+=r.faltaJornada; tHa+=r.ha; tComissao+=r.comissao;
       const mk=(i,k)=>{ const v=(p.marcacoes&&p.marcacoes[i]&&p.marcacoes[i][k])||''; return `<input class="mark" data-d="${ds}" data-i="${i}" data-k="${k}" value="${esc(v)}" placeholder="${k==='ent'?'ent':'sai'}">`; };
@@ -437,32 +438,37 @@ async function _resumoMes(mes){
   const [y,m]=mes.split('-').map(Number); const ini=mes+'-01'; const fim=mes+'-'+String(_ult(y,m)).padStart(2,'0');
   const {data}=await SB.from('ponto').select('*').gte('data',ini).lte('data',fim);
   const byF={};
-  (data||[]).forEach(p=>{ const fer=!!p.feriado||!!S.feriados[p.data]; const r=calcDia({data:p.data,marcacoes:p.marcacoes||[],feriado:fer,folga:p.folga,falta:p.falta,sem_he:p.sem_he,ha:p.ha,valor_ha:p.valor_ha});
+  (data||[]).forEach(p=>{ const fer=!!p.feriado||!!S.feriados[p.data]; const _f=S.funcs.find(x=>x.id===p.funcionario_id); const r=calcDia({data:p.data,marcacoes:p.marcacoes||[],feriado:fer,folga:p.folga,falta:p.falta,sem_he:p.sem_he,ha:p.ha,valor_ha:p.valor_ha}, !!(_f&&_f.tipo==='diarista'));
     const o=byF[p.funcionario_id]||(byF[p.funcionario_id]={extra:0,falta:0,dias:0,faltaJ:0,comissao:0,ha:0}); o.extra+=r.extra; if(p.falta)o.falta++; else if(!p.folga && (p.marcacoes||[]).length)o.dias++; o.faltaJ+=r.faltaJornada; o.comissao+=r.comissao; o.ha+=r.ha; });
   return byF;
 }
-let REL={}, REL_PAG={}, REL_VALE={sum:{},list:{}}, REL_MES=null;
+let REL={}, REL_PAG={}, REL_VALE={sum:{},list:{}}, REL_SAL={sum:{},list:{}}, REL_MES=null;
 function _totFunc(f,o){ const he=m2dec(o.extra)*valorHE(f); const dia=f.tipo==='diarista'?o.dias*valorDiaria(f):0; return he+dia+(o.comissao||0); }
 async function _loadPagamentos(mes){ const {data}=await SB.from('rh_pagamentos').select('*').eq('mes',mes); const m={}; (data||[]).forEach(p=>m[p.funcionario_id]=p); return m; }
 async function _loadVales(mes){ const [y,m]=mes.split('-').map(Number); const ini=mes+'-01', fim=mes+'-'+String(_ult(y,m)).padStart(2,'0');
   const {data}=await SB.from('rh_vales').select('*').gte('data',ini).lte('data',fim).order('data');
-  const sum={}, list={}; (data||[]).forEach(v=>{ sum[v.funcionario_id]=(sum[v.funcionario_id]||0)+(+v.valor||0); (list[v.funcionario_id]=list[v.funcionario_id]||[]).push(v); }); return {sum,list}; }
-async function _relRefresh(){ REL=await _resumoMes(MES); REL_PAG=await _loadPagamentos(MES); REL_VALE=await _loadVales(MES); REL_MES=MES; route(); }
+  const sum={}, list={}; (data||[]).forEach(v=>{ if(v.adiantamento) return;   /* adiantamento é saldo (conta corrente), não vale-do-mês */
+    sum[v.funcionario_id]=(sum[v.funcionario_id]||0)+(+v.valor||0); (list[v.funcionario_id]=list[v.funcionario_id]||[]).push(v); }); return {sum,list}; }
+/* SALDO DE ADIANTAMENTO por funcionário (conta corrente, solto do mês) = Σ(valor − abatido) dos vales adiantamento>0.
+   list = vales adiantamento em ordem de data (mais antigo primeiro) p/ consumir na baixa. */
+async function _loadSaldos(){ const {data}=await SB.from('rh_vales').select('*').order('data');   /* vale = adiantamento (saldo): carrega TODOS, ordem = mais antigo primeiro */
+  const sum={}, list={}; (data||[]).forEach(v=>{ (list[v.funcionario_id]=list[v.funcionario_id]||[]).push(v); const s=(+v.valor||0)-(+v.abatido||0); if(s>0.001) sum[v.funcionario_id]=(sum[v.funcionario_id]||0)+s; }); return {sum,list}; }
+async function _relRefresh(){ REL=await _resumoMes(MES); REL_PAG=await _loadPagamentos(MES); REL_SAL=await _loadSaldos(); REL_MES=MES; route(); }
 async function relMes(delta){ _mesShift(delta); await _relRefresh(); }
 function relHTML(){
   if(!MES) MES=_mesAtual();
-  let tGeral=0,tPago=0,tAberto=0,tVale=0;
+  let tGeral=0,tPago=0,tAberto=0;
   const rows=S.funcs.map(f=>{
     const o=REL[f.id]||{extra:0,falta:0,dias:0,faltaJ:0,comissao:0,ha:0};
-    const vale$=REL_VALE.sum[f.id]||0;
-    if(!o.extra&&!o.falta&&!o.dias&&!o.comissao&&!vale$) return '';
-    const he$=m2dec(o.extra)*valorHE(f), dia$=f.tipo==='diarista'?o.dias*valorDiaria(f):0, com$=o.comissao||0, bruto=he$+dia$+com$, tot=bruto-vale$;
-    tGeral+=tot; tVale+=vale$; const pago=REL_PAG[f.id]; if(pago) tPago+=tot; else tAberto+=tot;
+    const saldoAd=REL_SAL.sum[f.id]||0;
+    if(!o.extra&&!o.falta&&!o.dias&&!o.comissao&&!saldoAd) return '';
+    const he$=m2dec(o.extra)*valorHE(f), dia$=f.tipo==='diarista'?o.dias*valorDiaria(f):0, com$=o.comissao||0, bruto=he$+dia$+com$, tot=bruto;
+    tGeral+=tot; const pago=REL_PAG[f.id]; if(pago) tPago+=tot; else tAberto+=tot;
     const pagoCel=pago?`<span style="color:var(--ok)">✓ pago · <input type="date" value="${esc(pago.pago_em||'')}" data-paydt="${f.id}" title="Data do pagamento — clique para alterar" style="border:0;background:transparent;color:var(--ok);font:inherit;padding:0;cursor:pointer;color-scheme:dark;width:auto"></span> <button class="btn sm ghost" data-unpay="${f.id}">desfazer</button>`:`<button class="btn sm gold" data-pay="${f.id}">marcar pago</button>`;
     return `<tr><td><b>${esc(f.nome)}</b></td><td><span class="sub">${TIPO_NOME[f.tipo]}</span></td>
       <td class="num">${o.dias}</td><td class="num he">${m2hm(o.extra)}</td><td class="num">${brl(he$)}</td>
       <td class="num">${dia$?brl(dia$):'—'}</td><td class="num">${com$?brl(com$)+'<div class="sub">'+nf(o.ha)+' ha</div>':'—'}</td><td class="num">${o.falta||'—'}</td><td class="num">${m2hm(o.faltaJ)}</td>
-      <td class="num">${vale$?'<span style="color:var(--err)">-'+brl(vale$)+'</span>':'—'} <button class="btn sm ghost no-print" data-vale="${f.id}" title="Lançar / remover vales do mês">＋</button></td>
+      <td class="num">${saldoAd>0?'<span style="color:var(--gold)" title="Saldo de vale — abate ao marcar pago, do mês mais antigo primeiro">'+brl(saldoAd)+'</span>':'—'} <button class="btn sm ghost no-print" data-vale="${f.id}" title="Vales do funcionário (saldo)">＋</button></td>
       <td class="num"><b>${brl(tot)}</b></td><td style="white-space:nowrap">${pagoCel}</td></tr>`;
   }).filter(Boolean).join('')||'<tr><td colspan="12" class="hint">Sem lançamentos no mês.</td></tr>';
   return `<div class="box"><div style="font-weight:800;font-size:15px;margin-bottom:6px">Folha de hora extra — ${_mesLabel(MES)}</div>
@@ -473,45 +479,60 @@ function relHTML(){
       <button class="btn gold" id="r_load">Atualizar</button>
       <button class="btn" id="r_print">🖨️ Imprimir</button>
     </div>
-    <div style="margin-top:8px"><span class="pill">Total ${brl(tGeral)}</span> ${tVale?`<span class="pill">Vales <b style="color:var(--err)">-${brl(tVale)}</b></span>`:''} <span class="pill">Pago <b>${brl(tPago)}</b></span> <span class="pill">Em aberto <b style="color:var(--gold)">${brl(tAberto)}</b></span></div></div>
+    <div style="margin-top:8px"><span class="pill">Total ${brl(tGeral)}</span> <span class="pill">Pago <b>${brl(tPago)}</b></span> <span class="pill">Em aberto <b style="color:var(--gold)">${brl(tAberto)}</b></span>${(()=>{const s=Object.values(REL_SAL.sum||{}).reduce((a,b)=>a+(+b||0),0);return s>0?' <span class="pill">Vales (saldo) <b style="color:var(--gold)">'+brl(s)+'</b></span>':'';})()}</div></div>
     <div class="box" style="overflow-x:auto"><table class="fit"><thead><tr><th>Funcionário</th><th>Tipo</th><th class="num">Dias</th><th class="num">Hora extra</th><th class="num">R$ HE</th><th class="num">Diárias</th><th class="num">Comissão</th><th class="num">Faltas</th><th class="num">A menos</th><th class="num">Vales</th><th class="num">Total</th><th>Pagamento</th></tr></thead><tbody>${rows}</tbody></table>
     <div class="hint">Folha de <b>hora extra</b> + diárias. Registrados: o salário é à parte — aqui é só HE + faltas. "Marcar pago" quita o mês daquele funcionário (sai do "Em aberto").</div></div>`;
 }
-async function marcarPago(fid){ const f=S.funcs.find(x=>x.id===fid), o=REL[fid]; if(!f||!o) return;
-  const liquido=_totFunc(f,o)-(REL_VALE.sum[fid]||0);
-  try{ await SB.from('rh_pagamentos').upsert({funcionario_id:fid,mes:MES,valor:liquido,pago_em:(()=>{const d=new Date();return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');})()},{onConflict:'funcionario_id,mes'}); REL_PAG=await _loadPagamentos(MES); _st('✅ Pagamento registrado (líquido de vales)','#27ae60'); route(); }catch(e){ _st('❌ '+e.message,'#c0392b'); } }
-async function desmarcarPago(fid){ try{ await SB.from('rh_pagamentos').delete().eq('funcionario_id',fid).eq('mes',MES); REL_PAG=await _loadPagamentos(MES); route(); }catch(e){ _st('❌ '+e.message,'#c0392b'); } }
+async function marcarPago(fid){ const f=S.funcs.find(x=>x.id===fid); if(!f) return; const o=REL[fid]||{extra:0,dias:0,falta:0,faltaJ:0,comissao:0,ha:0};
+  const base=Math.max(0, _totFunc(f,o));   // ganhos do mês
+  // consome o ADIANTAMENTO (mais antigo primeiro), limitado ao que este mês paga → nunca fica negativo
+  const advs=(REL_SAL.list[fid]||[]).filter(v=>((+v.valor||0)-(+v.abatido||0))>0.001);
+  let resta=base; const consumo=[];
+  for(const v of advs){ if(resta<=0.001) break; const saldo=(+v.valor||0)-(+v.abatido||0); const take=Math.min(resta,saldo); if(take>0.001){ consumo.push({vale_id:v.id, valor:+take.toFixed(2)}); resta-=take; } }
+  const abate=+consumo.reduce((s,c)=>s+c.valor,0).toFixed(2); const liquido=+(base-abate).toFixed(2);
+  const hoje=(()=>{const d=new Date();return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');})();
+  try{
+    await SB.from('rh_pagamentos').upsert({funcionario_id:fid,mes:MES,valor:liquido,pago_em:hoje,adiant:consumo},{onConflict:'funcionario_id,mes'});
+    for(const c of consumo){ const v=advs.find(x=>x.id===c.vale_id); await SB.from('rh_vales').update({abatido:+(((+v.abatido||0)+c.valor).toFixed(2))}).eq('id',c.vale_id); }
+    REL_PAG=await _loadPagamentos(MES); REL_SAL=await _loadSaldos();
+    _st(abate>0?('✅ Pago '+brl(liquido)+' (abatido '+brl(abate)+' de adiantamento)'):'✅ Pagamento registrado','#27ae60'); route();
+  }catch(e){ _st('❌ '+e.message,'#c0392b'); } }
+async function desmarcarPago(fid){ try{
+    const {data:pg}=await SB.from('rh_pagamentos').select('adiant').eq('funcionario_id',fid).eq('mes',MES).maybeSingle();
+    const cons=(pg&&Array.isArray(pg.adiant))?pg.adiant:[];
+    for(const c of cons){ const {data:vv}=await SB.from('rh_vales').select('abatido').eq('id',c.vale_id).maybeSingle(); if(vv) await SB.from('rh_vales').update({abatido:Math.max(0,+(((+vv.abatido||0)-(+c.valor||0)).toFixed(2)))}).eq('id',c.vale_id); }
+    await SB.from('rh_pagamentos').delete().eq('funcionario_id',fid).eq('mes',MES); REL_PAG=await _loadPagamentos(MES); REL_SAL=await _loadSaldos(); route();
+  }catch(e){ _st('❌ '+e.message,'#c0392b'); } }
 async function atualizarDataPago(fid,dt){ if(!dt) return; try{ await SB.from('rh_pagamentos').update({pago_em:dt}).eq('funcionario_id',fid).eq('mes',MES); if(REL_PAG[fid]) REL_PAG[fid].pago_em=dt; _st('✅ Data do pagamento alterada para '+dt.split('-').reverse().join('/'),'#27ae60'); }catch(e){ _st('❌ '+e.message,'#c0392b'); } }
 let VALE_FID=null;
 function _hojeISO(){ const d=new Date(); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
 async function _abreVales(fid){ VALE_FID=fid; await _renderValesModal(); }
 async function _renderValesModal(){
   const fid=VALE_FID, f=S.funcs.find(x=>x.id===fid); if(!f) return;
-  const [y,mm]=MES.split('-').map(Number); const ultimo=MES+'-'+String(_ult(y,mm)).padStart(2,'0');
-  const defData=(MES===_mesAtual())?_hojeISO():(MES+'-01');
-  const list=(REL_VALE.list[fid]||[]).slice().sort((a,b)=>String(a.data).localeCompare(String(b.data)));
-  const rows=list.map(v=>`<tr><td>${String(v.data).split('-').reverse().join('/')}</td><td class="num">${brl(v.valor)}</td><td class="sub txt">${esc(v.obs||'')}</td><td><button class="btn sm danger" data-vdel="${v.id}">✕</button></td></tr>`).join('')||'<tr><td colspan="4" class="hint">Nenhum vale neste mês.</td></tr>';
-  const tot=REL_VALE.sum[fid]||0;
+  const advs=(REL_SAL.list[fid]||[]).slice().sort((a,b)=>String(a.data).localeCompare(String(b.data))); const saldoTot=REL_SAL.sum[fid]||0;
+  const advRows=advs.length?advs.map(v=>{ const sal=Math.max(0,(+v.valor||0)-(+v.abatido||0)); const usado=(+v.abatido||0)>0.001;
+    return `<tr${sal<=0.001?' style="opacity:.55"':''}><td>${String(v.data).split('-').reverse().join('/')}</td><td class="num">${brl(v.valor)}</td><td class="num sub">${usado?'-'+brl(v.abatido):'—'}</td><td class="num"><b>${brl(sal)}</b></td><td class="sub txt">${esc(v.obs||'')}</td><td>${(!usado)?`<button class="btn sm danger" data-vdel="${v.id}">✕</button>`:(sal<=0.001?'<span style="color:var(--ok);font-size:11px">quitado</span>':'<span class="sub" style="font-size:11px">em uso</span>')}</td></tr>`; }).join(''):'<tr><td colspan="6" class="hint">Nenhum vale em aberto.</td></tr>';
   let ov=$('valesModal'); if(!ov){ ov=document.createElement('div'); ov.id='valesModal'; ov.style.cssText='position:fixed;inset:0;z-index:100000;background:rgba(0,0,0,.55);display:flex;align-items:center;justify-content:center'; document.body.appendChild(ov); }
-  ov.innerHTML=`<div style="background:var(--bg2);border:1px solid var(--line);border-radius:12px;padding:16px 18px;min-width:360px;max-width:94vw;max-height:88vh;overflow:auto">
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px"><b>Vales — ${esc(f.nome)} · ${_mesLabel(MES)}</b><button class="btn sm" id="vX">fechar</button></div>
-    <table><thead><tr><th>Data</th><th class="num">Valor</th><th>Obs</th><th></th></tr></thead><tbody>${rows}</tbody>
-      <tfoot><tr class="tot"><td>Total</td><td class="num"><b style="color:var(--err)">${brl(tot)}</b></td><td colspan="2"></td></tr></tfoot></table>
+  ov.innerHTML=`<div style="background:var(--bg2);border:1px solid var(--line);border-radius:12px;padding:16px 18px;min-width:400px;max-width:94vw;max-height:88vh;overflow:auto">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px"><b>Vales — ${esc(f.nome)}</b><button class="btn sm" id="vX">fechar</button></div>
+    <div class="hint" style="margin-bottom:8px">O vale é um <b>adiantamento</b>: vira saldo e abate dos pagamentos, <b>do mês mais antigo primeiro</b>, sem estourar negativo. Some sozinho conforme você dá baixa nos meses.</div>
+    <table><thead><tr><th>Data</th><th class="num">Valor</th><th class="num">Abatido</th><th class="num">Saldo</th><th>Obs</th><th></th></tr></thead><tbody>${advRows}</tbody>
+      <tfoot><tr class="tot"><td colspan="3">Saldo em aberto</td><td class="num"><b style="color:var(--gold)">${brl(saldoTot)}</b></td><td colspan="2"></td></tr></tfoot></table>
     <div class="row" style="margin-top:12px;align-items:flex-end">
-      <div class="fcol"><label>Data</label><input type="date" id="v_data" value="${defData}" min="${MES}-01" max="${ultimo}"></div>
+      <div class="fcol"><label>Data (quando pegou)</label><input type="date" id="v_data" value="${_hojeISO()}"></div>
       <div class="fcol"><label>Valor (R$)</label><input type="number" step="any" id="v_valor" placeholder="0,00" style="max-width:120px"></div>
       <div class="fcol" style="flex:1;min-width:150px"><label>Obs</label><input id="v_obs" placeholder="motivo (opcional)"></div>
-      <button class="btn success" id="v_add">Adicionar</button>
+      <button class="btn success" id="v_add">Adicionar vale</button>
     </div>
-    <div class="hint" id="v_msg">O vale desconta do total do mês. Só lança dentro de ${_mesLabel(MES)}.</div></div>`;
+    <div class="hint" id="v_msg"></div></div>`;
   const fechar=()=>{ ov.remove(); route(); };
   ov.querySelector('#vX').onclick=fechar; ov.onclick=e=>{ if(e.target===ov) fechar(); };
   ov.querySelector('#v_add').onclick=async()=>{
-    const data=ov.querySelector('#v_data').value||defData, valor=parseFloat(ov.querySelector('#v_valor').value), obs=ov.querySelector('#v_obs').value.trim()||null, msg=ov.querySelector('#v_msg');
+    const data=ov.querySelector('#v_data').value||_hojeISO(), valor=parseFloat(ov.querySelector('#v_valor').value), obs=ov.querySelector('#v_obs').value.trim()||null, msg=ov.querySelector('#v_msg');
     if(!valor||valor<=0){ msg.textContent='Informe um valor maior que zero.'; return; }
-    try{ const {error}=await SB.from('rh_vales').insert({funcionario_id:fid,data,valor,obs}); if(error) throw error; REL_VALE=await _loadVales(MES); await _renderValesModal(); _st('✅ Vale lançado','#27ae60'); }catch(e){ msg.textContent='Erro: '+e.message; }
+    try{ const {error}=await SB.from('rh_vales').insert({funcionario_id:fid,data,valor,obs,adiantamento:true,abatido:0}); if(error) throw error; REL_SAL=await _loadSaldos(); await _renderValesModal(); _st('✅ Vale lançado (vira saldo)','#27ae60'); }catch(e){ msg.textContent='Erro: '+e.message; }
   };
-  ov.querySelectorAll('[data-vdel]').forEach(b=>b.onclick=async()=>{ if(!confirm('Remover este vale?')) return; try{ await SB.from('rh_vales').delete().eq('id',+b.dataset.vdel); REL_VALE=await _loadVales(MES); await _renderValesModal(); _st('Vale removido','#e67e22'); }catch(e){ _st('❌ '+e.message,'#c0392b'); } }); }
+  ov.querySelectorAll('[data-vdel]').forEach(b=>b.onclick=async()=>{ if(!confirm('Remover este vale?')) return; try{ await SB.from('rh_vales').delete().eq('id',+b.dataset.vdel); REL_SAL=await _loadSaldos(); await _renderValesModal(); _st('Vale removido','#e67e22'); }catch(e){ _st('❌ '+e.message,'#c0392b'); } }); }
 function bindRel(){
   if(REL_MES!==MES){ _relRefresh(); return; }
   const ms=$('r_mes'); if(ms) ms.onchange=async()=>{ MES=ms.value||_mesAtual(); await _relRefresh(); };
@@ -531,19 +552,20 @@ async function _calcAberto(){
   const {data:pts}=await SB.from('ponto').select('*');
   const {data:pgs}=await SB.from('rh_pagamentos').select('funcionario_id,mes');
   const pagos=new Set((pgs||[]).map(p=>p.funcionario_id+'|'+p.mes));
-  const {data:vls}=await SB.from('rh_vales').select('funcionario_id,data,valor');
+  const {data:vls}=await SB.from('rh_vales').select('funcionario_id,data,valor,adiantamento');
   const valeMes={};   // f|mes -> soma de vales
-  (vls||[]).forEach(v=>{ const mes=String(v.data).slice(0,7); if(AB_MES_DE&&mes<AB_MES_DE)return; if(AB_MES_ATE&&mes>AB_MES_ATE)return; const k=v.funcionario_id+'|'+mes; valeMes[k]=(valeMes[k]||0)+(+v.valor||0); });
+  (vls||[]).forEach(v=>{ if(v.adiantamento) return;   /* adiantamento é saldo (conta corrente), não vale-do-mês */
+    const mes=String(v.data).slice(0,7); if(AB_MES_DE&&mes<AB_MES_DE)return; if(AB_MES_ATE&&mes>AB_MES_ATE)return; const k=v.funcionario_id+'|'+mes; valeMes[k]=(valeMes[k]||0)+(+v.valor||0); });
   const agg={};   // f|mes -> {extra,dias}
   (pts||[]).forEach(p=>{ const mes=String(p.data).slice(0,7); const fer=!!p.feriado||!!S.feriados[p.data];
     if(AB_MES_DE && mes<AB_MES_DE) return; if(AB_MES_ATE && mes>AB_MES_ATE) return;   // filtro de período
-    const r=calcDia({data:p.data,marcacoes:p.marcacoes||[],feriado:fer,folga:p.folga,falta:p.falta,sem_he:p.sem_he,ha:p.ha,valor_ha:p.valor_ha});
+    const _f=S.funcs.find(x=>x.id===p.funcionario_id); const r=calcDia({data:p.data,marcacoes:p.marcacoes||[],feriado:fer,folga:p.folga,falta:p.falta,sem_he:p.sem_he,ha:p.ha,valor_ha:p.valor_ha}, !!(_f&&_f.tipo==='diarista'));
     const k=p.funcionario_id+'|'+mes; const o=agg[k]||(agg[k]={extra:0,dias:0,falta:0,faltaJ:0,comissao:0,ha:0}); o.extra+=r.extra; if(!p.falta&&!p.folga&&(p.marcacoes||[]).length)o.dias++; if(p.falta)o.falta++; o.faltaJ+=r.faltaJornada; o.comissao+=r.comissao; o.ha+=r.ha; });
   const fmap={}, mesesSet=new Set();
   const allKeys=new Set([...Object.keys(agg), ...Object.keys(valeMes)]);   // inclui meses que só têm vale
   allKeys.forEach(k=>{ const sp=k.split('|'), fid=+sp[0], mes=sp[1]; const f=S.funcs.find(x=>x.id===fid); if(!f) return;
     if(pagos.has(k)) return;
-    const a=agg[k]||{extra:0,dias:0,falta:0,faltaJ:0,comissao:0,ha:0}; const vale=valeMes[k]||0;
+    const a=agg[k]||{extra:0,dias:0,falta:0,faltaJ:0,comissao:0,ha:0}; const vale=0;   /* vale = saldo (conta corrente); não abate por mês aqui, abate na baixa (Folha) */
     const bruto=_totFunc(f,a); if(bruto<=0 && vale<=0) return;   // nada a mostrar; com vale sempre mostra (líquido pode ficar negativo = a receber)
     const tot=bruto-vale;
     mesesSet.add(mes);

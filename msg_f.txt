@@ -1,3 +1,0 @@
-﻿Resultados: linha por lote+cultura (Lote 10/OV mostram soja e feijao separados no filtro Todas)
-
-Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>

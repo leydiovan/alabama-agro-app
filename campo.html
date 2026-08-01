@@ -154,7 +154,8 @@ async function boot(){
 async function _garantirSessao(){
   if(!SB||!navigator.onLine) return null;
   let s=null; try{ const {data}=await _q(SB.auth.getSession(),6000); s=data&&data.session; }catch(e){}
-  if(!s && DEV_EMAIL){ try{ const {data,error}=await _q(SB.auth.signInWithPassword({email:DEV_EMAIL,password:DEV_PASS}),8000); if(error) throw error; s=(data&&data.session)||null; }catch(e){ s=null; } }
+  const _venc = s && s.expires_at && (s.expires_at*1000 < Date.now()+120000);   // token vencido/quase (2 min) -> força re-login (senão o insert vai com token velho -> 401 calado)
+  if((!s || _venc) && DEV_EMAIL){ try{ const {data,error}=await _q(SB.auth.signInWithPassword({email:DEV_EMAIL,password:DEV_PASS}),8000); if(error) throw error; s=(data&&data.session)||s; }catch(e){} }
   if(s && !_SESSOK){ _SESSOK=true; _atualizarCadastros(); }   // sessão nova -> repõe cadastros/comandas que o cache não tinha
   return s;
 }
@@ -198,7 +199,7 @@ async function _atualizarCadastros(){
   if(STEP==='quemsou') render();   // a lista de operadores acabou de chegar
   _updPend(); if(navigator.onLine) _syncAll().then(async()=>{ if(OPER){ await carregarDia(); if(STEP==='home') render(); } });
 }
-window.addEventListener('online', async()=>{ if(!SB) return; _SESSOK=false; await _garantirSessao(); if(!OPER) return; _st('🔄 Sincronizando…','#3498db'); await _syncAll(); await carregarDia(); if(STEP==='home') render(); else _updPend(); _st('✅ Sincronizado','#27ae60'); });
+window.addEventListener('online', async()=>{ if(!SB) return; _SESSOK=false; await _garantirSessao(); if(!OPER) return; _st('🔄 Sincronizando…','#3498db'); const r=await _syncAll(); await carregarDia(); if(STEP==='home') render(); else _updPend(); if(r&&r.err){ _st('❌ '+(r.fail||1)+' não subiu: '+r.err,'#c0392b'); } else { _st('✅ Sincronizado','#27ae60'); } });
 /* app foi pro 2º plano ou está sendo fechado -> grava AGORA o trajeto que está na mão (o Android mata o processo sem avisar) */
 document.addEventListener('visibilitychange',()=>{ if(document.visibilityState==='hidden'){ try{ _touchSess(); }catch(e){} } });
 window.addEventListener('pagehide',()=>{ try{ _touchSess(); }catch(e){} });
@@ -343,7 +344,7 @@ function renderHome(){
   }).join('');
   $('app').innerHTML=`<div class="top"><h1><span class="l">🚜</span> ${esc(OPER.nome)}</h1>
       <div class="d">${_dlabel(DIA)} · safra ${esc(SAFRA||'—')}</div>
-      <div style="margin-top:6px"><span id="pendbadge" style="font-size:12px;padding:3px 9px;border-radius:6px"></span> <button class="lk" id="btnsync">sincronizar</button></div></div>
+      <div style="margin-top:6px"><span id="pendbadge" style="font-size:12px;padding:3px 9px;border-radius:6px"></span> <button class="lk" id="btnsync">sincronizar</button></div><div id="pendvazia" style="margin-top:6px;font-size:12px"></div></div>
     ${OPER.operador_melosa?`<button class="btn g" id="ir_melosa" style="margin-bottom:14px">⛽ Melosa / Abastecimento</button>`:''}
     <div class="sec">Comandas ${desigCount?('designadas a você ('+desigCount+')'):''}</div>
     ${cards||`<div class="card muted">Nenhuma comanda ${desigCount?'':'designada a você '}nesta safra.${desigCount?'':' <a class="lk" id="vt" style="display:inline">ver todas para teste</a>'}</div>`}
@@ -352,7 +353,7 @@ function renderHome(){
   if($('ir_melosa'))$('ir_melosa').onclick=async()=>{ MELFORM=false; await _carregarAbastMelosa(); STEP='melosa'; render(); window.scrollTo(0,0); };
   document.querySelectorAll('[data-cod]').forEach(b=>b.onclick=()=>abrirComanda(b.dataset.cod));
   _updPend();
-  if($('btnsync'))$('btnsync').onclick=async()=>{ if(!navigator.onLine){ _st('Sem internet agora.','#e67e22'); return; } _st('🔄 Sincronizando…','#3498db'); await _syncAll(); await carregarDia(); _st('✅ Sincronizado','#27ae60'); render(); };
+  if($('btnsync'))$('btnsync').onclick=async()=>{ if(!navigator.onLine){ _st('Sem internet agora.','#e67e22'); return; } _st('🔄 Sincronizando…','#3498db'); await _garantirSessao(); const r=await _syncAll(); await carregarDia(); if(r&&r.err){ _st('❌ '+(r.fail||1)+' não subiu: '+r.err,'#c0392b'); } else if(r&&r.ok){ _st('✅ '+r.ok+' enviado(s)','#27ae60'); } else if(r&&r.naoEnv){ _st('⚠️ '+r.naoEnv+' sessão(ões) sem trajeto — nada a subir (use "descartar")','#e67e22'); } else { _st('✓ Nada a enviar','#27ae60'); } render(); };
   _bindSairBar();
 }
 function _botoesSairBar(){ return `<button class="btn s" id="sair2">Sair</button><button class="btn s" id="troca2">Trocar operador</button>`; }
@@ -392,7 +393,7 @@ function renderMelosa(){
   }).join('') : '<div class="card muted">Nenhum abastecimento lançado.</div>';
   $('app').innerHTML=`<div class="top"><h1><span class="l">⛽</span> Melosa</h1>
       <div class="d">${esc(OPER.nome)} · ${_dlabel(DIA)}</div>
-      <div style="margin-top:6px"><span id="pendbadge" style="font-size:12px;padding:3px 9px;border-radius:6px"></span> <button class="lk" id="btnsync">sincronizar</button></div></div>
+      <div style="margin-top:6px"><span id="pendbadge" style="font-size:12px;padding:3px 9px;border-radius:6px"></span> <button class="lk" id="btnsync">sincronizar</button></div><div id="pendvazia" style="margin-top:6px;font-size:12px"></div></div>
     ${MELFORM?'':'<button class="btn g" id="m_novo" style="margin-bottom:6px">➕ Novo abastecimento</button>'}
     ${form}
     <div class="sec">Abastecimentos lançados</div>
@@ -402,7 +403,7 @@ function renderMelosa(){
   if($('m_cancel'))$('m_cancel').onclick=()=>{ MELFORM=false; render(); };
   if($('m_save'))$('m_save').onclick=_salvarAbastMelosa;
   if($('m_voltar'))$('m_voltar').onclick=async()=>{ MELFORM=false; STEP='home'; await carregarDia(); render(); };
-  if($('btnsync'))$('btnsync').onclick=async()=>{ if(!navigator.onLine){ _st('Sem internet agora.','#e67e22'); return; } _st('🔄 Sincronizando…','#3498db'); await _syncAll(); await _carregarAbastMelosa(); _st('✅ Sincronizado','#27ae60'); render(); };
+  if($('btnsync'))$('btnsync').onclick=async()=>{ if(!navigator.onLine){ _st('Sem internet agora.','#e67e22'); return; } _st('🔄 Sincronizando…','#3498db'); await _garantirSessao(); const r=await _syncAll(); await _carregarAbastMelosa(); if(r&&r.err){ _st('❌ '+(r.fail||1)+' não subiu: '+r.err,'#c0392b'); } else if(r&&r.ok){ _st('✅ '+r.ok+' enviado(s)','#27ae60'); } else if(r&&r.naoEnv){ _st('⚠️ '+r.naoEnv+' sessão(ões) sem trajeto — nada a subir (use "descartar")','#e67e22'); } else { _st('✓ Nada a enviar','#27ae60'); } render(); };
   _updPend();
 }
 async function _salvarAbastMelosa(){
@@ -859,6 +860,7 @@ function _restoreSess(){ GPS.pts=[]; GPS.cells=new Set(); GPS.areaHa=0; GPS.spee
 }
 /* ===== fila offline (outbox): sessões/abastecimentos locais 1º, sincroniza qdo tiver rede ===== */
 let PEND=0; const _SYNCING=new Set();   // lids em sincronização (evita 2 inserts -> sessão duplicada)
+let _lastSyncErr='';   // último erro real de sync (pra mostrar a verdade no aparelho, não "✅" falso)
 function _lid(){ return 'L'+Date.now().toString(36)+Math.random().toString(36).slice(2,7); }
 function _sessReg(s){ return { comanda_codigo:s.comanda_codigo, safra:s.safra, funcionario_id:s.funcionario_id, lote_nome:s.lote_nome, data:s.data, maquina_id:s.maquina_id, implemento_id:s.implemento_id, largura_m:s.largura_m||0, papel:s.papel||null, tanques:s.tanques||[], diesel_motobomba:(s.diesel_motobomba!=null?+s.diesel_motobomba:null), hora_inicio:s.hora_inicio, hora_fim:s.hora_fim||null, status:s.status, trajeto:s.trajeto||[], area_ha:s.area_ha||0, concluiu_lote:!!s.concluiu_lote, enviado_por:s.enviado_por||null, atualizado_em:s.atualizado_em||new Date().toISOString() }; }
 function _abastReg(a){ return { comanda_codigo:a.comanda_codigo||null, safra:a.safra, funcionario_id:a.funcionario_id, operador_melosa_id:(a.operador_melosa_id!=null?a.operador_melosa_id:null), maquina_id:a.maquina_id, lote_nome:a.lote_nome||null, litros:a.litros, quando:a.quando, descricao:(a.descricao!=null?a.descricao:null), tipo_atividade:(a.tipo_atividade!=null?a.tipo_atividade:null), uso_geral:!!a.uso_geral, status:a.status||'pendente', origem:a.origem||'manual', enviado_por:a.enviado_por||null }; }
@@ -868,22 +870,26 @@ async function _syncSession(s){ if(!s||_SYNCING.has(s.lid)) return false; if(!na
   if(!s.serverId && !_regTemTrabalho(s)) return false;   // NÃO cria no servidor sessão sem trabalho real (fecha o furo do autosave/visibilitychange/_syncAll -> nada de 'aberto' fantasma)
   _SYNCING.add(s.lid); const v=s._v||0;
   try{ if(!s.serverId){ const {data,error}=await SB.from('execucao_campo').insert(_sessReg(s)).select('id').single(); if(error) throw error; s.serverId=data.id; } else { const {error}=await SB.from('execucao_campo').update(_sessReg(s)).eq('id',s.serverId); if(error) throw error; } if((s._v||0)===v) s.dirty=false; await _idbPut('sessions',s); return true; }
-  catch(e){ s.dirty=true; try{ await _idbPut('sessions',s); }catch(_){} return false; }
+  catch(e){ _lastSyncErr=(e&&e.message)||String(e); s.dirty=true; try{ await _idbPut('sessions',s); }catch(_){} return false; }
   finally{ _SYNCING.delete(s.lid); }
 }
 async function _syncAbast(a){ if(!a) return false; if(!navigator.onLine||!SB) return false;
   try{ if(!a.serverId){ const {data,error}=await SB.from('abastecimentos').insert(_abastReg(a)).select('id').single(); if(error) throw error; a.serverId=data.id; } else { const {error}=await SB.from('abastecimentos').update(_abastReg(a)).eq('id',a.serverId); if(error) throw error; } a.dirty=false; await _idbPut('abast',a); return true; }
-  catch(e){ a.dirty=true; try{ await _idbPut('abast',a); }catch(_){} return false; }
+  catch(e){ _lastSyncErr=(e&&e.message)||String(e); a.dirty=true; try{ await _idbPut('abast',a); }catch(_){} return false; }
 }
 async function _ensureLocal(r){ if(!r) return r; if(r.lid) return r; const s=Object.assign({}, r, { lid:_lid(), serverId:r.id, dirty:false }); s.id=s.lid; await _idbPut('sessions',s); return s; }
 /* remove do aparelho sessões que sumiram do servidor (admin descartou) — só as já sincronizadas, não-sujas e não-ativas */
 async function _reconcile(localArr, serverArr){ if(!serverArr) return localArr; const sIds=new Set(serverArr.map(r=>String(r.id))); const keep=[]; for(const s of localArr){ if(s.serverId && !sIds.has(String(s.serverId)) && !s.dirty && (!SESS||String(SESS.lid)!==String(s.lid))){ await _idbDel('sessions',s.lid); } else keep.push(s); } return keep; }
 async function _pendCount(){ try{ const s=(await _idbAll('sessions')).filter(x=>x.dirty).length; const a=(await _idbAll('abast')).filter(x=>x.dirty).length; return s+a; }catch(e){ return 0; } }
-async function _updPend(){ PEND=await _pendCount(); const b=$('pendbadge'); if(b){ b.textContent=PEND?('⏳ '+PEND+' p/ enviar'):'✓ tudo enviado'; b.style.background=PEND?'#3a2a00':'#0d2a14'; b.style.color=PEND?'#ffc107':'#3fb950'; } }
-async function _syncAll(){ if(!navigator.onLine||!SB) return; const act=SESS&&SESS.lid;   // NÃO mexe na sessão ATIVA (ela sincroniza pelo _saveGps; evita inserir cópia duplicada)
-  try{ const sess=(await _idbAll('sessions')).filter(s=>s.dirty && s.lid!==act); for(const s of sess) await _syncSession(s); const ab=(await _idbAll('abast')).filter(a=>a.dirty); for(const a of ab) await _syncAbast(a);
+async function _sessoesNaoEnviaveis(){ const ss=await _idbAll('sessions'); return ss.filter(s=>s.dirty && !s.serverId && !_regTemTrabalho(s)).map(s=>({lid:s.lid, pts:(Array.isArray(s.trajeto)?s.trajeto.length:0), area:+s.area_ha||0, data:s.data})); }   // sessões "magras" (sem trabalho real) que o anti-fantasma nunca sobe -> ficam presas no badge
+async function _descartarVazias(){ const arr=await _sessoesNaoEnviaveis(); for(const x of arr){ try{ await _idbDel('sessions',x.lid); }catch(e){} } if(SESS && arr.some(x=>x.lid===SESS.lid)) SESS=null; await _updPend(); _st('🧹 '+arr.length+' sessão(ões) vazia(s) descartada(s)','#27ae60'); }
+async function _updPend(){ PEND=await _pendCount(); const b=$('pendbadge'); if(b){ b.textContent=PEND?('⏳ '+PEND+' p/ enviar'):'✓ tudo enviado'; b.style.background=PEND?'#3a2a00':'#0d2a14'; b.style.color=PEND?'#ffc107':'#3fb950'; }
+  const e=$('pendvazia'); if(e){ const nv=await _sessoesNaoEnviaveis(); if(nv.length){ const tot=nv.reduce((a,x)=>a+x.pts,0); e.innerHTML='⚠️ '+nv.length+' sessão(ões) sem trajeto ('+tot+' pts) não sobem. <button class="lk" id="btnvazia">descartar</button>'; const bt=$('btnvazia'); if(bt) bt.onclick=_descartarVazias; } else { e.innerHTML=''; } } }
+async function _syncAll(){ if(!navigator.onLine||!SB) return {ok:0,fail:0,err:'sem rede'}; const act=SESS&&SESS.lid;   // NÃO mexe na sessão ATIVA (ela sincroniza pelo _saveGps; evita inserir cópia duplicada)
+  let ok=0,fail=0; _lastSyncErr='';
+  try{ const sess=(await _idbAll('sessions')).filter(s=>s.dirty && s.lid!==act); for(const s of sess){ if(await _syncSession(s)) ok++; else fail++; } const ab=(await _idbAll('abast')).filter(a=>a.dirty); for(const a of ab){ if(await _syncAbast(a)) ok++; else fail++; }
     const hj=hoje(); const so=await _idbAll('sessions'); for(const s of so){ if(!s.dirty && s.serverId && String(s.data)<hj && !_SYNCING.has(s.lid) && s.lid!==act) await _idbDel('sessions',s.lid); }   // poda: sessões antigas já no servidor (cache cobre offline)
-  }catch(e){} await _updPend();
+  }catch(e){ _lastSyncErr=(e&&e.message)||String(e); } await _updPend(); const naoEnv=(await _sessoesNaoEnviaveis()).length; return {ok,fail,err:_lastSyncErr,naoEnv};
 }
 function _touchSess(){ if(!SESS) return; SESS.trajeto=GPS.pts.map(p=>[+p.lat.toFixed(6),+p.lon.toFixed(6),p.t||0,+(p.v||0).toFixed(1),p.tq||0]); SESS.area_ha=+GPS.areaHa.toFixed(2); SESS.atualizado_em=new Date().toISOString(); SESS.dirty=true; SESS._v=(SESS._v||0)+1; _idbPut('sessions',SESS); }   // só local (a cada poucos fixes) — sobrevive a crash
 function _distTotalM(){ let d=0; for(let i=1;i<GPS.pts.length;i++){ if((GPS.pts[i].v||0)<=0) continue; d+=Math.hypot(GPS.pts[i].E-GPS.pts[i-1].E, GPS.pts[i].N-GPS.pts[i-1].N); } return d; }   // ignora heartbeat parado (v=0)

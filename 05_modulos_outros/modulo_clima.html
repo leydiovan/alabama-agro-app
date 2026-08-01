@@ -1,0 +1,875 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Clima — Alabama Agro</title>
+<!--
+  MÓDULO CLIMA — meteorologia das estações da fazenda.
+
+  DE ONDE VEM O DADO
+    Estação (Heltec+CICLUS) -> LoRa mesh -> Gateway na torre -> MQTT
+    -> PostgreSQL do Raspberry Pi -> Node-RED (03-sync-supabase) -> Supabase.
+
+    O Pi guarda o BRUTO (cada leitura, alta resolução) e é a fonte da verdade;
+    o Supabase recebe só o que esta tela mostra:
+      clima_atual   -> o "agora" (1 linha por estação, atualizada ~5 min)
+      clima_horario -> histórico agregado por hora
+      clima_estacoes-> cadastro dos postos
+
+    Projeto do hardware: "Chat Claude estação e telemetria/" (docs + firmware).
+    Tabelas: 02_sql_supabase/79_clima.sql
+
+  REGRA DO PROJETO: o mapa é ferramenta ÚNICA (mapa_ferramenta_geral.js na
+  raiz). Este módulo PUXA o arquivo, nunca copia o conteúdo dele.
+-->
+<style>
+:root{
+  --bg:#080d18; --bg2:#0d1526; --bg3:#111e35; --bg4:#162540;
+  --border:#1f3354; --border2:#2c4a78;
+  --text:#e8edf5; --muted:#5a7aa0; --muted2:#3d5a80;
+  --ok:#00c896; --warn:#ffb300; --err:#ff4444; --gold:#ffc107; --azul:#38bdf8;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--bg);color:var(--text);font:14px/1.45 system-ui,-apple-system,Segoe UI,Roboto,sans-serif;padding:16px}
+h1{font-size:18px;white-space:nowrap}
+.sub{color:var(--muted);font-size:12px;margin-left:auto;text-align:right}
+.top{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:9px}
+.tag{font-size:11px;font-weight:700;padding:4px 10px;border-radius:20px;white-space:nowrap}
+.tag.ok{background:#052e22;color:#3fe0b0} .tag.old{background:#3a2a00;color:var(--gold)}
+.tag.err{background:#3a0f0f;color:#ff8080} .tag.wait{background:#12203a;color:var(--muted)}
+nav{display:flex;gap:5px;flex-wrap:wrap;margin-left:6px}
+nav button{background:var(--bg2);border:1px solid var(--border);color:var(--muted);border-radius:8px;
+  padding:6px 13px;font:600 12px inherit;cursor:pointer}
+nav button.on{background:var(--bg4);border-color:var(--border2);color:var(--text)}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:12px}
+.card{background:var(--bg2);border:1px solid var(--border);border-radius:13px;padding:15px}
+.card.wide{grid-column:1/-1}
+.lbl{font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;font-weight:700;margin-bottom:5px}
+.val{font-size:27px;font-weight:800;line-height:1.05}
+.val .u{font-size:12px;font-weight:500;color:var(--muted);margin-left:3px}
+.sec{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.07em;font-weight:700;margin:20px 0 9px}
+table{width:100%;border-collapse:collapse;font-size:13px}
+th,td{padding:8px 9px;border-bottom:1px solid var(--border);text-align:right;white-space:nowrap}
+th{color:var(--muted);font-size:10px;text-transform:uppercase;letter-spacing:.05em;font-weight:700}
+th:first-child,td:first-child{text-align:left}
+tbody tr:hover{background:var(--bg3)}
+.scroll{overflow-x:auto}
+.est{display:flex;align-items:center;gap:9px;background:var(--bg2);border:1px solid var(--border);
+  border-radius:11px;padding:11px 13px;cursor:pointer;margin-bottom:7px}
+.est.on{border-color:var(--border2);background:var(--bg3)}
+.est.off{opacity:.5;cursor:default}
+.dot{width:9px;height:9px;border-radius:50%;flex:none}
+.muted{color:var(--muted)}
+.chart{height:120px;position:relative}
+.seta{display:inline-block;font-size:19px;line-height:1}
+#mapa{position:relative;height:calc(100vh - 96px);min-height:340px;border-radius:12px;
+  overflow:hidden;border:1px solid var(--border)}
+.aviso{background:var(--bg3);border:1px solid var(--border);border-left:3px solid var(--gold);
+  border-radius:9px;padding:11px 13px;font-size:12px;color:var(--muted);margin-top:12px}
+.leg{display:flex;gap:14px;flex-wrap:wrap;font-size:11px;color:var(--muted);margin-top:8px}
+.leg i{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:4px}
+.ctrl{display:flex;gap:5px;align-items:center;flex-wrap:wrap}
+.ctrl-sep{width:1px;height:19px;background:var(--border);margin:0 4px}
+.vbtn{background:var(--bg2);border:1px solid var(--border);color:var(--muted);border-radius:8px;
+  padding:6px 11px;font:600 12px inherit;cursor:pointer;white-space:nowrap}
+.vbtn.on{background:var(--bg4);border-color:var(--border2);color:var(--text)}
+.ajuda summary{list-style:none;cursor:pointer;width:22px;height:22px;border-radius:50%;
+  border:1px solid var(--border);color:var(--muted);font:700 12px inherit;
+  display:flex;align-items:center;justify-content:center}
+.ajuda summary::-webkit-details-marker{display:none}
+.ajuda{position:relative}
+.ajuda div{position:absolute;right:0;top:27px;z-index:600;width:min(360px,80vw);
+  background:var(--bg3);border:1px solid var(--border2);border-radius:10px;padding:11px 13px;
+  font-size:12px;color:var(--muted);line-height:1.5;box-shadow:0 10px 30px rgba(0,0,0,.5)}
+/* o mapa ocupa a altura que sobra da janela (não fica um bloco baixo com espaço morto embaixo) */
+.mapwrap{position:relative}
+.legenda{position:absolute;left:10px;bottom:10px;z-index:900;background:rgba(13,21,38,.92);
+  border:1px solid var(--border);border-radius:10px;padding:8px 11px;min-width:190px;
+  backdrop-filter:blur(6px)}
+/* painel de valores: os numeros aparecem SEMPRE, qualquer que seja a camada —
+   a cor do mapa mostra a distribuicao, o painel mostra quanto e */
+.valores{position:absolute;right:10px;top:76px;z-index:900;background:rgba(13,21,38,.93);
+  border:1px solid var(--border);border-radius:12px;padding:11px 13px;min-width:172px;
+  backdrop-filter:blur(6px)}
+.valores .cab{font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;
+  font-weight:700;margin-bottom:7px;padding-bottom:6px;border-bottom:1px solid var(--border)}
+.valores .lin{display:flex;align-items:baseline;justify-content:space-between;gap:12px;margin-top:7px}
+.valores .lin b{font-size:19px;font-weight:800;line-height:1.1;font-variant-numeric:tabular-nums}
+.valores .lin b .u{font-size:11px;font-weight:500;color:var(--muted);margin-left:2px}
+.valores .lin span{font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em}
+.valores .lin.on b{color:var(--gold)}
+.mg-lbl{background:transparent !important;border:0 !important;box-shadow:none !important;
+  color:#fff !important;font:700 11px system-ui !important;text-shadow:0 1px 3px #000}
+</style>
+</head>
+<body>
+
+<!-- TUDO numa linha: título, status, abas, controles do mapa e resumo.
+     Os controles ficam aqui (não dentro do conteúdo) justamente para dividir
+     a mesma linha; em Agora/Histórico o #ctrlbar fica vazio. -->
+<div class="top">
+  <h1>🌦 Clima</h1>
+  <span id="tag" class="tag wait">carregando…</span>
+  <nav>
+    <button data-v="agora" class="on">Agora</button>
+    <button data-v="hist">Histórico</button>
+    <button data-v="mapa">Mapa</button>
+  </nav>
+  <div id="ctrlbar" class="ctrl"></div>
+  <div class="sub" id="sub">estações meteorológicas da fazenda</div>
+</div>
+
+<main id="main"><div class="muted">Carregando…</div></main>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="../mapa_ferramenta_geral.js"></script>
+<script>
+const SB_URL='https://ngdidjtfgmtkdkvqwfjf.supabase.co';
+const SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5nZGlkanRmZ210a2RrdnF3ZmpmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NTU5MDYsImV4cCI6MjA5NjUzMTkwNn0.OW9hGEFTvSYx_THv3DR9pt8xIVC0B9Pw2bTDGD6TBLk';
+
+let SB=null, VIEW='agora', SEL=null;
+let ESTACOES=[], ATUAL=[], HORAS=[];
+const $=s=>document.querySelector(s);
+
+/* ---------- utilidades ---------- */
+const num=v=>(v===null||v===undefined||v==='')?null:(isNaN(+v)?null:+v);
+const f=(v,c)=>v===null?'—':(+v).toFixed(c===undefined?1:c);
+function dirNome(g){ if(g===null) return ''; return ['N','NE','L','SE','S','SO','O','NO'][Math.round(g/45)%8]; }
+/* a seta aponta para ONDE o vento VAI (a direção informada é de onde ele VEM) */
+function dirSeta(g){ if(g===null) return ''; const s=['↓','↙','←','↖','↑','↗','→','↘']; return s[Math.round(g/45)%8]; }
+function idade(s){ if(s===null) return '—'; if(s<90) return 'agora'; if(s<3600) return Math.floor(s/60)+' min';
+  const h=Math.floor(s/3600); return h<24?h+'h':Math.floor(h/24)+'d'; }
+function hhmm(iso){ if(!iso) return '—'; const d=new Date(iso); if(isNaN(d)) return '—';
+  const hm=d.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});
+  return d.toDateString()===new Date().toDateString() ? hm
+    : String(d.getDate()).padStart(2,'0')+'/'+String(d.getMonth()+1).padStart(2,'0')+' '+hm; }
+
+/* ---------- carga ---------- */
+async function carregar(){
+  try{
+    const [e,a,h,lt]=await Promise.all([
+      SB.from('clima_estacoes').select('*').order('id'),
+      SB.from('clima_atual').select('*'),
+      SB.from('clima_horario').select('*').gte('hora',new Date(Date.now()-30*24*3600e3).toISOString()).order('hora'),
+      // 1x só (geometria não muda). `referencia is not true` deixa de fora os
+      // polígonos de vizinhos que existem apenas para o mapa de deriva
+      // (TRIANGULO, VALDIR) — não são área da fazenda. Ver migração 80.
+      LOTES.length?Promise.resolve({data:null})
+                  :SB.from('lotes').select('nome,geom').not('referencia','is',true)
+    ]);
+    ESTACOES=e.data||[]; ATUAL=a.data||[]; HORAS=h.data||[];
+    // lotes do cadastro do Alabama Agro: geom jsonb {crs:'UTM23S', ring:[[E,N],...]}
+    if(lt&&lt.data) LOTES=(lt.data||[]).map(l=>{
+        const g=l.geom; if(!g||!Array.isArray(g.ring)||g.ring.length<3) return null;
+        return {nome:l.nome, ring:g.ring.map(p=>_utm2ll(+p[0],+p[1],23,true))};
+      }).filter(Boolean);
+    if(lt&&lt.data) _lotesLayer=null;   // geometria nova -> a camada precisa ser remontada
+    if(SEL===null){ const on=ATUAL[0]; SEL=on?on.estacao_id:(ESTACOES[0]?ESTACOES[0].id:null); }
+    status();
+    // no mapa, dado novo NÃO remonta a tela: só as camadas se atualizam, para
+    // não jogar a posição/zoom de volta ao enquadramento inicial durante o uso
+    if(VIEW==='mapa' && _mapObj) atualizarCamadas(); else render();
+  }catch(err){ tag('err','erro ao carregar'); $('#main').innerHTML='<div class="card">❌ '+err.message+'</div>'; }
+}
+function tag(cls,txt){ const t=$('#tag'); t.className='tag '+cls; t.textContent=txt; }
+function status(){
+  const comDado=ATUAL.filter(x=>x.temp!==null);
+  if(!comDado.length){ tag('wait','aguardando dados'); $('#sub').textContent='nenhuma estação enviou leitura ainda'; return; }
+  const nova=Math.min(...comDado.map(x=>x.idade_s===null?9e9:x.idade_s));
+  tag(nova<600?'ok':'old', (nova<600?'● ao vivo · ':'⚠ atrasado · ')+idade(nova));
+  const inst=ESTACOES.filter(x=>x.instalada).length;
+  $('#sub').textContent=comDado.length+' de '+(ESTACOES.length||inst)+' estações enviando · fazenda Alabama';
+}
+function est(id){ return ESTACOES.find(x=>x.id===id)||{}; }
+function atual(id){ return ATUAL.find(x=>x.estacao_id===id)||null; }
+
+/* ---------- ABA: AGORA ---------- */
+function vAgora(){
+  const comDado=ATUAL.filter(x=>x.temp!==null);
+  if(!comDado.length) return `<div class="card">
+      <div class="lbl">Sem leitura</div>
+      <div class="muted" style="margin-top:6px">Nenhuma estação enviou dado ainda. Assim que a primeira
+      leitura chegar ao Supabase, ela aparece aqui sozinha.</div></div>`;
+
+  const a=atual(SEL)||comDado[0];
+  const e=est(a.estacao_id);
+  const hpa=a.pressao!==null?(+a.pressao/100):null;
+
+  // médias da fazenda (só quem tem leitura — estação sem dado não entra na conta)
+  const md=k=>{ const v=comDado.map(x=>num(x[k])).filter(x=>x!==null); return v.length?v.reduce((s,x)=>s+x,0)/v.length:null; };
+
+  return `
+  <div class="sec">${e.nome||('Estação '+a.estacao_id)} · última leitura ${hhmm(a.medido_em)}</div>
+  <div class="grid">
+    <div class="card">
+      <div class="lbl">🌡 Temperatura</div>
+      <div class="val">${f(a.temp)}<span class="u">°C</span></div>
+    </div>
+    <div class="card">
+      <div class="lbl">💧 Umidade do ar</div>
+      <div class="val">${f(a.umidade,0)}<span class="u">%</span></div>
+    </div>
+    <div class="card">
+      <div class="lbl">🍃 Vento</div>
+      <div class="val">${f(a.vento_kmh)}<span class="u">km/h</span></div>
+      <div class="sub" style="margin-top:5px">
+        <span class="seta">${dirSeta(a.vento_dir)}</span>
+        de ${dirNome(a.vento_dir)} (${a.vento_dir===null?'—':a.vento_dir+'°'})
+        ${a.vento_max_kmh!==null?' · máx '+f(a.vento_max_kmh)+' km/h':''}
+      </div>
+    </div>
+    <div class="card">
+      <div class="lbl">📊 Pressão</div>
+      <div class="val">${f(hpa)}<span class="u">hPa</span></div>
+    </div>
+    <div class="card">
+      <div class="lbl">🌧 Chuva 24 h</div>
+      <div class="val">${f(a.chuva_24h)}<span class="u">mm</span></div>
+      <div class="sub" style="margin-top:5px">7 d: ${f(a.chuva_7d)} mm · 30 d: ${f(a.chuva_30d)} mm</div>
+    </div>
+    <div class="card">
+      <div class="lbl">🔋 Bateria</div>
+      <div class="val">${f(a.bateria_pct,0)}<span class="u">%</span></div>
+      <div class="sub" style="margin-top:5px">idade do dado: ${idade(a.idade_s)}</div>
+    </div>
+  </div>
+
+  ${comDado.length>1?`
+  <div class="sec">Média da fazenda (${comDado.length} estações)</div>
+  <div class="grid">
+    <div class="card"><div class="lbl">Temperatura</div><div class="val">${f(md('temp'))}<span class="u">°C</span></div></div>
+    <div class="card"><div class="lbl">Umidade</div><div class="val">${f(md('umidade'),0)}<span class="u">%</span></div></div>
+    <div class="card"><div class="lbl">Vento</div><div class="val">${f(md('vento_kmh'))}<span class="u">km/h</span></div></div>
+    <div class="card"><div class="lbl">Chuva 24 h</div><div class="val">${f(md('chuva_24h'))}<span class="u">mm</span></div></div>
+  </div>`:''}
+
+  <div class="sec">Estações</div>
+  ${ESTACOES.map(s=>{
+      const d=atual(s.id); const viva=d&&d.temp!==null;
+      return `<div class="est ${viva?'':'off'} ${s.id===SEL?'on':''}" ${viva?`data-est="${s.id}"`:''}>
+        <span class="dot" style="background:${viva?(d.online?'#00c896':'#ffb300'):'#3d5a80'}"></span>
+        <div style="flex:1">
+          <div style="font-weight:600">${s.nome||('Estação '+s.id)}</div>
+          <div class="sub">${viva
+              ? f(d.umidade,0)+'% umid · vento '+f(d.vento_kmh)+' km/h '+dirNome(d.vento_dir)+' · '+idade(d.idade_s)
+              : 'ainda não instalada'}</div>
+        </div>
+        <div style="font-weight:700;font-size:15px">${viva?f(d.temp)+'°':'—'}</div>
+      </div>`;
+    }).join('')}
+  <div class="leg">
+    <span><i style="background:#00c896"></i>enviando</span>
+    <span><i style="background:#ffb300"></i>atrasada</span>
+    <span><i style="background:#3d5a80"></i>não instalada</span>
+  </div>`;
+}
+
+/* ---------- ABA: HISTÓRICO ---------- */
+function serie(id){ return HORAS.filter(h=>h.estacao_id===id); }
+
+function grafico(dados,campo,cor,unid){
+  const v=dados.map(d=>num(d[campo])).filter(x=>x!==null);
+  if(v.length<2) return `<div class="muted" style="padding:26px 0;text-align:center;font-size:12px">
+      ${v.length?'só 1 leitura — ainda não dá para traçar':'sem histórico ainda'}</div>`;
+  const W=600,H=110, mn=Math.min(...v), mx=Math.max(...v), amp=(mx-mn)||1;
+  const pts=v.map((x,i)=>[(i/(v.length-1))*W, H-((x-mn)/amp)*(H-18)-9]);
+  const linha='M '+pts.map(p=>p[0].toFixed(1)+' '+p[1].toFixed(1)).join(' L ');
+  return `<svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" style="width:100%;height:110px">
+    <defs><linearGradient id="g${campo}" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="${cor}" stop-opacity=".35"/><stop offset="100%" stop-color="${cor}" stop-opacity="0"/>
+    </linearGradient></defs>
+    <path d="${linha} L ${W} ${H} L 0 ${H} Z" fill="url(#g${campo})"/>
+    <path d="${linha}" fill="none" stroke="${cor}" stroke-width="2" stroke-linejoin="round"/>
+  </svg>
+  <div class="sub" style="display:flex;justify-content:space-between">
+    <span>mín ${f(mn)}${unid}</span><span>${v.length} h</span><span>máx ${f(mx)}${unid}</span></div>`;
+}
+
+function vHist(){
+  const s=serie(SEL);
+  const e=est(SEL);
+  const ult=s.slice(-24).reverse();
+  return `
+  <div class="sec">${e.nome||('Estação '+SEL)} · últimas ${s.length} horas registradas</div>
+  <div class="grid">
+    <div class="card wide"><div class="lbl">🌡 Temperatura</div>${grafico(s,'temp','#ff7a45','°C')}</div>
+    <div class="card wide"><div class="lbl">💧 Umidade</div>${grafico(s,'umidade','#38bdf8','%')}</div>
+    <div class="card wide"><div class="lbl">🍃 Vento</div>${grafico(s,'vento_kmh','#00c896',' km/h')}</div>
+  </div>
+  <div class="sec">Hora a hora</div>
+  <div class="card wide scroll">
+    <table>
+      <thead><tr><th>Hora</th><th>Temp</th><th>Mín/Máx</th><th>Umid</th><th>Vento</th><th>Máx</th><th>Dir</th><th>Chuva</th><th>Amostras</th></tr></thead>
+      <tbody>${ult.length?ult.map(h=>`<tr>
+        <td>${hhmm(h.hora)}</td>
+        <td>${f(h.temp)}°</td>
+        <td class="muted">${f(h.temp_min)} / ${f(h.temp_max)}</td>
+        <td>${f(h.umidade,0)}%</td>
+        <td>${f(h.vento_kmh)}</td>
+        <td class="muted">${f(h.vento_max_kmh)}</td>
+        <td>${dirNome(h.vento_dir)}</td>
+        <td>${num(h.chuva_mm)>0?'<b>'+f(h.chuva_mm)+'</b>':'—'}</td>
+        <td class="muted">${h.amostras===null?'—':h.amostras}</td>
+      </tr>`).join(''):'<tr><td colspan="9" class="muted">sem histórico ainda</td></tr>'}</tbody>
+    </table>
+  </div>
+  <div class="aviso">
+    <b>Como o histórico é montado:</b> cada linha é uma hora. Temperatura, umidade e vento são
+    <b>médias</b>; chuva é a <b>soma</b> da hora; e a direção do vento é a <b>média circular</b>
+    (a média comum erraria na virada dos 360°). <b>Amostras</b> diz quantas leituras entraram na hora —
+    número baixo indica falha de link, não falta de dado.
+  </div>`;
+}
+
+/* ============================================================
+   ABA: MAPA — camadas de clima sobre a ferramenta compartilhada
+   ============================================================
+   REGRA DO PROJETO: as ferramentas GERAIS (camadas base, buscar imagem por
+   data, corrigir cores, medir, tela cheia) moram em mapa_ferramenta_geral.js
+   e vêm de graça. O que está aqui é o ESPECÍFICO do clima — heatmap por
+   variável, partículas de vento e contorno dos lotes — desenhado sobre
+   inst.map. Nada disso deve ir para o arquivo compartilhado. */
+
+let VAR='temp', LOTES_ON=true;
+/* Vento é mostrado SÓ pelas partículas — mancha interpolada por baixo seria
+   redundante (a mesma informação duas vezes) e atrapalhava a leitura. */
+function ventoAtivo(){ return !!VARS[VAR].sopro; }
+let LOTES=[];            // [{nome, ring:[[lat,lon],...]}]
+let _mapObj=null, _heatLayer=null, _partCv=null, _partAnim=null, _parts=[];
+let _lotesLayer=null, _estLayer=null;
+
+/* UTM 23S -> lat/lon (os lotes do cadastro são gravados em UTM 23S) */
+function _utm2ll(E,N,zona,sul){
+  zona=zona||23; sul=(sul===undefined)?true:sul;
+  const a=6378137,f=1/298.257223563,e2=f*(2-f),ep2=e2/(1-e2),k0=.9996;
+  const e1=(1-Math.sqrt(1-e2))/(1+Math.sqrt(1-e2));
+  const x=E-5e5; let y=N; if(sul) y-=1e7;
+  const M=y/k0, mu=M/(a*(1-e2/4-3*e2*e2/64-5*e2**3/256));
+  const p1=mu+(3*e1/2-27*e1**3/32)*Math.sin(2*mu)+(21*e1*e1/16-55*e1**4/32)*Math.sin(4*mu)+(151*e1**3/96)*Math.sin(6*mu);
+  const C1=ep2*Math.cos(p1)**2,T1=Math.tan(p1)**2,N1=a/Math.sqrt(1-e2*Math.sin(p1)**2),
+        R1=a*(1-e2)/Math.pow(1-e2*Math.sin(p1)**2,1.5),D=x/(N1*k0);
+  const lat=p1-(N1*Math.tan(p1)/R1)*(D*D/2-(5+3*T1+10*C1-4*C1*C1-9*ep2)*D**4/24+(61+90*T1+298*C1+45*T1*T1-252*ep2-3*C1*C1)*D**6/720);
+  const l0=(zona*6-183)*Math.PI/180;
+  const lon=l0+(D-(1+2*T1+C1)*D**3/6+(5-2*C1+28*T1-3*C1*C1+8*ep2+24*T1*T1)*D**5/120)/Math.cos(p1);
+  return [lat*180/Math.PI, lon*180/Math.PI];
+}
+
+/* ---- definição das variáveis exibíveis ---- */
+/* campo   = coluna em clima_atual (modo "agora")
+   campoH  = coluna em clima_horario (modos de período)
+   acum    = soma no período em vez de média (chuva; média apagaria o acumulado) */
+const VARS={
+  temp:  {lbl:'Temperatura', un:'°C',   campo:'temp',      campoH:'temp',      dec:1,
+          grad:[[59,130,246],[56,189,248],[34,197,94],[250,204,21],[249,115,22],[239,68,68]]},
+  umid:  {lbl:'Umidade',     un:'%',    campo:'umidade',   campoH:'umidade',   dec:0, piso:0,
+          grad:[[249,115,22],[250,204,21],[34,197,94],[56,189,248],[59,130,246]]},
+  // a camada de vento traz as partículas junto — é uma camada só, não duas
+  vento: {lbl:'Velocidade do vento', un:'km/h', campo:'vento_kmh', campoH:'vento_kmh',
+          dec:1, sopro:true, piso:0,
+          grad:[[148,163,184],[52,211,153],[250,204,21],[249,115,22],[239,68,68]]},
+  chuva: {lbl:'Chuva',       un:'mm',   campo:'chuva_24h', campoH:'chuva_mm',  dec:1, piso:0, acum:true,
+          grad:[[148,163,184],[125,211,252],[56,189,248],[59,130,246],[37,99,235]]},
+  // o sensor entrega Pascal; a tela trabalha em hPa
+  pres:  {lbl:'Pressão',     un:'hPa',  campo:'pressao',   campoH:'pressao',   dec:1, conv:v=>v/100,
+          grad:[[124,58,237],[59,130,246],[34,197,94],[250,204,21],[249,115,22]]}
+};
+
+/* ---- período exibido no mapa ----
+   "agora" lê clima_atual (o instante); os demais agregam clima_horario.
+   Chuva SOMA no período; o resto tira MÉDIA. */
+let PERIODO='agora';
+const PERIODOS={agora:{lbl:'Agora',h:0}, '24h':{lbl:'24 h',h:24},
+                '7d':{lbl:'7 dias',h:24*7}, '30d':{lbl:'30 dias',h:24*30}};
+function rotuloVar(k){
+  const c=VARS[k];
+  if(PERIODO==='agora') return k==='chuva' ? 'Chuva 24 h' : c.lbl;
+  const p=PERIODOS[PERIODO].lbl;
+  return c.acum ? `${c.lbl} acumulada · ${p}` : `${c.lbl} — média · ${p}`;
+}
+/* média circular: ângulo não se soma direto (350° e 10° dariam 180°, o oposto) */
+function dirMedia(dirs){
+  const v=dirs.filter(d=>d!==null&&!isNaN(d));
+  if(!v.length) return null;
+  const x=v.reduce((s,d)=>s+Math.cos(d*Math.PI/180),0)/v.length;
+  const y=v.reduce((s,d)=>s+Math.sin(d*Math.PI/180),0)/v.length;
+  return (Math.atan2(y,x)*180/Math.PI+360)%360;
+}
+
+/* DIREÇÃO PREDOMINANTE no período — a que ventou por MAIS TEMPO.
+   A média circular não serve aqui: se ventou 5 h de leste e 1 h de oeste, a
+   média aponta para o norte, uma direção que nunca aconteceu. Aqui as horas são
+   distribuídas em 8 setores (N, NE, L, SE, S, SO, O, NO), vence o setor com
+   mais tempo, e ele é representado pela média dos ângulos que caíram nele.
+   O peso é `amostras` (leituras da hora): hora cheia pesa mais que hora
+   incompleta por falha de link. */
+function dirPredominante(rows){
+  const peso=new Array(8).fill(0), angs=Array.from({length:8},()=>[]);
+  rows.forEach(r=>{
+    const d=num(r.vento_dir); if(d===null) return;
+    const i=Math.round(((d%360)+360)%360/45)%8;
+    peso[i]+=(num(r.amostras)||1); angs[i].push(d);
+  });
+  let iMax=-1, max=0;
+  peso.forEach((p,i)=>{ if(p>max){ max=p; iMax=i; } });
+  if(iMax<0) return null;
+  const tot=peso.reduce((a,b)=>a+b,0);
+  return { dir:dirMedia(angs[iMax]), fatia: tot?max/tot:0 };
+}
+function corDe(v,mn,mx,grad){
+  if(v===null||mx===mn) return [120,130,150];
+  const t=Math.max(0,Math.min(1,(v-mn)/(mx-mn)));
+  const p=t*(grad.length-1), i=Math.min(grad.length-2,Math.floor(p)), k=p-i;
+  return [0,1,2].map(c=>Math.round(grad[i][c]*(1-k)+grad[i+1][c]*k));
+}
+
+/* ---- IDW: SÓ estações com leitura ----
+   Sem esse filtro, as posições ainda não instaladas entrariam com valor nulo
+   e diluiriam o campo inteiro (foi exatamente o bug do painel do Pi). */
+function estComLeitura(campo,conv){
+  return ATUAL.map(a=>{ let v=num(a[campo]); if(v!==null&&conv) v=conv(v);
+                        return {...a, _v:v, _e:est(a.estacao_id)}; })
+              .filter(a=>a._v!==null && num(a._e.lat)!==null && num(a._e.lon)!==null);
+}
+
+/* horas do período corrente, agrupadas por estação */
+function horasDoPeriodo(){
+  const h=PERIODOS[PERIODO].h; if(!h) return null;
+  const lim=Date.now()-h*3600e3, por={};
+  HORAS.forEach(r=>{ const t=new Date(r.hora).getTime();
+    if(isNaN(t)||t<lim) return; (por[r.estacao_id]=por[r.estacao_id]||[]).push(r); });
+  return por;
+}
+
+/* Valores da variável por estação, respeitando o período escolhido.
+   Devolve sempre o mesmo formato ({_v,_e,vento_dir,vento_kmh}) para que o
+   heatmap e as partículas não precisem saber de onde o número veio. */
+function valoresDaVariavel(varKey){
+  const cfg=VARS[varKey];
+  if(PERIODO==='agora') return estComLeitura(cfg.campo,cfg.conv);
+  const por=horasDoPeriodo(); if(!por) return [];
+  return Object.keys(por).map(id=>{
+    const rows=por[id], e=est(+id);
+    const vals=rows.map(r=>num(r[cfg.campoH])).filter(v=>v!==null);
+    if(!vals.length) return null;
+    // chuva SOMA (é acumulado do intervalo); o resto tira MÉDIA
+    let v = cfg.acum ? vals.reduce((a,b)=>a+b,0) : vals.reduce((a,b)=>a+b,0)/vals.length;
+    if(cfg.conv) v=cfg.conv(v);
+    const vv=rows.map(r=>num(r.vento_kmh)).filter(x=>x!==null);
+    const pd=dirPredominante(rows);        // a que ventou por mais tempo, não a média
+    return { estacao_id:+id, _v:v, _e:e,
+             vento_dir: pd?pd.dir:null, _fatiaDir: pd?pd.fatia:null,
+             vento_kmh: vv.length ? vv.reduce((a,b)=>a+b,0)/vv.length : null };
+  }).filter(a=>a && num(a._e.lat)!==null && num(a._e.lon)!==null);
+}
+function idw(lat,lon,pts){
+  let n=0,d=0;
+  for(const p of pts){
+    const d2=(lat-+p._e.lat)**2+(lon-+p._e.lon)**2;
+    if(d2<1e-10) return p._v;
+    const w=1/d2; n+=w*p._v; d+=w;
+  }
+  return d?n/d:null;
+}
+
+/* ---- geometria da fazenda (recorte do heatmap) ---- */
+function bboxFazenda(){
+  let a=90,b=-90,c=180,d=-180, achou=false;
+  LOTES.forEach(l=>l.ring.forEach(p=>{ achou=true;
+    a=Math.min(a,p[0]); b=Math.max(b,p[0]); c=Math.min(c,p[1]); d=Math.max(d,p[1]); }));
+  if(!achou){ ESTACOES.forEach(s=>{ const la=num(s.lat),lo=num(s.lon); if(la===null)return; achou=true;
+    a=Math.min(a,la); b=Math.max(b,la); c=Math.min(c,lo); d=Math.max(d,lo); });
+    if(achou){ a-=.03;b+=.03;c-=.03;d+=.03; } }
+  return achou?{minLat:a,maxLat:b,minLon:c,maxLon:d}:null;
+}
+function dentroDaFazenda(lat,lon){
+  if(!LOTES.length) return true;
+  for(const l of LOTES){
+    const r=l.ring; let dentro=false;
+    for(let i=0,j=r.length-1;i<r.length;j=i++){
+      if(((r[i][0]>lat)!==(r[j][0]>lat)) &&
+         (lon < (r[j][1]-r[i][1])*(lat-r[i][0])/(r[j][0]-r[i][0])+r[i][1])) dentro=!dentro;
+    }
+    if(dentro) return true;
+  }
+  return false;
+}
+
+/* ---- heatmap interpolado ----
+   O recorte NÃO é feito testando ponto-a-ponto numa grade (era o que deixava a
+   borda serrilhada). Os lotes são rasterizados numa MÁSCARA de alta resolução
+   pelo próprio canvas — que já entrega antialiasing — e aplicada por
+   composição. A cor (IDW) pode ser calculada em resolução menor e ampliada com
+   suavização, porque é um campo contínuo: quem define a nitidez é a borda. */
+function _dimsProporcionais(bb,alvo){
+  // graus de longitude "encolhem" com a latitude -> corrige para não distorcer
+  const latM=(bb.minLat+bb.maxLat)/2;
+  const dy=bb.maxLat-bb.minLat, dx=(bb.maxLon-bb.minLon)*Math.cos(latM*Math.PI/180);
+  const r=dx/dy;
+  return r>=1 ? {w:alvo, h:Math.max(8,Math.round(alvo/r))}
+              : {w:Math.max(8,Math.round(alvo*r)), h:alvo};
+}
+function _mascaraLotes(bb,W,H){
+  const cv=document.createElement('canvas'); cv.width=W; cv.height=H;
+  const ctx=cv.getContext('2d');
+  if(!LOTES.length){ ctx.fillStyle='#fff'; ctx.fillRect(0,0,W,H); return cv; }
+  const X=lon=>((lon-bb.minLon)/(bb.maxLon-bb.minLon))*W;
+  const Y=lat=>((bb.maxLat-lat)/(bb.maxLat-bb.minLat))*H;
+  ctx.fillStyle='#fff';
+  LOTES.forEach(l=>{
+    ctx.beginPath();
+    l.ring.forEach((p,i)=>{ const x=X(p[1]), y=Y(p[0]); i?ctx.lineTo(x,y):ctx.moveTo(x,y); });
+    ctx.closePath(); ctx.fill();
+  });
+  return cv;
+}
+function desenharHeat(){
+  if(!_mapObj) return;
+  if(_heatLayer){ try{ _mapObj.removeLayer(_heatLayer); }catch(e){} _heatLayer=null; }
+  const cfg=VARS[VAR];
+  if(cfg.sopro){ legendaVento(); return; }        // vento: só as partículas
+  const pts=valoresDaVariavel(VAR), bb=bboxFazenda();
+  if(!pts.length||!bb){ legendaVazia(cfg); return; }
+  const vals=pts.map(p=>p._v);
+  let mn=Math.min(...vals), mx=Math.max(...vals);
+  if(mn===mx){ mn-=1; mx+=1; }        // 1 estação: campo uniforme (não há gradiente a inferir)
+  // chuva/umidade/vento não existem abaixo de zero — a faixa ±1 não pode inventar negativo
+  if(cfg.piso!==undefined && mn<cfg.piso) mn=cfg.piso;
+
+  // 1) campo de cor (IDW) em resolução moderada — é contínuo, não precisa de mais
+  const c1=_dimsProporcionais(bb,220);
+  const cor=document.createElement('canvas'); cor.width=c1.w; cor.height=c1.h;
+  const cctx=cor.getContext('2d'), img=cctx.createImageData(c1.w,c1.h);
+  for(let i=0;i<c1.h;i++){
+    const lat=bb.maxLat-(i/(c1.h-1||1))*(bb.maxLat-bb.minLat);
+    for(let j=0;j<c1.w;j++){
+      const lon=bb.minLon+(j/(c1.w-1||1))*(bb.maxLon-bb.minLon), k=(i*c1.w+j)*4;
+      const v=idw(lat,lon,pts);
+      if(v===null){ img.data[k+3]=0; continue; }
+      const c=corDe(v,mn,mx,cfg.grad);
+      img.data[k]=c[0]; img.data[k+1]=c[1]; img.data[k+2]=c[2]; img.data[k+3]=255;
+    }
+  }
+  cctx.putImageData(img,0,0);
+
+  // 2) máscara dos lotes em alta resolução (borda suave vem do rasterizador)
+  const c2=_dimsProporcionais(bb,1100);
+  const out=document.createElement('canvas'); out.width=c2.w; out.height=c2.h;
+  const octx=out.getContext('2d');
+  octx.imageSmoothingEnabled=true; octx.imageSmoothingQuality='high';
+  octx.drawImage(cor,0,0,c2.w,c2.h);              // amplia a cor com suavização
+  octx.globalCompositeOperation='destination-in';
+  octx.drawImage(_mascaraLotes(bb,c2.w,c2.h),0,0); // recorta pelos lotes
+  octx.globalCompositeOperation='source-over';
+
+  _heatLayer=L.imageOverlay(out.toDataURL(), [[bb.minLat,bb.minLon],[bb.maxLat,bb.maxLon]], {opacity:.78});
+  _heatLayer.addTo(_mapObj);
+  legenda(mn,mx,cfg);
+}
+/* legenda do vento: as partículas são coloridas por faixas de velocidade,
+   não por gradiente contínuo — então a legenda é discreta, igual ao desenho */
+function legendaVento(){
+  const el=$('#legenda'); if(!el) return;
+  const faixas=[['#94a3b8','&lt; 5'],['#34d399','5–10'],['#facc15','10–15'],['#f97316','&gt; 15']];
+  // no período, diz QUAL é a predominante e quanto do tempo ela representa —
+  // fatia baixa significa vento girando, e aí "predominante" quer dizer pouco
+  let pred='';
+  if(PERIODO!=='agora'){
+    const p=valoresDaVariavel('vento')[0];
+    if(p&&p.vento_dir!==null) pred=`<div class="sub" style="margin:5px 0 0;text-align:left">
+      predominante <b style="color:var(--text)">${dirNome(p.vento_dir)}</b>
+      ${p._fatiaDir!=null?`· ${Math.round(p._fatiaDir*100)}% do tempo`:''}</div>`;
+  }
+  el.innerHTML=`<div class="lbl" style="margin-bottom:5px">${rotuloVar('vento').replace(' — média','')} (km/h)</div>
+    <div style="display:flex;gap:9px;flex-wrap:wrap;font-size:11px;color:var(--muted)">
+      ${faixas.map(([c,t])=>`<span><i style="display:inline-block;width:14px;height:3px;
+        border-radius:2px;background:${c};margin-right:4px;vertical-align:middle"></i>${t}</span>`).join('')}
+    </div>${pred}`;
+}
+function legendaVazia(cfg){
+  const el=$('#legenda'); if(el) el.innerHTML=`<div class="lbl">${rotuloVar(VAR)}</div>
+    <div class="muted" style="font-size:12px">sem estação com leitura</div>`;
+}
+function legenda(mn,mx,cfg){
+  const el=$('#legenda'); if(!el) return;
+  const g=cfg.grad.map((c,i)=>`rgb(${c[0]},${c[1]},${c[2]}) ${(i/(cfg.grad.length-1))*100}%`).join(',');
+  el.innerHTML=`<div class="lbl" style="margin-bottom:4px">${rotuloVar(VAR)} (${cfg.un})</div>
+    <div style="display:flex;align-items:center;gap:8px">
+      <span style="font-size:11px">${f(mn,cfg.dec)}</span>
+      <div style="flex:1;height:9px;border-radius:5px;background:linear-gradient(90deg,${g})"></div>
+      <span style="font-size:11px">${f(mx,cfg.dec)}</span>
+    </div>`;
+}
+
+/* ---- partículas de vento ----
+   A direção informada é de ONDE o vento vem -> o deslocamento vai para o lado
+   OPOSTO (daí o sinal negativo). u = componente LESTE (longitude),
+   v = componente NORTE (latitude). */
+function ventoEm(lat,lon,pts){
+  let u=0,v=0,w=0;
+  for(const p of pts){
+    const dir=num(p.vento_dir), vel=num(p.vento_kmh);
+    if(dir===null||vel===null) continue;
+    const d2=(lat-+p._e.lat)**2+(lon-+p._e.lon)**2; if(d2<1e-10) continue;
+    const q=1/d2, r=dir*Math.PI/180;
+    u+=q*(-Math.sin(r))*vel; v+=q*(-Math.cos(r))*vel; w+=q;
+  }
+  return w?{u:u/w,v:v/w}:null;
+}
+function pararParticulas(){ if(_partAnim){ cancelAnimationFrame(_partAnim); _partAnim=null; }
+  if(_partCv&&_partCv.parentNode){ _partCv.parentNode.removeChild(_partCv); } _partCv=null; _parts=[]; }
+function iniciarParticulas(){
+  pararParticulas();
+  if(!ventoAtivo()||!_mapObj) return;
+  const pts=valoresDaVariavel('vento'); const bb=bboxFazenda();
+  if(!pts.length||!bb) return;
+  const pane=_mapObj.getPanes().overlayPane;
+  _partCv=document.createElement('canvas');
+  _partCv.style.cssText='position:absolute;left:0;top:0;pointer-events:none;z-index:400';
+  pane.appendChild(_partCv);
+  const N=190;
+  // nasce SÓ dentro dos lotes: nascer na caixa inteira deixava um "chuvisco"
+  // de traços soltos fora da fazenda (a partícula desenhava 1 segmento antes
+  // de ser descartada).
+  const nova=()=>{
+    for(let t=0;t<60;t++){
+      const lat=bb.minLat+Math.random()*(bb.maxLat-bb.minLat);
+      const lon=bb.minLon+Math.random()*(bb.maxLon-bb.minLon);
+      if(dentroDaFazenda(lat,lon))
+        return {lat,lon,idade:Math.floor(Math.random()*70),vida:70+Math.floor(Math.random()*70)};
+    }
+    return null;                       // não achou ponto interno: fica de fora
+  };
+  _parts=Array.from({length:N},nova).filter(Boolean);
+  if(!_parts.length){ pararParticulas(); return; }
+  const ctx=_partCv.getContext('2d');
+  (function tick(){
+    if(!_partCv||!_mapObj){ return; }
+    const sz=_mapObj.getSize();
+    if(_partCv.width!==sz.x||_partCv.height!==sz.y){ _partCv.width=sz.x; _partCv.height=sz.y; }
+    const org=_mapObj.containerPointToLayerPoint([0,0]);
+    L.DomUtil.setPosition(_partCv, org);
+    ctx.globalCompositeOperation='destination-out'; ctx.fillStyle='rgba(0,0,0,.10)';
+    ctx.fillRect(0,0,_partCv.width,_partCv.height);
+    ctx.globalCompositeOperation='source-over';
+    ctx.lineWidth=1.6; ctx.lineCap='round';
+    for(let i=0;i<_parts.length;i++){
+      const p=_parts[i]; if(!p) continue;
+      const w=ventoEm(p.lat,p.lon,pts);
+      if(!w){ _parts[i]=nova(); continue; }
+      const passo=0.00016;                       // graus por quadro por km/h
+      const la=p.lat+w.v*passo, lo=p.lon+w.u*passo;
+      // só desenha se o trecho INTEIRO está dentro da fazenda (nada de traço
+      // escapando pela borda)
+      if(!dentroDaFazenda(la,lo)){ _parts[i]=nova(); continue; }
+      const a=_mapObj.latLngToContainerPoint([p.lat,p.lon]),
+            b=_mapObj.latLngToContainerPoint([la,lo]);
+      const vel=Math.hypot(w.u,w.v);
+      ctx.strokeStyle = vel<5?'rgba(148,163,184,.75)' : vel<10?'rgba(52,211,153,.85)'
+                      : vel<15?'rgba(250,204,21,.9)'  : 'rgba(249,115,22,.95)';
+      ctx.beginPath(); ctx.moveTo(a.x,a.y); ctx.lineTo(b.x,b.y); ctx.stroke();
+      p.lat=la; p.lon=lo; p.idade++;
+      if(p.idade>p.vida) _parts[i]=nova();
+    }
+    _partAnim=requestAnimationFrame(tick);
+  })();
+}
+
+/* controles do mapa — vão para a barra do topo (#ctrlbar), não para o conteúdo.
+   Rótulo curto no botão; o nome completo da variável fica no title e na legenda. */
+function ctrlHTML(){
+  const curto={temp:'Temp',umid:'Umidade',vento:'Vento',chuva:'Chuva',pres:'Pressão'};
+  const btn=(k,ic)=>`<button class="vbtn ${VAR===k?'on':''}" data-var="${k}"
+      title="${VARS[k].lbl} (${VARS[k].un})">${ic} ${curto[k]}</button>`;
+  const tg=(k,txt,on,t)=>`<button class="vbtn ${on?'on':''}" data-tg="${k}" title="${t}">${txt}</button>`;
+  const per=k=>`<button class="vbtn ${PERIODO===k?'on':''}" data-per="${k}"
+      title="${k==='agora'?'Última leitura de cada estação':'Agregado das últimas '+PERIODOS[k].lbl}"
+      >${PERIODOS[k].lbl}</button>`;
+  return `<span class="ctrl-sep"></span>
+    ${per('agora')}${per('24h')}${per('7d')}${per('30d')}
+    <span class="ctrl-sep"></span>
+    ${btn('temp','🌡')}${btn('umid','💧')}${btn('vento','🍃')}${btn('chuva','🌧')}${btn('pres','📊')}
+    <span class="ctrl-sep"></span>
+    ${tg('lotes','▱ Lotes',LOTES_ON,'Contorno dos lotes do cadastro')}
+    <details class="ajuda"><summary>?</summary>
+      <div>Escolha <b>uma variável por vez</b>: a camada interpola entre as estações (IDW) e
+      é recortada pelos lotes do cadastro. Só entram estações <b>com leitura</b> — as posições
+      ainda não instaladas não diluem o campo. Com uma estação só a cor fica uniforme: é o
+      correto, não há gradiente a inferir. Em <b>Vento</b>, as partículas vêm junto com a
+      camada e mostram para onde ele sopra (a direção medida é de <i>onde</i> ele vem).</div>
+    </details>`;
+}
+function vMapa(){
+  return `<div class="mapwrap"><div id="mapa"></div>
+    <div id="legenda" class="legenda"></div>
+    <div id="valores" class="valores"></div></div>`;
+}
+/* o Leaflet é carregado sob demanda (padrão dos outros módulos): a ferramenta
+   de mapa compartilhada depende dele, mas quem o carrega é o módulo. */
+let _lfLoading=false;
+function _leafletReady(cb){
+  if(window.L){ cb(); return; }
+  if(_lfLoading){ const t=setInterval(()=>{ if(window.L){ clearInterval(t); cb(); } },120); return; }
+  _lfLoading=true;
+  const css=document.createElement('link'); css.rel='stylesheet';
+  css.href='https://unpkg.com/leaflet@1.9.4/dist/leaflet.css'; document.head.appendChild(css);
+  const js=document.createElement('script'); js.src='https://unpkg.com/leaflet@1.9.4/dist/leaflet.js';
+  js.onload=()=>cb();
+  js.onerror=()=>{ _lfLoading=false; const el=$('#mapa');
+    if(el) el.innerHTML='<div class="muted" style="padding:30px;text-align:center">mapa indisponível (sem internet para carregar o Leaflet)</div>'; };
+  document.head.appendChild(js);
+}
+
+function montarMapa(){ _leafletReady(_montarMapa); }
+
+/* Lotes e estações vivem em LayerGroups próprios. Assim ligar/desligar uma
+   camada ou receber dado novo NÃO remonta o mapa — antes qualquer uma dessas
+   coisas chamava render(), o mapa nascia de novo e a posição/zoom voltavam ao
+   enquadramento inicial no meio do uso. */
+function camadaLotes(){
+  if(!_lotesLayer){
+    _lotesLayer=L.layerGroup();
+    LOTES.forEach(l=>{
+      L.polygon(l.ring,{color:'#ff4444',weight:1.2,opacity:.85,fill:false,interactive:false})
+       .addTo(_lotesLayer);
+    });
+  }
+  if(!_mapObj) return;
+  if(LOTES_ON) _lotesLayer.addTo(_mapObj);
+  else _mapObj.removeLayer(_lotesLayer);
+}
+function camadaEstacoes(){
+  if(!_mapObj) return;
+  if(!_estLayer){ _estLayer=L.layerGroup().addTo(_mapObj); } else { _estLayer.clearLayers(); }
+  ESTACOES.filter(s=>num(s.lat)!==null&&num(s.lon)!==null).forEach(s=>{
+    const d=atual(s.id), viva=d&&d.temp!==null;
+    const cor=viva?(d.online?'#00c896':'#ffb300'):'#3d5a80';
+    const m=L.circleMarker([+s.lat,+s.lon],{radius:11,color:'#fff',weight:2,fillColor:cor,fillOpacity:.95})
+             .addTo(_estLayer);
+    m.bindTooltip(String(s.id),{permanent:true,direction:'center',className:'mg-lbl'});
+    m.bindPopup(`<b>${s.nome||('Estação '+s.id)}</b><br>`+(viva
+      ? `${f(d.temp)} °C · ${f(d.umidade,0)}%<br>vento ${f(d.vento_kmh)} km/h ${dirNome(d.vento_dir)}<br>
+         chuva 24h ${f(d.chuva_24h)} mm<br><span style="opacity:.7">${hhmm(d.medido_em)}</span>`
+      : '<span style="opacity:.7">ainda não instalada</span>'));
+  });
+}
+/* Painel de valores — sempre visível, qualquer que seja a camada escolhida.
+   A cor do mapa mostra COMO a variável se distribui; aqui fica QUANTO ela vale.
+   Segue o período selecionado (chuva soma, o resto tira média) e destaca em
+   dourado a variável que está pintada no mapa. */
+function painelValores(){
+  const el=$('#valores'); if(!el) return;
+  const ordem=['temp','umid','vento','chuva','pres'];
+  const vals={};
+  ordem.forEach(k=>{
+    const pts=valoresDaVariavel(k);
+    if(!pts.length){ vals[k]=null; return; }
+    // várias estações: média entre elas (inclusive da chuva já acumulada)
+    vals[k]={ v: pts.reduce((s,p)=>s+p._v,0)/pts.length,
+              dir: k==='vento' ? pts[0].vento_dir : null };
+  });
+  const comDado=ATUAL.filter(x=>x.temp!==null);
+  const cab = PERIODO==='agora'
+      ? (comDado.length>1 ? `Agora · média de ${comDado.length} estações`
+                          : `Agora · ${(est(comDado[0]&&comDado[0].estacao_id).nome)||'estação'}`)
+      : `Últimas ${PERIODOS[PERIODO].lbl}` + (comDado.length>1?` · média de ${comDado.length}`:'');
+  const lin=(k,rot)=>{
+    const d=vals[k]; const cfg=VARS[k];
+    const txt = d===null ? '—' : `${f(d.v,cfg.dec)}<span class="u">${cfg.un}</span>`;
+    return `<div class="lin ${VAR===k?'on':''}"><b>${txt}</b><span>${rot}</span></div>`;
+  };
+  /* Direção do vento (biruta) em linha própria, como as demais.
+     A LETRA é de ONDE o vento vem (convenção meteorológica) e a SETA aponta
+     para onde ele sopra — vento de S sopra para o norte, seta ↑. */
+  const dv=vals.vento;
+  const linDir = (()=>{
+    if(!dv||dv.dir===null) return `<div class="lin"><b>—</b><span>direção</span></div>`;
+    const rot = PERIODO==='agora' ? 'direção' : 'predominante';
+    return `<div class="lin ${VAR==='vento'?'on':''}">
+      <b>${dirNome(dv.dir)} <span style="font-size:22px;line-height:1">${dirSeta(dv.dir)}</span></b>
+      <span>${rot}</span></div>`;
+  })();
+  el.innerHTML = `<div class="cab">${cab}</div>
+    ${lin('temp','temp')}${lin('umid','umidade')}${lin('vento','vento')}${linDir}
+    ${lin('chuva', PERIODO==='agora'?'chuva 24h':'chuva acum.')}${lin('pres','pressão')}`;
+}
+
+/* dado novo chegou: redesenha só o conteúdo, preservando posição e zoom */
+function atualizarCamadas(){
+  if(!_mapObj) return;
+  desenharHeat(); camadaEstacoes(); painelValores();
+  ventoAtivo()?iniciarParticulas():pararParticulas();
+}
+
+function _montarMapa(){
+  const el=$('#mapa'); if(!el||!window._mgCriar) return;
+  // ferramenta de mapa ÚNICA e compartilhada (mapa_ferramenta_geral.js na raiz)
+  const inst=_mgCriar(el,{pfx:'clima', baseInicial:'Satélite (Google)'});
+  _mapObj=inst.map; _lotesLayer=null; _estLayer=null;
+
+  camadaLotes();
+  desenharHeat();
+  camadaEstacoes();
+  painelValores();
+
+  // enquadra a fazenda (lotes) e não só as estações — SÓ na montagem
+  try{
+    const bb=bboxFazenda();
+    if(bb) _mapObj.fitBounds([[bb.minLat,bb.minLon],[bb.maxLat,bb.maxLon]],{padding:[18,18]});
+    else _mapObj.setView([-12.62,-44.72],12);
+  }catch(e){}
+  setTimeout(()=>{ try{ _mapObj.invalidateSize(); }catch(e){} iniciarParticulas(); },160);
+  _mapObj.on('zoomstart movestart',()=>{ if(_partCv) _partCv.getContext('2d').clearRect(0,0,_partCv.width,_partCv.height); });
+}
+
+/* ---------- router ---------- */
+function render(){
+  const m=$('#main'), cb=$('#ctrlbar');
+  if(VIEW==='agora'){ cb.innerHTML=''; m.innerHTML=vAgora(); m.querySelectorAll('[data-est]').forEach(el=>
+      el.onclick=()=>{ SEL=+el.dataset.est; render(); }); }
+  else if(VIEW==='hist'){ pararParticulas(); _mapObj=null; cb.innerHTML=''; m.innerHTML=vHist(); }
+  else {
+    cb.innerHTML=ctrlHTML();          // controles vão para a barra do topo
+    m.innerHTML=vMapa(); montarMapa();
+    // troca de variável: só redesenha a mancha (o mapa continua vivo)
+    cb.querySelectorAll('[data-var]').forEach(b=>b.onclick=()=>{
+      VAR=b.dataset.var;
+      cb.querySelectorAll('[data-var]').forEach(x=>x.classList.toggle('on',x===b));
+      desenharHeat(); painelValores();
+      // as partículas seguem a variável: só existem em Vento
+      ventoAtivo()?iniciarParticulas():pararParticulas();
+    });
+    // período: troca a fonte (clima_atual x clima_horario) sem remontar o mapa
+    cb.querySelectorAll('[data-per]').forEach(b=>b.onclick=()=>{
+      PERIODO=b.dataset.per;
+      cb.querySelectorAll('[data-per]').forEach(x=>x.classList.toggle('on',x===b));
+      desenharHeat(); painelValores();
+      ventoAtivo()?iniciarParticulas():pararParticulas();
+    });
+    cb.querySelectorAll('[data-tg]').forEach(b=>b.onclick=()=>{
+      const k=b.dataset.tg;
+      if(k==='lotes'){ LOTES_ON=!LOTES_ON; b.classList.toggle('on',LOTES_ON); camadaLotes(); }
+    });
+  }
+}
+document.querySelector('nav').addEventListener('click',ev=>{
+  const b=ev.target.closest('button'); if(!b) return;
+  VIEW=b.dataset.v;
+  document.querySelectorAll('nav button').forEach(x=>x.classList.toggle('on',x===b));
+  render();
+});
+
+/* ---------- boot ---------- */
+(async function(){
+  if(!window.supabase){ $('#main').innerHTML='<div class="card">⚠️ Sem internet (biblioteca não carregou).</div>'; return; }
+  SB=window.supabase.createClient(SB_URL,SB_KEY);
+  // login único: o hub passa a sessão pelo hash
+  try{ const h=new URLSearchParams(location.hash.slice(1)); const at=h.get('at'), rt=h.get('rt');
+       if(at&&rt){ await SB.auth.setSession({access_token:at,refresh_token:rt});
+                   history.replaceState(null,'',location.pathname+location.search); } }catch(e){}
+  await carregar();
+  setInterval(carregar, 120000);   // a tela é reflexo do banco: recarrega sozinha a cada 2 min
+})();
+</script>
+</body>
+</html>
