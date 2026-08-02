@@ -75,7 +75,16 @@ svg{display:block}
 .faixa::-webkit-scrollbar{display:none}
 .faixa>*{pointer-events:auto}
 .faixa.p1{top:calc(env(safe-area-inset-top) + 56px)}
-.faixa.p2{top:calc(env(safe-area-inset-top) + 100px)}
+.chip.sel{font-weight:700}
+/* gaveta: a lista só aparece ao tocar no seletor — antes as 5 variáveis e os
+   4 períodos ficavam sempre na tela, comendo espaço do mapa */
+.gaveta{position:absolute;left:12px;top:calc(env(safe-area-inset-top) + 100px);z-index:40;
+  background:var(--vidro);backdrop-filter:blur(14px);border:1px solid var(--border2);
+  border-radius:14px;padding:6px;display:flex;flex-direction:column;gap:2px;min-width:150px;
+  box-shadow:0 10px 28px rgba(0,0,0,.5);animation:sobe .14s ease both}
+.gaveta button{background:none;border:0;color:var(--text);text-align:left;
+  padding:11px 14px;border-radius:10px;font:600 14px inherit;cursor:pointer;min-height:44px}
+.gaveta button.on{background:var(--gold);color:#1a1100}
 .chip{flex:none;background:var(--vidro);backdrop-filter:blur(10px);border:1px solid var(--border);
   color:var(--muted);border-radius:20px;padding:8px 14px;font:600 12px inherit;cursor:pointer;
   min-height:36px;display:flex;align-items:center;gap:6px;white-space:nowrap}
@@ -83,15 +92,17 @@ svg{display:block}
 .chip svg{width:15px;height:15px}
 
 /* ---------- legenda do mapa ---------- */
-.legenda{position:absolute;left:12px;right:12px;bottom:calc(env(safe-area-inset-bottom) + 92px);
+/* legenda enxuta: uma linha só — valor + barra com marcador da posição */
+.legenda{position:absolute;left:12px;right:12px;bottom:calc(env(safe-area-inset-bottom) + 90px);
   z-index:25;background:var(--vidro);backdrop-filter:blur(10px);border:1px solid var(--border);
-  border-radius:14px;padding:10px 13px}
-.legenda .cab{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:7px}
-.legenda .nm{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;font-weight:700}
-.legenda .vl{font-size:21px;font-weight:800;font-variant-numeric:tabular-nums}
-.legenda .vl .u{font-size:11px;font-weight:500;color:var(--muted);margin-left:2px}
-.legenda .barra{height:8px;border-radius:4px}
-.legenda .mm{display:flex;justify-content:space-between;font-size:10px;color:var(--muted);margin-top:4px}
+  border-radius:12px;padding:8px 12px;display:flex;align-items:center;gap:11px}
+.legenda .vl{font-size:19px;font-weight:800;font-variant-numeric:tabular-nums;white-space:nowrap}
+.legenda .vl .u{font-size:10px;font-weight:500;color:var(--muted);margin-left:2px}
+.legenda .esc{flex:1;position:relative}
+.legenda .barra{height:7px;border-radius:4px}
+.legenda .mk{position:absolute;top:-3px;width:3px;height:13px;border-radius:2px;
+  background:#fff;box-shadow:0 0 0 1px rgba(0,0,0,.55)}
+.legenda .mm{display:flex;justify-content:space-between;font-size:9px;color:var(--muted);margin-top:2px}
 
 /* ---------- botões flutuantes ---------- */
 .fab{position:fixed;bottom:calc(env(safe-area-inset-bottom) + 18px);z-index:60;
@@ -224,6 +235,7 @@ const SECOES=[['clima','Clima',IC.clima],['rel','Relatórios',IC.rel],
 const SUBS={ clima:[['mapa','Mapa',IC.mapa],['agora','Agora',IC.agora],['hist','Histórico',IC.hist]] };
 
 let SB=null, SECAO='clima', SUB='mapa', MENU=null;   // MENU: null | 'esq' | 'dir'
+let SELETOR=null;                                    // gaveta aberta: null | 'var' | 'per'
 let PERIODO='agora', VARMAPA='temp';
 let ESTACOES=[], ATUAL=[], HORAS=[], LOTES=[];
 let _map=null,_heat=null,_lotesL=null,_estL=null;
@@ -244,18 +256,29 @@ function hhmm(iso){ if(!iso) return '—'; const d=new Date(iso); if(isNaN(d)) r
 
 const PERIODOS={agora:{lbl:'Agora',h:0},'24h':{lbl:'24 h',h:24},
                 '7d':{lbl:'7 dias',h:168},'30d':{lbl:'30 dias',h:720}};
+/* `esc` = escala ABSOLUTA da cor. Antes a escala era o próprio valor ±1, o que
+   fazia qualquer leitura cair no meio do gradiente: 24,9 °C e 29,2 °C pintavam
+   igual e trocar de período parecia não mudar nada. Com escala fixa a cor passa
+   a significar alguma coisa por si — quente é quente em qualquer período. */
 const VARS={
-  temp: {lbl:'Temp',un:'°C',c:'temp',ch:'temp',dec:1,
+  temp: {lbl:'Temp',un:'°C',c:'temp',ch:'temp',dec:1,esc:[5,45],
          grad:[[59,130,246],[56,189,248],[34,197,94],[250,204,21],[249,115,22],[239,68,68]]},
-  umid: {lbl:'Umidade',un:'%',c:'umidade',ch:'umidade',dec:0,piso:0,
+  umid: {lbl:'Umidade',un:'%',c:'umidade',ch:'umidade',dec:0,esc:[0,100],
          grad:[[249,115,22],[250,204,21],[34,197,94],[56,189,248],[59,130,246]]},
-  vento:{lbl:'Vento',un:'km/h',c:'vento_kmh',ch:'vento_kmh',dec:1,piso:0,
+  vento:{lbl:'Vento',un:'km/h',c:'vento_kmh',ch:'vento_kmh',dec:1,esc:[0,30],
          grad:[[148,163,184],[52,211,153],[250,204,21],[249,115,22],[239,68,68]]},
-  chuva:{lbl:'Chuva',un:'mm',c:'chuva_24h',ch:'chuva_mm',dec:1,piso:0,acum:true,
+  // chuva depende da janela: 30 mm em 24 h é muito, em 30 dias é pouco
+  chuva:{lbl:'Chuva',un:'mm',c:'chuva_24h',ch:'chuva_mm',dec:1,acum:true,
+         escPer:{agora:30,'24h':30,'7d':80,'30d':200},
          grad:[[148,163,184],[125,211,252],[56,189,248],[59,130,246],[37,99,235]]},
-  pres: {lbl:'Pressão',un:'hPa',c:'pressao',ch:'pressao',dec:1,conv:v=>v/100,
+  pres: {lbl:'Pressão',un:'hPa',c:'pressao',ch:'pressao',dec:1,conv:v=>v/100,esc:[905,955],
          grad:[[124,58,237],[59,130,246],[34,197,94],[250,204,21],[249,115,22]]}
 };
+function escalaDe(k){
+  const c=VARS[k];
+  if(c.escPer) return [0, c.escPer[PERIODO]||30];
+  return c.esc;
+}
 function est(id){ return ESTACOES.find(x=>x.id===id)||{}; }
 
 /* direção que ventou por MAIS TEMPO — média de ângulo devolveria direção que
@@ -324,7 +347,10 @@ async function carregar(){
 
 /* ---------- mapa (mínimo, de toque) ---------- */
 let _lf=false;
-function leaflet(cb){
+/* NAO chamar de `leaflet`: o bundle UMD do Leaflet 1.9 faz factory(global.leaflet = {})
+   e SOBRESCREVE uma funcao global com esse nome assim que carrega. O sintoma era
+   "leaflet is not a function" na segunda vez que se abria o mapa, com tela preta. */
+function garantirLeaflet(cb){
   if(window.L) return cb();
   if(_lf){ const t=setInterval(()=>{ if(window.L){ clearInterval(t); cb(); } },120); return; }
   _lf=true;
@@ -356,15 +382,27 @@ function mascara(bb,W,H){
       i?x.lineTo(px,py):x.moveTo(px,py); }); x.closePath(); x.fill(); });
   return cv;
 }
+/* Destrói o mapa de verdade ao trocar de tela. Antes bastava _map=null, mas a
+   instância antiga ficava viva presa a um DOM já substituído — daí o erro de
+   inicialização e a tela preta ao voltar para o Clima. */
+function destruirMapa(){
+  if(_map){ try{ _map.remove(); }catch(e){} }
+  _map=null; _heat=null; _lotesL=null; _estL=null;
+}
 function desenhaMapa(){
   const m=el('mapa'); if(!m||!window.L) return;
   if(!_map){
+    // o container acabou de entrar no DOM e pode estar com altura 0; criar o
+    // mapa aqui deixava os tiles sem desenhar (tela preta) até algum clique
+    // disparar um invalidateSize. Espera o layout antes de montar.
+    if(!m.clientHeight){ requestAnimationFrame(()=>desenhaMapa()); return; }
     _map=L.map(m,{zoomControl:false,attributionControl:false});
     L.tileLayer('https://{s}.google.com/vt/lyrs=s&x={x}&y={y}&z={z}',
       {subdomains:['mt0','mt1','mt2','mt3'],maxZoom:20}).addTo(_map);
     const bb=bbox();
     if(bb) _map.fitBounds([[bb.minLat,bb.minLon],[bb.maxLat,bb.maxLon]],{padding:[16,16]});
     else _map.setView([-12.62,-44.72],11);
+    _map.whenReady(()=>{ try{ _map.invalidateSize(); }catch(e){} });
   }
   if(_lotesL) _map.removeLayer(_lotesL);
   _lotesL=L.layerGroup(LOTES.map(l=>L.polygon(l.ring,
@@ -373,9 +411,7 @@ function desenhaMapa(){
   const cfg=VARS[VARMAPA], pts=valores(VARMAPA), bb=bbox();
   const lg=el('legenda');
   if(pts.length&&bb){
-    let mn=Math.min(...pts.map(p=>p.v)),mx=Math.max(...pts.map(p=>p.v));
-    if(mn===mx){ mn-=1; mx+=1; }
-    if(cfg.piso!==undefined&&mn<cfg.piso) mn=cfg.piso;
+    const [mn,mx]=escalaDe(VARMAPA);   // escala ABSOLUTA — ver comentário em VARS
     const CW=180,CH=180,cv=document.createElement('canvas'); cv.width=CW; cv.height=CH;
     const cx=cv.getContext('2d'),img=cx.createImageData(CW,CH);
     for(let i=0;i<CH;i++){ const lat=bb.maxLat-(i/(CH-1))*(bb.maxLat-bb.minLat);
@@ -393,10 +429,13 @@ function desenhaMapa(){
     if(lg){
       const md=media(VARMAPA);
       const g=cfg.grad.map((c,i)=>`rgb(${c[0]},${c[1]},${c[2]}) ${(i/(cfg.grad.length-1))*100}%`).join(',');
-      lg.innerHTML=`<div class="cab"><span class="nm">${cfg.lbl}${PERIODO!=='agora'?' · '+PERIODOS[PERIODO].lbl:''}</span>
-          <span class="vl">${f(md&&md.v,cfg.dec)}<span class="u">${cfg.un}</span></span></div>
-        <div class="barra" style="background:linear-gradient(90deg,${g})"></div>
-        <div class="mm"><span>${f(mn,cfg.dec)}</span><span>${f(mx,cfg.dec)}</span></div>`;
+      const pos = md&&md.v!==null ? Math.max(0,Math.min(100,((md.v-mn)/(mx-mn))*100)) : null;
+      lg.innerHTML=`<span class="vl">${f(md&&md.v,cfg.dec)}<span class="u">${cfg.un}</span></span>
+        <span class="esc">
+          <span class="barra" style="display:block;background:linear-gradient(90deg,${g})"></span>
+          ${pos!==null?`<span class="mk" style="left:calc(${pos}% - 1.5px)"></span>`:''}
+          <span class="mm"><span>${f(mn,0)}</span><span>${f(mx,0)}</span></span>
+        </span>`;
       lg.style.display='';
     }
   } else if(lg) lg.style.display='none';
@@ -476,29 +515,61 @@ const emObra=(n)=>`<div class="vazio">${IC.obra}<b style="color:var(--text);font
   <span style="font-size:13px">Em construção.</span></div>`;
 
 /* ---------- render ---------- */
-function statusTag(){
+/* No topo à direita vai a DATA E HORA da última leitura — não o período.
+   Repetir "Agora" ali não dizia nada (e continuava "Agora" mesmo com 7 dias
+   selecionado). O que interessa saber de relance é quão fresco é o dado. */
+function selo(){
   const v=ATUAL.filter(x=>x.temp!==null);
-  if(!v.length) return '<span class="tag wait">aguardando</span>';
+  if(!v.length) return '<span class="tag wait">sem leitura</span>';
   const n=Math.min(...v.map(x=>x.idade_s===null?9e9:x.idade_s));
-  return n<600?`<span class="tag ok">● ${idade(n)}</span>`:`<span class="tag old">⚠ ${idade(n)}</span>`;
+  let ms=null; v.forEach(x=>{ const t=new Date(x.medido_em).getTime();
+    if(!isNaN(t)&&(ms===null||t>ms)) ms=t; });
+  const d=ms?new Date(ms):null;
+  const hoje=d&&d.toDateString()===new Date().toDateString();
+  const txt=d?(hoje?d.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'})
+                   :d.toLocaleString('pt-BR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}))
+            :'—';
+  return `<span class="tag ${n<600?'ok':'old'}">${n<600?'●':'⚠'} ${txt}</span>`;
 }
+let _modo=null;   // 'mapa' | 'folha' — só remonta a estrutura quando o modo muda
+
 function pinta(){
   const noMapa = SECAO==='clima' && SUB==='mapa';
-  let corpo;
+  const modo = noMapa?'mapa':'folha';
+  let corpo='';
   if(SECAO!=='clima') corpo=emObra(SECOES.find(s=>s[0]===SECAO)[1]);
   else if(SUB==='agora') corpo=folhaAgora();
   else if(SUB==='hist') corpo=folhaHist();
 
-  el('app').innerHTML=`
-    <div id="palco">
-      ${noMapa?'<div id="mapa"></div><div class="legenda" id="legenda"></div>':`<div id="folha">${corpo}</div>`}
-      <div class="topo"><div class="marca"><span class="l">🌿</span> Alabama</div>${statusTag()}</div>
-      ${noMapa?`
-        <div class="faixa p1">${Object.keys(PERIODOS).map(k=>
-          `<button class="chip ${PERIODO===k?'on':''}" data-per="${k}">${PERIODOS[k].lbl}</button>`).join('')}</div>
-        <div class="faixa p2">${Object.keys(VARS).map(k=>
-          `<button class="chip ${VARMAPA===k?'on':''}" data-vm="${k}">${VARS[k].lbl}</button>`).join('')}</div>`:''}
-    </div>
+  /* O #mapa é criado UMA vez e sobrevive às repinturas. Trocar variável ou
+     período refaz só a moldura (#chrome) — se o innerHTML inteiro fosse
+     reescrito, o Leaflet seria destruído e remontado a cada toque, perdendo
+     posição e zoom. */
+  if(_modo!==modo || !el('palco')){
+    _modo=modo;
+    el('app').innerHTML=`<div id="palco">
+        ${noMapa?'<div id="mapa"></div>':'<div id="folha"></div>'}
+        <div id="chrome"></div></div>
+      <div id="flutua"></div>`;
+  }
+  if(!noMapa) el('folha').innerHTML=corpo;
+
+  el('chrome').innerHTML=`
+    <div class="topo"><div class="marca"><span class="l">🌿</span> Alabama</div>${selo()}</div>
+    ${noMapa?`
+      <div class="faixa p1">
+        <button class="chip sel ${SELETOR==='var'?'on':''}" data-abrir="var">${VARS[VARMAPA].lbl} ▾</button>
+        <button class="chip sel ${SELETOR==='per'?'on':''}" data-abrir="per">${PERIODOS[PERIODO].lbl} ▾</button>
+      </div>
+      ${SELETOR?`<div class="gaveta">${
+        (SELETOR==='var'
+          ? Object.keys(VARS).map(k=>[k,VARS[k].lbl,VARMAPA===k,'vm'])
+          : Object.keys(PERIODOS).map(k=>[k,PERIODOS[k].lbl,PERIODO===k,'per'])
+        ).map(([k,n,on,tipo])=>`<button data-${tipo}="${k}" class="${on?'on':''}">${n}</button>`).join('')
+      }</div>`:''}
+      <div class="legenda" id="legenda"></div>`:''}`;
+
+  el('flutua').innerHTML=`
     ${MENU?'<div class="veu" id="veu"></div>':''}
     ${MENU==='esq'?`<div class="menu esq">${SECOES.map(([k,n,i])=>
       `<button data-sec="${k}" class="${SECAO===k?'on':''}">${i}<span>${n}</span></button>`).join('')}</div>`:''}
@@ -512,17 +583,20 @@ function pinta(){
   el('fdir').onclick=()=>{ MENU=MENU==='dir'?null:'dir'; pinta(); };
   if(el('veu')) el('veu').onclick=()=>{ MENU=null; pinta(); };
   document.querySelectorAll('[data-sec]').forEach(b=>b.onclick=()=>{
-    SECAO=b.dataset.sec; SUB=(SUBS[SECAO]||[['mapa']])[0][0]; MENU=null; _map=null; pinta(); });
+    SECAO=b.dataset.sec; SUB=(SUBS[SECAO]||[['mapa']])[0][0]; MENU=null; SELETOR=null; trocarTela(pinta); });
   document.querySelectorAll('[data-sub]').forEach(b=>b.onclick=()=>{
-    SUB=b.dataset.sub; MENU=null; _map=null; pinta(); });
-  document.querySelectorAll('[data-per]').forEach(b=>b.onclick=()=>{ PERIODO=b.dataset.per;
-    if(noMapa){ desenhaMapa(); document.querySelectorAll('[data-per]').forEach(x=>
-      x.classList.toggle('on',x===b)); } else pinta(); });
-  document.querySelectorAll('[data-vm]').forEach(b=>b.onclick=()=>{ VARMAPA=b.dataset.vm;
-    document.querySelectorAll('[data-vm]').forEach(x=>x.classList.toggle('on',x===b)); desenhaMapa(); });
+    SUB=b.dataset.sub; MENU=null; SELETOR=null; trocarTela(pinta); });
+  document.querySelectorAll('[data-abrir]').forEach(b=>b.onclick=()=>{
+    SELETOR = SELETOR===b.dataset.abrir ? null : b.dataset.abrir; pinta(); });
+  document.querySelectorAll('[data-per]').forEach(b=>b.onclick=()=>{
+    PERIODO=b.dataset.per; SELETOR=null; pinta(); });
+  document.querySelectorAll('[data-vm]').forEach(b=>b.onclick=()=>{
+    VARMAPA=b.dataset.vm; SELETOR=null; pinta(); });
 
-  if(noMapa && ATUAL.some(x=>x.temp!==null)) leaflet(desenhaMapa);
+  if(noMapa && ATUAL.some(x=>x.temp!==null)) garantirLeaflet(desenhaMapa);
 }
+/* trocar de seção/submenu muda o modo -> aí sim o mapa é destruído de verdade */
+function trocarTela(fn){ destruirMapa(); _modo=null; fn(); }
 
 /* ---------- login ---------- */
 function telaLogin(msg){
