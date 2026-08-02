@@ -104,6 +104,21 @@ svg{display:block}
   background:#fff;box-shadow:0 0 0 1px rgba(0,0,0,.55)}
 .legenda .mm{display:flex;justify-content:space-between;font-size:9px;color:var(--muted);margin-top:2px}
 
+/* card da estação — sobe acima da legenda ao tocar o marcador */
+.cartao{position:absolute;left:12px;right:12px;bottom:calc(env(safe-area-inset-bottom) + 148px);
+  z-index:26;background:var(--vidro);backdrop-filter:blur(14px);border:1px solid var(--border2);
+  border-radius:14px;padding:12px 14px;box-shadow:0 10px 30px rgba(0,0,0,.5);
+  animation:sobe .16s ease both}
+.cartao .ch{display:flex;align-items:center;gap:8px;padding-bottom:8px;margin-bottom:4px;
+  border-bottom:1px solid var(--border)}
+.cartao .ch b{font-size:15px}
+.cartao .ch button{margin-left:auto;background:none;border:0;color:var(--muted);
+  width:30px;height:30px;display:flex;align-items:center;justify-content:center;cursor:pointer}
+.cartao .ch button svg{width:16px;height:16px}
+.cartao .cl{display:flex;justify-content:space-between;align-items:baseline;gap:12px;padding:5px 0}
+.cartao .cl span{font-size:12px;color:var(--muted)}
+.cartao .cl b{font-size:15px;font-variant-numeric:tabular-nums;white-space:nowrap}
+
 /* ---------- botões flutuantes ---------- */
 .fab{position:fixed;bottom:calc(env(safe-area-inset-bottom) + 18px);z-index:60;
   width:56px;height:56px;border-radius:50%;border:1px solid var(--border2);
@@ -235,8 +250,9 @@ const SECOES=[['clima','Clima',IC.clima],['rel','Relatórios',IC.rel],
 const SUBS={ clima:[['mapa','Mapa',IC.mapa],['agora','Agora',IC.agora],['hist','Histórico',IC.hist]] };
 
 let SB=null, SECAO='clima', SUB='mapa', MENU=null;   // MENU: null | 'esq' | 'dir'
-let SELETOR=null;                                    // gaveta aberta: null | 'var' | 'per'
-let PERIODO='agora', VARMAPA='temp';
+let SELETOR=null;
+let ESTSEL=null;                                     // estacao com card aberto                                    // gaveta aberta: null | 'var' | 'per'
+let PERIODO='agora', VARMAPA='chuva';   // abre na chuva (o que mais se consulta)
 let ESTACOES=[], ATUAL=[], HORAS=[], LOTES=[];
 let _map=null,_heat=null,_lotesL=null,_estL=null;
 let _cv=null,_anim=null,_part=[];   // partículas de vento
@@ -524,11 +540,41 @@ function desenhaMapa(){
   _estL=marcadores(); _estL.addTo(_map);
   setTimeout(()=>{ try{ _map.invalidateSize(); }catch(e){} },100);
 }
+/* Os botões flutuantes mostram o ÍCONE DO QUE ESTÁ SELECIONADO — assim dá para
+   saber onde se está sem abrir o menu. Abertos, viram "X". */
+function iconeSecao(){ const s=SECOES.find(x=>x[0]===SECAO); return s?s[2]:IC.camadas; }
+function iconeSub(){ const l=(SUBS[SECAO]||[]).find(x=>x[0]===SUB); return l?l[2]:IC.lista; }
+
+/* Card da estação: abre ao tocar o marcador. Mostra o que aquela estação
+   específica está medindo — o resto da tela mostra a fazenda inteira. */
+function cartaoEstacao(){
+  const c=el('cartao'); if(!c) return;
+  if(ESTSEL===null){ c.style.display='none'; c.innerHTML=''; return; }
+  const s=est(ESTSEL), d=ATUAL.find(x=>x.estacao_id===ESTSEL), viva=d&&d.temp!==null;
+  const lin=(r,v)=>`<div class="cl"><span>${r}</span><b>${v}</b></div>`;
+  c.style.display='';
+  c.innerHTML=`<div class="ch">
+      <span class="dot" style="background:${viva?(d.online?'var(--ok)':'var(--warn)'):'var(--muted2)'}"></span>
+      <b>${s.nome||('Estação '+ESTSEL)}</b>
+      <button id="cfecha" aria-label="fechar">${IC.fechar}</button></div>
+    ${viva?`
+      ${lin('Temperatura', f(d.temp,1)+' °C')}
+      ${lin('Umidade', f(d.umidade,0)+' %')}
+      ${lin('Vento', f(d.vento_kmh,1)+' km/h '+dirNome(num(d.vento_dir))+' '+dirSeta(num(d.vento_dir)))}
+      ${lin('Chuva 24 h', f(d.chuva_24h,1)+' mm')}
+      ${lin('Pressão', f(num(d.pressao)/100,1)+' hPa')}
+      ${lin('Bateria', f(d.bateria_pct,0)+' %')}
+      ${lin('Leitura', hhmm(d.medido_em)+' · '+idade(d.idade_s))}`
+     :`<div class="muted" style="padding:10px 0;font-size:13px">Posição planejada — ainda não instalada.</div>`}`;
+  const b=el('cfecha'); if(b) b.onclick=()=>{ ESTSEL=null; cartaoEstacao(); };
+}
 function marcadores(){
   return L.layerGroup(ESTACOES.filter(s=>num(s.lat)!==null).map(s=>{
     const d=ATUAL.find(x=>x.estacao_id===s.id),viva=d&&d.temp!==null;
-    return L.circleMarker([+s.lat,+s.lon],{radius:9,color:'#fff',weight:2,
+    const m=L.circleMarker([+s.lat,+s.lon],{radius:4.5,color:'#fff',weight:1.4,
       fillColor:viva?(d.online?'#00c896':'#ffb300'):'#3d5a80',fillOpacity:.95});
+    m.on('click',()=>{ ESTSEL=s.id; cartaoEstacao(); });
+    return m;
   }));
 }
 /* legenda do vento: as partículas mudam de cor em FAIXAS, não em gradiente
@@ -667,7 +713,8 @@ function pinta(){
           : Object.keys(PERIODOS).map(k=>[k,PERIODOS[k].lbl,PERIODO===k,'per'])
         ).map(([k,n,on,tipo])=>`<button data-${tipo}="${k}" class="${on?'on':''}">${n}</button>`).join('')
       }</div>`:''}
-      <div class="legenda" id="legenda"></div>`:''}`;
+      <div class="legenda" id="legenda"></div>
+      <div class="cartao" id="cartao" style="display:none"></div>`:''}`;
 
   el('flutua').innerHTML=`
     ${MENU?'<div class="veu" id="veu"></div>':''}
@@ -676,16 +723,16 @@ function pinta(){
     ${MENU==='dir'?`<div class="menu dir">${(SUBS[SECAO]||[]).length
       ?SUBS[SECAO].map(([k,n,i])=>`<button data-sub="${k}" class="${SUB===k?'on':''}">${i}<span>${n}</span></button>`).join('')
       :`<button disabled style="opacity:.6">${IC.obra}<span>sem submenu</span></button>`}</div>`:''}
-    <button class="fab esq ${MENU==='esq'?'aberto':''}" id="fesq">${MENU==='esq'?IC.fechar:IC.camadas}</button>
-    <button class="fab dir ${MENU==='dir'?'aberto':''}" id="fdir">${MENU==='dir'?IC.fechar:IC.lista}</button>`;
+    <button class="fab esq ${MENU==='esq'?'aberto':''}" id="fesq">${MENU==='esq'?IC.fechar:iconeSecao()}</button>
+    <button class="fab dir ${MENU==='dir'?'aberto':''}" id="fdir">${MENU==='dir'?IC.fechar:iconeSub()}</button>`;
 
   el('fesq').onclick=()=>{ MENU=MENU==='esq'?null:'esq'; pinta(); };
   el('fdir').onclick=()=>{ MENU=MENU==='dir'?null:'dir'; pinta(); };
   if(el('veu')) el('veu').onclick=()=>{ MENU=null; pinta(); };
   document.querySelectorAll('[data-sec]').forEach(b=>b.onclick=()=>{
-    SECAO=b.dataset.sec; SUB=(SUBS[SECAO]||[['mapa']])[0][0]; MENU=null; SELETOR=null; trocarTela(pinta); });
+    SECAO=b.dataset.sec; SUB=(SUBS[SECAO]||[['mapa']])[0][0]; MENU=null; SELETOR=null; ESTSEL=null; trocarTela(pinta); });
   document.querySelectorAll('[data-sub]').forEach(b=>b.onclick=()=>{
-    SUB=b.dataset.sub; MENU=null; SELETOR=null; trocarTela(pinta); });
+    SUB=b.dataset.sub; MENU=null; SELETOR=null; ESTSEL=null; trocarTela(pinta); });
   document.querySelectorAll('[data-abrir]').forEach(b=>b.onclick=()=>{
     SELETOR = SELETOR===b.dataset.abrir ? null : b.dataset.abrir; pinta(); });
   document.querySelectorAll('[data-per]').forEach(b=>b.onclick=()=>{
