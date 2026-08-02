@@ -367,7 +367,7 @@ const VARS={
   // a camada de vento traz as partículas junto — é uma camada só, não duas
   vento: {lbl:'Velocidade do vento', un:'km/h', campo:'vento_kmh', campoH:'vento_kmh',
           dec:1, sopro:true, piso:0,
-          grad:[[148,163,184],[52,211,153],[250,204,21],[249,115,22],[239,68,68]]},
+          grad:[[56,189,248],[52,211,153],[250,204,21],[249,115,22],[239,68,68]]},
   chuva: {lbl:'Chuva',       un:'mm',   campo:'chuva_24h', campoH:'chuva_mm',  dec:1, piso:0, acum:true,
           grad:[[148,163,184],[125,211,252],[56,189,248],[59,130,246],[37,99,235]]},
   // o sensor entrega Pascal; a tela trabalha em hPa
@@ -570,7 +570,7 @@ function desenharHeat(){
    não por gradiente contínuo — então a legenda é discreta, igual ao desenho */
 function legendaVento(){
   const el=$('#legenda'); if(!el) return;
-  const faixas=[['#94a3b8','&lt; 5'],['#34d399','5–10'],['#facc15','10–15'],['#f97316','&gt; 15']];
+  const faixas=[['#38bdf8','&lt; 5'],['#34d399','5–10'],['#facc15','10–15'],['#f97316','&gt; 15']];
   // no período, diz QUAL é a predominante e quanto do tempo ela representa —
   // fatia baixa significa vento girando, e aí "predominante" quer dizer pouco
   let pred='';
@@ -665,7 +665,7 @@ function iniciarParticulas(){
       const a=_mapObj.latLngToContainerPoint([p.lat,p.lon]),
             b=_mapObj.latLngToContainerPoint([la,lo]);
       const vel=Math.hypot(w.u,w.v);
-      ctx.strokeStyle = vel<5?'rgba(148,163,184,.75)' : vel<10?'rgba(52,211,153,.85)'
+      ctx.strokeStyle = vel<5?'rgba(56,189,248,.85)' : vel<10?'rgba(52,211,153,.85)'
                       : vel<15?'rgba(250,204,21,.9)'  : 'rgba(249,115,22,.95)';
       ctx.beginPath(); ctx.moveTo(a.x,a.y); ctx.lineTo(b.x,b.y); ctx.stroke();
       p.lat=la; p.lon=lo; p.idade++;

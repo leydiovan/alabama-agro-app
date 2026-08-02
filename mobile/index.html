@@ -269,7 +269,7 @@ const VARS={
   // vento é mostrado por PARTÍCULAS, não por mancha: a mesma informação em
   // duas camadas atrapalhava a leitura (mesma decisão do módulo do desktop)
   vento:{lbl:'Vento',un:'km/h',c:'vento_kmh',ch:'vento_kmh',dec:1,esc:[0,30],sopro:true,
-         grad:[[148,163,184],[52,211,153],[250,204,21],[249,115,22],[239,68,68]]},
+         grad:[[56,189,248],[52,211,153],[250,204,21],[249,115,22],[239,68,68]]},
   // chuva depende da janela: 30 mm em 24 h é muito, em 30 dias é pouco
   chuva:{lbl:'Chuva',un:'mm',c:'chuva_24h',ch:'chuva_mm',dec:1,acum:true,
          escPer:{agora:30,'24h':30,'7d':80,'30d':200},
@@ -434,7 +434,7 @@ function iniciarVento(){
       if(!dentroDaFazenda(la,lo)){ _part[i]=nova(); continue; }
       const a=_map.latLngToContainerPoint([p.lat,p.lon]), b=_map.latLngToContainerPoint([la,lo]);
       const vel=Math.hypot(w.u,w.v);
-      cx.strokeStyle = vel<5?'rgba(148,163,184,.8)' : vel<10?'rgba(52,211,153,.9)'
+      cx.strokeStyle = vel<5?'rgba(56,189,248,.85)' : vel<10?'rgba(52,211,153,.9)'
                      : vel<15?'rgba(250,204,21,.92)' : 'rgba(249,115,22,.95)';
       cx.beginPath(); cx.moveTo(a.x,a.y); cx.lineTo(b.x,b.y); cx.stroke();
       p.lat=la; p.lon=lo; p.i++;
@@ -536,7 +536,7 @@ function marcadores(){
 function legendaVento(){
   const lg=el('legenda'); if(!lg) return;
   const m=media('vento');
-  const faixas=[['#94a3b8','&lt;5'],['#34d399','5–10'],['#facc15','10–15'],['#f97316','&gt;15']];
+  const faixas=[['#38bdf8','&lt;5'],['#34d399','5–10'],['#facc15','10–15'],['#f97316','&gt;15']];
   lg.style.display='';
   lg.innerHTML=`<span class="vl">${f(m&&m.v,1)}<span class="u">km/h</span></span>
     <span class="esc" style="display:flex;align-items:center;gap:9px;flex-wrap:wrap">
