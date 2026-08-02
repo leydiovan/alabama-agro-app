@@ -239,6 +239,7 @@ let SELETOR=null;                                    // gaveta aberta: null | 'v
 let PERIODO='agora', VARMAPA='temp';
 let ESTACOES=[], ATUAL=[], HORAS=[], LOTES=[];
 let _map=null,_heat=null,_lotesL=null,_estL=null;
+let _cv=null,_anim=null,_part=[];   // partículas de vento
 const el=id=>document.getElementById(id);
 
 /* ---------- utilidades ---------- */
@@ -265,7 +266,9 @@ const VARS={
          grad:[[59,130,246],[56,189,248],[34,197,94],[250,204,21],[249,115,22],[239,68,68]]},
   umid: {lbl:'Umidade',un:'%',c:'umidade',ch:'umidade',dec:0,esc:[0,100],
          grad:[[249,115,22],[250,204,21],[34,197,94],[56,189,248],[59,130,246]]},
-  vento:{lbl:'Vento',un:'km/h',c:'vento_kmh',ch:'vento_kmh',dec:1,esc:[0,30],
+  // vento é mostrado por PARTÍCULAS, não por mancha: a mesma informação em
+  // duas camadas atrapalhava a leitura (mesma decisão do módulo do desktop)
+  vento:{lbl:'Vento',un:'km/h',c:'vento_kmh',ch:'vento_kmh',dec:1,esc:[0,30],sopro:true,
          grad:[[148,163,184],[52,211,153],[250,204,21],[249,115,22],[239,68,68]]},
   // chuva depende da janela: 30 mm em 24 h é muito, em 30 dias é pouco
   chuva:{lbl:'Chuva',un:'mm',c:'chuva_24h',ch:'chuva_mm',dec:1,acum:true,
@@ -371,6 +374,75 @@ function corDe(v,mn,mx,g){ if(v===null||mx===mn) return [120,130,150];
 function idw(lat,lon,pts){ let n=0,d=0;
   for(const p of pts){ const q=(lat-+p.e.lat)**2+(lon-+p.e.lon)**2;
     if(q<1e-10) return p.v; const w=1/q; n+=w*p.v; d+=w; } return d?n/d:null; }
+/* ---- vento: partículas em vez de mancha ----
+   A direção medida é de ONDE o vento vem, então o deslocamento vai para o lado
+   OPOSTO: u = -sin(dir) na longitude, v = -cos(dir) na latitude. */
+function dentroDaFazenda(lat,lon){
+  if(!LOTES.length) return true;
+  for(const l of LOTES){ const r=l.ring; let d=false;
+    for(let i=0,j=r.length-1;i<r.length;j=i++){
+      if(((r[i][0]>lat)!==(r[j][0]>lat)) &&
+         (lon<(r[j][1]-r[i][1])*(lat-r[i][0])/(r[j][0]-r[i][0])+r[i][1])) d=!d; }
+    if(d) return true; }
+  return false;
+}
+function ventoEm(lat,lon,pts){
+  let u=0,v=0,w=0;
+  for(const p of pts){
+    if(p.dir===null||p.v===null) continue;
+    const d2=(lat-+p.e.lat)**2+(lon-+p.e.lon)**2; if(d2<1e-10) continue;
+    const q=1/d2, r=p.dir*Math.PI/180;
+    u+=q*(-Math.sin(r))*p.v; v+=q*(-Math.cos(r))*p.v; w+=q;
+  }
+  return w?{u:u/w,v:v/w}:null;
+}
+function pararVento(){
+  if(_anim){ cancelAnimationFrame(_anim); _anim=null; }
+  if(_cv&&_cv.parentNode) _cv.parentNode.removeChild(_cv);
+  _cv=null; _part=[];
+}
+function iniciarVento(){
+  pararVento();
+  if(!_map) return;
+  const pts=valores('vento').filter(p=>p.dir!==null), bb=bbox();
+  if(!pts.length||!bb) return;
+  _cv=document.createElement('canvas');
+  _cv.style.cssText='position:absolute;left:0;top:0;pointer-events:none;z-index:400';
+  _map.getPanes().overlayPane.appendChild(_cv);
+  // nasce SÓ dentro dos lotes: nascendo na caixa inteira sobravam traços soltos
+  // fora da fazenda (a partícula desenhava 1 segmento antes de ser descartada)
+  const nova=()=>{ for(let t=0;t<60;t++){
+      const lat=bb.minLat+Math.random()*(bb.maxLat-bb.minLat);
+      const lon=bb.minLon+Math.random()*(bb.maxLon-bb.minLon);
+      if(dentroDaFazenda(lat,lon)) return {lat,lon,i:Math.floor(Math.random()*70),vida:70+Math.floor(Math.random()*70)};
+    } return null; };
+  _part=Array.from({length:160},nova).filter(Boolean);
+  if(!_part.length){ pararVento(); return; }
+  const cx=_cv.getContext('2d');
+  (function passo(){
+    if(!_cv||!_map) return;
+    const sz=_map.getSize();
+    if(_cv.width!==sz.x||_cv.height!==sz.y){ _cv.width=sz.x; _cv.height=sz.y; }
+    L.DomUtil.setPosition(_cv,_map.containerPointToLayerPoint([0,0]));
+    cx.globalCompositeOperation='destination-out'; cx.fillStyle='rgba(0,0,0,.11)';
+    cx.fillRect(0,0,_cv.width,_cv.height);
+    cx.globalCompositeOperation='source-over'; cx.lineWidth=1.7; cx.lineCap='round';
+    for(let i=0;i<_part.length;i++){
+      const p=_part[i]; if(!p) continue;
+      const w=ventoEm(p.lat,p.lon,pts); if(!w){ _part[i]=nova(); continue; }
+      const la=p.lat+w.v*0.00016, lo=p.lon+w.u*0.00016;
+      if(!dentroDaFazenda(la,lo)){ _part[i]=nova(); continue; }
+      const a=_map.latLngToContainerPoint([p.lat,p.lon]), b=_map.latLngToContainerPoint([la,lo]);
+      const vel=Math.hypot(w.u,w.v);
+      cx.strokeStyle = vel<5?'rgba(148,163,184,.8)' : vel<10?'rgba(52,211,153,.9)'
+                     : vel<15?'rgba(250,204,21,.92)' : 'rgba(249,115,22,.95)';
+      cx.beginPath(); cx.moveTo(a.x,a.y); cx.lineTo(b.x,b.y); cx.stroke();
+      p.lat=la; p.lon=lo; p.i++;
+      if(p.i>p.vida) _part[i]=nova();
+    }
+    _anim=requestAnimationFrame(passo);
+  })();
+}
 function mascara(bb,W,H){
   const cv=document.createElement('canvas'); cv.width=W; cv.height=H;
   const x=cv.getContext('2d');
@@ -386,6 +458,7 @@ function mascara(bb,W,H){
    instância antiga ficava viva presa a um DOM já substituído — daí o erro de
    inicialização e a tela preta ao voltar para o Clima. */
 function destruirMapa(){
+  pararVento();
   if(_map){ try{ _map.remove(); }catch(e){} }
   _map=null; _heat=null; _lotesL=null; _estL=null;
 }
@@ -410,6 +483,14 @@ function desenhaMapa(){
   if(_heat){ _map.removeLayer(_heat); _heat=null; }
   const cfg=VARS[VARMAPA], pts=valores(VARMAPA), bb=bbox();
   const lg=el('legenda');
+  if(cfg.sopro){                    // VENTO: só partículas, sem mancha por baixo
+    pararVento(); iniciarVento(); legendaVento();
+    if(_estL) _map.removeLayer(_estL);
+    _estL=marcadores(); _estL.addTo(_map);
+    setTimeout(()=>{ try{ _map.invalidateSize(); }catch(e){} },100);
+    return;
+  }
+  pararVento();
   if(pts.length&&bb){
     const [mn,mx]=escalaDe(VARMAPA);   // escala ABSOLUTA — ver comentário em VARS
     const CW=180,CH=180,cv=document.createElement('canvas'); cv.width=CW; cv.height=CH;
@@ -440,12 +521,31 @@ function desenhaMapa(){
     }
   } else if(lg) lg.style.display='none';
   if(_estL) _map.removeLayer(_estL);
-  _estL=L.layerGroup(ESTACOES.filter(s=>num(s.lat)!==null).map(s=>{
+  _estL=marcadores(); _estL.addTo(_map);
+  setTimeout(()=>{ try{ _map.invalidateSize(); }catch(e){} },100);
+}
+function marcadores(){
+  return L.layerGroup(ESTACOES.filter(s=>num(s.lat)!==null).map(s=>{
     const d=ATUAL.find(x=>x.estacao_id===s.id),viva=d&&d.temp!==null;
     return L.circleMarker([+s.lat,+s.lon],{radius:9,color:'#fff',weight:2,
       fillColor:viva?(d.online?'#00c896':'#ffb300'):'#3d5a80',fillOpacity:.95});
-  })).addTo(_map);
-  setTimeout(()=>{ try{ _map.invalidateSize(); }catch(e){} },100);
+  }));
+}
+/* legenda do vento: as partículas mudam de cor em FAIXAS, não em gradiente
+   contínuo — a legenda mostra as faixas e a direção predominante */
+function legendaVento(){
+  const lg=el('legenda'); if(!lg) return;
+  const m=media('vento');
+  const faixas=[['#94a3b8','&lt;5'],['#34d399','5–10'],['#facc15','10–15'],['#f97316','&gt;15']];
+  lg.style.display='';
+  lg.innerHTML=`<span class="vl">${f(m&&m.v,1)}<span class="u">km/h</span></span>
+    <span class="esc" style="display:flex;align-items:center;gap:9px;flex-wrap:wrap">
+      ${m&&m.dir!==null?`<b style="font-size:15px;white-space:nowrap">${dirNome(m.dir)}
+        <span style="font-size:19px;vertical-align:-2px">${dirSeta(m.dir)}</span></b>`:''}
+      <span style="display:flex;gap:8px;font-size:10px;color:var(--muted)">
+        ${faixas.map(([c,t])=>`<span><i style="display:inline-block;width:11px;height:3px;
+          border-radius:2px;background:${c};margin-right:3px;vertical-align:middle"></i>${t}</span>`).join('')}
+      </span></span>`;
 }
 
 /* ---------- folhas (Agora / Histórico) ---------- */
