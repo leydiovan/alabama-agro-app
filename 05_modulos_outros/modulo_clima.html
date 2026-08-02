@@ -590,15 +590,44 @@ function legendaVazia(cfg){
   const el=$('#legenda'); if(el) el.innerHTML=`<div class="lbl">${rotuloVar(VAR)}</div>
     <div class="muted" style="font-size:12px">sem estação com leitura</div>`;
 }
+/* MÁXIMA e MÍNIMA — só onde a faixa faz sentido.
+   Fora: CHUVA (é acumulado; "mínima de chuva" não significa nada) e VENTO (lá o
+   que importa é a direção predominante e a rajada).
+   A temperatura usa temp_min/temp_max, que são os extremos REAIS dentro de cada
+   hora — a média horária esconde o pico. */
+function extremos(k){
+  const cfg=VARS[k];
+  if(cfg.acum||cfg.sopro) return null;
+  let vals=[];
+  if(PERIODO==='agora'){
+    vals=estComLeitura(cfg.campo,cfg.conv).map(p=>p._v);
+    if(vals.length<2) return null;          // uma estação só: não há faixa a mostrar
+  }else{
+    const por=horasDoPeriodo(); if(!por) return null;
+    Object.values(por).forEach(rows=>rows.forEach(r=>{
+      if(k==='temp'){ const a=num(r.temp_min), b=num(r.temp_max);
+        if(a!==null) vals.push(a); if(b!==null) vals.push(b);
+        if(a===null&&b===null){ const m=num(r.temp); if(m!==null) vals.push(m); } }
+      else { let v=num(r[cfg.campoH]); if(v!==null){ if(cfg.conv) v=cfg.conv(v); vals.push(v); } }
+    }));
+    if(vals.length<2) return null;
+  }
+  return {min:Math.min(...vals), max:Math.max(...vals)};
+}
 function legenda(mn,mx,cfg){
   const el=$('#legenda'); if(!el) return;
   const g=cfg.grad.map((c,i)=>`rgb(${c[0]},${c[1]},${c[2]}) ${(i/(cfg.grad.length-1))*100}%`).join(',');
+  const ex=extremos(VAR);
   el.innerHTML=`<div class="lbl" style="margin-bottom:4px">${rotuloVar(VAR)} (${cfg.un})</div>
     <div style="display:flex;align-items:center;gap:8px">
       <span style="font-size:11px">${f(mn,cfg.dec)}</span>
       <div style="flex:1;height:9px;border-radius:5px;background:linear-gradient(90deg,${g})"></div>
       <span style="font-size:11px">${f(mx,cfg.dec)}</span>
-    </div>`;
+    </div>
+    ${ex?`<div style="display:flex;justify-content:space-between;margin-top:5px;font-size:11px;color:var(--muted)">
+        <span>mín <b style="color:var(--text)">${f(ex.min,cfg.dec)}</b> ${cfg.un}</span>
+        <span>máx <b style="color:var(--text)">${f(ex.max,cfg.dec)}</b> ${cfg.un}</span>
+      </div>`:''}`;
 }
 
 /* ---- partículas de vento ----
