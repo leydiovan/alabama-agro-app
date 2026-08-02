@@ -1,12 +1,13 @@
 /* Service Worker — Alabama Campo (PWA do tablet, OFFLINE-FIRST)
-   - shell (campo.html, index, libs, ícones): STALE-WHILE-REVALIDATE
+   - shell (campo.html, libs, ícones): STALE-WHILE-REVALIDATE
      => abre INSTANTÂNEO do cache (não trava em rede ruim) e atualiza em 2º plano.
      (efeito: depois de publicar, a versão nova entra no PRÓXIMO open online)
    - Supabase (dados/auth): sempre rede, nunca cacheado. */
-const CACHE = 'alabama-campo-v45';
+const CACHE = 'alabama-campo-v46';
 const SHELL = [
-  './',
-  'index.html',
+  /* o hub (index.html) NAO e publicado — o dono usa ele local, pelo arquivo.
+     Por isso './' e 'index.html' sairam daqui: sem o arquivo no ar, o cache.add
+     falhava calado em todo install. */
   'campo.html',
   'manifest.webmanifest',
   'icon.svg',
@@ -43,7 +44,7 @@ self.addEventListener('fetch', e => {
   // vão SEMPRE pela rede (sem cache) -> admin nunca fica preso em versão velha.
   const isLib = url.hostname.endsWith('jsdelivr.net');
   const p = url.pathname;
-  const isShell = isLib || p.endsWith('/') || /\/(campo\.html|index\.html|manifest\.webmanifest|icon\.svg|icon-192\.png|icon-512\.png)$/.test(p);
+  const isShell = isLib || /\/(campo\.html|manifest\.webmanifest|icon\.svg|icon-192\.png|icon-512\.png)$/.test(p);
   if (!isShell) return;   // não intercepta -> rede direta (sempre fresco)
 
   // shell + libs: stale-while-revalidate
@@ -57,7 +58,7 @@ self.addEventListener('fetch', e => {
     if (cached) { e.waitUntil && e.waitUntil(net); return cached; }   // cache na hora, atualiza em 2º plano
     const res = await net;
     if (res) return res;
-    if (e.request.mode === 'navigate') return (await cache.match('campo.html')) || (await cache.match('index.html')) || Response.error();
+    if (e.request.mode === 'navigate') return (await cache.match('campo.html')) || Response.error();
     return Response.error();
   })());
 });
