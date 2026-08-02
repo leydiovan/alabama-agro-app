@@ -263,6 +263,13 @@ const num=v=>(v===null||v===undefined||v==='')?null:(isNaN(+v)?null:+v);
 const f=(v,c)=>v===null||v===undefined?'—':(+v).toFixed(c===undefined?1:c);
 const dirNome=g=>g===null?'':['N','NE','L','SE','S','SO','O','NO'][Math.round(g/45)%8];
 const dirSeta=g=>g===null?'':['↓','↙','←','↖','↑','↗','→','↘'][Math.round(g/45)%8];
+/* idade_s vem do banco congelado no instante da sincronizacao: se a tela ficar
+   aberta (ou o sync atrasar), ele mente. Calcular a partir de medido_em mantem
+   a idade sempre correta, sem depender de quando o Pi gravou. */
+function idadeDe(d){ if(!d) return null;
+  const t=new Date(d.medido_em).getTime();
+  if(!isNaN(t)) return Math.max(0,Math.round((Date.now()-t)/1000));
+  return num(d.idade_s); }
 function idade(s){ if(s===null) return '—'; if(s<90) return 'agora';
   if(s<3600) return Math.floor(s/60)+' min'; const h=Math.floor(s/3600);
   return h<24?h+' h':Math.floor(h/24)+' d'; }
@@ -596,18 +603,25 @@ function cartaoEstacao(){
       ${lin('Chuva 24 h', f(d.chuva_24h,1)+' mm')}
       ${lin('Pressão', f(num(d.pressao)/100,1)+' hPa')}
       ${lin('Bateria', f(d.bateria_pct,0)+' %')}
-      ${lin('Leitura', hhmm(d.medido_em)+' · '+idade(d.idade_s))}`
+      ${lin('Leitura', hhmm(d.medido_em)+' · '+idade(idadeDe(d)))}`
      :`<div class="muted" style="padding:10px 0;font-size:13px">Posição planejada — ainda não instalada.</div>`}`;
   const b=el('cfecha'); if(b) b.onclick=()=>{ ESTSEL=null; cartaoEstacao(); };
 }
 function marcadores(){
-  return L.layerGroup(ESTACOES.filter(s=>num(s.lat)!==null).map(s=>{
+  const g=L.layerGroup();
+  ESTACOES.filter(s=>num(s.lat)!==null).forEach(s=>{
     const d=ATUAL.find(x=>x.estacao_id===s.id),viva=d&&d.temp!==null;
-    const m=L.circleMarker([+s.lat,+s.lon],{radius:4.5,color:'#fff',weight:1.4,
-      fillColor:viva?(d.online?'#00c896':'#ffb300'):'#3d5a80',fillOpacity:.95});
-    m.on('click',()=>{ ESTSEL=s.id; cartaoEstacao(); });
-    return m;
-  }));
+    const abrir=()=>{ ESTSEL=s.id; cartaoEstacao(); };
+    /* ALVO DE TOQUE invisível, bem maior que o desenho. A bolinha ficou pequena
+       de propósito (não tapar a lavoura), mas 4,5 px é menor que a ponta do
+       dedo — sem este halo o toque quase nunca pega. O desenho continua igual. */
+    L.circleMarker([+s.lat,+s.lon],{radius:16,stroke:false,fillOpacity:0,
+      interactive:true,bubblingMouseEvents:false}).on('click',abrir).addTo(g);
+    L.circleMarker([+s.lat,+s.lon],{radius:4.5,color:'#fff',weight:1.4,
+      fillColor:viva?(d.online?'#00c896':'#ffb300'):'#3d5a80',fillOpacity:.95})
+      .on('click',abrir).addTo(g);
+  });
+  return g;
 }
 /* legenda do vento: as partículas mudam de cor em FAIXAS, não em gradiente
    contínuo — a legenda mostra as faixas e a direção predominante */
@@ -658,7 +672,7 @@ function folhaAgora(){
     return `<div class="item ${viva?'':'off'}">
       <span class="dot" style="background:${viva?(d.online?'var(--ok)':'var(--warn)'):'var(--muted2)'}"></span>
       <div><div class="nm">${s.nome||('Estação '+s.id)}</div>
-      <div class="sb">${viva?`${f(d.umidade,0)}% · ${f(d.vento_kmh,1)} km/h ${dirNome(d.vento_dir)} · ${idade(d.idade_s)}`
+      <div class="sb">${viva?`${f(d.umidade,0)}% · ${f(d.vento_kmh,1)} km/h ${dirNome(d.vento_dir)} · ${idade(idadeDe(d))}`
                           :'ainda não instalada'}</div></div>
       <div class="vr">${viva?f(d.temp,1)+'°':'—'}</div></div>`; }).join('')}`;
 }
@@ -705,7 +719,7 @@ function selo(){
   if(PERIODO!=='agora') return '';
   const v=ATUAL.filter(x=>x.temp!==null);
   if(!v.length) return '<span class="tag wait">sem leitura</span>';
-  const n=Math.min(...v.map(x=>x.idade_s===null?9e9:x.idade_s));
+  const n=Math.min(...v.map(x=>{ const i=idadeDe(x); return i===null?9e9:i; }));
   let ms=null; v.forEach(x=>{ const t=new Date(x.medido_em).getTime();
     if(!isNaN(t)&&(ms===null||t>ms)) ms=t; });
   const d=ms?new Date(ms):null;
@@ -805,7 +819,20 @@ function telaLogin(msg){
 async function iniciar(){
   el('app').innerHTML='<div class="vazio" style="padding-top:140px">Carregando…</div>';
   await carregar();
-  setInterval(()=>{ if(document.visibilityState==='visible') carregar(); },120000);
+
+  /* ATUALIZAÇÃO — por que só o setInterval não bastava:
+     o navegador do celular CONGELA temporizadores quando o app vai para 2º
+     plano (e ao bloquear a tela). Voltando, o intervalo podia não disparar por
+     minutos — ou nunca — e a tela ficava com dado velho até recarregar a página
+     na mão, que foi exatamente o sintoma relatado.
+     A correção é não depender do relógio: recarregar quando o app VOLTA a ficar
+     visível. O intervalo continua, mas como reforço, não como único caminho. */
+  setInterval(()=>{ if(document.visibilityState==='visible') carregar(); },60000);
+  document.addEventListener('visibilitychange',()=>{
+    if(document.visibilityState==='visible') carregar();
+  });
+  window.addEventListener('focus',()=>carregar());
+  window.addEventListener('online',()=>carregar());
 }
 (async function(){
   if(!window.supabase){ el('app').innerHTML='<div class="vazio">Sem internet</div>'; return; }
