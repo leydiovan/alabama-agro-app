@@ -335,6 +335,32 @@ function valores(k){
 function media(k){ const p=valores(k);
   return p.length?{v:p.reduce((s,x)=>s+x.v,0)/p.length,dir:p[0].dir,fatia:p[0].fatia,n:p.length}:null; }
 
+/* MÁXIMA e MÍNIMA — só para as variáveis em que a faixa faz sentido.
+   Não vale para CHUVA (é acumulado: "mínima de chuva" não quer dizer nada) nem
+   para VENTO (o que interessa lá é a direção predominante e a rajada).
+   Em período usa as horas da janela; a temperatura aproveita temp_min/temp_max,
+   que são os extremos REAIS dentro de cada hora, não a média dela. */
+function extremos(k){
+  const cfg=VARS[k];
+  if(cfg.acum||cfg.sopro) return null;
+  let vals=[];
+  if(PERIODO==='agora'){
+    vals=ATUAL.map(x=>{ let v=num(x[cfg.c]); return (v!==null&&cfg.conv)?cfg.conv(v):v; })
+              .filter(v=>v!==null);
+    if(vals.length<2) return null;          // uma estação só: não há faixa a mostrar
+  }else{
+    const lim=Date.now()-PERIODOS[PERIODO].h*3600e3;
+    HORAS.forEach(r=>{ const t=new Date(r.hora).getTime(); if(isNaN(t)||t<lim) return;
+      if(k==='temp'){ const a=num(r.temp_min), b=num(r.temp_max);
+        if(a!==null) vals.push(a); if(b!==null) vals.push(b);
+        if(a===null&&b===null){ const m=num(r.temp); if(m!==null) vals.push(m); } }
+      else { let v=num(r[cfg.ch]); if(v!==null){ if(cfg.conv) v=cfg.conv(v); vals.push(v); } }
+    });
+    if(vals.length<2) return null;
+  }
+  return {min:Math.min(...vals), max:Math.max(...vals)};
+}
+
 /* ---------- dados ---------- */
 function utm2ll(E,N){
   const a=6378137,fl=1/298.257223563,e2=fl*(2-fl),ep2=e2/(1-e2),k0=.9996;
@@ -527,11 +553,17 @@ function desenhaMapa(){
       const md=media(VARMAPA);
       const g=cfg.grad.map((c,i)=>`rgb(${c[0]},${c[1]},${c[2]}) ${(i/(cfg.grad.length-1))*100}%`).join(',');
       const pos = md&&md.v!==null ? Math.max(0,Math.min(100,((md.v-mn)/(mx-mn))*100)) : null;
+      // máx/mín no lugar dos limites da escala quando a variável tem faixa
+      // (temp, umidade, pressão). Chuva e vento não entram — ver extremos().
+      const ex=extremos(VARMAPA);
       lg.innerHTML=`<span class="vl">${f(md&&md.v,cfg.dec)}<span class="u">${cfg.un}</span></span>
         <span class="esc">
           <span class="barra" style="display:block;background:linear-gradient(90deg,${g})"></span>
           ${pos!==null?`<span class="mk" style="left:calc(${pos}% - 1.5px)"></span>`:''}
-          <span class="mm"><span>${f(mn,0)}</span><span>${f(mx,0)}</span></span>
+          <span class="mm">${ex
+            ? `<span>mín <b style="color:var(--text)">${f(ex.min,cfg.dec)}</b></span>
+               <span>máx <b style="color:var(--text)">${f(ex.max,cfg.dec)}</b></span>`
+            : `<span>${f(mn,0)}</span><span>${f(mx,0)}</span>`}</span>
         </span>`;
       lg.style.display='';
     }
@@ -587,7 +619,10 @@ function legendaVento(){
   lg.innerHTML=`<span class="vl">${f(m&&m.v,1)}<span class="u">km/h</span></span>
     <span class="esc" style="display:flex;align-items:center;gap:9px;flex-wrap:wrap">
       ${m&&m.dir!==null?`<b style="font-size:15px;white-space:nowrap">${dirNome(m.dir)}
-        <span style="font-size:19px;vertical-align:-2px">${dirSeta(m.dir)}</span></b>`:''}
+        <span style="font-size:19px;vertical-align:-2px">${dirSeta(m.dir)}</span></b>
+        ${PERIODO!=='agora'&&m.fatia!=null
+          ? `<span style="font-size:11px;color:var(--muted);white-space:nowrap">${Math.round(m.fatia*100)}% do tempo</span>`
+          : ''}`:''}
       <span style="display:flex;gap:8px;font-size:10px;color:var(--muted)">
         ${faixas.map(([c,t])=>`<span><i style="display:inline-block;width:11px;height:3px;
           border-radius:2px;background:${c};margin-right:3px;vertical-align:middle"></i>${t}</span>`).join('')}
@@ -665,6 +700,9 @@ const emObra=(n)=>`<div class="vazio">${IC.obra}<b style="color:var(--text);font
    Repetir "Agora" ali não dizia nada (e continuava "Agora" mesmo com 7 dias
    selecionado). O que interessa saber de relance é quão fresco é o dado. */
 function selo(){
+  // a hora da ultima leitura so faz sentido no 'Agora'; em 24h/7d/30d o que
+  // esta na tela e um agregado da janela, nao um instante
+  if(PERIODO!=='agora') return '';
   const v=ATUAL.filter(x=>x.temp!==null);
   if(!v.length) return '<span class="tag wait">sem leitura</span>';
   const n=Math.min(...v.map(x=>x.idade_s===null?9e9:x.idade_s));
