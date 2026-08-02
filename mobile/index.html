@@ -479,7 +479,9 @@ function iniciarVento(){
     for(let i=0;i<_part.length;i++){
       const p=_part[i]; if(!p) continue;
       const w=ventoEm(p.lat,p.lon,pts); if(!w){ _part[i]=nova(); continue; }
-      const la=p.lat+w.v*0.00016, lo=p.lon+w.u*0.00016;
+      // 0.00008 = graus por quadro por km/h (metade do inicial: corriam rápido
+      // demais). A proporção entre as velocidades continua igual — só a escala.
+      const la=p.lat+w.v*0.00008, lo=p.lon+w.u*0.00008;
       if(!dentroDaFazenda(la,lo)){ _part[i]=nova(); continue; }
       const a=_map.latLngToContainerPoint([p.lat,p.lon]), b=_map.latLngToContainerPoint([la,lo]);
       const vel=Math.hypot(w.u,w.v);

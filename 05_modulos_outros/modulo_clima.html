@@ -686,7 +686,8 @@ function iniciarParticulas(){
       const p=_parts[i]; if(!p) continue;
       const w=ventoEm(p.lat,p.lon,pts);
       if(!w){ _parts[i]=nova(); continue; }
-      const passo=0.00016;                       // graus por quadro por km/h
+      const passo=0.00008;   // graus por quadro por km/h (metade do inicial: as
+                             // partículas corriam rápido demais para acompanhar)
       const la=p.lat+w.v*passo, lo=p.lon+w.u*passo;
       // só desenha se o trecho INTEIRO está dentro da fazenda (nada de traço
       // escapando pela borda)
