@@ -242,7 +242,11 @@ const IC={
     stroke-linecap="round" stroke-linejoin="round"><path d="M4 15.5 9 10l3.5 3.5L20 6"/></svg>`,
   obra:`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"
     stroke-linecap="round" stroke-linejoin="round"><path d="M3 20h18"/><path d="M5 20V9l7-5 7 5v11"/>
-    <path d="M9 20v-6h6v6"/></svg>`
+    <path d="M9 20v-6h6v6"/></svg>`,
+  // porta com seta (sair)
+  sair:`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"
+    stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h3.5A1.5 1.5 0 0 1 20 4.5v15a1.5 1.5 0 0 1-1.5 1.5H15"/>
+    <path d="m10 17-5-5 5-5"/><path d="M5 12h11"/></svg>`
 };
 
 const SECOES=[['clima','Clima',IC.clima],['rel','Relatórios',IC.rel],
@@ -250,6 +254,10 @@ const SECOES=[['clima','Clima',IC.clima],['rel','Relatórios',IC.rel],
 const SUBS={ clima:[['mapa','Mapa',IC.mapa],['agora','Agora',IC.agora],['hist','Histórico',IC.hist]] };
 
 let SB=null, SECAO='clima', SUB='mapa', MENU=null;   // MENU: null | 'esq' | 'dir'
+/* DESLOGADO trava o ciclo de recarga depois que a sessao cai. Sem ele, o
+   setInterval de 60 s continuaria chamando carregar() -> telaLogin(), apagando
+   o e-mail/senha que a pessoa esta digitando, a cada minuto. */
+let CONTA='', DESLOGADO=false, _TIMERS=false;
 let SELETOR=null;
 let ESTSEL=null;                                     // estacao com card aberto                                    // gaveta aberta: null | 'var' | 'per'
 let PERIODO='agora', VARMAPA='chuva';   // abre na chuva (o que mais se consulta)
@@ -382,7 +390,19 @@ function utm2ll(E,N){
   return [lat*180/Math.PI,lon*180/Math.PI];
 }
 async function carregar(){
+  if(DESLOGADO) return;
   try{
+    /* SESSAO ANTES DA LEITURA — sem sessao o RLS devolve [] COM SUCESSO (nao e
+       erro). Se seguisse em frente, a tela mostraria "sem dado" e a pessoa
+       acharia que o sistema quebrou, quando na verdade ela so precisa entrar
+       de novo. Mesmo espirito da regra do offline-first no CLAUDE.md: resposta
+       vazia sem rede/sessao NAO e dado bom. */
+    const {data:s}=await SB.auth.getSession();
+    if(!s||!s.session){
+      DESLOGADO=true; destruirMapa();
+      return telaLogin('Sessão encerrada. Entre de novo.');
+    }
+    CONTA=(s.session.user&&s.session.user.email)||'';
     const [e,a,h,l]=await Promise.all([
       SB.from('clima_estacoes').select('*').order('id'),
       SB.from('clima_atual').select('*'),
@@ -773,7 +793,8 @@ function pinta(){
   el('flutua').innerHTML=`
     ${MENU?'<div class="veu" id="veu"></div>':''}
     ${MENU==='esq'?`<div class="menu esq">${SECOES.map(([k,n,i])=>
-      `<button data-sec="${k}" class="${SECAO===k?'on':''}">${i}<span>${n}</span></button>`).join('')}</div>`:''}
+      `<button data-sec="${k}" class="${SECAO===k?'on':''}">${i}<span>${n}</span></button>`).join('')
+      }<button data-sair="1">${IC.sair}<span>Sair${CONTA?` · ${CONTA.split('@')[0]}`:''}</span></button></div>`:''}
     ${MENU==='dir'?`<div class="menu dir">${(SUBS[SECAO]||[]).length
       ?SUBS[SECAO].map(([k,n,i])=>`<button data-sub="${k}" class="${SUB===k?'on':''}">${i}<span>${n}</span></button>`).join('')
       :`<button disabled style="opacity:.6">${IC.obra}<span>sem submenu</span></button>`}</div>`:''}
@@ -787,6 +808,14 @@ function pinta(){
     SECAO=b.dataset.sec; SUB=(SUBS[SECAO]||[['mapa']])[0][0]; MENU=null; SELETOR=null; ESTSEL=null; trocarTela(pinta); });
   document.querySelectorAll('[data-sub]').forEach(b=>b.onclick=()=>{
     SUB=b.dataset.sub; MENU=null; SELETOR=null; ESTSEL=null; trocarTela(pinta); });
+  document.querySelectorAll('[data-sair]').forEach(b=>b.onclick=async()=>{
+    MENU=null; DESLOGADO=true; destruirMapa();
+    /* signOut local: derruba a sessao deste aparelho. Nao depende de rede dar
+       certo -- se falhar, a tela de login aparece do mesmo jeito. */
+    try{ await SB.auth.signOut(); }catch(_){}
+    CONTA='';
+    telaLogin('Você saiu.');
+  });
   document.querySelectorAll('[data-abrir]').forEach(b=>b.onclick=()=>{
     SELETOR = SELETOR===b.dataset.abrir ? null : b.dataset.abrir; pinta(); });
   document.querySelectorAll('[data-per]').forEach(b=>b.onclick=()=>{
@@ -813,6 +842,7 @@ function telaLogin(msg){
     el('btn').textContent='Entrando…'; el('btn').disabled=true;
     const {error}=await SB.auth.signInWithPassword({email:e,password:s});
     if(error) return telaLogin(error.message);
+    DESLOGADO=false;
     iniciar();
   };
   el('btn').onclick=entrar;
@@ -829,6 +859,12 @@ async function iniciar(){
      na mão, que foi exatamente o sintoma relatado.
      A correção é não depender do relógio: recarregar quando o app VOLTA a ficar
      visível. O intervalo continua, mas como reforço, não como único caminho. */
+  /* _TIMERS: instalar UMA vez so. Com o botao Sair, iniciar() passou a poder
+     rodar de novo no mesmo carregamento da pagina -- sem esta trava, cada
+     login empilhava mais um setInterval e mais um listener, e a tela passava
+     a recarregar N vezes por minuto. */
+  if(_TIMERS) return;
+  _TIMERS=true;
   setInterval(()=>{ if(document.visibilityState==='visible') carregar(); },60000);
   document.addEventListener('visibilitychange',()=>{
     if(document.visibilityState==='visible') carregar();
