@@ -315,6 +315,12 @@ const dLocal=ms=>{ const d=new Date(ms);
    se divergirem, a linha da tabela deixa de corresponder ao ponto do gráfico. */
 const ALVO_TICKS=8;
 
+/* Granularidade da TABELA, independente do gráfico:
+   'passo' = agregada no mesmo passo do eixo (linha da tabela = ponto do eixo)
+   'hora'  = hora a hora, o dado cru, dentro da MESMA janela escolhida
+   As duas cobrem o mesmo período; muda só o quanto se agrupa. */
+let HTAB='passo';
+
 /* Agrupa as linhas horárias no mesmo passo do eixo.
    Média para o que é estado (temp, umidade, vento); SOMA para chuva, que é
    acumulado — média apagaria o total; média CIRCULAR para a direção, porque
@@ -763,9 +769,12 @@ function folhaHist(){
      no mesmo padrão de chip+gaveta do mapa. Quatro botões numa linha comiam
      um card inteiro de tela. */
   if(!s.length) return semDado('sem leitura nesse período');
-  // a tabela usa o MESMO passo do eixo: cada linha corresponde a um marcador
   const tk=ticksTempo(t0,t1,ALVO_TICKS);
-  const ult=agruparPasso(s,tk.ticks,tk.passo).reverse();
+  const porHora = HTAB==='hora';
+  const ult = porHora
+    ? s.slice().reverse().map(h=>Object.assign({_t:new Date(h.hora).getTime()},h))
+    : agruparPasso(s,tk.ticks,tk.passo).reverse();      // linha = marcador do eixo
+  const passoTab = porHora ? 3600e3 : tk.passo;
   return `
   <div class="sec">🌡 Temperatura</div>
   <div class="card w">${grafico(s,'temp','#ff7a45','°C')}</div>
@@ -773,16 +782,23 @@ function folhaHist(){
   <div class="card w">${grafico(s,'umidade','#38bdf8','%')}</div>
   <div class="sec">🍃 Vento</div>
   <div class="card w">${grafico(s,'vento_kmh','#00c896',' km/h')}</div>
-  <div class="sec">Tabela — ${nomePasso(tk.passo)}</div>
+  <div class="sec">Tabela · ${ult.length} linhas</div>
+  <div class="card w" style="display:flex;gap:6px;padding:7px;margin-bottom:8px">
+    ${[['passo',nomePasso(tk.passo)],['hora','hora a hora']].map(([k,n])=>
+      `<button data-htab="${k}" class="chip" style="flex:1;padding:7px 0;font-size:12.5px${
+        HTAB===k?';border-color:var(--gold);color:var(--gold);font-weight:700':''}">${n}</button>`).join('')}
+  </div>
   <div class="card w" style="overflow-x:auto"><table>
-    <thead><tr><th>${tk.passo>=864e5?'Dia':'Hora'}</th><th>Temp</th><th>Umid</th><th>Vento</th><th>Chuva</th></tr></thead>
-    <tbody>${ult.map(h=>`<tr><td>${rotuloLinha(h._t,tk.passo)}</td><td>${f(h.temp,1)}°</td>
+    <thead><tr><th>${passoTab>=864e5?'Dia':'Hora'}</th><th>Temp</th><th>Umid</th><th>Vento</th><th>Chuva</th></tr></thead>
+    <tbody>${ult.map(h=>`<tr><td>${rotuloLinha(h._t,passoTab)}</td><td>${f(h.temp,1)}°</td>
       <td>${f(h.umidade,0)}%</td><td>${f(h.vento_kmh,1)} ${dirNome(num(h.vento_dir))}</td>
       <td>${num(h.chuva_mm)>0?'<b>'+f(h.chuva_mm,1)+'</b>':'—'}</td></tr>`).join('')}</tbody>
   </table></div>
-  <div class="ex" style="margin-top:8px;line-height:1.5">Cada linha é ${nomePasso(tk.passo)},
-    o mesmo passo dos marcadores do gráfico. Temperatura, umidade e vento são <b>médias</b>;
-    chuva é a <b>soma</b> do intervalo; direção é a <b>média circular</b>.</div>`;
+  <div class="ex" style="margin-top:8px;line-height:1.5">${porHora
+    ? 'Dado cru, uma linha por hora, dentro do período escolhido.'
+    : `Cada linha é ${nomePasso(tk.passo)} — o mesmo passo dos marcadores do gráfico, para a linha
+       da tabela corresponder ao ponto do eixo. Temperatura, umidade e vento são <b>médias</b>;
+       chuva é a <b>soma</b> do intervalo; direção é a <b>média circular</b>.`}</div>`;
 }
 /* ============================================================
    GRÁFICO COM EIXOS — mesma ideia da versão do desktop
@@ -975,6 +991,7 @@ function pinta(){
     SECAO=b.dataset.sec; SUB=(SUBS[SECAO]||[['mapa']])[0][0]; MENU=null; SELETOR=null; ESTSEL=null; trocarTela(pinta); });
   document.querySelectorAll('[data-sub]').forEach(b=>b.onclick=()=>{
     SUB=b.dataset.sub; MENU=null; SELETOR=null; ESTSEL=null; trocarTela(pinta); });
+  document.querySelectorAll('[data-htab]').forEach(b=>b.onclick=()=>{ HTAB=b.dataset.htab; pinta(); });
   document.querySelectorAll('[data-hper]').forEach(b=>b.onclick=()=>{
     const k=b.dataset.hper;
     if(k==='custom'){                       // ao entrar, parte da janela que já está na tela
