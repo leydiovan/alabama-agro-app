@@ -288,6 +288,14 @@ function hhmm(iso){ if(!iso) return '—'; const d=new Date(iso); if(isNaN(d)) r
 
 const PERIODOS={agora:{lbl:'Agora',h:0},'24h':{lbl:'24 h',h:24},
                 '7d':{lbl:'7 dias',h:168},'30d':{lbl:'30 dias',h:720}};
+
+/* Janela do HISTÓRICO — separada do PERIODO do mapa (que inclui "Agora" e serve
+   para colorir a mancha). Antes o histórico mostrava fixo as últimas 24 linhas
+   carregadas: não era escolha, era corte arbitrário. */
+let HPER='24h';
+const HPERIODOS={'24h':{lbl:'24 h',h:24},'2d':{lbl:'2 d',h:48},
+                 '7d':{lbl:'7 d',h:168},'30d':{lbl:'30 d',h:720}};
+function janelaHist(){ const fim=Date.now(); return [fim-HPERIODOS[HPER].h*3600e3,fim]; }
 /* `esc` = escala ABSOLUTA da cor. Antes a escala era o próprio valor ±1, o que
    fazia qualquer leitura cair no meio do gradiente: 24,9 °C e 29,2 °C pintavam
    igual e trocar de período parecia não mudar nada. Com escala fixa a cor passa
@@ -699,12 +707,19 @@ function folhaAgora(){
       <div class="vr">${viva?f(d.temp,1)+'°':'—'}</div></div>`; }).join('')}`;
 }
 function folhaHist(){
-  const s=HORAS.filter(h=>num(h.temp)!==null);
-  if(!s.length) return semDado('sem histórico ainda');
+  const [t0,t1]=janelaHist();
+  const s=HORAS.filter(h=>num(h.temp)!==null)
+               .filter(h=>{ const t=new Date(h.hora).getTime(); return !isNaN(t)&&t>=t0&&t<=t1; });
+  const chips=`<div class="card w" style="display:flex;gap:6px;padding:8px">${
+    Object.keys(HPERIODOS).map(k=>`<button data-hper="${k}" class="chip"
+      style="flex:1;padding:7px 0;font-size:13px${HPER===k?';border-color:var(--gold);color:var(--gold);font-weight:700':''}"
+      >${HPERIODOS[k].lbl}</button>`).join('')}</div>`;
+  if(!s.length) return chips+semDado('sem leitura nesse período');
   const ult=s.slice(-24).reverse();
-  return `<div class="sec">Temperatura — últimas horas</div>
-  <div class="card w">${grafico(s.slice(-24))}</div>
-  <div class="sec">Hora a hora</div>
+  return `${chips}
+  <div class="sec">Temperatura — ${HPERIODOS[HPER].lbl}</div>
+  <div class="card w">${grafico(s)}</div>
+  <div class="sec">Hora a hora — últimas 24</div>
   <div class="card w" style="overflow-x:auto"><table>
     <thead><tr><th>Hora</th><th>Temp</th><th>Umid</th><th>Vento</th><th>Chuva</th></tr></thead>
     <tbody>${ult.map(h=>`<tr><td>${hhmm(h.hora)}</td><td>${f(h.temp,1)}°</td>
@@ -712,20 +727,92 @@ function folhaHist(){
       <td>${num(h.chuva_mm)>0?'<b>'+f(h.chuva_mm,1)+'</b>':'—'}</td></tr>`).join('')}</tbody>
   </table></div>`;
 }
+/* ============================================================
+   GRÁFICO COM EIXOS — mesma ideia da versão do desktop
+   ------------------------------------------------------------
+   Era sparkline: sem escala, sem hora, e com os pontos espaçados
+   por ÍNDICE — seis horas sem leitura ocupavam a largura de uma.
+   Aqui o X é TEMPO REAL e a linha QUEBRA no buraco.
+   Saiu também o preserveAspectRatio="none": com texto dentro do
+   SVG ele deformaria os rótulos.
+   ============================================================ */
+function passoBonito(faixa,alvo){
+  if(!(faixa>0)) return 1;
+  const bruto=faixa/alvo,mag=Math.pow(10,Math.floor(Math.log10(bruto))),n=bruto/mag;
+  return (n<=1?1:n<=2?2:n<=2.5?2.5:n<=5?5:10)*mag;
+}
+const PASSOS_T=[1,2,3,6,12,24,48,120,168].map(h=>h*3600e3);
+function ticksTempo(t0,t1,alvo){
+  const passo=PASSOS_T.find(p=>(t1-t0)/p<=alvo)||PASSOS_T[PASSOS_T.length-1];
+  const ph=passo/3600e3,out=[],d=new Date(t0);
+  d.setMinutes(0,0,0);
+  if(ph>=24) d.setHours(0,0,0,0); else d.setHours(Math.ceil(d.getHours()/ph)*ph,0,0,0);
+  let t=d.getTime();
+  while(t<=t1){ if(t>=t0) out.push(t);
+    if(ph>=24){ const n=new Date(t); n.setDate(n.getDate()+ph/24); t=n.getTime(); } else t+=passo; }
+  return {ticks:out,passo};
+}
+function rotuloTick(t,passo){
+  const d=new Date(t);
+  const dia=String(d.getDate()).padStart(2,'0')+'/'+String(d.getMonth()+1).padStart(2,'0');
+  if(passo>=24*3600e3) return [dia,''];
+  return [String(d.getHours()).padStart(2,'0')+'h', d.getHours()===0?dia:''];
+}
+
 function grafico(s){
-  const v=s.map(h=>+h.temp); if(v.length<2) return `<div class="muted" style="text-align:center;padding:30px 0">
-    ${v.length?'só 1 leitura':'sem dado'}</div>`;
-  const W=340,H=130,mn=Math.min(...v),mx=Math.max(...v),amp=(mx-mn)||1;
-  const pts=v.map((x,i)=>[(i/(v.length-1))*W,H-((x-mn)/amp)*(H-26)-13]);
-  const ln='M '+pts.map(p=>p[0].toFixed(1)+' '+p[1].toFixed(1)).join(' L ');
-  return `<svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" style="width:100%;height:130px">
+  const P=s.map(h=>({t:new Date(h.hora).getTime(),v:num(h.temp)}))
+           .filter(p=>p.v!==null&&!isNaN(p.t)).sort((a,b)=>a.t-b.t);
+  if(P.length<2) return `<div class="muted" style="text-align:center;padding:30px 0">
+    ${P.length?'só 1 leitura':'sem dado'}</div>`;
+
+  const [t0,t1]=janelaHist();
+  /* T=28 abre faixa para a unidade ficar ACIMA da escala, sem encostar no
+     rótulo do topo (os dois alinhados à direita no mesmo x). */
+  const W=340,H=156,L=30,R=8,T=28,B=30,PW=W-L-R,PH=H-T-B;
+  const vs=P.map(p=>p.v);
+  let mn=Math.min(...vs),mx=Math.max(...vs);
+  if(mn===mx){ mn-=1; mx+=1; }
+  const pY=passoBonito(mx-mn,3), y0=Math.floor(mn/pY)*pY, y1=Math.ceil(mx/pY)*pY;
+  const X=t=>L+((t-t0)/((t1-t0)||1))*PW, Y=v=>T+PH-((v-y0)/((y1-y0)||1))*PH;
+
+  const segs=[]; let cur=[];
+  P.forEach((p,i)=>{ if(i&&p.t-P[i-1].t>2*3600e3){ if(cur.length>1)segs.push(cur); cur=[]; } cur.push(p); });
+  if(cur.length>1) segs.push(cur);
+  const dp=g=>'M '+g.map(p=>X(p.t).toFixed(1)+' '+Y(p.v).toFixed(1)).join(' L ');
+  const areas=segs.map(g=>`<path d="${dp(g)} L ${X(g[g.length-1].t).toFixed(1)} ${T+PH} L ${X(g[0].t).toFixed(1)} ${T+PH} Z" fill="url(#gt)"/>`).join('');
+  const linhas=segs.map(g=>`<path d="${dp(g)}" fill="none" stroke="#ff7a45" stroke-width="2.2" stroke-linejoin="round" stroke-linecap="round"/>`).join('');
+  const solt=P.filter((p,i)=>(i===0||p.t-P[i-1].t>2*3600e3)&&(i===P.length-1||P[i+1].t-p.t>2*3600e3))
+              .map(p=>`<circle cx="${X(p.t).toFixed(1)}" cy="${Y(p.v).toFixed(1)}" r="2.2" fill="#ff7a45"/>`).join('');
+
+  let gy='';
+  for(let v=y0; v<=y1+1e-9; v+=pY){
+    const y=Y(v).toFixed(1);
+    gy+=`<line x1="${L}" y1="${y}" x2="${W-R}" y2="${y}" stroke="var(--border)" stroke-opacity=".7"/>
+         <text x="${L-5}" y="${y}" text-anchor="end" dominant-baseline="middle" font-size="9"
+               fill="var(--muted)">${f(v,pY<1?1:0)}</text>`;
+  }
+  /* 8 é o teto de rótulos NA TELA DO CELULAR — no desktop são 16. Com 16 aqui
+     eles se sobrepõem; com 8 sai 24 h de 3 em 3 h e 7 dias dia a dia. */
+  const {ticks,passo}=ticksTempo(t0,t1,8);
+  let gx='';
+  ticks.forEach(t=>{
+    const x=X(t).toFixed(1), r=rotuloTick(t,passo);
+    gx+=`<line x1="${x}" y1="${T}" x2="${x}" y2="${T+PH}" stroke="var(--border)" stroke-opacity=".45"/>
+         <text x="${x}" y="${T+PH+12}" text-anchor="middle" font-size="9" fill="var(--muted)">${r[0]}</text>`;
+    if(r[1]) gx+=`<text x="${x}" y="${T+PH+22}" text-anchor="middle" font-size="8" fill="var(--muted2)">${r[1]}</text>`;
+  });
+
+  return `<svg viewBox="0 0 ${W} ${H}" style="width:100%;height:auto;display:block">
     <defs><linearGradient id="gt" x1="0" y1="0" x2="0" y2="1">
       <stop offset="0%" stop-color="#ff7a45" stop-opacity=".38"/>
       <stop offset="100%" stop-color="#ff7a45" stop-opacity="0"/></linearGradient></defs>
-    <path d="${ln} L ${W} ${H} L 0 ${H} Z" fill="url(#gt)"/>
-    <path d="${ln}" fill="none" stroke="#ff7a45" stroke-width="2.4" stroke-linejoin="round"/></svg>
+    ${gy}${gx}${areas}${linhas}${solt}
+    <line x1="${L}" y1="${T+PH}" x2="${W-R}" y2="${T+PH}" stroke="var(--border2)"/>
+    <text x="${L-5}" y="${T-17}" text-anchor="end" font-size="8" fill="var(--muted2)">°C</text>
+  </svg>
   <div class="ex" style="display:flex;justify-content:space-between;margin-top:6px">
-    <span>mín ${f(mn,1)}°</span><span>${v.length} h</span><span>máx ${f(mx,1)}°</span></div>`;
+    <span>mín ${f(Math.min(...vs),1)}°</span><span>${P.length} leituras</span>
+    <span>máx ${f(Math.max(...vs),1)}°</span></div>`;
 }
 const semDado=(t)=>`<div class="vazio">${IC.clima}${t||'Nenhuma estação enviou leitura ainda.'}</div>`;
 const emObra=(n)=>`<div class="vazio">${IC.obra}<b style="color:var(--text);font-size:16px">${n}</b><br>
@@ -808,6 +895,7 @@ function pinta(){
     SECAO=b.dataset.sec; SUB=(SUBS[SECAO]||[['mapa']])[0][0]; MENU=null; SELETOR=null; ESTSEL=null; trocarTela(pinta); });
   document.querySelectorAll('[data-sub]').forEach(b=>b.onclick=()=>{
     SUB=b.dataset.sub; MENU=null; SELETOR=null; ESTSEL=null; trocarTela(pinta); });
+  document.querySelectorAll('[data-hper]').forEach(b=>b.onclick=()=>{ HPER=b.dataset.hper; pinta(); });
   document.querySelectorAll('[data-sair]').forEach(b=>b.onclick=async()=>{
     MENU=null; DESLOGADO=true; destruirMapa();
     /* signOut local: derruba a sessao deste aparelho. Nao depende de rede dar
