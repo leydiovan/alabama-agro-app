@@ -309,6 +309,42 @@ const rotuloHPer=()=>HPER==='custom'
   : HPERIODOS[HPER].lbl;
 const dLocal=ms=>{ const d=new Date(ms);
   return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); };
+
+/* Teto de rótulos do eixo NA TELA DO CELULAR (no desktop são 16). Fica aqui,
+   numa constante só, porque o GRÁFICO e a TABELA precisam usar o MESMO passo —
+   se divergirem, a linha da tabela deixa de corresponder ao ponto do gráfico. */
+const ALVO_TICKS=8;
+
+/* Agrupa as linhas horárias no mesmo passo do eixo.
+   Média para o que é estado (temp, umidade, vento); SOMA para chuva, que é
+   acumulado — média apagaria o total; média CIRCULAR para a direção, porque
+   350° e 10° pela média comum dariam 180°, o oposto. */
+function agruparPasso(s,ticks,passo){
+  if(!s.length||!ticks.length) return [];
+  const anc=ticks[0], mapa=new Map();
+  s.forEach(h=>{
+    const ms=new Date(h.hora).getTime(); if(isNaN(ms)) return;
+    const b=anc+Math.floor((ms-anc)/passo)*passo;
+    if(!mapa.has(b)) mapa.set(b,[]);
+    mapa.get(b).push(h);
+  });
+  const col=(r,k)=>r.map(x=>num(x[k])).filter(x=>x!==null);
+  const md=(r,k)=>{const v=col(r,k); return v.length?v.reduce((a,b)=>a+b,0)/v.length:null;};
+  const sm=(r,k)=>{const v=col(r,k); return v.length?v.reduce((a,b)=>a+b,0):null;};
+  return [...mapa.entries()].sort((a,b)=>a[0]-b[0]).map(([t,r])=>({
+    _t:t, temp:md(r,'temp'), umidade:md(r,'umidade'), vento_kmh:md(r,'vento_kmh'),
+    vento_dir:dirMedia(r.map(x=>num(x.vento_dir))), chuva_mm:sm(r,'chuva_mm'), _n:r.length
+  }));
+}
+const nomePasso=p=>{ const h=p/3600e3;
+  return h<24 ? (h===1?'hora a hora':`de ${h} em ${h} h`)
+              : (h===24?'dia a dia':`de ${h/24} em ${h/24} dias`); };
+const rotuloLinha=(t,passo)=>{
+  const d=new Date(t);
+  const dia=String(d.getDate()).padStart(2,'0')+'/'+String(d.getMonth()+1).padStart(2,'0');
+  if(passo>=24*3600e3) return dia;
+  return hhmm(d.toISOString());
+};
 /* `esc` = escala ABSOLUTA da cor. Antes a escala era o próprio valor ±1, o que
    fazia qualquer leitura cair no meio do gradiente: 24,9 °C e 29,2 °C pintavam
    igual e trocar de período parecia não mudar nada. Com escala fixa a cor passa
@@ -727,7 +763,9 @@ function folhaHist(){
      no mesmo padrão de chip+gaveta do mapa. Quatro botões numa linha comiam
      um card inteiro de tela. */
   if(!s.length) return semDado('sem leitura nesse período');
-  const ult=s.slice(-24).reverse();
+  // a tabela usa o MESMO passo do eixo: cada linha corresponde a um marcador
+  const tk=ticksTempo(t0,t1,ALVO_TICKS);
+  const ult=agruparPasso(s,tk.ticks,tk.passo).reverse();
   return `
   <div class="sec">🌡 Temperatura</div>
   <div class="card w">${grafico(s,'temp','#ff7a45','°C')}</div>
@@ -735,13 +773,16 @@ function folhaHist(){
   <div class="card w">${grafico(s,'umidade','#38bdf8','%')}</div>
   <div class="sec">🍃 Vento</div>
   <div class="card w">${grafico(s,'vento_kmh','#00c896',' km/h')}</div>
-  <div class="sec">Hora a hora — últimas 24</div>
+  <div class="sec">Tabela — ${nomePasso(tk.passo)}</div>
   <div class="card w" style="overflow-x:auto"><table>
-    <thead><tr><th>Hora</th><th>Temp</th><th>Umid</th><th>Vento</th><th>Chuva</th></tr></thead>
-    <tbody>${ult.map(h=>`<tr><td>${hhmm(h.hora)}</td><td>${f(h.temp,1)}°</td>
+    <thead><tr><th>${tk.passo>=864e5?'Dia':'Hora'}</th><th>Temp</th><th>Umid</th><th>Vento</th><th>Chuva</th></tr></thead>
+    <tbody>${ult.map(h=>`<tr><td>${rotuloLinha(h._t,tk.passo)}</td><td>${f(h.temp,1)}°</td>
       <td>${f(h.umidade,0)}%</td><td>${f(h.vento_kmh,1)} ${dirNome(num(h.vento_dir))}</td>
       <td>${num(h.chuva_mm)>0?'<b>'+f(h.chuva_mm,1)+'</b>':'—'}</td></tr>`).join('')}</tbody>
-  </table></div>`;
+  </table></div>
+  <div class="ex" style="margin-top:8px;line-height:1.5">Cada linha é ${nomePasso(tk.passo)},
+    o mesmo passo dos marcadores do gráfico. Temperatura, umidade e vento são <b>médias</b>;
+    chuva é a <b>soma</b> do intervalo; direção é a <b>média circular</b>.</div>`;
 }
 /* ============================================================
    GRÁFICO COM EIXOS — mesma ideia da versão do desktop
@@ -808,9 +849,7 @@ function grafico(s,campo,cor,unid){
          <text x="${L-5}" y="${y}" text-anchor="end" dominant-baseline="middle" font-size="9"
                fill="var(--muted)">${f(v,pY<1?1:0)}</text>`;
   }
-  /* 8 é o teto de rótulos NA TELA DO CELULAR — no desktop são 16. Com 16 aqui
-     eles se sobrepõem; com 8 sai 24 h de 3 em 3 h e 7 dias dia a dia. */
-  const {ticks,passo}=ticksTempo(t0,t1,8);
+  const {ticks,passo}=ticksTempo(t0,t1,ALVO_TICKS);
   let gx='';
   ticks.forEach(t=>{
     const x=X(t).toFixed(1), r=rotuloTick(t,passo);
