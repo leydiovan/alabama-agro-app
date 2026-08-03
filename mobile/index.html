@@ -55,6 +55,8 @@ svg{display:block}
 #folha{position:absolute;inset:0;overflow-y:auto;-webkit-overflow-scrolling:touch;
   background:var(--bg);padding:calc(env(safe-area-inset-top) + 58px) 16px
   calc(env(safe-area-inset-bottom) + 96px)}
+/* histórico: a faixa do período flutua no topo — abre folga para não tapar o conteúdo */
+#folha.comfaixa{padding-top:calc(env(safe-area-inset-top) + 104px)}
 
 /* ---------- barra flutuante do topo ---------- */
 .topo{position:absolute;left:0;right:0;top:0;z-index:30;
@@ -262,6 +264,7 @@ let SELETOR=null;
 let ESTSEL=null;                                     // estacao com card aberto                                    // gaveta aberta: null | 'var' | 'per'
 let PERIODO='agora', VARMAPA='chuva';   // abre na chuva (o que mais se consulta)
 let ESTACOES=[], ATUAL=[], HORAS=[], LOTES=[];
+let DIAS_HIST=31;                 // janela buscada de clima_horario (cresce no "Ajustar")
 let _map=null,_heat=null,_lotesL=null,_estL=null;
 let _cv=null,_anim=null,_part=[];   // partículas de vento
 const el=id=>document.getElementById(id);
@@ -292,10 +295,20 @@ const PERIODOS={agora:{lbl:'Agora',h:0},'24h':{lbl:'24 h',h:24},
 /* Janela do HISTÓRICO — separada do PERIODO do mapa (que inclui "Agora" e serve
    para colorir a mancha). Antes o histórico mostrava fixo as últimas 24 linhas
    carregadas: não era escolha, era corte arbitrário. */
-let HPER='24h';
-const HPERIODOS={'24h':{lbl:'24 h',h:24},'2d':{lbl:'2 d',h:48},
-                 '7d':{lbl:'7 d',h:168},'30d':{lbl:'30 d',h:720}};
-function janelaHist(){ const fim=Date.now(); return [fim-HPERIODOS[HPER].h*3600e3,fim]; }
+let HPER='24h', HDE=null, HATE=null;
+const HPERIODOS={'24h':{lbl:'24 horas',h:24},'2d':{lbl:'2 dias',h:48},
+                 '7d':{lbl:'7 dias',h:168},'30d':{lbl:'30 dias',h:720}};
+function janelaHist(){
+  if(HPER==='custom'&&HDE&&HATE) return [HDE,HATE];
+  const fim=Date.now(); return [fim-HPERIODOS[HPER].h*3600e3,fim];
+}
+const rotuloHPer=()=>HPER==='custom'
+  ? (HDE&&HATE ? new Date(HDE).toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit'})+'–'+
+                 new Date(HATE).toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit'})
+               : 'Ajustar')
+  : HPERIODOS[HPER].lbl;
+const dLocal=ms=>{ const d=new Date(ms);
+  return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); };
 /* `esc` = escala ABSOLUTA da cor. Antes a escala era o próprio valor ±1, o que
    fazia qualquer leitura cair no meio do gradiente: 24,9 °C e 29,2 °C pintavam
    igual e trocar de período parecia não mudar nada. Com escala fixa a cor passa
@@ -414,7 +427,7 @@ async function carregar(){
     const [e,a,h,l]=await Promise.all([
       SB.from('clima_estacoes').select('*').order('id'),
       SB.from('clima_atual').select('*'),
-      SB.from('clima_horario').select('*').gte('hora',new Date(Date.now()-31*864e5).toISOString()).order('hora'),
+      SB.from('clima_horario').select('*').gte('hora',new Date(Date.now()-DIAS_HIST*864e5).toISOString()).order('hora'),
       LOTES.length?Promise.resolve({data:null}):SB.from('lotes').select('nome,geom').not('referencia','is',true)
     ]);
     ESTACOES=e.data||[]; ATUAL=a.data||[]; HORAS=h.data||[];
@@ -710,15 +723,18 @@ function folhaHist(){
   const [t0,t1]=janelaHist();
   const s=HORAS.filter(h=>num(h.temp)!==null)
                .filter(h=>{ const t=new Date(h.hora).getTime(); return !isNaN(t)&&t>=t0&&t<=t1; });
-  const chips=`<div class="card w" style="display:flex;gap:6px;padding:8px">${
-    Object.keys(HPERIODOS).map(k=>`<button data-hper="${k}" class="chip"
-      style="flex:1;padding:7px 0;font-size:13px${HPER===k?';border-color:var(--gold);color:var(--gold);font-weight:700':''}"
-      >${HPERIODOS[k].lbl}</button>`).join('')}</div>`;
-  if(!s.length) return chips+semDado('sem leitura nesse período');
+  /* o seletor de período NÃO vem aqui: vai para a faixa flutuante do #chrome,
+     no mesmo padrão de chip+gaveta do mapa. Quatro botões numa linha comiam
+     um card inteiro de tela. */
+  if(!s.length) return semDado('sem leitura nesse período');
   const ult=s.slice(-24).reverse();
-  return `${chips}
-  <div class="sec">Temperatura — ${HPERIODOS[HPER].lbl}</div>
-  <div class="card w">${grafico(s)}</div>
+  return `
+  <div class="sec">🌡 Temperatura</div>
+  <div class="card w">${grafico(s,'temp','#ff7a45','°C')}</div>
+  <div class="sec">💧 Umidade</div>
+  <div class="card w">${grafico(s,'umidade','#38bdf8','%')}</div>
+  <div class="sec">🍃 Vento</div>
+  <div class="card w">${grafico(s,'vento_kmh','#00c896',' km/h')}</div>
   <div class="sec">Hora a hora — últimas 24</div>
   <div class="card w" style="overflow-x:auto"><table>
     <thead><tr><th>Hora</th><th>Temp</th><th>Umid</th><th>Vento</th><th>Chuva</th></tr></thead>
@@ -759,11 +775,12 @@ function rotuloTick(t,passo){
   return [String(d.getHours()).padStart(2,'0')+'h', d.getHours()===0?dia:''];
 }
 
-function grafico(s){
-  const P=s.map(h=>({t:new Date(h.hora).getTime(),v:num(h.temp)}))
+function grafico(s,campo,cor,unid){
+  campo=campo||'temp'; cor=cor||'#ff7a45'; unid=unid===undefined?'°C':unid;
+  const P=s.map(h=>({t:new Date(h.hora).getTime(),v:num(h[campo])}))
            .filter(p=>p.v!==null&&!isNaN(p.t)).sort((a,b)=>a.t-b.t);
   if(P.length<2) return `<div class="muted" style="text-align:center;padding:30px 0">
-    ${P.length?'só 1 leitura':'sem dado'}</div>`;
+    ${P.length?'só 1 leitura':'sem dado no período'}</div>`;
 
   const [t0,t1]=janelaHist();
   /* T=28 abre faixa para a unidade ficar ACIMA da escala, sem encostar no
@@ -779,10 +796,10 @@ function grafico(s){
   P.forEach((p,i)=>{ if(i&&p.t-P[i-1].t>2*3600e3){ if(cur.length>1)segs.push(cur); cur=[]; } cur.push(p); });
   if(cur.length>1) segs.push(cur);
   const dp=g=>'M '+g.map(p=>X(p.t).toFixed(1)+' '+Y(p.v).toFixed(1)).join(' L ');
-  const areas=segs.map(g=>`<path d="${dp(g)} L ${X(g[g.length-1].t).toFixed(1)} ${T+PH} L ${X(g[0].t).toFixed(1)} ${T+PH} Z" fill="url(#gt)"/>`).join('');
-  const linhas=segs.map(g=>`<path d="${dp(g)}" fill="none" stroke="#ff7a45" stroke-width="2.2" stroke-linejoin="round" stroke-linecap="round"/>`).join('');
+  const areas=segs.map(g=>`<path d="${dp(g)} L ${X(g[g.length-1].t).toFixed(1)} ${T+PH} L ${X(g[0].t).toFixed(1)} ${T+PH} Z" fill="url(#g_${campo})"/>`).join('');
+  const linhas=segs.map(g=>`<path d="${dp(g)}" fill="none" stroke="${cor}" stroke-width="2.2" stroke-linejoin="round" stroke-linecap="round"/>`).join('');
   const solt=P.filter((p,i)=>(i===0||p.t-P[i-1].t>2*3600e3)&&(i===P.length-1||P[i+1].t-p.t>2*3600e3))
-              .map(p=>`<circle cx="${X(p.t).toFixed(1)}" cy="${Y(p.v).toFixed(1)}" r="2.2" fill="#ff7a45"/>`).join('');
+              .map(p=>`<circle cx="${X(p.t).toFixed(1)}" cy="${Y(p.v).toFixed(1)}" r="2.2" fill="${cor}"/>`).join('');
 
   let gy='';
   for(let v=y0; v<=y1+1e-9; v+=pY){
@@ -803,16 +820,16 @@ function grafico(s){
   });
 
   return `<svg viewBox="0 0 ${W} ${H}" style="width:100%;height:auto;display:block">
-    <defs><linearGradient id="gt" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0%" stop-color="#ff7a45" stop-opacity=".38"/>
-      <stop offset="100%" stop-color="#ff7a45" stop-opacity="0"/></linearGradient></defs>
+    <defs><linearGradient id="g_${campo}" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="${cor}" stop-opacity=".38"/>
+      <stop offset="100%" stop-color="${cor}" stop-opacity="0"/></linearGradient></defs>
     ${gy}${gx}${areas}${linhas}${solt}
     <line x1="${L}" y1="${T+PH}" x2="${W-R}" y2="${T+PH}" stroke="var(--border2)"/>
-    <text x="${L-5}" y="${T-17}" text-anchor="end" font-size="8" fill="var(--muted2)">°C</text>
+    <text x="${L-5}" y="${T-17}" text-anchor="end" font-size="8" fill="var(--muted2)">${unid.trim()}</text>
   </svg>
   <div class="ex" style="display:flex;justify-content:space-between;margin-top:6px">
-    <span>mín ${f(Math.min(...vs),1)}°</span><span>${P.length} leituras</span>
-    <span>máx ${f(Math.max(...vs),1)}°</span></div>`;
+    <span>mín ${f(Math.min(...vs),1)}${unid}</span><span>${P.length} leituras</span>
+    <span>máx ${f(Math.max(...vs),1)}${unid}</span></div>`;
 }
 const semDado=(t)=>`<div class="vazio">${IC.clima}${t||'Nenhuma estação enviou leitura ainda.'}</div>`;
 const emObra=(n)=>`<div class="vazio">${IC.obra}<b style="color:var(--text);font-size:16px">${n}</b><br>
@@ -859,10 +876,34 @@ function pinta(){
         <div id="chrome"></div></div>
       <div id="flutua"></div>`;
   }
-  if(!noMapa) el('folha').innerHTML=corpo;
+  const faixaHist = !noMapa && SUB==='hist';
+  if(!noMapa){
+    el('folha').innerHTML=corpo;
+    // a faixa flutua sobre o conteúdo; sem folga extra ela taparia o 1º título
+    el('folha').classList.toggle('comfaixa', faixaHist);
+  }
 
   el('chrome').innerHTML=`
     <div class="topo"><div class="marca"><span class="l">🌿</span> Alabama</div>${selo()}</div>
+    ${faixaHist?`
+      <div class="faixa p1">
+        <button class="chip sel ${SELETOR==='hper'?'on':''}" data-abrir="hper">${rotuloHPer()} ▾</button>
+      </div>
+      ${SELETOR==='hper'?`<div class="gaveta">
+        ${Object.keys(HPERIODOS).map(k=>`<button data-hper="${k}" class="${HPER===k?'on':''}"
+            >${HPERIODOS[k].lbl}</button>`).join('')}
+        <button data-hper="custom" class="${HPER==='custom'?'on':''}">📅 Ajustar…</button>
+        ${HPER==='custom'?(()=>{ const j=janelaHist(); return `
+          <div style="display:flex;flex-direction:column;gap:5px;padding:6px 4px 2px">
+            <input type="date" id="hde"  value="${dLocal(j[0])}" max="${dLocal(Date.now())}"
+                   style="background:var(--bg3);border:1px solid var(--border);border-radius:8px;
+                          color:var(--text);padding:6px;font-size:13px">
+            <input type="date" id="hate" value="${dLocal(j[1])}" max="${dLocal(Date.now())}"
+                   style="background:var(--bg3);border:1px solid var(--border);border-radius:8px;
+                          color:var(--text);padding:6px;font-size:13px">
+          </div>`; })():''}
+      </div>`:''}
+    `:''}
     ${noMapa?`
       <div class="faixa p1">
         <button class="chip sel ${SELETOR==='var'?'on':''}" data-abrir="var">${VARS[VARMAPA].lbl} ▾</button>
@@ -895,7 +936,28 @@ function pinta(){
     SECAO=b.dataset.sec; SUB=(SUBS[SECAO]||[['mapa']])[0][0]; MENU=null; SELETOR=null; ESTSEL=null; trocarTela(pinta); });
   document.querySelectorAll('[data-sub]').forEach(b=>b.onclick=()=>{
     SUB=b.dataset.sub; MENU=null; SELETOR=null; ESTSEL=null; trocarTela(pinta); });
-  document.querySelectorAll('[data-hper]').forEach(b=>b.onclick=()=>{ HPER=b.dataset.hper; pinta(); });
+  document.querySelectorAll('[data-hper]').forEach(b=>b.onclick=()=>{
+    const k=b.dataset.hper;
+    if(k==='custom'){                       // ao entrar, parte da janela que já está na tela
+      if(HPER!=='custom'){ const j=janelaHist(); HDE=j[0]; HATE=j[1]; }
+      HPER='custom'; pinta(); return;       // gaveta FICA aberta: as datas estão dentro dela
+    }
+    HPER=k; SELETOR=null; pinta();
+  });
+  ['hde','hate'].forEach(id=>{ const c=document.getElementById(id); if(!c) return;
+    c.onchange=()=>{
+      const a=new Date(document.getElementById('hde').value+'T00:00:00'),
+            b2=new Date(document.getElementById('hate').value+'T23:59:59');
+      if(isNaN(a)||isNaN(b2)||a>=b2) return;
+      HDE=a.getTime(); HATE=b2.getTime();
+      // faixa mais antiga que a carregada não adianta filtrar — tem que buscar
+      if(HDE < Date.now()-DIAS_HIST*864e5){
+        DIAS_HIST=Math.ceil((Date.now()-HDE)/864e5)+1;
+        carregar().then(()=>pinta()); return;
+      }
+      pinta();
+    };
+  });
   document.querySelectorAll('[data-sair]').forEach(b=>b.onclick=async()=>{
     MENU=null; DESLOGADO=true; destruirMapa();
     /* signOut local: derruba a sessao deste aparelho. Nao depende de rede dar
