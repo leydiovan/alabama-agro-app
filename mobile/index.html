@@ -339,6 +339,11 @@ function iconePxMob(lat){
   const mpp=156543.03392*Math.cos(lat*Math.PI/180)/Math.pow(2,_map.getZoom());
   return Math.max(MIN_PX,(VB_W/10)/mpp);
 }
+/* quantos pixels vale 1 metro no zoom atual — é o que transforma a faixa da
+   máquina (metros, do cadastro) na espessura do traço na tela */
+function pxPorMetro(lat){
+  return Math.pow(2,_map.getZoom())/(156543.03392*Math.cos(lat*Math.PI/180));
+}
 function maqVisivel(id){ return !TMAQS.length || TMAQS.map(String).includes(String(id)); }
 function rotuloTMaqs(){
   if(!TMAQS.length) return 'Todas as máquinas';
@@ -752,9 +757,22 @@ function desenhaTelemetria(){
     const cor=corMaqIdx(i++), tr=TRAILS[t.device_id];
     cores.push([maqLbl(t.maquina_id,t.device_id), cor]);
     if(tr){
-      const linhas = TRMODO==='trab' ? soTrabalho(tr.linhas) : tr.linhas;
-      linhas.forEach(ln=>{ L.polyline(ln.map(p=>[p[0],p[1]]),{color:cor,weight:3,opacity:.85}).addTo(g);
-                           ln.forEach(p=>pts.push([p[0],p[1]])); });
+      const trab = TRMODO==='trab';
+      const linhas = trab ? soTrabalho(tr.linhas) : tr.linhas;
+      /* NO MODO TRABALHO O TRAÇO É A FAIXA, não uma linha fina. A largura vem do
+         cadastro da máquina e é convertida para pixel no zoom atual — por isso o
+         `zoomend` redesenha. Faixa desenhada como ESPESSURA da polilinha (e não
+         como um polígono por segmento) porque são centenas de segmentos: no
+         celular, 500 polígonos travam e 500 traços grossos não.
+         O offset da antena (0,6 m no módulo desktop) fica de fora: nestes zooms
+         é sub-pixel, e fingir precisão que não se vê é pior que não ter. */
+      const faixaM = trab ? (Number((MAQS[t.maquina_id]||{}).faixa_m)||3.8) : 0;
+      const wpx = trab ? Math.max(2, faixaM*pxPorMetro(+t.lat||-12.65)) : 3;
+      linhas.forEach(ln=>{
+        L.polyline(ln.map(p=>[p[0],p[1]]),
+          {color:cor, weight:wpx, opacity:trab?.55:.85, lineCap:'round', lineJoin:'round'}).addTo(g);
+        ln.forEach(p=>pts.push([p[0],p[1]]));
+      });
     }
     if(t.lat==null||t.lon==null) return;
     const e=estadoTele(t), ll=[+t.lat,+t.lon]; pts.push(ll);
@@ -774,9 +792,20 @@ function desenhaTelemetria(){
   /* A legenda diz de quem é cada cor. Com rastro desligado ela vira a legenda
      dos ESTADOS, que é o que sobra para ler no mapa. */
   const lg=el('legenda');
-  if(lg) lg.innerHTML = (TRPER!=='off' && cores.length)
-    ? cores.map(([n,c])=>`<span><i style="background:${c}"></i>${n}</span>`).join('')
-    : `<span><i style="background:#00c896"></i>em movimento</span><span><i style="background:#ffc107"></i>parada</span><span><i style="background:#8b949e"></i>sem sinal</span>`;
+  if(lg){
+    /* AVISO DE ESCALA: no zoom em que o dia inteiro cabe na tela, uma faixa de
+       3,8 m vale 0,2 px — o traço fica no piso de 2 px e NÃO está na escala.
+       Sem dizer isso, a pessoa olha um risco fino e conclui que a faixa não foi
+       desenhada (foi exatamente o que aconteceu). */
+    const fx=Math.max(...(TELE.filter(t=>maqVisivel(t.maquina_id))
+      .map(t=>Number((MAQS[t.maquina_id]||{}).faixa_m)||3.8)), 0);
+    const fpx=fx*pxPorMetro(-12.65);
+    const nota=(TRMODO==='trab'&&TRPER!=='off'&&fx>0)
+      ? `<span style="opacity:.8">faixa ${String(fx).replace('.',',')} m${fpx<3?' · <b>aproxime para ver na escala</b>':' · na escala'}</span>` : '';
+    lg.innerHTML = (TRPER!=='off' && cores.length)
+      ? cores.map(([n,c])=>`<span><i style="background:${c}"></i>${n}</span>`).join('')+nota
+      : `<span><i style="background:#00c896"></i>em movimento</span><span><i style="background:#ffc107"></i>parada</span><span><i style="background:#8b949e"></i>sem sinal</span>`;
+  }
   /* ⛔ ENQUADRA UMA VEZ SÓ, por recorte. O desenho roda de novo a cada zoom (o
      ícone tem tamanho em metros) e a cada atualização de 60 s — se ele
      reenquadrasse sempre, todo zoom que a pessoa desse voltaria sozinho para
