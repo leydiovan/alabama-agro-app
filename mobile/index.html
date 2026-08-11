@@ -752,27 +752,34 @@ function corMaqIdx(i){ return ['#ffc107','#00c896','#38bdf8','#bc8cff','#2dd4bf'
    Leaflet vivos no celular. */
 function desenhaTelemetria(){
   if(_telL){ try{ _map.removeLayer(_telL); }catch(e){} _telL=null; }
-  const g=L.layerGroup(); let i=0, pts=[]; const cores=[], girar=[];
+  const g=L.layerGroup(); let i=0, pts=[], distTrab=0, faixaRef=0; const cores=[], girar=[], faixas=[], tracos=[];
   TELE.filter(t=>maqVisivel(t.maquina_id)).forEach(t=>{
     const cor=corMaqIdx(i++), tr=TRAILS[t.device_id];
     cores.push([maqLbl(t.maquina_id,t.device_id), cor]);
     if(tr){
-      const trab = TRMODO==='trab';
-      const linhas = trab ? soTrabalho(tr.linhas) : tr.linhas;
-      /* NO MODO TRABALHO O TRAÇO É A FAIXA, não uma linha fina. A largura vem do
-         cadastro da máquina e é convertida para pixel no zoom atual — por isso o
-         `zoomend` redesenha. Faixa desenhada como ESPESSURA da polilinha (e não
-         como um polígono por segmento) porque são centenas de segmentos: no
-         celular, 500 polígonos travam e 500 traços grossos não.
-         O offset da antena (0,6 m no módulo desktop) fica de fora: nestes zooms
-         é sub-pixel, e fingir precisão que não se vê é pior que não ter. */
-      const faixaM = trab ? (Number((MAQS[t.maquina_id]||{}).faixa_m)||3.8) : 0;
-      const wpx = trab ? Math.max(2, faixaM*pxPorMetro(+t.lat||-12.65)) : 3;
-      linhas.forEach(ln=>{
-        L.polyline(ln.map(p=>[p[0],p[1]]),
-          {color:cor, weight:wpx, opacity:trab?.55:.85, lineCap:'round', lineJoin:'round'}).addTo(g);
-        ln.forEach(p=>pts.push([p[0],p[1]]));
-      });
+      /* OS DOIS JUNTOS, como no Alabama Agro (módulo Telemetria): a LINHA do
+         rastro sempre — é o caminho que a máquina fez —, e por cima dela a
+         FAIXA de trabalho nos trechos que contam como trabalho. Eu tinha feito
+         um substituindo o outro, e o dono corrigiu: "tem o rastro e a faixa de
+         trabalho aparece junto".
+         A faixa vai como ESPESSURA da polilinha (não polígono por segmento):
+         são centenas de segmentos, e no celular 500 polígonos travam. Verde
+         translúcido, o mesmo `#00c896` do desktop. */
+      const faixaM=Number((MAQS[t.maquina_id]||{}).faixa_m)||3.8;
+      const wpx=Math.max(2, faixaM*pxPorMetro(+t.lat||-12.65));
+      if(TRMODO==='trab'){
+        soTrabalho(tr.linhas).forEach(ln=>{
+          faixas.push([ln.map(p=>[p[0],p[1]]), wpx]);
+          for(let k=1;k<ln.length;k++){   // distância trabalhada -> hectares na legenda
+            const a=ln[k-1], b=ln[k];
+            const dx=(b[1]-a[1])*111320*Math.cos(a[0]*Math.PI/180), dy=(b[0]-a[0])*111320;
+            distTrab+=Math.hypot(dx,dy);
+          }
+        });
+        faixaRef=faixaM;
+      }
+      tr.linhas.forEach(ln=>{ tracos.push([ln.map(p=>[p[0],p[1]]), cor]);
+                              ln.forEach(p=>pts.push([p[0],p[1]])); });
     }
     if(t.lat==null||t.lon==null) return;
     const e=estadoTele(t), ll=[+t.lat,+t.lon]; pts.push(ll);
@@ -782,6 +789,11 @@ function desenhaTelemetria(){
     mk.bindTooltip(maqLbl(t.maquina_id,t.device_id),{permanent:true,direction:'bottom',offset:[0,hh/2],className:'placa'});
     girar.push([mk, Number(t.hdg_deg)||0]);
   });
+  /* ORDEM IMPORTA: a faixa entra ANTES para a linha do rastro ficar por cima
+     dela — é a mesma pilha do desktop (camadaFaixa embaixo, camadaTraco em
+     cima). Invertido, a faixa apagaria o traço que ela deveria acompanhar. */
+  faixas.forEach(([ln,w])=>L.polyline(ln,{color:'#00c896',weight:w,opacity:.32,lineCap:'round',lineJoin:'round'}).addTo(g));
+  tracos.forEach(([ln,c])=>L.polyline(ln,{color:c,weight:2.5,opacity:.9}).addTo(g));
   _telL=g.addTo(_map);
   /* A ROTAÇÃO SÓ DEPOIS DE ENTRAR NO MAPA: o elemento do divIcon não existe
      enquanto o grupo não está no mapa — chamando getElement() antes, o
@@ -797,11 +809,13 @@ function desenhaTelemetria(){
        3,8 m vale 0,2 px — o traço fica no piso de 2 px e NÃO está na escala.
        Sem dizer isso, a pessoa olha um risco fino e conclui que a faixa não foi
        desenhada (foi exatamente o que aconteceu). */
-    const fx=Math.max(...(TELE.filter(t=>maqVisivel(t.maquina_id))
-      .map(t=>Number((MAQS[t.maquina_id]||{}).faixa_m)||3.8)), 0);
-    const fpx=fx*pxPorMetro(-12.65);
+    const fx=faixaRef||0, fpx=fx*pxPorMetro(-12.65);
+    const ha=distTrab*fx/10000;
+    /* hectares como no desktop: distância trabalhada × faixa. É TETO — passar
+       duas vezes no mesmo lugar conta duas vezes. Dizer isso na legenda evita
+       que o número seja lido como área real do talhão. */
     const nota=(TRMODO==='trab'&&TRPER!=='off'&&fx>0)
-      ? `<span style="opacity:.8">faixa ${String(fx).replace('.',',')} m${fpx<3?' · <b>aproxime para ver na escala</b>':' · na escala'}</span>` : '';
+      ? `<span><i style="background:#00c896;opacity:.45"></i>faixa ${String(fx).replace('.',',')} m — <b>${ha.toFixed(2).replace('.',',')} ha</b> (teto, sem descontar sobreposição)${fpx<3?' · <b>aproxime para ver na escala</b>':''}</span>` : '';
     lg.innerHTML = (TRPER!=='off' && cores.length)
       ? cores.map(([n,c])=>`<span><i style="background:${c}"></i>${n}</span>`).join('')+nota
       : `<span><i style="background:#00c896"></i>em movimento</span><span><i style="background:#ffc107"></i>parada</span><span><i style="background:#8b949e"></i>sem sinal</span>`;
