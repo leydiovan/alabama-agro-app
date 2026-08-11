@@ -271,6 +271,20 @@ let ESTACOES=[], ATUAL=[], HORAS=[], LOTES=[];
    buscado só quando a tela do mapa da telemetria está aberta — dado de celular
    não se gasta com o que ninguém está olhando. */
 let TELE=[], MAQS={}, TRAILS={}, _telL=null;
+/* FILTRO DO RASTRO (pedido do dono, 08/08): com/sem rastro, quantos dias e
+   quais máquinas. `TRPER='off'` desliga o rastro — e desligar não é enfeite:
+   é o modo mais leve da tela, porque nem busca o trajeto. `TMAQS` vazio = todas.
+   Guardado no aparelho: quem só quer ver uma máquina não reconfigura toda vez. */
+let TRPER='1', TMAQS=[];
+const TRPERS={off:'Sem rastro', '1':'Rastro: hoje', '2':'Rastro: 2 dias', '3':'Rastro: 3 dias', '7':'Rastro: 7 dias'};
+try{ const s=localStorage.getItem('tel_rastro'); if(s){ const o=JSON.parse(s); if(o.per) TRPER=o.per; if(Array.isArray(o.maqs)) TMAQS=o.maqs; } }catch(e){}
+function salvarTelFiltro(){ try{ localStorage.setItem('tel_rastro',JSON.stringify({per:TRPER,maqs:TMAQS})); }catch(e){} }
+function maqVisivel(id){ return !TMAQS.length || TMAQS.map(String).includes(String(id)); }
+function rotuloTMaqs(){
+  if(!TMAQS.length) return 'Todas as máquinas';
+  if(TMAQS.length===1) return maqLbl(TMAQS[0],'');
+  return TMAQS.length+' máquinas';
+}
 const VIVO_S=180;   // sem reportar há mais de 3 min = sem sinal (a caixa manda a cada 15 s)
 function maqLbl(id,dev){ const m=MAQS[id]||{}; return m.id_frota||m.nome||dev||('#'+id); }
 function maqSub(id){ const m=MAQS[id]||{}; return [m.nome&&m.nome!==m.id_frota?m.nome:'', [m.marca,m.modelo].filter(Boolean).join(' ')].filter(Boolean).join(' · '); }
@@ -629,14 +643,18 @@ async function carregarTelemetria(){
        veio DA REDE com sucesso. Aqui a chamada respondeu, então vale. */
     if(t&&!t.error) TELE=t.data||[];
     if(m&&m.data) m.data.forEach(x=>MAQS[x.id]=x);
-    if(SECAO==='tel' && SUB==='mapa') await carregarRastroDoDia();
+    if(SECAO==='tel' && SUB==='mapa') await carregarRastro();
   }catch(e){ console.warn('[telemetria]',e.message||e); }
 }
-async function carregarRastroDoDia(){
-  const d=new Date(), p=n=>String(n).padStart(2,'0');
-  const hoje=d.getFullYear()+'-'+p(d.getMonth()+1)+'-'+p(d.getDate());   // dia LOCAL, nunca toISOString()
+function diaLocalMob(off){ const d=new Date(); if(off) d.setDate(d.getDate()+off); const p=n=>String(n).padStart(2,'0'); return d.getFullYear()+'-'+p(d.getMonth()+1)+'-'+p(d.getDate()); }
+async function carregarRastro(){
+  if(TRPER==='off'){ TRAILS={}; return; }        // sem rastro nem busca — é o modo leve
+  const dias=Math.max(1,+TRPER||1);
   try{
-    const {data,error}=await SB.from('telemetria_jornada').select('device_id,maquina_id,trajeto').eq('dia',hoje);
+    let q=SB.from('telemetria_jornada').select('device_id,maquina_id,trajeto')
+      .gte('dia',diaLocalMob(-(dias-1))).lte('dia',diaLocalMob(0));   // datas LOCAIS, nunca toISOString()
+    if(TMAQS.length) q=q.in('maquina_id',TMAQS.map(Number));
+    const {data,error}=await q;
     if(error||!data) return;
     const novo={};
     data.forEach(j=>{
@@ -653,7 +671,10 @@ async function carregarRastroDoDia(){
         if(quebra || (i%passo)===0 || i===t.length-1) atual.push([+q[0],+q[1]]);
       }
       if(atual.length>1) linhas.push(atual);
-      novo[j.device_id]={linhas, maquina_id:j.maquina_id};
+      /* ACUMULA por device: com período de vários dias vem uma linha POR DIA, e
+         sobrescrever deixaria só o último — o rastro de 7 dias viraria o de 1. */
+      const o=novo[j.device_id]||(novo[j.device_id]={linhas:[], maquina_id:j.maquina_id});
+      o.linhas=o.linhas.concat(linhas);
     });
     TRAILS=novo;
   }catch(e){ console.warn('[rastro]',e.message||e); }
@@ -664,9 +685,10 @@ function corMaqIdx(i){ return ['#ffc107','#00c896','#38bdf8','#bc8cff','#2dd4bf'
    Leaflet vivos no celular. */
 function desenhaTelemetria(){
   if(_telL){ try{ _map.removeLayer(_telL); }catch(e){} _telL=null; }
-  const g=L.layerGroup(); let i=0, pts=[];
-  TELE.forEach(t=>{
+  const g=L.layerGroup(); let i=0, pts=[]; const cores=[];
+  TELE.filter(t=>maqVisivel(t.maquina_id)).forEach(t=>{
     const cor=corMaqIdx(i++), tr=TRAILS[t.device_id];
+    cores.push([maqLbl(t.maquina_id,t.device_id), cor]);
     if(tr) tr.linhas.forEach(ln=>{ L.polyline(ln,{color:cor,weight:3,opacity:.8}).addTo(g); ln.forEach(p=>pts.push(p)); });
     if(t.lat==null||t.lon==null) return;
     const e=estadoTele(t), ll=[+t.lat,+t.lon]; pts.push(ll);
@@ -674,6 +696,12 @@ function desenhaTelemetria(){
      .bindTooltip(maqLbl(t.maquina_id,t.device_id)+' · '+e.txt,{permanent:false});
   });
   _telL=g.addTo(_map);
+  /* A legenda diz de quem é cada cor. Com rastro desligado ela vira a legenda
+     dos ESTADOS, que é o que sobra para ler no mapa. */
+  const lg=el('legenda');
+  if(lg) lg.innerHTML = (TRPER!=='off' && cores.length)
+    ? cores.map(([n,c])=>`<span><i style="background:${c}"></i>${n}</span>`).join('')
+    : `<span><i style="background:#00c896"></i>em movimento</span><span><i style="background:#ffc107"></i>parada</span><span><i style="background:#8b949e"></i>sem sinal</span>`;
   if(pts.length){ try{ _map.fitBounds(L.latLngBounds(pts).pad(.12),{maxZoom:16}); }catch(e){} }
 }
 function folhaMaquinas(){
@@ -724,11 +752,10 @@ function desenhaMapa(){
     pararVento();
     if(_heat){ _map.removeLayer(_heat); _heat=null; }
     if(_estL){ _map.removeLayer(_estL); _estL=null; }
-    const lg=el('legenda'); if(lg) lg.innerHTML='';
-    desenhaTelemetria();
+    desenhaTelemetria();   // ele mesmo escreve a legenda (cores das máquinas ou dos estados)
     /* entrou na seção sem passar por um carregar() — busca o rastro na hora e
        redesenha quando chegar (o mapa já está no ar com os pinos) */
-    if(!Object.keys(TRAILS).length) carregarRastroDoDia().then(()=>{ try{ desenhaTelemetria(); }catch(e){} });
+    if(!Object.keys(TRAILS).length) carregarRastro().then(()=>{ try{ desenhaTelemetria(); }catch(e){} });
     setTimeout(()=>{ try{ _map.invalidateSize(); }catch(e){} },100);
     return;
   }
@@ -1090,8 +1117,21 @@ function pinta(){
           ? Object.keys(VARS).map(k=>[k,VARS[k].lbl,VARMAPA===k,'vm'])
           : Object.keys(PERIODOS).map(k=>[k,PERIODOS[k].lbl,PERIODO===k,'per'])
         ).map(([k,n,on,tipo])=>`<button data-${tipo}="${k}" class="${on?'on':''}">${n}</button>`).join('')
-      }</div>`:''}
-      <div class="legenda" id="legenda"></div>
+      }</div>`:''}`:''}
+    ${SECAO==='tel'&&SUB==='mapa'?`
+      <div class="faixa p1">
+        <button class="chip sel ${SELETOR==='trp'?'on':''}" data-abrir="trp">${TRPERS[TRPER]} ▾</button>
+        <button class="chip sel ${SELETOR==='tmq'?'on':''}" data-abrir="tmq">${rotuloTMaqs()} ▾</button>
+      </div>
+      ${SELETOR==='trp'?`<div class="gaveta">${Object.keys(TRPERS).map(k=>
+        `<button data-trp="${k}" class="${TRPER===k?'on':''}">${TRPERS[k]}</button>`).join('')}</div>`:''}
+      ${SELETOR==='tmq'?`<div class="gaveta">
+        <button data-tmq="" class="${TMAQS.length?'':'on'}">Todas as máquinas</button>
+        ${TELE.map(t=>`<button data-tmq="${t.maquina_id||''}" class="${maqVisivel(t.maquina_id)&&TMAQS.length?'on':''}"
+           >${maqLbl(t.maquina_id,t.device_id)}</button>`).join('')}
+      </div>`:''}`:''}
+    ${noMapa?`
+      <div class="legenda" id="legenda" style="margin-top:0"></div>
       <div class="cartao" id="cartao" style="display:none"></div>`:''}`;
 
   el('flutua').innerHTML=`
@@ -1147,6 +1187,18 @@ function pinta(){
     SELETOR = SELETOR===b.dataset.abrir ? null : b.dataset.abrir; pinta(); });
   document.querySelectorAll('[data-per]').forEach(b=>b.onclick=()=>{
     PERIODO=b.dataset.per; SELETOR=null; pinta(); });
+  /* rastro: trocar o período REBUSCA (é outro recorte no banco); desligar não
+     busca nada. Em ambos os casos redesenha sem recriar o mapa. */
+  document.querySelectorAll('[data-trp]').forEach(b=>b.onclick=async()=>{
+    TRPER=b.dataset.trp; salvarTelFiltro(); SELETOR=null; pinta();
+    await carregarRastro(); try{ desenhaTelemetria(); }catch(e){} });
+  /* máquina: seleção MÚLTIPLA (o botão "Todas" limpa) */
+  document.querySelectorAll('[data-tmq]').forEach(b=>b.onclick=async()=>{
+    const id=b.dataset.tmq;
+    if(!id) TMAQS=[];
+    else { const i=TMAQS.map(String).indexOf(String(id)); if(i>=0) TMAQS.splice(i,1); else TMAQS.push(id); }
+    salvarTelFiltro(); pinta();
+    await carregarRastro(); try{ desenhaTelemetria(); }catch(e){} });
   document.querySelectorAll('[data-vm]').forEach(b=>b.onclick=()=>{
     VARMAPA=b.dataset.vm; SELETOR=null; pinta(); });
 
