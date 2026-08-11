@@ -96,6 +96,10 @@ svg{display:block}
   min-height:36px;display:flex;align-items:center;gap:6px;white-space:nowrap}
 .chip.on{background:var(--gold);border-color:var(--gold);color:#1a1100}
 .chip svg{width:15px;height:15px}
+/* botão redondo só de ícone: os chips de texto já enchem a faixa num celular de
+   375 px, e um terceiro com rótulo saía da tela. Redondo cabe sempre. */
+.chip.ico{width:36px;padding:0;justify-content:center}
+.chip.ico svg{width:20px;height:20px}
 
 /* ---------- legenda do mapa ---------- */
 /* legenda enxuta: uma linha só — valor + barra com marcador da posição */
@@ -212,6 +216,11 @@ const SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZ
    Traço em currentColor para herdar a cor do botão.
    ============================================================ */
 const IC={
+  /* esquadro — triângulo retângulo com os traços da régua no cateto. Traço
+     grosso (2,2) porque ele vive num botão de 36 px: linha fina some no sol. */
+  esquadro:`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"
+    stroke-linecap="round" stroke-linejoin="round"><path d="M4 20h16L4 4z"/>
+    <path d="M8 20v-2.6M11.4 20v-3.4M14.8 20v-2.6M18.2 20v-3.4"/></svg>`,
   // nuvem
   clima:`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"
     stroke-linecap="round" stroke-linejoin="round"><path d="M6.8 18.5A4.3 4.3 0 0 1 6.4 10a5.9 5.9 0 0 1 11.3-1.4 3.9 3.9 0 0 1 .4 7.8"/>
@@ -280,7 +289,11 @@ let TELE=[], MAQS={}, TRAILS={}, _telL=null, _telEnq=false;
    é o modo mais leve da tela, porque nem busca o trajeto. `TMAQS` vazio = todas.
    Guardado no aparelho: quem só quer ver uma máquina não reconfigura toda vez. */
 let TRPER='1', TMAQS=[], TRMODO='trab';
-const TRPERS={off:'Sem rastro', '1':'Rastro: hoje', '2':'Rastro: 2 dias', '3':'Rastro: 3 dias', '7':'Rastro: 7 dias'};
+/* rótulos CURTOS: medido em 375 px, "Rastro: hoje · trabalho" (188 px) mais
+   "Todas as máquinas" (168 px) já estouravam a faixa — o botão de medir ficava
+   fora da tela, que foi o que o dono viu. O "Rastro:" era redundante: a gaveta
+   que ele abre só fala de rastro. */
+const TRPERS={off:'Sem rastro', '1':'Hoje', '2':'2 dias', '3':'3 dias', '7':'7 dias'};
 try{ const s=localStorage.getItem('tel_rastro'); if(s){ const o=JSON.parse(s); if(o.per) TRPER=o.per; if(Array.isArray(o.maqs)) TMAQS=o.maqs; if(o.modo) TRMODO=o.modo; } }catch(e){}
 function salvarTelFiltro(){ try{ localStorage.setItem('tel_rastro',JSON.stringify({per:TRPER,maqs:TMAQS,modo:TRMODO})); }catch(e){} }
 /* RASTRO DE TRABALHO × COMPLETO (pedido do dono, 08/08: "rastro de trabalho —
@@ -418,9 +431,9 @@ function pxPorMetro(lat){
 }
 function maqVisivel(id){ return !TMAQS.length || TMAQS.map(String).includes(String(id)); }
 function rotuloTMaqs(){
-  if(!TMAQS.length) return 'Todas as máquinas';
+  if(!TMAQS.length) return 'Todas';
   if(TMAQS.length===1) return maqLbl(TMAQS[0],'');
-  return TMAQS.length+' máquinas';
+  return TMAQS.length+' máq.';
 }
 const VIVO_S=180;   // sem reportar há mais de 3 min = sem sinal (a caixa manda a cada 15 s)
 function maqLbl(id,dev){ const m=MAQS[id]||{}; return m.id_frota||m.nome||dev||('#'+id); }
@@ -1322,7 +1335,7 @@ function pinta(){
       <div class="faixa p1">
         <button class="chip sel ${SELETOR==='trp'?'on':''}" data-abrir="trp">${TRPERS[TRPER]}${TRPER!=='off'?(TRMODO==='trab'?' · trabalho':' · tudo'):''} ▾</button>
         <button class="chip sel ${SELETOR==='tmq'?'on':''}" data-abrir="tmq">${rotuloTMaqs()} ▾</button>
-        <button class="chip sel ${MED.on?'on':''}" id="medbtn">📏 Medir</button>
+        <button class="chip ico ${MED.on?'on':''}" id="medbtn" title="Medir área ou distância" aria-label="Medir">${IC.esquadro}</button>
       </div>
       <div class="gaveta" id="medcx" style="display:${MED.on?'':'none'};line-height:1.9"></div>
       ${SELETOR==='trp'?`<div class="gaveta">${Object.keys(TRPERS).map(k=>
