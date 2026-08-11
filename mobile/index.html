@@ -274,7 +274,7 @@ let ESTACOES=[], ATUAL=[], HORAS=[], LOTES=[];
    nome, modelo — SEM patrimônio, ver migração 103); `TRAILS` é o rastro do dia,
    buscado só quando a tela do mapa da telemetria está aberta — dado de celular
    não se gasta com o que ninguém está olhando. */
-let TELE=[], MAQS={}, TRAILS={}, _telL=null;
+let TELE=[], MAQS={}, TRAILS={}, _telL=null, _telEnq=false;
 /* FILTRO DO RASTRO (pedido do dono, 08/08): com/sem rastro, quantos dias e
    quais máquinas. `TRPER='off'` desliga o rastro — e desligar não é enfeite:
    é o modo mais leve da tela, porque nem busca o trajeto. `TMAQS` vazio = todas.
@@ -777,7 +777,13 @@ function desenhaTelemetria(){
   if(lg) lg.innerHTML = (TRPER!=='off' && cores.length)
     ? cores.map(([n,c])=>`<span><i style="background:${c}"></i>${n}</span>`).join('')
     : `<span><i style="background:#00c896"></i>em movimento</span><span><i style="background:#ffc107"></i>parada</span><span><i style="background:#8b949e"></i>sem sinal</span>`;
-  if(pts.length){ try{ _map.fitBounds(L.latLngBounds(pts).pad(.12),{maxZoom:16}); }catch(e){} }
+  /* ⛔ ENQUADRA UMA VEZ SÓ, por recorte. O desenho roda de novo a cada zoom (o
+     ícone tem tamanho em metros) e a cada atualização de 60 s — se ele
+     reenquadrasse sempre, todo zoom que a pessoa desse voltaria sozinho para
+     longe, centralizado na máquina. Foi exatamente o que o dono pegou.
+     `_telEnq` só é zerado quando MUDA O QUE SE VÊ: entrar na seção, trocar
+     período, modo ou máquina. Mexer no mapa nunca reenquadra. */
+  if(pts.length && !_telEnq){ _telEnq=true; try{ _map.fitBounds(L.latLngBounds(pts).pad(.12),{maxZoom:16}); }catch(e){} }
 }
 function folhaMaquinas(){
   if(!TELE.length) return '<div class="vazio">Nenhuma caixa reportando ainda.</div>';
@@ -801,7 +807,7 @@ function folhaMaquinas(){
 function destruirMapa(){
   pararVento();
   if(_map){ try{ _map.remove(); }catch(e){} }
-  _map=null; _heat=null; _lotesL=null; _estL=null; _telL=null;
+  _map=null; _heat=null; _lotesL=null; _estL=null; _telL=null; _telEnq=false;
 }
 function desenhaMapa(){
   const m=el('mapa'); if(!m||!window.L) return;
@@ -1231,9 +1237,9 @@ function pinta(){
   el('fdir').onclick=()=>{ MENU=MENU==='dir'?null:'dir'; pinta(); };
   if(el('veu')) el('veu').onclick=()=>{ MENU=null; pinta(); };
   document.querySelectorAll('[data-sec]').forEach(b=>b.onclick=()=>{
-    SECAO=b.dataset.sec; SUB=(SUBS[SECAO]||[['mapa']])[0][0]; MENU=null; SELETOR=null; ESTSEL=null; trocarTela(pinta); });
+    SECAO=b.dataset.sec; SUB=(SUBS[SECAO]||[['mapa']])[0][0]; MENU=null; SELETOR=null; ESTSEL=null; _telEnq=false; trocarTela(pinta); });   /* entrou noutra seção: enquadra de novo */
   document.querySelectorAll('[data-sub]').forEach(b=>b.onclick=()=>{
-    SUB=b.dataset.sub; MENU=null; SELETOR=null; ESTSEL=null; trocarTela(pinta); });
+    SUB=b.dataset.sub; MENU=null; SELETOR=null; ESTSEL=null; _telEnq=false; trocarTela(pinta); });
   document.querySelectorAll('[data-htab]').forEach(b=>b.onclick=()=>{ HTAB=b.dataset.htab; pinta(); });
   document.querySelectorAll('[data-hper]').forEach(b=>b.onclick=()=>{
     const k=b.dataset.hper;
@@ -1272,7 +1278,7 @@ function pinta(){
   /* rastro: trocar o período REBUSCA (é outro recorte no banco); desligar não
      busca nada. Em ambos os casos redesenha sem recriar o mapa. */
   document.querySelectorAll('[data-trp]').forEach(b=>b.onclick=async()=>{
-    TRPER=b.dataset.trp; salvarTelFiltro(); SELETOR=null; pinta();
+    TRPER=b.dataset.trp; salvarTelFiltro(); SELETOR=null; _telEnq=false; pinta();   // outro período = outro recorte: reenquadra
     await carregarRastro(); try{ desenhaTelemetria(); }catch(e){} });
   /* trabalho × tudo: é só DESENHO — não volta ao banco */
   document.querySelectorAll('[data-trmodo]').forEach(b=>b.onclick=()=>{
@@ -1283,7 +1289,7 @@ function pinta(){
     const id=b.dataset.tmq;
     if(!id) TMAQS=[];
     else { const i=TMAQS.map(String).indexOf(String(id)); if(i>=0) TMAQS.splice(i,1); else TMAQS.push(id); }
-    salvarTelFiltro(); pinta();
+    salvarTelFiltro(); _telEnq=false; pinta();   // outra máquina costuma estar em outro lugar: reenquadra
     await carregarRastro(); try{ desenhaTelemetria(); }catch(e){} });
   document.querySelectorAll('[data-vm]').forEach(b=>b.onclick=()=>{
     VARMAPA=b.dataset.vm; SELETOR=null; pinta(); });
