@@ -253,7 +253,8 @@ const IC={
 
 const SECOES=[['clima','Clima',IC.clima],['rel','Relatórios',IC.rel],
               ['tel','Telemetria',IC.tel],['safra','Safra',IC.safra]];
-const SUBS={ clima:[['mapa','Mapa',IC.mapa],['agora','Agora',IC.agora],['hist','Histórico',IC.hist]] };
+const SUBS={ clima:[['mapa','Mapa',IC.mapa],['agora','Agora',IC.agora],['hist','Histórico',IC.hist]],
+             tel:[['mapa','Mapa',IC.mapa],['agora','Máquinas',IC.agora]] };
 
 let SB=null, SECAO='clima', SUB='mapa', MENU=null;   // MENU: null | 'esq' | 'dir'
 /* DESLOGADO trava o ciclo de recarga depois que a sessao cai. Sem ele, o
@@ -264,6 +265,28 @@ let SELETOR=null;
 let ESTSEL=null;                                     // estacao com card aberto                                    // gaveta aberta: null | 'var' | 'per'
 let PERIODO='agora', VARMAPA='chuva';   // abre na chuva (o que mais se consulta)
 let ESTACOES=[], ATUAL=[], HORAS=[], LOTES=[];
+/* TELEMETRIA — `TELE` é a última posição de cada caixa (telemetria_atual, 1 linha
+   por device); `MAQS` é a identificação (view `maquinas_identificacao`: frota,
+   nome, modelo — SEM patrimônio, ver migração 103); `TRAILS` é o rastro do dia,
+   buscado só quando a tela do mapa da telemetria está aberta — dado de celular
+   não se gasta com o que ninguém está olhando. */
+let TELE=[], MAQS={}, TRAILS={}, _telL=null;
+const VIVO_S=180;   // sem reportar há mais de 3 min = sem sinal (a caixa manda a cada 15 s)
+function maqLbl(id,dev){ const m=MAQS[id]||{}; return m.id_frota||m.nome||dev||('#'+id); }
+function maqSub(id){ const m=MAQS[id]||{}; return [m.nome&&m.nome!==m.id_frota?m.nome:'', [m.marca,m.modelo].filter(Boolean).join(' ')].filter(Boolean).join(' · '); }
+function estadoTele(t){
+  const seg=(Date.now()-new Date(t.medido_em||t.atualizado_em||0).getTime())/1000;
+  if(!(seg<VIVO_S)) return {k:'off', txt:'sem sinal', cor:'#8b949e'};
+  return (+t.vel_kmh||0)>1 ? {k:'and', txt:'em movimento', cor:'#00c896'}
+                           : {k:'par', txt:'parada',       cor:'#ffc107'};
+}
+function haQuanto(ts){
+  const s=Math.max(0,(Date.now()-new Date(ts||0).getTime())/1000);
+  if(s<90) return 'agora';
+  if(s<3600) return 'há '+Math.round(s/60)+' min';
+  if(s<86400) return 'há '+Math.round(s/3600)+' h';
+  return 'há '+Math.round(s/86400)+' d';
+}
 let DIAS_HIST=31;                 // janela buscada de clima_horario (cresce no "Ajustar")
 let _map=null,_heat=null,_lotesL=null,_estL=null;
 let _cv=null,_anim=null,_part=[];   // partículas de vento
@@ -473,6 +496,7 @@ async function carregar(){
       LOTES.length?Promise.resolve({data:null}):SB.from('lotes').select('nome,geom').not('referencia','is',true)
     ]);
     ESTACOES=e.data||[]; ATUAL=a.data||[]; HORAS=h.data||[];
+    await carregarTelemetria();
     if(l&&l.data) LOTES=(l.data||[]).map(x=>{ const g=x.geom;
       if(!g||!Array.isArray(g.ring)||g.ring.length<3) return null;
       return {nome:x.nome,ring:g.ring.map(p=>utm2ll(+p[0],+p[1]))}; }).filter(Boolean);
@@ -591,10 +615,90 @@ function mascara(bb,W,H){
 /* Destrói o mapa de verdade ao trocar de tela. Antes bastava _map=null, mas a
    instância antiga ficava viva presa a um DOM já substituído — daí o erro de
    inicialização e a tela preta ao voltar para o Clima. */
+/* Busca a telemetria junto com o clima (o carregar() já roda a cada 60 s quando a
+   tela está visível, e em visibilitychange/focus/online — a regra do projeto para
+   página que se atualiza sozinha). O RASTRO do dia só é buscado quando o mapa da
+   telemetria está aberto: são milhares de pontos por máquina, e celular paga. */
+async function carregarTelemetria(){
+  try{
+    const ps=[SB.from('telemetria_atual').select('*')];
+    ps.push(Object.keys(MAQS).length ? Promise.resolve({data:null})
+          : SB.from('maquinas_identificacao').select('id,id_frota,nome,marca,modelo,categoria'));
+    const [t,m]=await Promise.all(ps);
+    /* Regra do offline-first: lista vazia só substitui o que está na tela quando
+       veio DA REDE com sucesso. Aqui a chamada respondeu, então vale. */
+    if(t&&!t.error) TELE=t.data||[];
+    if(m&&m.data) m.data.forEach(x=>MAQS[x.id]=x);
+    if(SECAO==='tel' && SUB==='mapa') await carregarRastroDoDia();
+  }catch(e){ console.warn('[telemetria]',e.message||e); }
+}
+async function carregarRastroDoDia(){
+  const d=new Date(), p=n=>String(n).padStart(2,'0');
+  const hoje=d.getFullYear()+'-'+p(d.getMonth()+1)+'-'+p(d.getDate());   // dia LOCAL, nunca toISOString()
+  try{
+    const {data,error}=await SB.from('telemetria_jornada').select('device_id,maquina_id,trajeto').eq('dia',hoje);
+    if(error||!data) return;
+    const novo={};
+    data.forEach(j=>{
+      const t=Array.isArray(j.trajeto)?j.trajeto:[];
+      const passo=Math.max(1,Math.ceil(t.length/1200));   // celular: 1.200 pontos por máquina bastam para a forma
+      const linhas=[]; let atual=[], ant=null;
+      for(let i=0;i<t.length;i++){
+        const q=t[i]; if(!q||q[0]==null) continue;
+        let quebra=false;
+        if(ant){ const dx=(q[1]-ant[1])*111320*Math.cos(q[0]*Math.PI/180), dy=(q[0]-ant[0])*111320;
+                 if(Math.hypot(dx,dy)>300 || ((+q[2]||0)-(+ant[2]||0))/1000>90) quebra=true; }
+        ant=q;
+        if(quebra){ if(atual.length>1) linhas.push(atual); atual=[]; }   // salto é buraco, não caminho
+        if(quebra || (i%passo)===0 || i===t.length-1) atual.push([+q[0],+q[1]]);
+      }
+      if(atual.length>1) linhas.push(atual);
+      novo[j.device_id]={linhas, maquina_id:j.maquina_id};
+    });
+    TRAILS=novo;
+  }catch(e){ console.warn('[rastro]',e.message||e); }
+}
+function corMaqIdx(i){ return ['#ffc107','#00c896','#38bdf8','#bc8cff','#2dd4bf','#f472b6'][i%6]; }
+/* MAPA DA TELEMETRIA — os lotes em vermelho fino (igual ao do clima) + o rastro do
+   dia + um pino por máquina. Desenha por cima do mesmo #mapa, para não manter dois
+   Leaflet vivos no celular. */
+function desenhaTelemetria(){
+  if(_telL){ try{ _map.removeLayer(_telL); }catch(e){} _telL=null; }
+  const g=L.layerGroup(); let i=0, pts=[];
+  TELE.forEach(t=>{
+    const cor=corMaqIdx(i++), tr=TRAILS[t.device_id];
+    if(tr) tr.linhas.forEach(ln=>{ L.polyline(ln,{color:cor,weight:3,opacity:.8}).addTo(g); ln.forEach(p=>pts.push(p)); });
+    if(t.lat==null||t.lon==null) return;
+    const e=estadoTele(t), ll=[+t.lat,+t.lon]; pts.push(ll);
+    L.circleMarker(ll,{radius:8,color:'#0d1117',weight:2,fillColor:e.cor,fillOpacity:1}).addTo(g)
+     .bindTooltip(maqLbl(t.maquina_id,t.device_id)+' · '+e.txt,{permanent:false});
+  });
+  _telL=g.addTo(_map);
+  if(pts.length){ try{ _map.fitBounds(L.latLngBounds(pts).pad(.12),{maxZoom:16}); }catch(e){} }
+}
+function folhaMaquinas(){
+  if(!TELE.length) return '<div class="vazio">Nenhuma caixa reportando ainda.</div>';
+  return '<div style="padding:10px 12px 90px">'+TELE.map(t=>{
+    const e=estadoTele(t), sub=maqSub(t.maquina_id);
+    return `<div style="background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:12px 14px;margin-bottom:10px">
+      <div style="display:flex;align-items:center;gap:8px">
+        <span style="width:10px;height:10px;border-radius:50%;background:${e.cor};flex:none"></span>
+        <b style="font-size:16px">${maqLbl(t.maquina_id,t.device_id)}</b>
+        <span style="margin-left:auto;font-size:12px;color:${e.cor}">${e.txt}</span>
+      </div>
+      ${sub?`<div style="font-size:12px;color:var(--muted);margin-top:2px">${sub}</div>`:''}
+      <div style="display:flex;gap:14px;flex-wrap:wrap;margin-top:8px;font-size:13px">
+        <span><b>${(+t.vel_kmh||0).toFixed(1).replace('.',',')}</b> km/h</span>
+        <span style="color:var(--muted)">${t.sats!=null?t.sats+' satélites':''}</span>
+        <span style="color:var(--muted);margin-left:auto">${haQuanto(t.medido_em)}</span>
+      </div>
+    </div>`;
+  }).join('')+'</div>';
+}
 function destruirMapa(){
   pararVento();
   if(_map){ try{ _map.remove(); }catch(e){} }
-  _map=null; _heat=null; _lotesL=null; _estL=null;
+  _map=null; _heat=null; _lotesL=null; _estL=null; _telL=null;
 }
 function desenhaMapa(){
   const m=el('mapa'); if(!m||!window.L) return;
@@ -614,6 +718,21 @@ function desenhaMapa(){
   if(_lotesL) _map.removeLayer(_lotesL);
   _lotesL=L.layerGroup(LOTES.map(l=>L.polygon(l.ring,
     {color:'#ff4444',weight:1.1,opacity:.8,fill:false,interactive:false}))).addTo(_map);
+  /* TELEMETRIA usa o MESMO mapa (dois Leaflet vivos num celular é desperdício),
+     mas nada do clima: sem mancha interpolada, sem vento, sem legenda de escala. */
+  if(SECAO==='tel'){
+    pararVento();
+    if(_heat){ _map.removeLayer(_heat); _heat=null; }
+    if(_estL){ _map.removeLayer(_estL); _estL=null; }
+    const lg=el('legenda'); if(lg) lg.innerHTML='';
+    desenhaTelemetria();
+    /* entrou na seção sem passar por um carregar() — busca o rastro na hora e
+       redesenha quando chegar (o mapa já está no ar com os pinos) */
+    if(!Object.keys(TRAILS).length) carregarRastroDoDia().then(()=>{ try{ desenhaTelemetria(); }catch(e){} });
+    setTimeout(()=>{ try{ _map.invalidateSize(); }catch(e){} },100);
+    return;
+  }
+  if(_telL){ try{ _map.removeLayer(_telL); }catch(e){} _telL=null; }
   if(_heat){ _map.removeLayer(_heat); _heat=null; }
   const cfg=VARS[VARMAPA], pts=valores(VARMAPA), bb=bbox();
   const lg=el('legenda');
@@ -913,10 +1032,12 @@ function selo(){
 let _modo=null;   // 'mapa' | 'folha' — só remonta a estrutura quando o modo muda
 
 function pinta(){
-  const noMapa = SECAO==='clima' && SUB==='mapa';
+  const noMapa = (SECAO==='clima' || SECAO==='tel') && SUB==='mapa';
+  const mapaClima = SECAO==='clima' && SUB==='mapa';
   const modo = noMapa?'mapa':'folha';
   let corpo='';
-  if(SECAO!=='clima') corpo=emObra(SECOES.find(s=>s[0]===SECAO)[1]);
+  if(SECAO==='tel') corpo = (SUB==='agora') ? folhaMaquinas() : '';
+  else if(SECAO!=='clima') corpo=emObra(SECOES.find(s=>s[0]===SECAO)[1]);
   else if(SUB==='agora') corpo=folhaAgora();
   else if(SUB==='hist') corpo=folhaHist();
 
@@ -959,7 +1080,7 @@ function pinta(){
           </div>`; })():''}
       </div>`:''}
     `:''}
-    ${noMapa?`
+    ${mapaClima?`
       <div class="faixa p1">
         <button class="chip sel ${SELETOR==='var'?'on':''}" data-abrir="var">${VARS[VARMAPA].lbl} ▾</button>
         <button class="chip sel ${SELETOR==='per'?'on':''}" data-abrir="per">${PERIODOS[PERIODO].lbl} ▾</button>
@@ -1029,7 +1150,9 @@ function pinta(){
   document.querySelectorAll('[data-vm]').forEach(b=>b.onclick=()=>{
     VARMAPA=b.dataset.vm; SELETOR=null; pinta(); });
 
-  if(noMapa && ATUAL.some(x=>x.temp!==null)) garantirLeaflet(desenhaMapa);
+  /* o `ATUAL.some(...)` é condição do CLIMA (não desenhar mancha sem leitura).
+     O mapa da telemetria não depende de estação nenhuma. */
+  if(noMapa && (SECAO==='tel' || ATUAL.some(x=>x.temp!==null))) garantirLeaflet(desenhaMapa);
 }
 /* trocar de seção/submenu muda o modo -> aí sim o mapa é destruído de verdade */
 function trocarTela(fn){ destruirMapa(); _modo=null; fn(); }
