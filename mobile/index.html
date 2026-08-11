@@ -87,6 +87,10 @@ svg{display:block}
 .gaveta button{background:none;border:0;color:var(--text);text-align:left;
   padding:11px 14px;border-radius:10px;font:600 14px inherit;cursor:pointer;min-height:44px}
 .gaveta button.on{background:var(--gold);color:#1a1100}
+/* placa da máquina no mapa: rótulo à parte, que NÃO gira junto com o ícone */
+.leaflet-tooltip.placa{background:rgba(13,43,8,.92);border:1px solid #4f9e3f;color:#e8edf5;
+  font:600 11px/1 system-ui;letter-spacing:.05em;padding:3px 6px;border-radius:4px;box-shadow:none}
+.leaflet-tooltip.placa::before{display:none}
 .chip{flex:none;background:var(--vidro);backdrop-filter:blur(10px);border:1px solid var(--border);
   color:var(--muted);border-radius:20px;padding:8px 14px;font:600 12px inherit;cursor:pointer;
   min-height:36px;display:flex;align-items:center;gap:6px;white-space:nowrap}
@@ -275,10 +279,66 @@ let TELE=[], MAQS={}, TRAILS={}, _telL=null;
    quais máquinas. `TRPER='off'` desliga o rastro — e desligar não é enfeite:
    é o modo mais leve da tela, porque nem busca o trajeto. `TMAQS` vazio = todas.
    Guardado no aparelho: quem só quer ver uma máquina não reconfigura toda vez. */
-let TRPER='1', TMAQS=[];
+let TRPER='1', TMAQS=[], TRMODO='trab';
 const TRPERS={off:'Sem rastro', '1':'Rastro: hoje', '2':'Rastro: 2 dias', '3':'Rastro: 3 dias', '7':'Rastro: 7 dias'};
-try{ const s=localStorage.getItem('tel_rastro'); if(s){ const o=JSON.parse(s); if(o.per) TRPER=o.per; if(Array.isArray(o.maqs)) TMAQS=o.maqs; } }catch(e){}
-function salvarTelFiltro(){ try{ localStorage.setItem('tel_rastro',JSON.stringify({per:TRPER,maqs:TMAQS})); }catch(e){} }
+try{ const s=localStorage.getItem('tel_rastro'); if(s){ const o=JSON.parse(s); if(o.per) TRPER=o.per; if(Array.isArray(o.maqs)) TMAQS=o.maqs; if(o.modo) TRMODO=o.modo; } }catch(e){}
+function salvarTelFiltro(){ try{ localStorage.setItem('tel_rastro',JSON.stringify({per:TRPER,maqs:TMAQS,modo:TRMODO})); }catch(e){} }
+/* RASTRO DE TRABALHO × COMPLETO (pedido do dono, 08/08: "rastro de trabalho —
+   pesa muito"). O rastro completo carrega tudo: estrada, manobra, máquina parada
+   no pátio. No celular isso é peso e é ruído. "Só trabalho" mantém apenas o que
+   a própria detecção conta como trabalho — dentro de lote e entre 1 e 8 km/h
+   (mesma regra da migração 91) — e por isso desenha muito menos.
+   O corte é no DESENHO, não na busca: trocar o modo não vai ao banco de novo. */
+function loteDeMob(lat,lon){
+  for(const l of LOTES){
+    const b=l._bb||(l._bb=(()=>{ let a=90,z=-90,c=180,d=-180;
+      l.ring.forEach(p=>{ if(p[0]<a)a=p[0]; if(p[0]>z)z=p[0]; if(p[1]<c)c=p[1]; if(p[1]>d)d=p[1]; });
+      return [a,z,c,d]; })());
+    if(lat<b[0]||lat>b[1]||lon<b[2]||lon>b[3]) continue;
+    const r=l.ring; let dentro=false;
+    for(let i=0,j=r.length-1;i<r.length;j=i++){
+      if((r[i][0]>lat)!==(r[j][0]>lat) &&
+         lon < (r[j][1]-r[i][1])*(lat-r[i][0])/((r[j][0]-r[i][0])||1e-12)+r[i][1]) dentro=!dentro;
+    }
+    if(dentro) return l.nome;
+  }
+  return null;
+}
+function soTrabalho(linhas){
+  const out=[]; let atual=[];
+  linhas.forEach(ln=>{
+    for(let i=1;i<ln.length;i++){
+      const a=ln[i-1], b=ln[i], va=+a[2]||0, vb=+b[2]||0;
+      const trab = va>1 && va<=8 && vb>1 && vb<=8 &&
+                   !!loteDeMob((a[0]+b[0])/2,(a[1]+b[1])/2);
+      if(trab){ if(!atual.length) atual.push(a); atual.push(b); }
+      else if(atual.length>1){ out.push(atual); atual=[]; } else atual=[];
+    }
+    if(atual.length>1) out.push(atual); atual=[];
+  });
+  return out;
+}
+/* ÍCONE DA MÁQUINA — o mesmo desenho do módulo Telemetria (plataforma, corpo,
+   cabine, antena), dimensionado pela FAIXA real e girado pelo rumo. Círculo não
+   diz para onde a máquina está virada, e é o rumo que explica a manobra. */
+const VB_W=60, VB_H=78, MIN_PX=26;
+function svgMaquina(faixaM, cor){
+  const cx=VB_W/2, cy=VB_H/2, meia=Math.max(6,faixaM*10/2);
+  return `<svg viewBox="0 0 ${VB_W} ${VB_H}" style="width:100%;height:100%;overflow:visible">
+    <g class="gir">
+      <rect x="${cx-meia}" y="${cy-33}" width="${meia*2}" height="12" rx="2" fill="${cor}" stroke="#0d2b08" stroke-width="1.4" opacity=".85"/>
+      <rect x="${cx-15}" y="${cy-21}" width="30" height="46" rx="5" fill="${cor}" stroke="#0d2b08" stroke-width="1.6"/>
+      <rect x="${cx-8}"  y="${cy-13}" width="16" height="15" rx="3" fill="#0d2b08" opacity=".75"/>
+      <rect x="${cx-12}" y="${cy+25}" width="24" height="8"  rx="3" fill="${cor}" stroke="#0d2b08" stroke-width="1.4"/>
+      <circle cx="${cx}" cy="${cy}" r="2.8" fill="#ffde00" stroke="#0d2b08" stroke-width=".8"/>
+    </g></svg>`;
+}
+/* tamanho REAL no mapa, com piso: em pixel fixo o ícone mente nos dois extremos
+   (gigante de longe, invisível de perto) */
+function iconePxMob(lat){
+  const mpp=156543.03392*Math.cos(lat*Math.PI/180)/Math.pow(2,_map.getZoom());
+  return Math.max(MIN_PX,(VB_W/10)/mpp);
+}
 function maqVisivel(id){ return !TMAQS.length || TMAQS.map(String).includes(String(id)); }
 function rotuloTMaqs(){
   if(!TMAQS.length) return 'Todas as máquinas';
@@ -668,7 +728,9 @@ async function carregarRastro(){
                  if(Math.hypot(dx,dy)>300 || ((+q[2]||0)-(+ant[2]||0))/1000>90) quebra=true; }
         ant=q;
         if(quebra){ if(atual.length>1) linhas.push(atual); atual=[]; }   // salto é buraco, não caminho
-        if(quebra || (i%passo)===0 || i===t.length-1) atual.push([+q[0],+q[1]]);
+        /* guarda a VELOCIDADE junto: é ela que separa trabalho de deslocamento
+           na hora de desenhar, sem precisar buscar de novo */
+        if(quebra || (i%passo)===0 || i===t.length-1) atual.push([+q[0],+q[1],(+q[3]||0)]);
       }
       if(atual.length>1) linhas.push(atual);
       /* ACUMULA por device: com período de vários dias vem uma linha POR DIA, e
@@ -685,17 +747,30 @@ function corMaqIdx(i){ return ['#ffc107','#00c896','#38bdf8','#bc8cff','#2dd4bf'
    Leaflet vivos no celular. */
 function desenhaTelemetria(){
   if(_telL){ try{ _map.removeLayer(_telL); }catch(e){} _telL=null; }
-  const g=L.layerGroup(); let i=0, pts=[]; const cores=[];
+  const g=L.layerGroup(); let i=0, pts=[]; const cores=[], girar=[];
   TELE.filter(t=>maqVisivel(t.maquina_id)).forEach(t=>{
     const cor=corMaqIdx(i++), tr=TRAILS[t.device_id];
     cores.push([maqLbl(t.maquina_id,t.device_id), cor]);
-    if(tr) tr.linhas.forEach(ln=>{ L.polyline(ln,{color:cor,weight:3,opacity:.8}).addTo(g); ln.forEach(p=>pts.push(p)); });
+    if(tr){
+      const linhas = TRMODO==='trab' ? soTrabalho(tr.linhas) : tr.linhas;
+      linhas.forEach(ln=>{ L.polyline(ln.map(p=>[p[0],p[1]]),{color:cor,weight:3,opacity:.85}).addTo(g);
+                           ln.forEach(p=>pts.push([p[0],p[1]])); });
+    }
     if(t.lat==null||t.lon==null) return;
     const e=estadoTele(t), ll=[+t.lat,+t.lon]; pts.push(ll);
-    L.circleMarker(ll,{radius:8,color:'#0d1117',weight:2,fillColor:e.cor,fillOpacity:1}).addTo(g)
-     .bindTooltip(maqLbl(t.maquina_id,t.device_id)+' · '+e.txt,{permanent:false});
+    const faixa=Number((MAQS[t.maquina_id]||{}).faixa_m)||3.8;
+    const w=iconePxMob(+t.lat), hh=w*(VB_H/VB_W);
+    const mk=L.marker(ll,{icon:L.divIcon({html:svgMaquina(faixa,e.cor),className:'',iconSize:[w,hh],iconAnchor:[w/2,hh/2]}),zIndexOffset:1000}).addTo(g);
+    mk.bindTooltip(maqLbl(t.maquina_id,t.device_id),{permanent:true,direction:'bottom',offset:[0,hh/2],className:'placa'});
+    girar.push([mk, Number(t.hdg_deg)||0]);
   });
   _telL=g.addTo(_map);
+  /* A ROTAÇÃO SÓ DEPOIS DE ENTRAR NO MAPA: o elemento do divIcon não existe
+     enquanto o grupo não está no mapa — chamando getElement() antes, o
+     `transform` ia para lugar nenhum e a máquina ficava sempre apontando para
+     o norte (foi o que o teste pegou). */
+  girar.forEach(([mk,hd])=>{ const elm=mk.getElement(); const gr=elm&&elm.querySelector('.gir');
+    if(gr) gr.setAttribute('transform','rotate('+hd+' '+(VB_W/2)+' '+(VB_H/2)+')'); });
   /* A legenda diz de quem é cada cor. Com rastro desligado ela vira a legenda
      dos ESTADOS, que é o que sobra para ler no mapa. */
   const lg=el('legenda');
@@ -753,6 +828,9 @@ function desenhaMapa(){
     if(_heat){ _map.removeLayer(_heat); _heat=null; }
     if(_estL){ _map.removeLayer(_estL); _estL=null; }
     desenhaTelemetria();   // ele mesmo escreve a legenda (cores das máquinas ou dos estados)
+    /* o ícone tem tamanho REAL (metros), então mudar o zoom muda o pixel — sem
+       isto ele ficaria do tamanho errado depois de aproximar */
+    if(!_map._telZoom){ _map._telZoom=1; _map.on('zoomend',()=>{ if(SECAO==='tel'&&SUB==='mapa'){ try{ desenhaTelemetria(); }catch(e){} } }); }
     /* entrou na seção sem passar por um carregar() — busca o rastro na hora e
        redesenha quando chegar (o mapa já está no ar com os pinos) */
     if(!Object.keys(TRAILS).length) carregarRastro().then(()=>{ try{ desenhaTelemetria(); }catch(e){} });
@@ -1120,11 +1198,15 @@ function pinta(){
       }</div>`:''}`:''}
     ${SECAO==='tel'&&SUB==='mapa'?`
       <div class="faixa p1">
-        <button class="chip sel ${SELETOR==='trp'?'on':''}" data-abrir="trp">${TRPERS[TRPER]} ▾</button>
+        <button class="chip sel ${SELETOR==='trp'?'on':''}" data-abrir="trp">${TRPERS[TRPER]}${TRPER!=='off'?(TRMODO==='trab'?' · trabalho':' · tudo'):''} ▾</button>
         <button class="chip sel ${SELETOR==='tmq'?'on':''}" data-abrir="tmq">${rotuloTMaqs()} ▾</button>
       </div>
       ${SELETOR==='trp'?`<div class="gaveta">${Object.keys(TRPERS).map(k=>
-        `<button data-trp="${k}" class="${TRPER===k?'on':''}">${TRPERS[k]}</button>`).join('')}</div>`:''}
+        `<button data-trp="${k}" class="${TRPER===k?'on':''}">${TRPERS[k]}</button>`).join('')}
+        ${TRPER!=='off'?`<div style="display:flex;gap:6px;padding-top:6px;margin-top:4px;border-top:1px solid var(--border)">
+          <button data-trmodo="trab" class="${TRMODO==='trab'?'on':''}" style="flex:1">Só trabalho</button>
+          <button data-trmodo="tudo" class="${TRMODO==='tudo'?'on':''}" style="flex:1">Tudo</button>
+        </div>`:''}</div>`:''}
       ${SELETOR==='tmq'?`<div class="gaveta">
         <button data-tmq="" class="${TMAQS.length?'':'on'}">Todas as máquinas</button>
         ${TELE.map(t=>`<button data-tmq="${t.maquina_id||''}" class="${maqVisivel(t.maquina_id)&&TMAQS.length?'on':''}"
@@ -1192,6 +1274,10 @@ function pinta(){
   document.querySelectorAll('[data-trp]').forEach(b=>b.onclick=async()=>{
     TRPER=b.dataset.trp; salvarTelFiltro(); SELETOR=null; pinta();
     await carregarRastro(); try{ desenhaTelemetria(); }catch(e){} });
+  /* trabalho × tudo: é só DESENHO — não volta ao banco */
+  document.querySelectorAll('[data-trmodo]').forEach(b=>b.onclick=()=>{
+    TRMODO=b.dataset.trmodo; salvarTelFiltro(); SELETOR=null; pinta();
+    try{ desenhaTelemetria(); }catch(e){} });
   /* máquina: seleção MÚLTIPLA (o botão "Todas" limpa) */
   document.querySelectorAll('[data-tmq]').forEach(b=>b.onclick=async()=>{
     const id=b.dataset.tmq;
