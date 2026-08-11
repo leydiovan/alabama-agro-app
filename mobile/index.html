@@ -339,6 +339,78 @@ function iconePxMob(lat){
   const mpp=156543.03392*Math.cos(lat*Math.PI/180)/Math.pow(2,_map.getZoom());
   return Math.max(MIN_PX,(VB_W/10)/mpp);
 }
+/* ===================== MEDIR NO MAPA (toque) =====================
+   Pedido do dono (08/08): medir área desenhando o polígono, ou a distância.
+   POR QUE NÃO É O `_mgMedir` DA FERRAMENTA ÚNICA: ele é acoplado ao `_mgCriar`
+   — usa o registro `MG[pfx]` e os elementos da barra que só ele monta. Puxar a
+   ferramenta inteira traria a barra de DESKTOP (buscar imagem por data,
+   corrigir cores, camadas Sentinel, tela cheia), que é justamente o que a
+   decisão de 01/08/2026 tirou do celular. Aqui vai o mínimo de toque: tocar
+   põe vértice, e pronto.
+   Se um dia valer unificar, o caminho é extrair o cálculo do
+   `mapa_ferramenta_geral.js` para uma função que aceite QUALQUER mapa Leaflet —
+   e aí as duas telas chamam a mesma. Não fiz agora para não mexer no arquivo
+   de que cinco módulos de desktop dependem.
+   CONTA: shoelace em metros, com a projeção equiretangular na latitude do
+   primeiro ponto. Numa fazenda (dezenas de km) o erro é irrelevante; o que
+   importa é ser a MESMA conta do `_ringAreaHa` do desktop. */
+let MED={on:false, pts:[], layer:null};
+function medMetros(pts){
+  const lat0=pts[0][0]*Math.PI/180, mLat=111320, mLon=111320*Math.cos(lat0);
+  return pts.map(p=>[(p[1]-pts[0][1])*mLon, (p[0]-pts[0][0])*mLat]);
+}
+function medArea(pts){
+  if(pts.length<3) return 0;
+  const q=medMetros(pts); let s=0;
+  for(let i=0,j=q.length-1;i<q.length;j=i++) s+=(q[j][0]*q[i][1]-q[i][0]*q[j][1]);
+  return Math.abs(s/2)/10000;   // ha
+}
+function medDist(pts){
+  const q=medMetros(pts); let d=0;
+  for(let i=1;i<q.length;i++) d+=Math.hypot(q[i][0]-q[i-1][0], q[i][1]-q[i-1][1]);
+  return d;   // metros
+}
+function medDesenhar(){
+  if(MED.layer){ try{ _map.removeLayer(MED.layer); }catch(e){} MED.layer=null; }
+  const cx=el('medcx'); if(cx) cx.style.display=MED.on?'':'none';
+  if(!MED.on){ return; }
+  const g=L.layerGroup(), p=MED.pts;
+  if(p.length>2) L.polygon(p,{color:'#f0b400',weight:2,fillOpacity:.18,dashArray:'5,4'}).addTo(g);
+  else if(p.length>1) L.polyline(p,{color:'#f0b400',weight:3,dashArray:'5,4'}).addTo(g);
+  p.forEach((ll,i)=>L.circleMarker(ll,{radius:6,color:'#1a1100',weight:2,fillColor:'#f0b400',fillOpacity:1})
+    .addTo(g).bindTooltip(String(i+1),{permanent:false}));
+  MED.layer=g.addTo(_map);
+  if(cx){
+    const d=medDist(p), a=medArea(p);
+    cx.innerHTML = p.length<2 ? '<b>Toque no mapa</b> para marcar os cantos'
+      : (p.length===2 ? `<b>${d<1000?d.toFixed(0)+' m':(d/1000).toFixed(2).replace('.',',')+' km'}</b> de distância`
+         : `<b>${a.toFixed(2).replace('.',',')} ha</b> · perímetro ${(d+medDist([p[p.length-1],p[0]])).toFixed(0)} m · ${p.length} cantos`)
+      + ` <button id="medundo" class="btn sm" style="margin-left:6px">↶</button>`
+      + ` <button id="medlimpa" class="btn sm">✕</button>`;
+    const u=el('medundo'), c=el('medlimpa');
+    if(u) u.onclick=(ev)=>{ ev.stopPropagation(); MED.pts.pop(); medDesenhar(); };
+    if(c) c.onclick=(ev)=>{ ev.stopPropagation(); MED.pts=[]; medDesenhar(); };
+  }
+}
+function medToggle(){
+  MED.on=!MED.on; MED.pts=[];
+  if(MED.on){
+    /* o clique de medir não pode disputar com o mapa: enquanto está ligado, o
+       toque marca canto; desligou, volta ao normal */
+    _map.on('click', medPonto);
+    try{ _map.getContainer().style.cursor='crosshair'; }catch(e){}
+  }else{
+    _map.off('click', medPonto);
+    try{ _map.getContainer().style.cursor=''; }catch(e){}
+  }
+  medDesenhar(); pinta();
+}
+function medPonto(e){ if(!MED.on) return; MED.pts.push([e.latlng.lat,e.latlng.lng]); medDesenhar(); }
+/* Sair da seção com a medição ligada deixaria o clique preso no mapa: o toque
+   no clima continuaria marcando canto invisível. Desliga na saída. */
+function medDesligar(){ if(!MED.on) return; MED.on=false; MED.pts=[];
+  try{ _map.off('click', medPonto); _map.getContainer().style.cursor=''; }catch(e){}
+  if(MED.layer){ try{ _map.removeLayer(MED.layer); }catch(e){} MED.layer=null; } }
 /* quantos pixels vale 1 metro no zoom atual — é o que transforma a faixa da
    máquina (metros, do cadastro) na espessura do traço na tela */
 function pxPorMetro(lat){
@@ -848,6 +920,7 @@ function folhaMaquinas(){
   }).join('')+'</div>';
 }
 function destruirMapa(){
+  medDesligar();
   pararVento();
   if(_map){ try{ _map.remove(); }catch(e){} }
   _map=null; _heat=null; _lotesL=null; _estL=null; _telL=null; _telEnq=false;
@@ -1249,7 +1322,9 @@ function pinta(){
       <div class="faixa p1">
         <button class="chip sel ${SELETOR==='trp'?'on':''}" data-abrir="trp">${TRPERS[TRPER]}${TRPER!=='off'?(TRMODO==='trab'?' · trabalho':' · tudo'):''} ▾</button>
         <button class="chip sel ${SELETOR==='tmq'?'on':''}" data-abrir="tmq">${rotuloTMaqs()} ▾</button>
+        <button class="chip sel ${MED.on?'on':''}" id="medbtn">📏 Medir</button>
       </div>
+      <div class="gaveta" id="medcx" style="display:${MED.on?'':'none'};line-height:1.9"></div>
       ${SELETOR==='trp'?`<div class="gaveta">${Object.keys(TRPERS).map(k=>
         `<button data-trp="${k}" class="${TRPER===k?'on':''}">${TRPERS[k]}</button>`).join('')}
         ${TRPER!=='off'?`<div style="display:flex;gap:6px;padding-top:6px;margin-top:4px;border-top:1px solid var(--border)">
@@ -1280,9 +1355,9 @@ function pinta(){
   el('fdir').onclick=()=>{ MENU=MENU==='dir'?null:'dir'; pinta(); };
   if(el('veu')) el('veu').onclick=()=>{ MENU=null; pinta(); };
   document.querySelectorAll('[data-sec]').forEach(b=>b.onclick=()=>{
-    SECAO=b.dataset.sec; SUB=(SUBS[SECAO]||[['mapa']])[0][0]; MENU=null; SELETOR=null; ESTSEL=null; _telEnq=false; trocarTela(pinta); });   /* entrou noutra seção: enquadra de novo */
+    SECAO=b.dataset.sec; SUB=(SUBS[SECAO]||[['mapa']])[0][0]; MENU=null; SELETOR=null; ESTSEL=null; _telEnq=false; medDesligar(); trocarTela(pinta); });   /* entrou noutra seção: enquadra de novo, e a medição não vai junto */
   document.querySelectorAll('[data-sub]').forEach(b=>b.onclick=()=>{
-    SUB=b.dataset.sub; MENU=null; SELETOR=null; ESTSEL=null; _telEnq=false; trocarTela(pinta); });
+    SUB=b.dataset.sub; MENU=null; SELETOR=null; ESTSEL=null; _telEnq=false; medDesligar(); trocarTela(pinta); });
   document.querySelectorAll('[data-htab]').forEach(b=>b.onclick=()=>{ HTAB=b.dataset.htab; pinta(); });
   document.querySelectorAll('[data-hper]').forEach(b=>b.onclick=()=>{
     const k=b.dataset.hper;
@@ -1323,6 +1398,8 @@ function pinta(){
   document.querySelectorAll('[data-trp]').forEach(b=>b.onclick=async()=>{
     TRPER=b.dataset.trp; salvarTelFiltro(); SELETOR=null; _telEnq=false; pinta();   // outro período = outro recorte: reenquadra
     await carregarRastro(); try{ desenhaTelemetria(); }catch(e){} });
+  const bmed=el('medbtn'); if(bmed) bmed.onclick=()=>medToggle();
+  if(MED.on) medDesenhar();   // a repintura refaz a caixa: redesenha para religar os botões ↶ e ✕
   /* trabalho × tudo: é só DESENHO — não volta ao banco */
   document.querySelectorAll('[data-trmodo]').forEach(b=>b.onclick=()=>{
     TRMODO=b.dataset.trmodo; salvarTelFiltro(); SELETOR=null; pinta();
