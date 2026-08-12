@@ -128,6 +128,10 @@ svg{display:block}
   border:2px solid #1a1100;margin-left:-7px;box-shadow:0 1px 3px rgba(0,0,0,.5);pointer-events:none}
 .tlpill button{background:transparent;border:0;color:var(--gold);font:800 12px inherit;
   padding:0 4px;cursor:pointer;line-height:1;white-space:nowrap}
+/* o play/pause e o comando mais usado da barra: circulo cheio, um pouco maior */
+.tlpill button.destaque{background:var(--gold);color:#1a1100;width:30px;height:30px;
+  border-radius:50%;display:inline-flex;align-items:center;justify-content:center;padding:0;flex:none}
+.tlpill button.destaque svg{width:16px;height:16px}
 
 /* ---------- legenda do mapa ---------- */
 /* legenda enxuta: uma linha só — valor + barra com marcador da posição */
@@ -421,7 +425,7 @@ let MED={on:false, pts:[], layer:null, shape:null};
    posição; FECHAR (✕) é que volta a mostrar o rastro inteiro. Antes havia só um
    estado, e por isso o botão "pausava" sumindo com tudo — o dono pegou. */
 let TL={ativo:false, tocando:false, t:null, t0:0, t1:0, timer:null, vel:1};
-const TLVELS=[1,2,4];
+const TLVELS=[1,2,4,8,16];   // 7 dias a 1× seriam minutos: os degraus altos existem para isso
 function tlJanela(){
   let a=Infinity,b=-Infinity;
   Object.keys(TRAILS).forEach(dev=>{
@@ -440,22 +444,39 @@ function tlTick(){
   /* o dia inteiro em ~14 s no 1×: rápido para ver o padrão de trabalho, lento
      para acompanhar a máquina virando na cabeceira. A velocidade multiplica o
      PASSO, não a taxa de quadros — subir a taxa só gastaria bateria. */
-  const passo=(TL.t1-TL.t0)/200*TL.vel;
+  /* ⏱ VELOCIDADE ABSOLUTA, não relativa ao período. Antes o passo era uma fração
+     da janela (1/200), então 7 dias corriam no mesmo tempo de tela que 1 dia —
+     ou seja, 7× mais rápido, e já começavam acelerados. O dono pegou: "quando
+     seleciona 7 dias ele já começa acelerado; tem que começar normal".
+     Agora 1× = UMA HORA DE RASTRO POR SEGUNDO, sempre. Um dia de ~10 h leva
+     ~10 s; 7 dias levam o que têm de levar — e para isso existe o acelerador. */
+  const passo=3600000*TL.vel*(70/1000);
   TL.timer=setInterval(()=>{
     TL.t+=passo;
     if(TL.t>=TL.t1){ TL.t=TL.t1; desenhaTelemetria(); tlBarra(); tlParar(); pinta(); return; }
     desenhaTelemetria(); tlBarra();
   },70);   // 70 ms poupa o celular sem picotar
 }
-function tlPlay(){
-  if(!TL.ativo){                                   // abrir e já tocar
-    if(!tlJanela()) return;                        // sem rastro com hora não há o que percorrer
-    TL.ativo=true; TL.t=TL.t0; tlTick(); pinta(); return;
-  }
-  if(TL.tocando){ tlParar(); pinta(); return; }    // PAUSA — mantém a barra e a posição
+/* BOTÃO DA FAIXA = liga/desliga a FERRAMENTA, igual ao esquadro do medir: fica
+   amarelo enquanto está ativa, clica de novo e desativa. O dono pediu esse
+   padrão — antes esse botão era play/pause e o sair era um ✕ solto na barra,
+   que ficou estranho justamente por fugir do padrão das outras ferramentas. */
+function tlFerramenta(){
+  if(TL.ativo){ tlFechar(); return; }
+  if(!tlJanela()) return;                          // sem rastro com hora não há o que percorrer
+  TL.ativo=true; TL.t=TL.t0; tlTick(); pinta();
+}
+/* PLAY/PAUSE mora DENTRO da barra, onde antes ficava o ✕ — é o comando que se
+   usa o tempo todo, então fica junto do relógio e do trilho. */
+function tlPlayPause(){
+  if(!TL.ativo) return;
+  if(TL.tocando){ tlParar(); pinta(); return; }    // pausa mantém barra e posição
   if(TL.t==null || TL.t>=TL.t1) TL.t=TL.t0;        // no fim, tocar de novo reinicia
   tlTick(); pinta();
 }
+/* troca só o ícone do play/pause, sem repintar a tela — usado no arraste, onde
+   repintar destruiria o trilho debaixo do dedo (ver tlLigarArraste) */
+function tlIconePlay(){ const b=el('tlpp'); if(b) b.innerHTML=TL.tocando?IC.pausa:IC.play; }
 function tlVelocidade(){
   TL.vel=TLVELS[(TLVELS.indexOf(TL.vel)+1)%TLVELS.length];
   if(TL.tocando) tlTick();                         // reinicia o relógio no passo novo
@@ -475,7 +496,13 @@ function tlLigarArraste(){
   const frac=ev=>{ const r=trilho.getBoundingClientRect();
     const x=(ev.touches?ev.touches[0].clientX:ev.clientX)-r.left; return r.width?x/r.width:0; };
   let arrastando=false;
-  const inicio=ev=>{ arrastando=true; if(TL.tocando){ tlParar(); pinta(); tlLigarArraste(); }
+  /* ⛔ NÃO CHAMAR `pinta()` AQUI. Era o bug do "puxa e ele zera": repintar troca
+     o elemento do trilho, o `trilho` desta closure vira um nó solto do DOM, o
+     `getBoundingClientRect()` dele devolve tudo zero — e a fração dá 0, ou seja,
+     salta para o começo. Pausar aqui é só parar o relógio e trocar o ícone do
+     botão na mão; a tela se acerta quando o dedo sair. */
+  const inicio=ev=>{ arrastando=true;
+                     if(TL.tocando){ tlParar(); tlIconePlay(); }
                      tlIrPara(frac(ev)); ev.preventDefault(); };
   const move=ev=>{ if(!arrastando) return; tlIrPara(frac(ev)); ev.preventDefault(); };
   const fim=()=>{ arrastando=false; };
@@ -1522,13 +1549,13 @@ function pinta(){
         <button class="chip sel ${SELETOR==='trp'?'on':''}" data-abrir="trp">${TRPERS[TRPER]}${TRPER!=='off'?(TRMODO==='trab'?' · trabalho':' · tudo'):''} ▾</button>
         <button class="chip sel ${SELETOR==='tmq'?'on':''}" data-abrir="tmq">${rotuloTMaqs()} ▾</button>
         <button class="chip ico ${MED.on?'on':''}" id="medbtn" title="Medir área ou distância" aria-label="Medir">${IC.esquadro}</button>
-        ${TRPER!=='off'?`<button class="chip ico ${TL.tocando?'on':''}" id="tlbtn" title="${TL.tocando?'Pausar':'Ver o rastro acontecendo (hora do GPS)'}" aria-label="Timelapse">${TL.tocando?IC.pausa:IC.play}</button>`:''}
+        ${TRPER!=='off'?`<button class="chip ico ${TL.ativo?'on':''}" id="tlbtn" title="${TL.ativo?'Sair do timelapse':'Ver o rastro acontecendo (hora do GPS)'}" aria-label="Timelapse">${IC.play}</button>`:''}
       </div>
       <div class="medpill" id="medcx" style="display:${MED.on?'inline-flex':'none'}"></div>
       ${TL.ativo?`<div class="tlpill"><b id="tlhora">${TL.t!=null?tlHora(TL.t):''}</b>
         <span class="tltrilho" id="tltrilho"><span class="tlfeito" id="tlbar"></span><span class="tlpega" id="tlpega"></span></span>
-        <button id="tlvel" title="Velocidade">${TL.vel}×</button>
-        <button id="tlfecha" title="Sair do timelapse">✕</button></div>`:''}
+        <button id="tlvel" title="Velocidade — 1× é uma hora de rastro por segundo">${TL.vel}×</button>
+        <button id="tlpp" class="destaque" title="${TL.tocando?'Pausar':'Tocar'}">${TL.tocando?IC.pausa:IC.play}</button></div>`:''}
       ${SELETOR==='trp'?`<div class="gaveta">${Object.keys(TRPERS).map(k=>
         `<button data-trp="${k}" class="${TRPER===k?'on':''}">${TRPERS[k]}</button>`).join('')}
         ${TRPER!=='off'?`<div style="display:flex;gap:6px;padding-top:6px;margin-top:4px;border-top:1px solid var(--border)">
@@ -1603,9 +1630,9 @@ function pinta(){
     TRPER=b.dataset.trp; salvarTelFiltro(); SELETOR=null; _telEnq=false; pinta();   // outro período = outro recorte: reenquadra
     await carregarRastro(); try{ desenhaTelemetria(); }catch(e){} });
   const bmed=el('medbtn'); if(bmed) bmed.onclick=()=>medToggle();
-  const btl=el('tlbtn'); if(btl) btl.onclick=()=>tlPlay();
+  const btl=el('tlbtn'); if(btl) btl.onclick=()=>tlFerramenta();
+  const bpp=el('tlpp'); if(bpp) bpp.onclick=()=>tlPlayPause();
   const bv=el('tlvel'); if(bv) bv.onclick=()=>tlVelocidade();
-  const bf=el('tlfecha'); if(bf) bf.onclick=()=>tlFechar();
   if(TL.ativo){ tlBarra(); tlLigarArraste(); }
   if(MED.on) medDesenhar();   // a repintura refaz a caixa: redesenha para religar os botões ↶ e ✕
   /* trabalho × tudo: é só DESENHO — não volta ao banco */
