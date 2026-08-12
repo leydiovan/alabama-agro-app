@@ -100,6 +100,16 @@ svg{display:block}
    375 px, e um terceiro com rótulo saía da tela. Redondo cabe sempre. */
 .chip.ico{width:36px;padding:0;justify-content:center}
 .chip.ico svg{width:20px;height:20px}
+/* leitura da medição: uma PÍLULA, não uma gaveta. A gaveta é painel de escolha
+   (ocupa a largura e empurra o mapa); aqui só se lê um número e se toca em
+   desfazer/limpar. Fica logo abaixo dos chips, sobre o mapa. */
+.medpill{position:absolute;z-index:26;left:12px;top:calc(env(safe-area-inset-top) + 102px);
+  background:var(--vidro);backdrop-filter:blur(10px);border:1px solid var(--gold);
+  color:var(--gold);border-radius:20px;padding:7px 8px 7px 13px;font:700 12.5px inherit;
+  display:inline-flex;align-items:center;gap:8px;white-space:nowrap;pointer-events:auto}
+.medpill button{background:transparent;border:0;color:var(--gold);font:700 14px inherit;
+  padding:0 5px;cursor:pointer;line-height:1}
+.fraco{color:var(--muted);font-weight:600}   /* usado na pílula e na legenda enxuta */
 
 /* ---------- legenda do mapa ---------- */
 /* legenda enxuta: uma linha só — valor + barra com marcador da posição */
@@ -112,6 +122,15 @@ svg{display:block}
 .legenda .barra{height:7px;border-radius:4px}
 .legenda .mk{position:absolute;top:-3px;width:3px;height:13px;border-radius:2px;
   background:#fff;box-shadow:0 0 0 1px rgba(0,0,0,.55)}
+/* MODO ENXUTO (telemetria): a legenda do clima é um painel de leitura — valor
+   grande e barra de escala. A da telemetria só precisa dizer de quem é a cor e
+   quantos hectares. Com o painel cheio ela quebrava em 2–3 linhas e comia o
+   mapa; aqui vira uma tira baixa, encostada à esquerda, do tamanho do texto. */
+.legenda.mini{right:auto;max-width:calc(100% - 24px);padding:5px 11px;gap:9px;
+  font-size:11.5px;line-height:1.3;flex-wrap:nowrap;overflow-x:auto}
+.legenda.mini::-webkit-scrollbar{display:none}
+.legenda.mini span{display:inline-flex;align-items:center;white-space:nowrap}
+.legenda.mini i{width:14px;height:3.5px}
 .legenda .mm{display:flex;justify-content:space-between;font-size:9px;color:var(--muted);margin-top:2px}
 
 /* card da estação — sobe acima da legenda ao tocar o marcador */
@@ -401,12 +420,16 @@ function medDesenhar(){
     .addTo(g).bindTooltip(String(i+1),{permanent:false}));
   MED.layer=g.addTo(_map);
   if(cx){
+    /* SÓ O NÚMERO. O dono pediu depois de ver a gaveta: "melhor apenas aparecer
+       (xxx,x ha - xxx,x m) em cima". Área e perímetro, e nada mais — no celular
+       o mapa é a informação, o painel é estorvo. */
     const d=p.length?medDist(p):0, a=medArea(p);
-    cx.innerHTML = p.length<2 ? '<b>Toque no mapa</b> para marcar os cantos'
-      : (p.length===2 ? `<b>${d<1000?d.toFixed(0)+' m':(d/1000).toFixed(2).replace('.',',')+' km'}</b> de distância`
-         : `<b>${a.toFixed(2).replace('.',',')} ha</b> · perímetro ${(d+medDist([p[p.length-1],p[0]])).toFixed(0)} m · ${p.length} cantos`)
-      + ` <button id="medundo" class="btn sm" style="margin-left:6px">↶</button>`
-      + ` <button id="medlimpa" class="btn sm">✕</button>`;
+    const m=v=>v<1000?(v.toFixed(0)+' m'):((v/1000).toFixed(2).replace('.',',')+' km');
+    const perim=p.length>2 ? d+medDist([p[p.length-1],p[0]]) : d;
+    cx.innerHTML = (p.length<2 ? '<span class="fraco">toque para marcar</span>'
+      : (p.length===2 ? m(d)
+         : `${a.toFixed(1).replace('.',',')} ha <span class="fraco">·</span> ${m(perim)}`))
+      + `<button id="medundo" title="Desfazer">↶</button><button id="medlimpa" title="Limpar">✕</button>`;
     const u=el('medundo'), c=el('medlimpa');
     if(u) u.onclick=(ev)=>{ ev.stopPropagation(); MED.pts.pop(); medDesenhar(); };
     if(c) c.onclick=(ev)=>{ ev.stopPropagation(); MED.pts=[]; medDesenhar(); };
@@ -897,20 +920,19 @@ function desenhaTelemetria(){
      dos ESTADOS, que é o que sobra para ler no mapa. */
   const lg=el('legenda');
   if(lg){
-    /* AVISO DE ESCALA: no zoom em que o dia inteiro cabe na tela, uma faixa de
-       3,8 m vale 0,2 px — o traço fica no piso de 2 px e NÃO está na escala.
-       Sem dizer isso, a pessoa olha um risco fino e conclui que a faixa não foi
-       desenhada (foi exatamente o que aconteceu). */
-    const fx=faixaRef||0, fpx=fx*pxPorMetro(-12.65);
-    const ha=distTrab*fx/10000;
-    /* hectares como no desktop: distância trabalhada × faixa. É TETO — passar
-       duas vezes no mesmo lugar conta duas vezes. Dizer isso na legenda evita
-       que o número seja lido como área real do talhão. */
+    lg.className='legenda mini';   // tira baixa, do tamanho do texto (ver CSS)
+    /* SÓ O NÚMERO BÁSICO. A explicação inteira — faixa em metros, "teto sem
+       descontar sobreposição", aviso de escala — foi para o `title`: quem
+       precisa, segura e lê; quem não precisa, tem o mapa de volta. O dono
+       pediu depois de ver o painel ocupando três linhas no celular. */
+    const fx=faixaRef||0, fpx=fx*pxPorMetro(-12.65), ha=distTrab*fx/10000;
+    const dica='faixa de '+String(fx).replace('.',',')+' m · teto, sem descontar sobreposição'
+      +(fpx<3?' · aproxime para ver a faixa na escala':'');
     const nota=(TRMODO==='trab'&&TRPER!=='off'&&fx>0)
-      ? `<span><i style="background:#00c896;opacity:.45"></i>faixa ${String(fx).replace('.',',')} m — <b>${ha.toFixed(2).replace('.',',')} ha</b> (teto, sem descontar sobreposição)${fpx<3?' · <b>aproxime para ver na escala</b>':''}</span>` : '';
+      ? `<span title="${dica}"><i style="background:#00c896;opacity:.5"></i><b>${ha.toFixed(1).replace('.',',')} ha</b>${fpx<3?' <span class="fraco">·fora de escala</span>':''}</span>` : '';
     lg.innerHTML = (TRPER!=='off' && cores.length)
       ? cores.map(([n,c])=>`<span><i style="background:${c}"></i>${n}</span>`).join('')+nota
-      : `<span><i style="background:#00c896"></i>em movimento</span><span><i style="background:#ffc107"></i>parada</span><span><i style="background:#8b949e"></i>sem sinal</span>`;
+      : `<span><i style="background:#00c896"></i>andando</span><span><i style="background:#ffc107"></i>parada</span><span><i style="background:#8b949e"></i>sem sinal</span>`;
   }
   /* ⛔ ENQUADRA UMA VEZ SÓ, por recorte. O desenho roda de novo a cada zoom (o
      ícone tem tamanho em metros) e a cada atualização de 60 s — se ele
@@ -1344,7 +1366,7 @@ function pinta(){
         <button class="chip sel ${SELETOR==='tmq'?'on':''}" data-abrir="tmq">${rotuloTMaqs()} ▾</button>
         <button class="chip ico ${MED.on?'on':''}" id="medbtn" title="Medir área ou distância" aria-label="Medir">${IC.esquadro}</button>
       </div>
-      <div class="gaveta" id="medcx" style="display:${MED.on?'':'none'};line-height:1.9"></div>
+      <div class="medpill" id="medcx" style="display:${MED.on?'inline-flex':'none'}"></div>
       ${SELETOR==='trp'?`<div class="gaveta">${Object.keys(TRPERS).map(k=>
         `<button data-trp="${k}" class="${TRPER===k?'on':''}">${TRPERS[k]}</button>`).join('')}
         ${TRPER!=='off'?`<div style="display:flex;gap:6px;padding-top:6px;margin-top:4px;border-top:1px solid var(--border)">
