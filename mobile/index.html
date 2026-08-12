@@ -386,7 +386,10 @@ function iconePxMob(lat){
    CONTA: shoelace em metros, com a projeção equiretangular na latitude do
    primeiro ponto. Numa fazenda (dezenas de km) o erro é irrelevante; o que
    importa é ser a MESMA conta do `_ringAreaHa` do desktop. */
-let MED={on:false, pts:[], layer:null};
+/* `layer` = os vértices (marcadores arrastáveis) · `shape` = o polígono/linha.
+   SEPARADOS de propósito: durante o arraste só a forma se refaz; recriar os
+   marcadores mataria o gesto no meio. */
+let MED={on:false, pts:[], layer:null, shape:null};
 function medMetros(pts){
   /* GUARDA DE LISTA VAZIA — sem ela, `pts[0][0]` estoura. E estourava no pior
      momento: ao LIGAR a medição, quando `MED.pts` acabou de ser zerado. O erro
@@ -409,16 +412,43 @@ function medDist(pts){
   for(let i=1;i<q.length;i++) d+=Math.hypot(q[i][0]-q[i-1][0], q[i][1]-q[i-1][1]);
   return d;   // metros
 }
+/* ALVO DO DEDO: o ponto visível tem 13 px, mas a área de toque tem 30. Num
+   celular, pegar um círculo de 6 px é sorte — e arrastar, impossível. O
+   `divIcon` transparente de 30 px resolve sem engordar o desenho. */
+function medIcone(){ return L.divIcon({className:'',iconSize:[30,30],iconAnchor:[15,15],
+  html:'<div style="width:30px;height:30px;display:flex;align-items:center;justify-content:center">'
+      +'<div style="width:13px;height:13px;border-radius:50%;background:#f0b400;border:2px solid #1a1100;box-shadow:0 1px 3px rgba(0,0,0,.5)"></div></div>'}); }
+/* só a FORMA (polígono/linha) + a leitura — usado durante o arraste, quando
+   recriar os marcadores mataria o gesto no meio */
+function medForma(){
+  if(MED.shape){ try{ _map.removeLayer(MED.shape); }catch(e){} MED.shape=null; }
+  const p=MED.pts;
+  if(p.length>2) MED.shape=L.polygon(p,{color:'#f0b400',weight:2,fillOpacity:.18,dashArray:'5,4'}).addTo(_map);
+  else if(p.length>1) MED.shape=L.polyline(p,{color:'#f0b400',weight:3,dashArray:'5,4'}).addTo(_map);
+  medLeitura();
+}
 function medDesenhar(){
   if(MED.layer){ try{ _map.removeLayer(MED.layer); }catch(e){} MED.layer=null; }
-  const cx=el('medcx'); if(cx) cx.style.display=MED.on?'':'none';
+  if(MED.shape){ try{ _map.removeLayer(MED.shape); }catch(e){} MED.shape=null; }
+  const cx=el('medcx'); if(cx) cx.style.display=MED.on?'inline-flex':'none';
   if(!MED.on){ return; }
+  medForma();
   const g=L.layerGroup(), p=MED.pts;
-  if(p.length>2) L.polygon(p,{color:'#f0b400',weight:2,fillOpacity:.18,dashArray:'5,4'}).addTo(g);
-  else if(p.length>1) L.polyline(p,{color:'#f0b400',weight:3,dashArray:'5,4'}).addTo(g);
-  p.forEach((ll,i)=>L.circleMarker(ll,{radius:6,color:'#1a1100',weight:2,fillColor:'#f0b400',fillOpacity:1})
-    .addTo(g).bindTooltip(String(i+1),{permanent:false}));
+  p.forEach((ll,i)=>{
+    const mk=L.marker(ll,{icon:medIcone(),draggable:true,autoPan:true,zIndexOffset:2000}).addTo(g);
+    /* arrastar ajusta o vértice AO VIVO; só a forma se refaz. O redesenho
+       completo fica para o `dragend`, senão o marcador seria destruído embaixo
+       do dedo e o arraste morreria no primeiro pixel. */
+    mk.on('drag', e=>{ const ll2=e.target.getLatLng(); MED.pts[i]=[ll2.lat,ll2.lng]; medForma(); });
+    mk.on('dragend', ()=>medDesenhar());
+    /* toque no vértice APAGA — igual à ferramenta do desktop. O Leaflet só
+       dispara `click` quando não houve arraste, então os dois gestos convivem. */
+    mk.on('click', ev=>{ L.DomEvent.stop(ev); MED.pts.splice(i,1); medDesenhar(); });
+  });
   MED.layer=g.addTo(_map);
+}
+function medLeitura(){
+  const cx=el('medcx'); const p=MED.pts;
   if(cx){
     /* SÓ O NÚMERO. O dono pediu depois de ver a gaveta: "melhor apenas aparecer
        (xxx,x ha - xxx,x m) em cima". Área e perímetro, e nada mais — no celular
@@ -453,7 +483,7 @@ function medPonto(e){ if(!MED.on) return; MED.pts.push([e.latlng.lat,e.latlng.ln
    no clima continuaria marcando canto invisível. Desliga na saída. */
 function medDesligar(){ if(!MED.on) return; MED.on=false; MED.pts=[];
   try{ _map.off('click', medPonto); _map.getContainer().style.cursor=''; }catch(e){}
-  if(MED.layer){ try{ _map.removeLayer(MED.layer); }catch(e){} MED.layer=null; } }
+  [['layer'],['shape']].forEach(([k])=>{ if(MED[k]){ try{ _map.removeLayer(MED[k]); }catch(e){} MED[k]=null; } }); }
 /* quantos pixels vale 1 metro no zoom atual — é o que transforma a faixa da
    máquina (metros, do cadastro) na espessura do traço na tela */
 function pxPorMetro(lat){
