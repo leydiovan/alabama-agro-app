@@ -369,6 +369,13 @@ function iconePxMob(lat){
    importa é ser a MESMA conta do `_ringAreaHa` do desktop. */
 let MED={on:false, pts:[], layer:null};
 function medMetros(pts){
+  /* GUARDA DE LISTA VAZIA — sem ela, `pts[0][0]` estoura. E estourava no pior
+     momento: ao LIGAR a medição, quando `MED.pts` acabou de ser zerado. O erro
+     subia pelo medDesenhar e matava o `pinta()` que vinha logo depois, então a
+     classe 'on' nunca era aplicada e o botão ficava cinza — parecia bug de CSS,
+     era exceção silenciosa. Depois do 1º toque já havia ponto e tudo funcionava,
+     que foi o que confundiu: "mede certo, só a cor não muda". */
+  if(!pts||!pts.length) return [];
   const lat0=pts[0][0]*Math.PI/180, mLat=111320, mLon=111320*Math.cos(lat0);
   return pts.map(p=>[(p[1]-pts[0][1])*mLon, (p[0]-pts[0][0])*mLat]);
 }
@@ -394,7 +401,7 @@ function medDesenhar(){
     .addTo(g).bindTooltip(String(i+1),{permanent:false}));
   MED.layer=g.addTo(_map);
   if(cx){
-    const d=medDist(p), a=medArea(p);
+    const d=p.length?medDist(p):0, a=medArea(p);
     cx.innerHTML = p.length<2 ? '<b>Toque no mapa</b> para marcar os cantos'
       : (p.length===2 ? `<b>${d<1000?d.toFixed(0)+' m':(d/1000).toFixed(2).replace('.',',')+' km'}</b> de distância`
          : `<b>${a.toFixed(2).replace('.',',')} ha</b> · perímetro ${(d+medDist([p[p.length-1],p[0]])).toFixed(0)} m · ${p.length} cantos`)
