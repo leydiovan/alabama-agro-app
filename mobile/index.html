@@ -116,8 +116,18 @@ svg{display:block}
   background:var(--vidro);backdrop-filter:blur(10px);border:1px solid var(--border);
   border-radius:20px;padding:8px 14px;display:flex;align-items:center;gap:10px;pointer-events:auto}
 .tlpill b{font:800 13px inherit;font-variant-numeric:tabular-nums;min-width:38px}
-.tltrilho{flex:1;height:4px;border-radius:3px;background:rgba(255,255,255,.16);overflow:hidden}
-.tlfeito{display:block;height:100%;width:0;background:var(--gold);border-radius:3px}
+/* trilho ARRASTÁVEL: 4 px de traço, mas 22 px de altura para o dedo pegar —
+   mesma ideia do vértice do medir. `touch-action:none` é obrigatório, senão o
+   navegador entende o gesto como rolagem da página e o arraste nunca chega. */
+.tltrilho{flex:1;position:relative;height:22px;display:flex;align-items:center;
+  touch-action:none;cursor:pointer}
+.tltrilho::before{content:'';position:absolute;left:0;right:0;height:4px;border-radius:3px;
+  background:rgba(255,255,255,.16)}
+.tlfeito{position:absolute;left:0;height:4px;width:0;background:var(--gold);border-radius:3px}
+.tlpega{position:absolute;width:14px;height:14px;border-radius:50%;background:var(--gold);
+  border:2px solid #1a1100;margin-left:-7px;box-shadow:0 1px 3px rgba(0,0,0,.5);pointer-events:none}
+.tlpill button{background:transparent;border:0;color:var(--gold);font:800 12px inherit;
+  padding:0 4px;cursor:pointer;line-height:1;white-space:nowrap}
 
 /* ---------- legenda do mapa ---------- */
 /* legenda enxuta: uma linha só — valor + barra com marcador da posição */
@@ -406,7 +416,12 @@ let MED={on:false, pts:[], layer:null, shape:null};
    Percorre o rastro no TEMPO. Não busca nada: cada ponto já carrega o carimbo
    de hora (índice 3), então dar play é só redesenhar cortando em `TL.t`.
    `TL.t = null` significa "mostrar tudo" — é o estado normal da tela. */
-let TL={on:false, t:null, t0:0, t1:0, timer:null};
+/* `ativo` = o modo timelapse está aberto (barra na tela, rastro cortado em TL.t)
+   `tocando` = está correndo. São coisas diferentes: PAUSAR mantém a barra e a
+   posição; FECHAR (✕) é que volta a mostrar o rastro inteiro. Antes havia só um
+   estado, e por isso o botão "pausava" sumindo com tudo — o dono pegou. */
+let TL={ativo:false, tocando:false, t:null, t0:0, t1:0, timer:null, vel:1};
+const TLVELS=[1,2,4];
 function tlJanela(){
   let a=Infinity,b=-Infinity;
   Object.keys(TRAILS).forEach(dev=>{
@@ -417,21 +432,59 @@ function tlJanela(){
   return TL.t1>TL.t0;
 }
 function tlHora(t){ const d=new Date(t), p=n=>String(n).padStart(2,'0'); return p(d.getHours())+':'+p(d.getMinutes()); }
-function tlParar(){ if(TL.timer){ clearInterval(TL.timer); TL.timer=null; } TL.on=false; }
-function tlPlay(){
-  if(TL.on){ tlParar(); TL.t=null; desenhaTelemetria(); pinta(); return; }
-  if(!tlJanela()){ return; }                      // sem rastro com hora não há o que percorrer
-  if(TL.t==null || TL.t>=TL.t1) TL.t=TL.t0;
-  TL.on=true; pinta();
-  /* o dia inteiro em ~14 s: rápido o bastante para ver o padrão de trabalho,
-     lento o bastante para acompanhar a máquina virando na cabeceira */
-  const passo=(TL.t1-TL.t0)/200;   // 200 quadros
+/* só para o relógio; NÃO fecha o modo — é isso que separa pausar de sair */
+function tlParar(){ if(TL.timer){ clearInterval(TL.timer); TL.timer=null; } TL.tocando=false; }
+function tlFechar(){ tlParar(); TL.ativo=false; TL.t=null; desenhaTelemetria(); pinta(); }
+function tlTick(){
+  tlParar(); TL.tocando=true;
+  /* o dia inteiro em ~14 s no 1×: rápido para ver o padrão de trabalho, lento
+     para acompanhar a máquina virando na cabeceira. A velocidade multiplica o
+     PASSO, não a taxa de quadros — subir a taxa só gastaria bateria. */
+  const passo=(TL.t1-TL.t0)/200*TL.vel;
   TL.timer=setInterval(()=>{
     TL.t+=passo;
-    if(TL.t>=TL.t1){ TL.t=TL.t1; desenhaTelemetria(); tlBarra(); tlParar(); TL.t=null;
-                     setTimeout(()=>{ desenhaTelemetria(); pinta(); },700); return; }
+    if(TL.t>=TL.t1){ TL.t=TL.t1; desenhaTelemetria(); tlBarra(); tlParar(); pinta(); return; }
     desenhaTelemetria(); tlBarra();
-  },70);   // ~14 s no total; 70 ms poupa o celular sem picotar
+  },70);   // 70 ms poupa o celular sem picotar
+}
+function tlPlay(){
+  if(!TL.ativo){                                   // abrir e já tocar
+    if(!tlJanela()) return;                        // sem rastro com hora não há o que percorrer
+    TL.ativo=true; TL.t=TL.t0; tlTick(); pinta(); return;
+  }
+  if(TL.tocando){ tlParar(); pinta(); return; }    // PAUSA — mantém a barra e a posição
+  if(TL.t==null || TL.t>=TL.t1) TL.t=TL.t0;        // no fim, tocar de novo reinicia
+  tlTick(); pinta();
+}
+function tlVelocidade(){
+  TL.vel=TLVELS[(TLVELS.indexOf(TL.vel)+1)%TLVELS.length];
+  if(TL.tocando) tlTick();                         // reinicia o relógio no passo novo
+  pinta();
+}
+/* ARRASTAR A BARRA: o dedo manda mais que o relógio, então tocar no trilho
+   PAUSA e leva para o instante escolhido. Ficar tocando enquanto se arrasta
+   faria o quadro fugir do dedo. */
+function tlIrPara(fracao){
+  if(!TL.ativo) return;
+  const f=Math.max(0,Math.min(1,fracao));
+  TL.t=TL.t0+f*(TL.t1-TL.t0);
+  desenhaTelemetria(); tlBarra();
+}
+function tlLigarArraste(){
+  const trilho=el('tltrilho'); if(!trilho) return;
+  const frac=ev=>{ const r=trilho.getBoundingClientRect();
+    const x=(ev.touches?ev.touches[0].clientX:ev.clientX)-r.left; return r.width?x/r.width:0; };
+  let arrastando=false;
+  const inicio=ev=>{ arrastando=true; if(TL.tocando){ tlParar(); pinta(); tlLigarArraste(); }
+                     tlIrPara(frac(ev)); ev.preventDefault(); };
+  const move=ev=>{ if(!arrastando) return; tlIrPara(frac(ev)); ev.preventDefault(); };
+  const fim=()=>{ arrastando=false; };
+  trilho.addEventListener('pointerdown',inicio);
+  trilho.addEventListener('pointermove',move);
+  window.addEventListener('pointerup',fim,{once:true});
+  trilho.addEventListener('touchstart',inicio,{passive:false});
+  trilho.addEventListener('touchmove',move,{passive:false});
+  trilho.addEventListener('touchend',fim);
 }
 /* corta as linhas em TL.t. O índice 3 é a HORA DO GPS (`tempo_gps`), não a de
    chegada — o próprio flow do Node-RED grava assim e explica por quê: pacote que
@@ -452,8 +505,10 @@ function tlPosicao(tr){
   return ult;
 }
 function tlBarra(){
-  const b=el('tlbar'), h=el('tlhora');
-  if(b) b.style.width=(TL.t==null?100:Math.max(0,Math.min(100,(TL.t-TL.t0)/(TL.t1-TL.t0)*100)))+'%';
+  const b=el('tlbar'), h=el('tlhora'), pg=el('tlpega');
+  const f=(TL.t==null||TL.t1<=TL.t0)?1:Math.max(0,Math.min(1,(TL.t-TL.t0)/(TL.t1-TL.t0)));
+  if(b) b.style.width=(f*100)+'%';
+  if(pg) pg.style.left=(f*100)+'%';
   if(h) h.textContent=TL.t==null?'':tlHora(TL.t);
 }
 function medMetros(pts){
@@ -1467,11 +1522,13 @@ function pinta(){
         <button class="chip sel ${SELETOR==='trp'?'on':''}" data-abrir="trp">${TRPERS[TRPER]}${TRPER!=='off'?(TRMODO==='trab'?' · trabalho':' · tudo'):''} ▾</button>
         <button class="chip sel ${SELETOR==='tmq'?'on':''}" data-abrir="tmq">${rotuloTMaqs()} ▾</button>
         <button class="chip ico ${MED.on?'on':''}" id="medbtn" title="Medir área ou distância" aria-label="Medir">${IC.esquadro}</button>
-        ${TRPER!=='off'?`<button class="chip ico ${TL.on?'on':''}" id="tlbtn" title="Ver o rastro acontecendo (hora do GPS)" aria-label="Timelapse">${TL.on?IC.pausa:IC.play}</button>`:''}
+        ${TRPER!=='off'?`<button class="chip ico ${TL.tocando?'on':''}" id="tlbtn" title="${TL.tocando?'Pausar':'Ver o rastro acontecendo (hora do GPS)'}" aria-label="Timelapse">${TL.tocando?IC.pausa:IC.play}</button>`:''}
       </div>
       <div class="medpill" id="medcx" style="display:${MED.on?'inline-flex':'none'}"></div>
-      ${TL.on?`<div class="tlpill"><b id="tlhora">${TL.t!=null?tlHora(TL.t):''}</b>
-        <span class="tltrilho"><span class="tlfeito" id="tlbar"></span></span></div>`:''}
+      ${TL.ativo?`<div class="tlpill"><b id="tlhora">${TL.t!=null?tlHora(TL.t):''}</b>
+        <span class="tltrilho" id="tltrilho"><span class="tlfeito" id="tlbar"></span><span class="tlpega" id="tlpega"></span></span>
+        <button id="tlvel" title="Velocidade">${TL.vel}×</button>
+        <button id="tlfecha" title="Sair do timelapse">✕</button></div>`:''}
       ${SELETOR==='trp'?`<div class="gaveta">${Object.keys(TRPERS).map(k=>
         `<button data-trp="${k}" class="${TRPER===k?'on':''}">${TRPERS[k]}</button>`).join('')}
         ${TRPER!=='off'?`<div style="display:flex;gap:6px;padding-top:6px;margin-top:4px;border-top:1px solid var(--border)">
@@ -1502,9 +1559,9 @@ function pinta(){
   el('fdir').onclick=()=>{ MENU=MENU==='dir'?null:'dir'; pinta(); };
   if(el('veu')) el('veu').onclick=()=>{ MENU=null; pinta(); };
   document.querySelectorAll('[data-sec]').forEach(b=>b.onclick=()=>{
-    SECAO=b.dataset.sec; SUB=(SUBS[SECAO]||[['mapa']])[0][0]; MENU=null; SELETOR=null; ESTSEL=null; _telEnq=false; medDesligar(); tlParar(); TL.t=null; trocarTela(pinta); });   /* entrou noutra seção: enquadra de novo, e a medição não vai junto */
+    SECAO=b.dataset.sec; SUB=(SUBS[SECAO]||[['mapa']])[0][0]; MENU=null; SELETOR=null; ESTSEL=null; _telEnq=false; medDesligar(); tlParar(); TL.ativo=false; TL.t=null; trocarTela(pinta); });   /* entrou noutra seção: enquadra de novo, e a medição não vai junto */
   document.querySelectorAll('[data-sub]').forEach(b=>b.onclick=()=>{
-    SUB=b.dataset.sub; MENU=null; SELETOR=null; ESTSEL=null; _telEnq=false; medDesligar(); tlParar(); TL.t=null; trocarTela(pinta); });
+    SUB=b.dataset.sub; MENU=null; SELETOR=null; ESTSEL=null; _telEnq=false; medDesligar(); tlParar(); TL.ativo=false; TL.t=null; trocarTela(pinta); });
   document.querySelectorAll('[data-htab]').forEach(b=>b.onclick=()=>{ HTAB=b.dataset.htab; pinta(); });
   document.querySelectorAll('[data-hper]').forEach(b=>b.onclick=()=>{
     const k=b.dataset.hper;
@@ -1547,7 +1604,9 @@ function pinta(){
     await carregarRastro(); try{ desenhaTelemetria(); }catch(e){} });
   const bmed=el('medbtn'); if(bmed) bmed.onclick=()=>medToggle();
   const btl=el('tlbtn'); if(btl) btl.onclick=()=>tlPlay();
-  if(TL.on) tlBarra();
+  const bv=el('tlvel'); if(bv) bv.onclick=()=>tlVelocidade();
+  const bf=el('tlfecha'); if(bf) bf.onclick=()=>tlFechar();
+  if(TL.ativo){ tlBarra(); tlLigarArraste(); }
   if(MED.on) medDesenhar();   // a repintura refaz a caixa: redesenha para religar os botões ↶ e ✕
   /* trabalho × tudo: é só DESENHO — não volta ao banco */
   document.querySelectorAll('[data-trmodo]').forEach(b=>b.onclick=()=>{
