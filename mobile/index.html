@@ -225,6 +225,9 @@ table{width:100%;border-collapse:collapse;font-size:13px}
 th,td{padding:9px 6px;border-bottom:1px solid var(--border);text-align:right;white-space:nowrap}
 th{color:var(--muted);font-size:10px;text-transform:uppercase;letter-spacing:.05em;font-weight:700}
 th:first-child,td:first-child{text-align:left}
+.vgbtn{background:var(--bg3);border:1px solid var(--border);border-radius:9px;color:var(--muted);
+  font-size:12px;font-weight:600;padding:7px 12px;cursor:pointer}
+.vgbtn:active{background:var(--bg4);color:var(--text)}
 .vazio{text-align:center;color:var(--muted);padding:70px 24px}
 .vazio svg{width:52px;height:52px;margin:0 auto 14px;opacity:.35}
 .muted{color:var(--muted)}
@@ -303,6 +306,10 @@ const IC={
   obra:`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"
     stroke-linecap="round" stroke-linejoin="round"><path d="M3 20h18"/><path d="M5 20V9l7-5 7 5v11"/>
     <path d="M9 20v-6h6v6"/></svg>`,
+  // escudo com sinal (vigia da telemetria)
+  vigia:`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"
+    stroke-linecap="round" stroke-linejoin="round"><path d="M12 3.2 19 6v5.5c0 4-2.9 7.4-7 9.3
+    -4.1-1.9-7-5.3-7-9.3V6l7-2.8Z"/><path d="M12 9v3.6"/><path d="M12 16h.01"/></svg>`,
   // porta com seta (sair)
   sair:`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"
     stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h3.5A1.5 1.5 0 0 1 20 4.5v15a1.5 1.5 0 0 1-1.5 1.5H15"/>
@@ -312,13 +319,16 @@ const IC={
 const SECOES=[['clima','Clima',IC.clima],['rel','Relatórios',IC.rel],
               ['tel','Telemetria',IC.tel],['safra','Safra',IC.safra]];
 const SUBS={ clima:[['mapa','Mapa',IC.mapa],['agora','Agora',IC.agora],['hist','Histórico',IC.hist]],
-             tel:[['mapa','Mapa',IC.mapa],['agora','Máquinas',IC.agora]] };
+             tel:[['mapa','Mapa',IC.mapa],['agora','Máquinas',IC.agora],['vigia','Vigia',IC.vigia]] };
 
 let SB=null, SECAO='clima', SUB='mapa', MENU=null;   // MENU: null | 'esq' | 'dir'
 /* DESLOGADO trava o ciclo de recarga depois que a sessao cai. Sem ele, o
    setInterval de 60 s continuaria chamando carregar() -> telaLogin(), apagando
    o e-mail/senha que a pessoa esta digitando, a cada minuto. */
 let CONTA='', DESLOGADO=false, _TIMERS=false;
+/* ADMIN só governa o que a TELA oferece. Quem de fato barra a escrita é a
+   policy da migração 104 — esconder o botão é cortesia, não segurança. */
+let ADMIN=false;
 let SELETOR=null;
 let ESTSEL=null;                                     // estacao com card aberto                                    // gaveta aberta: null | 'var' | 'per'
 let PERIODO='agora', VARMAPA='chuva';   // abre na chuva (o que mais se consulta)
@@ -329,6 +339,15 @@ let ESTACOES=[], ATUAL=[], HORAS=[], LOTES=[];
    buscado só quando a tela do mapa da telemetria está aberta — dado de celular
    não se gasta com o que ninguém está olhando. */
 let TELE=[], MAQS={}, TRAILS={}, _telL=null, _telEnq=false;
+/* VIGIA — uma linha por caixa vinda da view `telemetria_vigia` (migração 104).
+   O CRITÉRIO NÃO MORA AQUI: quem decide o que é "mudo" e o que é "queda" é o
+   banco, e esta tela só pinta o veredito. Foi de propósito — o aviso do
+   Telegram lê a MESMA view e por isso diz exatamente a mesma coisa.
+   `ULTIMA_OK` é o vigia DO VIGIA: marca de tempo própria da última busca que
+   deu certo. Sem ela, a tela congelada (timer estrangulado em 2º plano, rede
+   caída) mostra "tudo ok" de ontem com cara de agora — a receita do CLAUDE.md
+   para página que se atualiza sozinha. */
+let VIGIA=[], ULTIMA_OK=0;
 /* FILTRO DO RASTRO (pedido do dono, 08/08): com/sem rastro, quantos dias e
    quais máquinas. `TRPER='off'` desliga o rastro — e desligar não é enfeite:
    é o modo mais leve da tela, porque nem busca o trajeto. `TMAQS` vazio = todas.
@@ -861,6 +880,7 @@ async function carregar(){
       return telaLogin('Sessão encerrada. Entre de novo.');
     }
     CONTA=(s.session.user&&s.session.user.email)||'';
+    ADMIN=CONTA.toLowerCase()==='leydiovan@gmail.com';
     const [e,a,h,l]=await Promise.all([
       SB.from('clima_estacoes').select('*').order('id'),
       SB.from('clima_atual').select('*'),
@@ -993,13 +1013,14 @@ function mascara(bb,W,H){
    telemetria está aberto: são milhares de pontos por máquina, e celular paga. */
 async function carregarTelemetria(){
   try{
-    const ps=[SB.from('telemetria_atual').select('*')];
+    const ps=[SB.from('telemetria_atual').select('*'), SB.from('telemetria_vigia').select('*')];
     ps.push(Object.keys(MAQS).length ? Promise.resolve({data:null})
           : SB.from('maquinas_identificacao').select('id,id_frota,nome,marca,modelo,categoria'));
-    const [t,m]=await Promise.all(ps);
+    const [t,v,m]=await Promise.all(ps);
     /* Regra do offline-first: lista vazia só substitui o que está na tela quando
        veio DA REDE com sucesso. Aqui a chamada respondeu, então vale. */
     if(t&&!t.error) TELE=t.data||[];
+    if(v&&!v.error){ VIGIA=v.data||[]; ULTIMA_OK=Date.now(); }
     if(m&&m.data) m.data.forEach(x=>MAQS[x.id]=x);
     if(SECAO==='tel' && SUB==='mapa') await carregarRastro();
   }catch(e){ console.warn('[telemetria]',e.message||e); }
@@ -1144,6 +1165,114 @@ function folhaMaquinas(){
       </div>
     </div>`;
   }).join('')+'</div>';
+}
+/* ================= VIGIA DA TELEMETRIA =================
+   Existe por causa da TECU-03: ela caiu de ~2.300 pontos/dia para 55 entre 15
+   e 18/08/2026 e ninguém percebeu até o dono conferir na mão em 19/08.
+   O veredito vem PRONTO da view `telemetria_vigia` (migração 104) — inclusive
+   a frase. Aqui não se recalcula nada: se a regra mudar, muda no banco e as
+   duas pontas (esta tela e o aviso do Telegram) mudam juntas. */
+const VG={
+  mudo:      {lbl:'NÃO REPORTOU',    cor:'#ff4444', ordem:0},
+  queda:     {lbl:'ABAIXO DO NORMAL',cor:'#ffb300', ordem:1},
+  sem_ref:   {lbl:'sem referência',  cor:'#7796bb', ordem:2},
+  em_curso:  {lbl:'em curso',        cor:'#7796bb', ordem:3},
+  domingo:   {lbl:'folga',           cor:'#3d5a80', ordem:4},
+  silenciado:{lbl:'silenciada',      cor:'#3d5a80', ordem:5},
+  ok:        {lbl:'ok',              cor:'#00c896', ordem:6}
+};
+const vgInfo=s=>VG[s]||VG.ok;
+const vgAlertas=()=>VIGIA.filter(v=>v.status==='mudo'||v.status==='queda');
+const ddmm=d=>{ const p=String(d||'').split('-'); return p.length===3?p[2]+'/'+p[1]:(d||''); };
+/* PARADO há X — o vigia do próprio vigia. `setInterval` sozinho não basta: o
+   navegador estrangula o timer da aba em 2º plano e a tela fica mostrando
+   número velho com cara de novo (já mordeu 2× neste projeto). A busca é refeita
+   em visibilitychange/focus/online lá embaixo; este selo é o que denuncia
+   quando, mesmo assim, ela parou de acontecer. */
+function vgFrescor(){
+  if(!ULTIMA_OK) return '<span class="tag wait">sem leitura</span>';
+  const s=(Date.now()-ULTIMA_OK)/1000;
+  return s<300 ? `<span class="tag ok">● atualizado ${haQuanto(ULTIMA_OK)}</span>`
+               : `<span class="tag err">⚠ PARADO ${haQuanto(ULTIMA_OK)}</span>`;
+}
+/* a série dos 10 dias em barrinhas: é ELA que mostra a degradação. Um número
+   isolado ("827 pontos") não diz nada; a queda 2.295 · 2.319 · 1.947 · folga ·
+   827 · 533 conta a história inteira de relance. */
+function vgSerie(h){
+  const dias=Array.isArray(h)?h:[]; if(!dias.length) return '';
+  const max=Math.max(1,...dias.map(d=>+d[1]||0));
+  return `<div style="display:flex;align-items:flex-end;gap:3px;height:34px;margin:10px 0 4px">${
+    dias.map(d=>{ const n=+d[1]||0, st=d[2], c=vgInfo(st).cor;
+      const alt=st==='domingo'?2:Math.max(2,Math.round(30*n/max));
+      return `<div title="${ddmm(d[0])}: ${st==='domingo'?'folga':n+' pontos'}" style="flex:1;height:${alt}px;
+        background:${c};opacity:${st==='domingo'?.35:.9};border-radius:2px 2px 0 0"></div>`;
+    }).join('')}</div>
+    <div style="display:flex;justify-content:space-between;font-size:10px;color:var(--muted2)">
+      <span>${ddmm(dias[0][0])}</span><span>${ddmm(dias[dias.length-1][0])}</span></div>`;
+}
+function folhaVigia(){
+  if(!VIGIA.length) return '<div class="vazio">'+IC.vigia+'Nenhuma caixa para vigiar ainda.</div>';
+  const sinc=VIGIA[0].sincronizado_em;
+  const ruins=vgAlertas().length;
+  const lista=VIGIA.slice().sort((a,b)=>vgInfo(a.status).ordem-vgInfo(b.status).ordem
+                                       ||String(a.maquina).localeCompare(String(b.maquina)));
+  return `<div style="padding:10px 12px 90px">
+    <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:12px">
+      ${vgFrescor()}
+      <span style="font-size:12px;color:var(--muted)">Pi sincronizou ${haQuanto(sinc)}</span>
+      <span style="margin-left:auto;font-size:12px;color:${ruins?'var(--err)':'var(--ok)'}">
+        ${ruins?ruins+' caixa(s) com problema':'todas reportando'}</span>
+    </div>
+    ${lista.map(v=>{
+      const i=vgInfo(v.status), alerta=(v.status==='mudo'||v.status==='queda');
+      return `<div style="background:var(--bg2);border:1px solid ${alerta?i.cor:'var(--border)'};
+                   border-radius:12px;padding:12px 14px;margin-bottom:10px">
+        <div style="display:flex;align-items:center;gap:8px">
+          <span style="width:10px;height:10px;border-radius:50%;background:${i.cor};flex:none"></span>
+          <b style="font-size:16px">${v.maquina||v.device_id}</b>
+          <span style="margin-left:auto;font-size:11px;font-weight:700;color:${i.cor}">${i.lbl}</span>
+        </div>
+        <div style="font-size:12px;color:var(--muted);margin-top:2px">
+          ${[v.modelo,v.device_id].filter(Boolean).join(' · ')}</div>
+        <div style="font-size:13px;margin-top:8px;line-height:1.45">${v.mensagem||''}</div>
+        ${vgSerie(v.historico)}
+        <div style="display:flex;gap:12px;flex-wrap:wrap;margin-top:8px;font-size:12px;color:var(--muted)">
+          <span>último sinal ${haQuanto(v.ultimo_sinal)}</span>
+          ${v.boot_id!=null?`<span>boot #${v.boot_id}</span>`:''}
+          ${v.mediana!=null?`<span>normal ${v.mediana} pts/dia</span>`:''}
+        </div>
+        ${ADMIN?`<div style="display:flex;gap:6px;margin-top:10px">
+          ${v.silenciado_ate
+            ? `<button class="vgbtn" data-vgvolta="${v.device_id}">Voltar a vigiar</button>`
+            : `<button class="vgbtn" data-vgsil="${v.device_id}" data-dias="7">Silenciar 7 dias</button>
+               <button class="vgbtn" data-vgsil="${v.device_id}" data-dias="30">30 dias</button>`}
+        </div>`:''}
+      </div>`;
+    }).join('')}
+    <div style="font-size:11px;color:var(--muted2);line-height:1.5;padding:4px 2px">
+      Alerta quando a caixa não reporta nada em dia útil, ou quando manda menos
+      de 50% da mediana dos últimos 7 dias úteis dela. Domingo é folga e nunca
+      alarma. O critério mora na view <b>telemetria_vigia</b> (migração 104).
+    </div>
+  </div>`;
+}
+/* Silenciar é do DONO (a policy da 104 só deixa ele gravar). O botão nem
+   aparece para as contas de consulta — mostrar um botão que vai falhar é pior
+   que não ter botão. */
+async function vgSilenciar(dev,dias){
+  const d=new Date(); d.setDate(d.getDate()+(+dias||7));
+  const p=n=>String(n).padStart(2,'0');
+  const ate=d.getFullYear()+'-'+p(d.getMonth()+1)+'-'+p(d.getDate());   // data LOCAL, nunca toISOString()
+  const {error}=await SB.from('telemetria_vigia_silencio')
+    .upsert({device_id:dev, silenciado_ate:ate, motivo:'silenciada pelo app', criado_por:CONTA},
+            {onConflict:'device_id'});
+  if(error){ alert('Não deu para silenciar: '+error.message); return; }
+  await carregarTelemetria(); pinta();
+}
+async function vgVoltar(dev){
+  const {error}=await SB.from('telemetria_vigia_silencio').delete().eq('device_id',dev);
+  if(error){ alert('Não deu para reativar: '+error.message); return; }
+  await carregarTelemetria(); pinta();
 }
 function destruirMapa(){
   medDesligar();
@@ -1482,6 +1611,15 @@ function selo(){
             :'—';
   return `<span class="tag ${n<600?'ok':'old'}">${n<600?'●':'⚠'} ${txt}</span>`;
 }
+/* O aviso do vigia fica no TOPO, em qualquer seção — inclusive no Clima, que é
+   onde o app abre. Se ele só existisse dentro da aba Vigia, quem não entrasse
+   lá não veria: seria repetir exatamente a falha de agosto, em que o dado
+   estava no banco e ninguém olhou. Clicar leva direto para a aba. */
+function avisoVigia(){
+  const n=vgAlertas().length;
+  if(!n) return '';
+  return `<span class="tag err" id="avvigia" style="cursor:pointer">⚠ ${n} caixa${n>1?'s':''}</span>`;
+}
 let _modo=null;   // 'mapa' | 'folha' — só remonta a estrutura quando o modo muda
 
 function pinta(){
@@ -1489,7 +1627,7 @@ function pinta(){
   const mapaClima = SECAO==='clima' && SUB==='mapa';
   const modo = noMapa?'mapa':'folha';
   let corpo='';
-  if(SECAO==='tel') corpo = (SUB==='agora') ? folhaMaquinas() : '';
+  if(SECAO==='tel') corpo = (SUB==='agora') ? folhaMaquinas() : (SUB==='vigia') ? folhaVigia() : '';
   else if(SECAO!=='clima') corpo=emObra(SECOES.find(s=>s[0]===SECAO)[1]);
   else if(SUB==='agora') corpo=folhaAgora();
   else if(SUB==='hist') corpo=folhaHist();
@@ -1513,7 +1651,7 @@ function pinta(){
   }
 
   el('chrome').innerHTML=`
-    <div class="topo"><div class="marca"><span class="l">🌿</span> Alabama</div>${selo()}</div>
+    <div class="topo"><div class="marca"><span class="l">🌿</span> Alabama</div>${avisoVigia()}${selo()}</div>
     ${faixaHist?`
       <div class="faixa p1">
         <button class="chip sel ${SELETOR==='hper'?'on':''}" data-abrir="hper">${rotuloHPer()} ▾</button>
@@ -1589,6 +1727,13 @@ function pinta(){
     SECAO=b.dataset.sec; SUB=(SUBS[SECAO]||[['mapa']])[0][0]; MENU=null; SELETOR=null; ESTSEL=null; _telEnq=false; medDesligar(); tlParar(); TL.ativo=false; TL.t=null; trocarTela(pinta); });   /* entrou noutra seção: enquadra de novo, e a medição não vai junto */
   document.querySelectorAll('[data-sub]').forEach(b=>b.onclick=()=>{
     SUB=b.dataset.sub; MENU=null; SELETOR=null; ESTSEL=null; _telEnq=false; medDesligar(); tlParar(); TL.ativo=false; TL.t=null; trocarTela(pinta); });
+  if(el('avvigia')) el('avvigia').onclick=()=>{
+    SECAO='tel'; SUB='vigia'; MENU=null; SELETOR=null; medDesligar(); tlParar();
+    TL.ativo=false; TL.t=null; trocarTela(pinta); };
+  document.querySelectorAll('[data-vgsil]').forEach(b=>b.onclick=()=>
+    vgSilenciar(b.dataset.vgsil, b.dataset.dias));
+  document.querySelectorAll('[data-vgvolta]').forEach(b=>b.onclick=()=>
+    vgVoltar(b.dataset.vgvolta));
   document.querySelectorAll('[data-htab]').forEach(b=>b.onclick=()=>{ HTAB=b.dataset.htab; pinta(); });
   document.querySelectorAll('[data-hper]').forEach(b=>b.onclick=()=>{
     const k=b.dataset.hper;
