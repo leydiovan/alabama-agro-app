@@ -67,32 +67,45 @@
       if(a.fundo) L.polygon(a.fundo,{color:'#bbdefb',weight:1,dashArray:'6 5',opacity:.55,fill:!agua,fillColor:'#111111',fillOpacity:.88,interactive:false}).addTo(grupo);
       if(agua) L.polygon(agua,{stroke:false,fillColor:'#1e88e5',fillOpacity:.8,interactive:false}).addTo(grupo);
     }
-    const niv = r.nivel_m!=null ? br(r.nivel_m,2)+' m' : r.situacao;
-    L.polygon(c.anel,{color:cor,weight:2.4,opacity:.95,fill:true,fillOpacity:0,bubblingMouseEvents:false})
-      .addTo(grupo)
-      .bindTooltip(`${c.nome||'Reservatório'} · ${niv}${r.pct_cheio!=null?' · '+br(r.pct_cheio,0)+'%':''}`,
-        {permanent:true,direction:'center',className:'placa'})
-      .on('click', aoClicar);
+    const borda=L.polygon(c.anel,{color:cor,weight:2.4,opacity:.95,fill:true,fillOpacity:0,bubblingMouseEvents:false})
+      .addTo(grupo).on('click', aoClicar);
+    /* SÓ A PORCENTAGEM no mapa, grande, no meio do piscinão (pedido do dono,
+       14/09/2026: "as escritas não precisa; quando clica abre todas as
+       informações"). Em falha/mudo não há %: aparece a palavra, na cor do alerta. */
+    const rot = r.pct_cheio!=null ? Math.round(Number(r.pct_cheio))+'%'
+              : r.situacao==='MUDO' ? 'sem sinal' : r.situacao==='FALHA' ? 'falha' : '—';
+    const corRot = r.pct_cheio!=null ? '#ffffff' : cor;
+    L.marker(borda.getBounds().getCenter(),{keyboard:false, zIndexOffset:500, icon:L.divIcon({className:'', iconSize:[0,0], iconAnchor:[0,0],
+      html:`<div style="position:absolute;transform:translate(-50%,-50%);white-space:nowrap;font:800 28px/1 system-ui,sans-serif;color:${corRot};text-shadow:0 0 3px #000,0 0 9px #000,0 2px 3px #000;cursor:pointer">${rot}</div>`})})
+      .on('click', aoClicar).addTo(grupo);
   }
 
-  /* CORTE LATERAL esquemático. Altura exagerada ~7× para caber na tela. */
-  function corteSVG(r,c){
-    const K=6, V=40, T=3.07, Y0=330;
+  /* a frase que responde a pergunta do dono: acima ou abaixo da sucção */
+  function manchete(r){
+    const h=r.nivel_m!=null?Number(r.nivel_m):null;
+    if(h==null) return {txt:'Sem leitura válida da sonda', cor:'#ff4444'};
+    if(h<=0) return {txt:'ÁGUA ABAIXO DA BOCA DA SUCÇÃO', cor:'#ff4444'};
+    if(h<0.5) return {txt:'Água '+br(h*100,0)+' cm acima da boca da sucção — atenção', cor:'#ffb300'};
+    return {txt:'Água '+br(h,2)+' m acima da boca da sucção', cor:'#00c896'};
+  }
+
+  /* CORTE LATERAL esquemático. Altura exagerada ~7× para caber na tela.
+     `compacto` (tela estreita): o desenho CABE na largura, as letras crescem ~1,8×
+     e somem os rótulos secundários (grama, lona, testa…) — no celular o corte
+     inteiro aparece de cara e a pinça amplia o detalhe (dono, 14/09/2026: "abre
+     com a imagem cortada, tem que arrastar para o lado"). A manchete saiu do SVG
+     e virou texto da janela, para ter tamanho de letra de verdade. */
+  function corteSVG(r,c,compacto){
+    const K=6, V=40, T=3.07, Y0=330, F=compacto?1.8:1;
     const y=z=>+(Y0-z*V).toFixed(1);
     const toeL=150, cOutL=toeL+4*T*K, cInL=cOutL+5.5*K, botL=cInL+6*T*K;
     const pocA=540, pocB=580, botR=650, cInR=botR+6.3*T*K, cOutR=cInR+5.5*K, toeR=cOutR+4*T*K;
     const xL=z=>botL-z*T*K, xR=z=>botR+(z+0.3)*T*K;
     const P=a=>a.map(p=>(+p[0]).toFixed(1)+','+p[1]).join(' ');
-    const txt=(x,yy,s,o={})=>`<text x="${(+x).toFixed(1)}" y="${yy}" fill="${o.c||'#e8edf5'}" font-size="${o.s||12}" font-weight="${o.b?700:400}" text-anchor="${o.a||'start'}" stroke="#0b121b" stroke-width="3" paint-order="stroke">${s}</text>`;
+    const txt=(x,yy,s,o={})=>(compacto&&o.m) ? '' : `<text x="${(+x).toFixed(1)}" y="${yy}" fill="${o.c||'#e8edf5'}" font-size="${((o.s||12)*F).toFixed(1)}" font-weight="${o.b?700:400}" text-anchor="${o.a||'start'}" stroke="#0b121b" stroke-width="${(3*F).toFixed(1)}" paint-order="stroke">${s}</text>`;
     const h=r.nivel_m!=null?Math.max(-0.3,Math.min(6,Number(r.nivel_m))):null;
     const off=Number(c.off)||0;
     const xs=botL+1.8*K+14;
-    let st='Sem leitura válida da sonda', stc='#ff4444';
-    if(h!=null){
-      if(h<=0){ st='ÁGUA ABAIXO DA BOCA DA SUCÇÃO'; stc='#ff4444'; }
-      else if(h<0.5){ st='Água '+br(h*100,0)+' cm acima da boca da sucção — atenção'; stc='#ffb300'; }
-      else { st='Água '+br(h,2)+' m acima da boca da sucção'; stc='#00c896'; }
-    }
     let agua='';
     if(h!=null && h>-0.3){
       const pts = h>0
@@ -106,8 +119,8 @@
     const sz = off<=-0.29 ? -0.3 : Math.max(-0.3, Math.min(0.5, off));
     const sx = sz<=-0.29 ? botR-14 : xR(sz);
     const pole=cInR+16;
-    const regua=[0,1,2,3,4,5,6].map(z=>`<line x1="462" x2="474" y1="${y(z)}" y2="${y(z)}" stroke="#cfd8dc" stroke-width="1.2"/>${txt(478, y(z)+4, z+' m', {s:10, c:'#cfd8dc'})}`).join('');
-    return `<svg viewBox="0 0 1000 420" width="100%" style="min-width:760px;display:block;font-family:system-ui,sans-serif">
+    const regua=[0,1,2,3,4,5,6].filter(z=>!compacto||z%2===0).map(z=>`<line x1="462" x2="474" y1="${y(z)}" y2="${y(z)}" stroke="#cfd8dc" stroke-width="1.2"/>${txt(478, y(z)+4*F, z+' m', {s:10, c:'#cfd8dc'})}`).join('');
+    return `<svg viewBox="0 0 1000 420" width="100%" style="display:block;font-family:system-ui,sans-serif">
       <rect x="0" y="0" width="1000" height="420" fill="#0b121b"/>
       <polygon points="${P([[0,y(2)],[toeL,y(2)],[cOutL,y(6)],[cInL,y(6)],[botL,y(0)],[pocA,y(0)],[pocB,y(-0.3)],[botR,y(-0.3)],[cInR,y(6)],[cOutR,y(6)],[toeR,y(2)],[1000,y(2)],[1000,420],[0,420]])}" fill="#5b4631"/>
       <rect x="${xs-16}" y="${y(0)}" width="32" height="${0.3*V}" fill="#0a0a0a"/>
@@ -121,35 +134,72 @@
       ${txt(xR(5.5)-6, y(5.5)-5, 'ladrão 5,50 m', {a:'end', s:11, c:'#ffcc66'})}
       <line x1="500" y1="${y(-0.02)}" x2="512" y2="${y(-0.02)-14}" stroke="#e8edf5" stroke-width="1.4"/>
       <line x1="508" y1="${y(-0.02)}" x2="520" y2="${y(-0.02)-14}" stroke="#e8edf5" stroke-width="1.4"/>
-      ${txt(440, y(0)+22, 'fundo — largura fora de escala', {a:'middle', s:10, c:'#8ba0bd'})}
+      ${txt(440, y(0)+22, 'fundo — largura fora de escala', {a:'middle', s:10, c:'#8ba0bd', m:1})}
       ${regua}
       <path d="M 112 ${y(2.2)} H ${xs} V ${y(0.25)}" fill="none" stroke="#4b535c" stroke-width="20" stroke-linejoin="round"/>
       <path d="M 112 ${y(2.2)} H ${xs} V ${y(0.25)}" fill="none" stroke="#aab4be" stroke-width="13" stroke-linejoin="round"/>
       <path d="M ${xs-13} ${y(0)} L ${xs-7} ${y(0.28)} H ${xs+7} L ${xs+13} ${y(0)} Z" fill="#aab4be" stroke="#4b535c" stroke-width="2"/>
-      ${txt(196, y(2.4)-8, 'adutora de sucção DN 400', {s:11})}
-      ${txt(xs+18, y(0)+4, '◄ boca da sucção = 0,00', {s:11, b:1, c:'#ffe082'})}
+      ${txt(196, y(2.4)-8, 'adutora de sucção DN 400', {s:11, m:1})}
+      ${txt(xs+18, y(0)+4*F, compacto?'◄ sucção 0,00':'◄ boca da sucção = 0,00', {s:11, b:1, c:'#ffe082'})}
       <rect x="14" y="${y(2)-72}" width="98" height="72" fill="#cfd8dc" stroke="#78909c" stroke-width="2"/>
       <polygon points="${P([[6,y(2)-72],[63,y(2)-100],[120,y(2)-72]])}" fill="#90a4ae"/>
       <circle cx="62" cy="${y(2.2)}" r="14" fill="#1976d2" stroke="#fff" stroke-width="2"/>
-      ${txt(62, y(2)-80, 'casa de bomba', {a:'middle', s:12, b:1})}
-      ${txt(62, y(2)-108, '↑ recalque → pivôs', {a:'middle', s:11, c:'#90caf9'})}
-      ${txt(90, y(2)+18, 'terreno +2,00', {s:11, c:'#a5d6a7'})}
-      ${txt(cInL, y(6)-10, 'crista +6,00', {a:'middle', s:11})}
-      ${txt(cOutL-8, y(6)+6, 'testa ~5,5 m', {a:'end', s:10, c:'#e6d7b0'})}
-      ${txt((toeL+cOutL)/2-34, y(4)+4, 'grama', {a:'middle', s:11, c:'#a5d6a7'})}
-      ${txt((cInL+botL)/2+30, y(3.2), 'lona', {s:11, c:'#bdbdbd'})}
-      ${txt(560, y(-0.3)+18, 'lado fundo −0,30', {a:'middle', s:10, c:'#8ba0bd'})}
+      ${txt(compacto?8:62, y(2)-(compacto?108:80), compacto?'casa de bomba':'casa de bomba', {a:compacto?'start':'middle', s:12, b:1})}
+      ${txt(62, y(2)-108, '↑ recalque → pivôs', {a:'middle', s:11, c:'#90caf9', m:1})}
+      ${txt(90, y(2)+18, 'terreno +2,00', {s:11, c:'#a5d6a7', m:1})}
+      ${txt(cInL, y(6)-10, 'crista +6,00', {a:'middle', s:11, m:1})}
+      ${txt(cOutL-8, y(6)+6, 'testa ~5,5 m', {a:'end', s:10, c:'#e6d7b0', m:1})}
+      ${txt((toeL+cOutL)/2-34, y(4)+4, 'grama', {a:'middle', s:11, c:'#a5d6a7', m:1})}
+      ${txt((cInL+botL)/2+30, y(3.2), 'lona', {s:11, c:'#bdbdbd', m:1})}
+      ${txt(560, y(-0.3)+18, 'lado fundo −0,30', {a:'middle', s:10, c:'#8ba0bd', m:1})}
       <line x1="${pole}" y1="${y(6)}" x2="${pole}" y2="${y(6)-74}" stroke="#b0bec5" stroke-width="3"/>
       <polygon points="${P([[pole-26,y(6)-70],[pole+22,y(6)-84],[pole+26,y(6)-72],[pole-22,y(6)-58]])}" fill="#1565c0" stroke="#90caf9"/>
       <rect x="${pole-9}" y="${y(6)-36}" width="18" height="20" fill="#eceff1" stroke="#78909c"/>
-      ${txt(pole+16, y(6)-92, 'nó solar + LoRa', {a:'middle', s:11})}
+      ${txt(compacto?pole-30:pole+16, y(6)-92, compacto?'nó LoRa':'nó solar + LoRa', {a:'middle', s:11})}
       <polyline points="${P([[pole,y(6)-16],[cInR+2,y(6)-5],[sx+6,y(sz)-8]])}" fill="none" stroke="#ffc107" stroke-width="2"/>
       <rect x="${sx-6}" y="${y(sz)-14}" width="12" height="14" rx="2" fill="#ffc107" stroke="#6d4c00"/>
-      ${txt(sx+10, y(sz)+16, 'sonda', {s:11, b:1, c:'#ffd54f'})}
-      ${off<-0.05?`<circle cx="${xR(0)+4}" cy="${y(0)-8}" r="8" fill="none" stroke="#ffc107" stroke-dasharray="3 3"/>${txt(xR(0)+16, y(0)+4, 'subir '+br(-off*100,0)+' cm', {s:10, c:'#ffd54f'})}`:''}
-      ${txt(14, 24, st, {s:16, b:1, c:stc})}
-      ${txt(986, 412, 'corte esquemático · altura exagerada ~7× · fundo fora de escala', {a:'end', s:10, c:'#8ba0bd'})}
+      ${txt(sx+10, y(sz)+16*F, 'sonda', {s:11, b:1, c:'#ffd54f'})}
+      ${off<-0.05?`<circle cx="${xR(0)+4}" cy="${y(0)-8}" r="8" fill="none" stroke="#ffc107" stroke-dasharray="3 3"/>${txt(xR(0)+16, y(0)+4, 'subir '+br(-off*100,0)+' cm', {s:10, c:'#ffd54f', m:1})}`:''}
+      ${txt(986, 412, 'corte esquemático · altura exagerada ~7× · fundo fora de escala', {a:'end', s:10, c:'#8ba0bd', m:1})}
     </svg>`;
+  }
+
+  /* PINÇA DE ZOOM no corte (dois dedos amplia; um dedo arrasta quando ampliado;
+     toque/clique duplo amplia e volta; Ctrl+roda ou pinça do touchpad no PC).
+     O estado fica guardado aqui, então a atualização periódica da janela não
+     joga o zoom fora. Parado em 1×, um dedo rola a janela normalmente. */
+  let Z={s:1,x:0,y:0};
+  function ligarPinca(){
+    const box=document.getElementById('resvCorteBox'), inn=document.getElementById('resvCorteIn');
+    if(!box||!inn) return;
+    const lim=()=>{ Z.s=Math.max(1,Math.min(5,Z.s)); const w=box.clientWidth, hh=box.clientHeight;
+      Z.x=Math.min(0,Math.max(w-w*Z.s,Z.x)); Z.y=Math.min(0,Math.max(hh-hh*Z.s,Z.y)); };
+    const aplica=()=>{ lim(); inn.style.transform=`translate(${Z.x}px,${Z.y}px) scale(${Z.s})`;
+      box.style.touchAction = Z.s>1.01 ? 'none' : 'pan-y'; box.style.cursor = Z.s>1.01 ? 'grab' : 'zoom-in'; };
+    const rel=e=>{ const b=box.getBoundingClientRect(); return {x:e.clientX-b.left, y:e.clientY-b.top}; };
+    const zoomEm=(p,ns)=>{ ns=Math.max(1,Math.min(5,ns)); const k=ns/Z.s; Z.x=p.x-(p.x-Z.x)*k; Z.y=p.y-(p.y-Z.y)*k; Z.s=ns; if(ns<=1.01) Z={s:1,x:0,y:0}; aplica(); };
+    const pts=new Map(); let pinca=null, arr=null, ultimo=0;
+    box.addEventListener('pointerdown',e=>{
+      try{ box.setPointerCapture(e.pointerId); }catch(_){}
+      pts.set(e.pointerId, rel(e));
+      if(pts.size===2){ const [a,b]=[...pts.values()]; pinca={d:Math.hypot(a.x-b.x,a.y-b.y)||1, s:Z.s}; arr=null; return; }
+      if(pts.size===1){
+        const p=rel(e), agora=Date.now();
+        if(agora-ultimo<320){ ultimo=0; zoomEm(p, Z.s>1.01?1:2.5); return; }
+        ultimo=agora; arr = Z.s>1.01 ? {p, x:Z.x, y:Z.y} : null;
+      }
+    });
+    box.addEventListener('pointermove',e=>{
+      if(!pts.has(e.pointerId)) return;
+      pts.set(e.pointerId, rel(e));
+      if(pts.size===2 && pinca){ const [a,b]=[...pts.values()];
+        zoomEm({x:(a.x+b.x)/2, y:(a.y+b.y)/2}, pinca.s*Math.hypot(a.x-b.x,a.y-b.y)/pinca.d); e.preventDefault(); }
+      else if(pts.size===1 && arr){ const p=rel(e); Z.x=arr.x+(p.x-arr.p.x); Z.y=arr.y+(p.y-arr.p.y); aplica(); e.preventDefault(); }
+    });
+    const solta=e=>{ pts.delete(e.pointerId); if(pts.size<2) pinca=null; if(!pts.size) arr=null; };
+    box.addEventListener('pointerup',solta); box.addEventListener('pointercancel',solta);
+    box.addEventListener('wheel',e=>{ if(!e.ctrlKey) return; e.preventDefault(); zoomEm(rel(e), Z.s*(e.deltaY<0?1.15:1/1.15)); },{passive:false});
+    aplica();
   }
 
   /* JANELA: corte + cartões + gráfico de 24 h. `fonte(id)` devolve {r, c, serie}
@@ -158,7 +208,7 @@
   let abertaId=null, fonteAtual=null, ultimoHTML='';
   function fecharJanela(){ abertaId=null; fonteAtual=null; ultimoHTML=''; const j=document.getElementById('resvJan'); if(j) j.remove(); }
   document.addEventListener('keydown',e=>{ if(e.key==='Escape' && abertaId!=null) fecharJanela(); });
-  function abrirJanela(id, fonte){ abertaId=id; fonteAtual=fonte; ultimoHTML=''; atualizarJanela(); }
+  function abrirJanela(id, fonte){ abertaId=id; fonteAtual=fonte; ultimoHTML=''; Z={s:1,x:0,y:0}; atualizarJanela(); }
   function atualizarJanela(){
     if(abertaId==null || !fonteAtual) return;
     const {r,c,serie}=fonteAtual(abertaId)||{};
@@ -172,6 +222,7 @@
     }
     const cor=COR[r.situacao]||'#8b949e';
     const h=r.nivel_m!=null?Number(r.nivel_m):null;
+    const man=manchete(r), compacto=window.innerWidth<700;
     const idade=r.medido_em?Math.round((Date.now()-new Date(r.medido_em))/1000):null;
     const v=r.variacao_cm_h;
     const hm=t=>new Date(t).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});
@@ -206,7 +257,11 @@
         <span style="flex-basis:100%;font-size:12px;color:#8ba0bd">${r.medido_em?new Date(r.medido_em).toLocaleString('pt-BR'):''}${idade!=null?' · leitura de '+(idade<120?idade+' s':Math.round(idade/60)+' min')+' atrás':''}</span>
       </div>
       <div style="padding:12px 16px">
-        <div style="overflow-x:auto;background:#0b121b;border:1px solid #26364d;border-radius:10px">${corteSVG(r,c)}</div>
+        <div style="font-size:${compacto?15:17}px;font-weight:700;color:${man.cor};margin:0 0 8px">${man.txt}</div>
+        <div id="resvCorteBox" style="position:relative;overflow:hidden;background:#0b121b;border:1px solid #26364d;border-radius:10px;touch-action:pan-y;user-select:none;-webkit-user-select:none">
+          <div id="resvCorteIn" style="transform-origin:0 0;will-change:transform">${corteSVG(r,c,compacto)}</div>
+        </div>
+        <div style="font-size:11px;color:#8ba0bd;margin-top:4px;text-align:center">${compacto?'pinça para ampliar · toque duplo amplia e volta':'clique duplo amplia e volta · Ctrl + roda do mouse'}</div>
         <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px;margin-top:12px">
           ${card('Nível', h!=null?br(h,2)+' m':'—', c.max!=null?'ladrão em '+br(c.max,2)+' m':'', h!=null?null:'#ff4444')}
           ${card('Em relação à sucção', suc, 'boca da sucção = 0,00', sucCor)}
@@ -221,7 +276,7 @@
       </div></div>`;
     /* só reescreve se mudou: senão a janela voltaria ao topo a cada ciclo,
        no meio da leitura (no celular a janela rola) */
-    if(html!==ultimoHTML){ j.innerHTML=html; ultimoHTML=html; }
+    if(html!==ultimoHTML){ j.innerHTML=html; ultimoHTML=html; ligarPinca(); }
     const b=document.getElementById('resvFecha'); if(b) b.onclick=fecharJanela;
   }
 
