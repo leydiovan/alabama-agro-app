@@ -98,8 +98,8 @@
   function corteSVG(r,c,compacto){
     const K=6, V=40, T=3.07, Y0=330, F=compacto?1.8:1;
     const y=z=>+(Y0-z*V).toFixed(1);
-    const toeL=150, cOutL=toeL+4*T*K, cInL=cOutL+5.5*K, botL=cInL+6*T*K;
-    const pocA=540, pocB=580, botR=650, cInR=botR+6.3*T*K, cOutR=cInR+5.5*K, toeR=cOutR+4*T*K;
+    const toeL=210, cOutL=toeL+4*T*K, cInL=cOutL+5.5*K, botL=cInL+6*T*K;
+    const pocA=600, pocB=640, botR=710, cInR=botR+6.3*T*K, cOutR=cInR+5.5*K, toeR=cOutR+4*T*K;
     const xL=z=>botL-z*T*K, xR=z=>botR+(z+0.3)*T*K;
     const P=a=>a.map(p=>(+p[0]).toFixed(1)+','+p[1]).join(' ');
     const txt=(x,yy,s,o={})=>(compacto&&o.m) ? '' : `<text x="${(+x).toFixed(1)}" y="${yy}" fill="${o.c||'#e8edf5'}" font-size="${((o.s||12)*F).toFixed(1)}" font-weight="${o.b?700:400}" text-anchor="${o.a||'start'}" stroke="#0b121b" stroke-width="${(3*F).toFixed(1)}" paint-order="stroke">${s}</text>`;
@@ -134,10 +134,14 @@
       ${txt(xR(5.5)-6, y(5.5)-5, 'ladrão 5,50 m', {a:'end', s:11, c:'#ffcc66'})}
       <line x1="500" y1="${y(-0.02)}" x2="512" y2="${y(-0.02)-14}" stroke="#e8edf5" stroke-width="1.4"/>
       <line x1="508" y1="${y(-0.02)}" x2="520" y2="${y(-0.02)-14}" stroke="#e8edf5" stroke-width="1.4"/>
-      ${txt(440, y(0)+22, 'fundo — largura fora de escala', {a:'middle', s:10, c:'#8ba0bd', m:1})}
+      ${txt(515, y(0)+22, 'fundo — largura fora de escala', {a:'middle', s:10, c:'#8ba0bd', m:1})}
       ${regua}
-      <path d="M 112 ${y(2.5)} H ${xs} V ${y(0.25)}" fill="none" stroke="#4b535c" stroke-width="20" stroke-linejoin="round"/>
-      <path d="M 112 ${y(2.5)} H ${xs} V ${y(0.25)}" fill="none" stroke="#aab4be" stroke-width="13" stroke-linejoin="round"/>
+      <path d="M 112 ${y(2.5)} H ${xs} V ${y(0.25)}" fill="none" stroke="#4b535c" stroke-width="16" stroke-linejoin="round"/>
+      <path d="M 112 ${y(2.5)} H ${xs} V ${y(0.25)}" fill="none" stroke="#aab4be" stroke-width="10" stroke-linejoin="round"/>
+      <!-- adutora 30 cm acima do terreno (dono, 14/09/2026): cano em escala (16 px = 40 cm), fundo em +2,30, com dois apoios e a cota -->
+      <rect x="137" y="${y(2.3)}" width="6" height="${0.3*V}" fill="#90a4ae"/>
+      <rect x="182" y="${y(2.3)}" width="6" height="${0.3*V}" fill="#90a4ae"/>
+      ${txt(162, y(2)+16*F, '↕ 30 cm', {a:'middle', s:10, b:1, c:'#ffe082'})}
       <path d="M ${xs-13} ${y(0)} L ${xs-7} ${y(0.28)} H ${xs+7} L ${xs+13} ${y(0)} Z" fill="#aab4be" stroke="#4b535c" stroke-width="2"/>
       ${txt(196, y(2.7)-8, 'adutora de sucção DN 400', {s:11, m:1})}
       ${txt(xs+18, y(0)+4*F, compacto?'◄ sucção 0,00':'◄ boca da sucção = 0,00', {s:11, b:1, c:'#ffe082'})}
@@ -146,12 +150,12 @@
       <circle cx="62" cy="${y(2.5)}" r="14" fill="#1976d2" stroke="#fff" stroke-width="2"/>
       ${txt(compacto?8:62, y(2)-(compacto?108:80), compacto?'casa de bomba':'casa de bomba', {a:compacto?'start':'middle', s:12, b:1})}
       ${txt(62, y(2)-108, '↑ recalque → pivôs', {a:'middle', s:11, c:'#90caf9', m:1})}
-      ${txt(90, y(2)+18, 'terreno +2,00', {s:11, c:'#a5d6a7', m:1})}
+      ${txt(14, y(2)+18, 'terreno +2,00', {s:11, c:'#a5d6a7', m:1})}
       ${txt(cInL, y(6)-10, 'crista +6,00', {a:'middle', s:11, m:1})}
       ${txt(cOutL-8, y(6)+6, 'testa ~5,5 m', {a:'end', s:10, c:'#e6d7b0', m:1})}
       ${txt((toeL+cOutL)/2-34, y(4)+4, 'grama', {a:'middle', s:11, c:'#a5d6a7', m:1})}
       ${txt((cInL+botL)/2+30, y(3.2), 'lona', {s:11, c:'#bdbdbd', m:1})}
-      ${txt(560, y(-0.3)+18, 'lado fundo −0,30', {a:'middle', s:10, c:'#8ba0bd', m:1})}
+      ${txt(620, y(-0.3)+18, 'lado fundo −0,30', {a:'middle', s:10, c:'#8ba0bd', m:1})}
       <line x1="${pole}" y1="${y(6)}" x2="${pole}" y2="${y(6)-74}" stroke="#b0bec5" stroke-width="3"/>
       <polygon points="${P([[pole-26,y(6)-70],[pole+22,y(6)-84],[pole+26,y(6)-72],[pole-22,y(6)-58]])}" fill="#1565c0" stroke="#90caf9"/>
       <rect x="${pole-9}" y="${y(6)-36}" width="18" height="20" fill="#eceff1" stroke="#78909c"/>
