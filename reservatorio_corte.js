@@ -20,7 +20,7 @@
    GEOMETRIA DO CORTE (conferida pelo dono em 14/09/2026; registro em
    `Chat Claude estação e telemetria/docs/nivel-reservatorio-22ago2026.md`):
    terreno de fora +2,00 · crista +6,00 · talude 3,07:1 dos dois lados · testa
-   ~5,5 m · adutoras DN 400 com topo em +2,40 seguindo o chão, reta e 90° para
+   ~5,5 m · adutoras DN 400 a 30 cm acima do terreno (fundo do cano +2,30, topo +2,70 — corrigido pelo dono em 14/09/2026; antes estava "topo +2,40 seguindo o chão"), reta e 90° para
    baixo até a boca da sucção = 0,00 · lado fundo −0,30 (onde fica a sonda).
    Cores do real: grama por fora, lona PRETA por dentro, testa bege.
 
@@ -136,14 +136,14 @@
       <line x1="508" y1="${y(-0.02)}" x2="520" y2="${y(-0.02)-14}" stroke="#e8edf5" stroke-width="1.4"/>
       ${txt(440, y(0)+22, 'fundo — largura fora de escala', {a:'middle', s:10, c:'#8ba0bd', m:1})}
       ${regua}
-      <path d="M 112 ${y(2.2)} H ${xs} V ${y(0.25)}" fill="none" stroke="#4b535c" stroke-width="20" stroke-linejoin="round"/>
-      <path d="M 112 ${y(2.2)} H ${xs} V ${y(0.25)}" fill="none" stroke="#aab4be" stroke-width="13" stroke-linejoin="round"/>
+      <path d="M 112 ${y(2.5)} H ${xs} V ${y(0.25)}" fill="none" stroke="#4b535c" stroke-width="20" stroke-linejoin="round"/>
+      <path d="M 112 ${y(2.5)} H ${xs} V ${y(0.25)}" fill="none" stroke="#aab4be" stroke-width="13" stroke-linejoin="round"/>
       <path d="M ${xs-13} ${y(0)} L ${xs-7} ${y(0.28)} H ${xs+7} L ${xs+13} ${y(0)} Z" fill="#aab4be" stroke="#4b535c" stroke-width="2"/>
-      ${txt(196, y(2.4)-8, 'adutora de sucção DN 400', {s:11, m:1})}
+      ${txt(196, y(2.7)-8, 'adutora de sucção DN 400', {s:11, m:1})}
       ${txt(xs+18, y(0)+4*F, compacto?'◄ sucção 0,00':'◄ boca da sucção = 0,00', {s:11, b:1, c:'#ffe082'})}
       <rect x="14" y="${y(2)-72}" width="98" height="72" fill="#cfd8dc" stroke="#78909c" stroke-width="2"/>
       <polygon points="${P([[6,y(2)-72],[63,y(2)-100],[120,y(2)-72]])}" fill="#90a4ae"/>
-      <circle cx="62" cy="${y(2.2)}" r="14" fill="#1976d2" stroke="#fff" stroke-width="2"/>
+      <circle cx="62" cy="${y(2.5)}" r="14" fill="#1976d2" stroke="#fff" stroke-width="2"/>
       ${txt(compacto?8:62, y(2)-(compacto?108:80), compacto?'casa de bomba':'casa de bomba', {a:compacto?'start':'middle', s:12, b:1})}
       ${txt(62, y(2)-108, '↑ recalque → pivôs', {a:'middle', s:11, c:'#90caf9', m:1})}
       ${txt(90, y(2)+18, 'terreno +2,00', {s:11, c:'#a5d6a7', m:1})}
