@@ -415,6 +415,121 @@ function svgMaquina(faixaM, cor){
       <circle cx="${cx}" cy="${cy}" r="2.8" fill="#ffde00" stroke="#0d2b08" stroke-width=".8"/>
     </g></svg>`;
 }
+/* STEIGER — Case IH, trator ARTICULADO, VERMELHO (17/09/2026).
+   Pedido do dono: o Steiger nao e colhedora. O desenho antigo (barra da
+   plataforma na frente, na largura da faixa) e de colhedora, e qualquer trator
+   apareceria assim. ESCALA REAL como o outro (10 unidades = 1 m, frente para
+   cima): medidas da ficha tecnica logo abaixo (7,39 m, rodado DUPLO 710/70 R42), cabine no
+   chassi dianteiro logo a frente da ARTICULACAO, e o centro do icone na ANTENA, na frente do teto da
+   cabine — e ali que fica a antena do GPS do Steiger, a mesma posicao que a
+   TECU-07 manda. Sem barra de implemento: o implemento muda por servico e o
+   cadastro do trator nao tem faixa.
+   Escolha pelo MODELO (/steiger/i): nome de frota muda, modelo nao. Outros
+   tratores (rigidos) seguem no desenho antigo ate ganharem o deles. */
+/* No celular o CORPO da colhedora e pintado com a cor do ESTADO (cinza/verde/
+   amarelo). No Steiger o corpo e vermelho da marca — entao o estado vai num HALO
+   em volta, senao a informacao principal do mapa sumiria. */
+function ehArticulado(maqId){ const m=MAQS[maqId]||{}; return /steiger/i.test((m.modelo||'')+' '+(m.nome||'')); }
+/* Geometria pela FICHA TECNICA do Steiger 470 (17/09/2026): comprimento 7,39 m,
+   entre-eixos 3,75 m, pneus 710/70 R42 DUPLOS (2,06 x 0,71 m). Referencia = ANTENA
+   Trimble AG-392 na FRENTE do teto da cabine (dono): o centro do icone e a antena,
+   o trator e desenhado a partir dela e gira em torno dela — no zoom maximo fica onde
+   esta de verdade. Estimados (conferir): antena a 0,20 m da frente da cabine,
+   espacamento do duplo 0,80 m, largura sobre os duplos ~4,0 m. */
+function svgSteiger(cor, impl){
+  const E={pneu:'fill="#1b1b1b" stroke="#000" stroke-width="1"',
+           garra:'stroke="#3a3a3a" stroke-width="1"',
+           corpo:'fill="#c8102e" stroke="#3a0a0e" stroke-width="1.4"',
+           vidro:'fill="#111" opacity=".8"',
+           art:'fill="#2a2a2a" stroke="#000" stroke-width="1"',
+           ant:'fill="#f2f2f2" stroke="#1f3a5f" stroke-width="1.2"'};   // Trimble AG-392 (2x o real, para aparecer)
+  const S=k=>E[k];
+  const corpo=(()=>{ 
+  const cx=VB_W/2, Y0=VB_H/2-25.5;              // antena a 2,55 m da frente do trator
+  const y=m=>Y0+m*10;
+  const D=20.6, L=7.1;                          // pneu 710/70 R42: 2,06 x 0,71 m
+  const eixos=[1.95, 1.95+3.75];                // entre-eixos 3,75 m
+  const centrosX=[-16.45,-8.45,8.45,16.45];     // duplos: externo e interno de cada lado
+  let p='';
+  eixos.forEach(e=>centrosX.forEach(xc=>{
+    p+=`<rect ${S('pneu')} x="${cx+xc-L/2}" y="${y(e)-D/2}" width="${L}" height="${D}" rx="2.5"/>`;
+    for(let k=1;k<5;k++) p+=`<line ${S('garra')} x1="${cx+xc-L/2+1}" x2="${cx+xc+L/2-1}" y1="${y(e)-D/2+k*D/5}" y2="${y(e)-D/2+k*D/5}"/>`;
+  }));
+  return p+`
+      <rect ${S('art')}   x="${cx-8}"    y="${y(0)}"    width="16" height="3"    rx="1"/>
+      <rect ${S('corpo')} x="${cx-6.5}"  y="${y(0.2)}"  width="13" height="22.5" rx="3"/>
+      <rect ${S('corpo')} x="${cx-9.5}"  y="${y(2.35)}" width="19" height="17.5" rx="3"/>
+      <rect ${S('vidro')} x="${cx-7.5}"  y="${y(2.95)}" width="15" height="10"   rx="2"/>
+      <circle ${S('art')} cx="${cx}" cy="${y(4.35)}" r="2.8"/>
+      <rect ${S('corpo')} x="${cx-6.5}"  y="${y(4.55)}" width="13" height="24"   rx="3"/>
+      <rect ${S('art')}   x="${cx-1.5}"  y="${y(6.95)}" width="3"  height="4.4"  rx="1"/>
+      <rect ${S('ant')}   x="${cx-3}"    y="${VB_H/2-3}" width="6" height="6"   rx="1.6"/>`; })();
+  // halo do ESTADO centrado no TRATOR (que fica atras da antena), nao na antena
+  return `<svg viewBox="0 0 ${VB_W} ${VB_H}" style="width:100%;height:100%;overflow:visible">
+    <g class="gir">
+      ${svgImplemento(impl)}
+      <ellipse cx="${VB_W/2}" cy="${VB_H/2+11.5}" rx="25" ry="42" fill="${cor}" opacity=".30" stroke="${cor}" stroke-width="2.5"/>
+      ${corpo}
+    </g></svg>`;
+}
+
+/* IMPLEMENTO ENGATADO (17/09/2026). O implemento NAO e do trator, e do servico.
+   Cascata aceita pelo dono: 1) CAN/ISOBUS (o implemento se anuncia) > 2) atribuicao
+   persistente do inicio da atividade no lote ate finalizar > 3) comanda. NENHUMA das
+   tres existe ainda (ver Chat Claude estacao e telemetria/docs/tecu-tra007-17set2026.md).
+   Ate existir, vale esta ATRIBUICAO MANUAL PROVISORIA — pedido do dono ("coloca o
+   desenho da Maestro no app"). Trocar por fonte de verdade quando a cascata nascer;
+   a tela mostra a ORIGEM para ninguem confundir com dado lido da maquina.
+   Chave = maquina_id (3 = TRA-007, Steiger 470). IMP-003 no cadastro de implementos. */
+const IMPL_PROVISORIO={
+  3:{id_frota:'IMP-003', nome:'Horsch Maestro 36.50 SW', desenho:'maestro', linhas:36, espM:0.5, origem:'provisório'}
+};
+function implementoDe(maqId){
+  const i=IMPL_PROVISORIO[maqId]; if(!i) return null;
+  return Object.assign({larguraM:i.linhas*i.espM}, i);
+}
+/* HORSCH MAESTRO 36.50 SW — desenho APROVADO pelo dono em 17/09/2026 ("100% OK").
+   Mesma escala e mesma referencia do Steiger (10 unidades = 1 m, origem na antena):
+   engate na traseira do trator (7,39 m) -> QUADRO EM V -> CAIXA logo atras do trator ->
+   2 PNEUS GRANDES no fim da caixa (520/85 R42) -> vigas saem por baixo da caixa, por
+   dentro dos pneus -> BARRA de 18 m em 3 partes, articulacoes a 5 m do centro, com 2
+   PISTOES vermelhos saindo de tras da caixa -> 2 rodas perto do fim das asas.
+   ESTIMADO (conferir com trena): engate->caixa 2,0 m; caixa 4,5 x 3,0 m; caixa->barra
+   0,5 m; abertura do V na barra 2,5 m; linha 1,6 m; roda da asa a 1 m da ponta.
+   Gerador da previa aprovada: docs/icones_telemetria/gerar_previa_maestro.mjs */
+function svgMaestro(espacamentoM, linhas){
+  var cx=VB_W/2, Y0=VB_H/2-25.5, y=function(m){return Y0+m*10;};
+  var H=7.39, meia=linhas*espacamentoM*10/2;
+  var yDep=H+2.0, compDep=4.5, largDep=3.0, yBarra=yDep+compDep+0.5;
+  var V='#c8102e', E='#3a0a0e', s='';
+  function r(a){ s+='<rect '+a+'/>'; }
+  [-12.5,12.5].forEach(function(xb){
+    s+='<line x1="'+cx+'" y1="'+(y(H)+1)+'" x2="'+(cx+xb)+'" y2="'+y(yBarra)+'" stroke="'+E+'" stroke-width="4.2" stroke-linecap="round"/>';
+    s+='<line x1="'+cx+'" y1="'+(y(H)+1)+'" x2="'+(cx+xb)+'" y2="'+y(yBarra)+'" stroke="'+V+'" stroke-width="2.6" stroke-linecap="round"/>'; });
+  [-1,1].forEach(function(lado){ var xc=cx+lado*(meia-10);
+    r('fill="#1b1b1b" stroke="#000" stroke-width=".8" x="'+(xc-4.1)+'" y="'+(y(yBarra)-11.5)+'" width="8.2" height="11.5" rx="2"'); });
+  for(var k=0;k<linhas;k++){ var xl=cx-meia+(k+0.5)*espacamentoM*10;
+    r('fill="'+V+'" stroke="'+E+'" stroke-width=".6" x="'+(xl-1.4)+'" y="'+(y(yBarra)+2)+'" width="2.8" height="16" rx=".8"');
+    r('fill="#151515" x="'+(xl-1.5)+'" y="'+(y(yBarra)+6)+'" width="3" height="4.5" rx=".6"'); }
+  r('fill="'+V+'" stroke="'+E+'" stroke-width="1.2" x="'+(cx-meia)+'" y="'+y(yBarra)+'" width="'+(meia*2)+'" height="3.2" rx="1"');
+  [-1,1].forEach(function(lado){
+    r('fill="#1b1b1b" stroke="#000" stroke-width="1" x="'+(cx+lado*18-2.6)+'" y="'+(y(yDep+compDep)-19.5)+'" width="5.2" height="19.5" rx="2.5"'); });
+  var x0=cx-largDep*5, x1=cx+largDep*5, yt=y(yDep), yb=y(yDep+compDep);
+  s+='<path fill="'+V+'" stroke="'+E+'" stroke-width="1.6" d="M'+(x0+6)+','+yt+' L'+(x1-6)+','+yt+' L'+x1+','+(yt+9)+' L'+x1+','+yb+' L'+x0+','+yb+' L'+x0+','+(yt+9)+' Z"/>';
+  r('fill="#a50d24" x="'+(x0+4)+'" y="'+(yt+11)+'" width="'+(largDep*10-8)+'" height="'+(compDep*10-15)+'" rx="2"');
+  var xArt=5.0*10, yArt=y(yBarra)+1.6, yAnc=y(yDep+compDep)+1.5, xAnc=11.6;
+  [-1,1].forEach(function(l){
+    var xa=cx+l*xAnc, xh=cx+l*xArt, dx=xh-xa, dy=yArt-yAnc, fr=0.58;
+    r('fill="#1b1b1b" x="'+(xh-1.2)+'" y="'+(y(yBarra)-0.6)+'" width="2.4" height="4.4" rx=".5"');
+    s+='<line x1="'+xa+'" y1="'+yAnc+'" x2="'+xh+'" y2="'+yArt+'" stroke="#c9ced4" stroke-width="1.4" stroke-linecap="round"/>';
+    s+='<line x1="'+xa+'" y1="'+yAnc+'" x2="'+(xa+dx*fr)+'" y2="'+(yAnc+dy*fr)+'" stroke="#3a0a0e" stroke-width="4" stroke-linecap="round"/>';
+    s+='<line x1="'+xa+'" y1="'+yAnc+'" x2="'+(xa+dx*fr)+'" y2="'+(yAnc+dy*fr)+'" stroke="#e0142f" stroke-width="2.6" stroke-linecap="round"/>';
+  });
+  s+='<circle cx="'+cx+'" cy="'+(y(H)+1)+'" r="2" fill="#2a2a2a" stroke="#000" stroke-width=".8"/>';
+  return s;
+}
+function svgImplemento(impl){ return (impl&&impl.desenho==='maestro') ? svgMaestro(impl.espM, impl.linhas) : ''; }
+
 /* tamanho REAL no mapa, com piso: em pixel fixo o ícone mente nos dois extremos
    (gigante de longe, invisível de perto) */
 function iconePxMob(lat){
@@ -1106,7 +1221,8 @@ function desenhaTelemetria(){
          A faixa vai como ESPESSURA da polilinha (não polígono por segmento):
          são centenas de segmentos, e no celular 500 polígonos travam. Verde
          translúcido, o mesmo `#00c896` do desktop. */
-      const faixaM=Number((MAQS[t.maquina_id]||{}).faixa_m)||3.8;
+      const _imp=implementoDe(t.maquina_id);   // largura do IMPLEMENTO quando houver (17/09/2026)
+      const faixaM=_imp?_imp.larguraM:(Number((MAQS[t.maquina_id]||{}).faixa_m)||3.8);
       const wpx=Math.max(2, faixaM*pxPorMetro(+t.lat||-12.65));
       if(TRMODO==='trab'){
         tlCortar(soTrabalho(tr.linhas)).forEach(ln=>{
@@ -1130,8 +1246,9 @@ function desenhaTelemetria(){
     const e=estadoTele(t), ll=noTempo?[noTempo[0],noTempo[1]]:[+t.lat,+t.lon]; pts.push(ll);
     const faixa=Number((MAQS[t.maquina_id]||{}).faixa_m)||3.8;
     const w=iconePxMob(+t.lat), hh=w*(VB_H/VB_W);
-    const mk=L.marker(ll,{icon:L.divIcon({html:svgMaquina(faixa,e.cor),className:'',iconSize:[w,hh],iconAnchor:[w/2,hh/2]}),zIndexOffset:1000}).addTo(g);
-    mk.bindTooltip(maqLbl(t.maquina_id,t.device_id),{permanent:true,direction:'bottom',offset:[0,hh/2],className:'placa'});
+    const mk=L.marker(ll,{icon:L.divIcon({html:(ehArticulado(t.maquina_id)?svgSteiger(e.cor,implementoDe(t.maquina_id)):svgMaquina(faixa,e.cor)),className:'',iconSize:[w,hh],iconAnchor:[w/2,hh/2]}),zIndexOffset:1000}).addTo(g);
+    const _im=implementoDe(t.maquina_id);
+    mk.bindTooltip(maqLbl(t.maquina_id,t.device_id)+(_im?' · '+_im.id_frota+' ('+_im.origem+')':''),{permanent:true,direction:'bottom',offset:[0,hh/2],className:'placa'});
     girar.push([mk, Number(t.hdg_deg)||0]);
   });
   /* ORDEM IMPORTA: a faixa entra ANTES para a linha do rastro ficar por cima
