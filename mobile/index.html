@@ -1198,6 +1198,75 @@ function corMaqIdx(i){ return ['#ffc107','#00c896','#38bdf8','#bc8cff','#2dd4bf'
 /* MAPA DA TELEMETRIA — os lotes em vermelho fino (igual ao do clima) + o rastro do
    dia + um pino por máquina. Desenha por cima do mesmo #mapa, para não manter dois
    Leaflet vivos no celular. */
+
+/* RUMO E POSIÇÃO DO ÍCONE — 18/09/2026, pedido do dono:
+   "o ponto atual que ele está não está na posição real... os pontos para fazer a
+    direção têm que ter uma distância mínima, quando ele fica parado oscilando os
+    pontos ele não bate com a realidade".
+
+   Dois defeitos diferentes, e os dois eram de DESENHO, não de dado:
+
+   1) POSIÇÃO ATRASADA. O ícone saía de `telemetria_atual`, que o Pi atualiza a cada
+      ~1 min, enquanto o RASTRO na mesma tela já tinha pontos de 15 em 15 s. A máquina
+      aparecia até um minuto atrás do próprio rastro. Agora, quando o rastro tem ponto
+      mais novo que a linha do "agora", é ele que manda — as duas coisas na tela passam
+      a contar a mesma história.
+
+   2) RUMO DE RUÍDO. O rumo vinha pronto no pacote. Parada, a máquina oscila alguns
+      centímetros e dois pontos vizinhos dão qualquer direção: o ícone rodopia. Agora o
+      rumo só se refaz com DISTÂNCIA MÍNIMA entre os dois pontos (RUMO_MIN_M); abaixo
+      disso, MANTÉM o último rumo bom — que é o que a máquina parada realmente tem, ela
+      continua apontada para onde estava indo.
+      Mesma ideia do firmware do Steiger, que já exige 1 m antes de recalcular o rumo
+      (firmware/tecu_tra007/src/steiger.h). Aqui a barra é maior porque o ponto que
+      chega ao app pode ser de outra fonte (a M8N da TECU-03 dá rumo do próprio GPS,
+      que passeia parado) e porque o rastro do app vem decimado. */
+const RUMO_MIN_M = 3;                    // distância entre os dois pontos que definem o rumo
+const RUMO_JANELA_MS = 5 * 60 * 1000;    // não buscar rumo em ponto velho demais
+const RUMO_ULT = {};                     // último rumo BOM por caixa (é o que segura o ícone parado)
+function _distRumo(a, b){
+  const dx = (b[1]-a[1]) * 111320 * Math.cos(a[0]*Math.PI/180), dy = (b[0]-a[0]) * 111320;
+  return Math.hypot(dx, dy);
+}
+function _calcRumo(a, b){
+  const dx = (b[1]-a[1]) * Math.cos(a[0]*Math.PI/180), dy = (b[0]-a[0]);
+  const r = Math.atan2(dx, dy) * 180 / Math.PI;
+  return r < 0 ? r + 360 : r;
+}
+/* Anda para trás no rastro até achar um ponto distante o bastante. Devolve
+   {lat, lon, t, rumo} — rumo null quando não houve deslocamento que o justifique. */
+function _poseDaLinha(ln, TI){
+  if(!ln || ln.length < 1) return null;
+  const u = ln[ln.length-1], tu = +u[TI] || 0;
+  let rumo = null;
+  for(let k = ln.length-2; k >= 0; k--){
+    const p = ln[k];
+    if(tu && (+p[TI]||0) && tu - (+p[TI]||0) > RUMO_JANELA_MS) break;
+    if(_distRumo(p, u) >= RUMO_MIN_M){ rumo = _calcRumo(p, u); break; }
+  }
+  return { lat:+u[0], lon:+u[1], t:tu, rumo };
+}
+/* Junta as duas decisões: qual ponto desenhar e para onde apontar. `atual` é a linha
+   de telemetria_atual; `pose` é o que saiu do rastro (pode ser null). */
+function _resolvePose(dev, atual, pose){
+  const tAtual = new Date(atual.medido_em || 0).getTime();
+  const usaRastro = pose && pose.t > tAtual + 1000;          // rastro mais novo que o "agora"
+  if(pose && pose.rumo != null) RUMO_ULT[dev] = pose.rumo;   // só rumo com deslocamento entra
+  const rumo = (pose && pose.rumo != null) ? pose.rumo
+             : (RUMO_ULT[dev] != null ? RUMO_ULT[dev] : (Number(atual.hdg_deg) || 0));
+  return { lat: usaRastro ? pose.lat : +atual.lat,
+           lon: usaRastro ? pose.lon : +atual.lon,
+           rumo, doRastro: !!usaRastro };
+}
+
+/* No celular o rastro vem quebrado em linhas (uma por dia, e por salto). A pose sai
+   da linha que termina mais tarde — a mesma regra do timelapse. */
+function poseRastroMob(tr){
+  let alvo = null, tf = -1;
+  (tr.linhas||[]).forEach(ln => { if(!ln.length) return;
+    const tt = +ln[ln.length-1][3] || 0; if(tt > tf){ tf = tt; alvo = ln; } });
+  return _poseDaLinha(alvo, 3);          // ponto do celular: [lat, lon, vel, t_ms]
+}
 function desenhaTelemetria(){
   if(_telL){ try{ _map.removeLayer(_telL); }catch(e){} _telL=null; }
   const g=L.layerGroup(); let i=0, pts=[], distTrab=0, faixaRef=0; const cores=[], girar=[], faixas=[], tracos=[];
@@ -1243,13 +1312,18 @@ function desenhaTelemetria(){
     /* no timelapse o ícone vai para onde a máquina ESTAVA naquele instante */
     const noTempo = (TL.t!=null && tr) ? tlPosicao(tr) : null;
     if(!noTempo && (t.lat==null||t.lon==null)) return;
-    const e=estadoTele(t), ll=noTempo?[noTempo[0],noTempo[1]]:[+t.lat,+t.lon]; pts.push(ll);
+    /* fora do timelapse, o ícone segue o ponto mais novo do rastro e o rumo com
+       distância mínima (ver _resolvePose) */
+    const pose = (TL.t==null && tr) ? poseRastroMob(tr) : null;
+    const pr = _resolvePose(t.device_id, t, pose);
+    if(!noTempo && !(pr.lat) && !(pr.lon)) return;         // sem posição alguma: não há o que desenhar
+    const e=estadoTele(t), ll=noTempo?[noTempo[0],noTempo[1]]:[pr.lat,pr.lon]; pts.push(ll);
     const faixa=Number((MAQS[t.maquina_id]||{}).faixa_m)||3.8;
     const w=iconePxMob(+t.lat), hh=w*(VB_H/VB_W);
     const mk=L.marker(ll,{icon:L.divIcon({html:(ehArticulado(t.maquina_id)?svgSteiger(e.cor,implementoDe(t.maquina_id)):svgMaquina(faixa,e.cor)),className:'',iconSize:[w,hh],iconAnchor:[w/2,hh/2]}),zIndexOffset:1000}).addTo(g);
     const _im=implementoDe(t.maquina_id);
     mk.bindTooltip(maqLbl(t.maquina_id,t.device_id)+(_im?' · '+_im.id_frota+' ('+_im.origem+')':''),{permanent:true,direction:'bottom',offset:[0,hh/2],className:'placa'});
-    girar.push([mk, Number(t.hdg_deg)||0]);
+    girar.push([mk, pr.rumo]);
   });
   /* ORDEM IMPORTA: a faixa entra ANTES para a linha do rastro ficar por cima
      dela — é a mesma pilha do desktop (camadaFaixa embaixo, camadaTraco em
@@ -1292,6 +1366,19 @@ function desenhaTelemetria(){
 }
 const fonteResv=id=>({ r:RESV.find(x=>x.id===id), c:RESVCAD[id],
   serie:RESVH.filter(x=>x.reservatorio_id===id) });
+/* POSIÇÃO VELHA (18/09/2026). A TECU do Steiger tira a posição do BARRAMENTO: com a
+   máquina desligada ela segue viva e mandando, só que sem coordenada. Antes da
+   migração 107 esse vazio apagava a última posição boa e o ícone SUMIA do mapa (o
+   dono viu: "liga aparece, desliga some"); a colhedora não sumia só porque parou de
+   mandar. Agora o banco preserva a posição e diz em `posicao_em` de quando ela é —
+   aqui a tela avisa, para o último lugar conhecido não passar por posição de agora. */
+function posVelha(t){
+  if(!t.posicao_em) return '';
+  const dif=(new Date(t.medido_em)-new Date(t.posicao_em))/1000;
+  if(!(dif>90)) return '';
+  return `<div style="font-size:12px;color:#c9a227;margin-top:2px">no mapa, o último lugar conhecido`
+       + ` · posição de ${haQuanto(t.posicao_em)}</div>`;
+}
 function folhaMaquinas(){
   if(!TELE.length) return '<div class="vazio">Nenhuma caixa reportando ainda.</div>';
   return '<div style="padding:10px 12px 90px">'+TELE.map(t=>{
@@ -1303,6 +1390,7 @@ function folhaMaquinas(){
         <span style="margin-left:auto;font-size:12px;color:${e.cor}">${e.txt}</span>
       </div>
       ${sub?`<div style="font-size:12px;color:var(--muted);margin-top:2px">${sub}</div>`:''}
+      ${posVelha(t)}
       <div style="display:flex;gap:14px;flex-wrap:wrap;margin-top:8px;font-size:13px">
         <span><b>${(+t.vel_kmh||0).toFixed(1).replace('.',',')}</b> km/h</span>
         <span style="color:var(--muted)">${t.sats!=null?t.sats+' satélites':''}</span>
