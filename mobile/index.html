@@ -252,6 +252,7 @@ th:first-child,td:first-child{text-align:left}
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="../reservatorio_corte.js"></script>
+<script src="../solar_mapa.js"></script>
 <script>
 const SB_URL='https://ngdidjtfgmtkdkvqwfjf.supabase.co';
 const SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5nZGlkanRmZ210a2RrdnF3ZmpmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NTU5MDYsImV4cCI6MjA5NjUzMTkwNn0.OW9hGEFTvSYx_THv3DR9pt8xIVC0B9Pw2bTDGD6TBLk';
@@ -353,6 +354,9 @@ let VIGIA=[], ULTIMA_OK=0;
    pela situação que vem PRONTA da view `reservatorio_vigia` (migrações 105/106).
    O contorno é o pé do talude por fora (DWG); o nível já vem convertido pelo Pi. */
 let RESV=[], RESVCAD={}, RESVH=[];
+/* USINAS (18/09/2026): situação da view solar_vigia + contorno de solar_sitio.
+   Desenho e janela no solar_mapa.js — arquivo ÚNICO com o módulo. */
+let SOLAR=[], SOLARCAD={}, SOLARINV=[], SOLARSTR=[];
 /* FILTRO DO RASTRO (pedido do dono, 08/08): com/sem rastro, quantos dias e
    quais máquinas. `TRPER='off'` desliga o rastro — e desligar não é enfeite:
    é o modo mais leve da tela, porque nem busca o trajeto. `TMAQS` vazio = todas.
@@ -1154,6 +1158,18 @@ async function carregarTelemetria(){
     if(rv&&!rv.error) RESV=rv.data||[];
     if(rc&&rc.data&&window.RESV_UI) rc.data.forEach(r=>{ RESVCAD[r.id]=RESV_UI.prepararCadastro(r, utm2ll); });
     if(rh&&!rh.error) RESVH=rh.data||[];
+    /* usinas: mesma regra — cadastro (contorno) uma vez, situação a cada ciclo */
+    const [sv,sc,si,st]=await Promise.all([
+      SB.from('solar_vigia').select('*'),
+      Object.keys(SOLARCAD).length ? Promise.resolve({data:null})
+        : SB.from('solar_sitio').select('id,nome,tipo,geom'),
+      SB.from('solar_inversor_atual').select('sitio_id,endereco,nome,estado,falha,p_ativa_kw,temp_c,e_hoje_kwh'),
+        SB.from('solar_string_vigia').select('sitio_id,endereco,string_n,tensao_v,corrente_a,potencia_w,situacao,mensagem')
+    ]);
+    if(sv&&!sv.error&&sv.data&&sv.data.length) SOLAR=sv.data;
+    if(si&&!si.error&&si.data&&si.data.length) SOLARINV=si.data;
+    if(st&&!st.error&&st.data&&st.data.length) SOLARSTR=st.data;
+    if(sc&&sc.data&&window.SOLAR_UI) sc.data.forEach(s=>{ SOLARCAD[s.id]=SOLAR_UI.prepararCadastro(s, utm2ll); });
     if(SECAO==='tel' && SUB==='mapa') await carregarRastro();
   }catch(e){ console.warn('[telemetria]',e.message||e); }
 }
@@ -1251,9 +1267,17 @@ function _poseDaLinha(ln, TI){
 function _resolvePose(dev, atual, pose){
   const tAtual = new Date(atual.medido_em || 0).getTime();
   const usaRastro = pose && pose.t > tAtual + 1000;          // rastro mais novo que o "agora"
-  if(pose && pose.rumo != null) RUMO_ULT[dev] = pose.rumo;   // só rumo com deslocamento entra
-  const rumo = (pose && pose.rumo != null) ? pose.rumo
-             : (RUMO_ULT[dev] != null ? RUMO_ULT[dev] : (Number(atual.hdg_deg) || 0));
+  /* O RASTRO SÓ MANDA NO RUMO SE FOR RECENTE (18/09/2026). O dono viu o ícone "torto"
+     na estrada: a 100 km/h o rastro anda 420 m entre pontos, e a montagem do rastro
+     QUEBRA a linha em salto de mais de 300 m — então cada trecho vira ponto solto, é
+     descartado, e sobrava como "última linha" um pedaço velho, da parte devagar do
+     percurso. O ícone ficava apontado para onde a máquina ia MINUTOS antes.
+     Conferido contra os dados do passeio: o rumo que a caixa manda está CERTO (andou
+     372 m para 170°, mandou 170°), porque o firmware já exige deslocamento mínimo. */
+  const poseFresca = pose && pose.rumo != null && Math.abs(tAtual - pose.t) <= 90000;
+  if(poseFresca) RUMO_ULT[dev] = pose.rumo;
+  const rumo = poseFresca ? pose.rumo
+             : (Number(atual.hdg_deg) || (RUMO_ULT[dev] != null ? RUMO_ULT[dev] : 0));
   return { lat: usaRastro ? pose.lat : +atual.lat,
            lon: usaRastro ? pose.lon : +atual.lon,
            rumo, doRastro: !!usaRastro };
@@ -1269,7 +1293,7 @@ function poseRastroMob(tr){
 }
 function desenhaTelemetria(){
   if(_telL){ try{ _map.removeLayer(_telL); }catch(e){} _telL=null; }
-  const g=L.layerGroup(); let i=0, pts=[], distTrab=0, faixaRef=0; const cores=[], girar=[], faixas=[], tracos=[];
+  const g=L.layerGroup(); let i=0, pts=[], distTrab=0, faixaRef=0; const cores=[], girar=[], faixas=[], tracos=[], pontas=[];
   /* reservatório ANTES das máquinas: fica por baixo delas. Talude, água, rótulo
      e a janela com o corte vêm do reservatorio_corte.js (arquivo ÚNICO, o mesmo
      do módulo de telemetria). */
@@ -1277,6 +1301,12 @@ function desenhaTelemetria(){
     const c=RESVCAD[r.id]; if(!c||!c.anel) return;
     RESV_UI.desenhar(L, g, r, c, ()=>RESV_UI.abrirJanela(r.id, fonteResv));
     c.anel.forEach(p=>pts.push(p));
+  });
+  /* usinas: por baixo das máquinas, igual ao piscinão. NÃO entram no
+     enquadramento (pts) — ficam ~1 km ao sul e afastariam o zoom das máquinas. */
+  if(window.SOLAR_UI) SOLAR.forEach(v=>{
+    const c=SOLARCAD[v.id]; if(!c||!c.anel) return;
+    SOLAR_UI.desenhar(L, g, v, c, aba=>SOLAR_UI.abrirJanela(v.id, fonteSolar, aba));
   });
   TELE.filter(t=>maqVisivel(t.maquina_id)).forEach(t=>{
     const cor=corMaqIdx(i++), tr=TRAILS[t.device_id];
@@ -1324,12 +1354,22 @@ function desenhaTelemetria(){
     const _im=implementoDe(t.maquina_id);
     mk.bindTooltip(maqLbl(t.maquina_id,t.device_id)+(_im?' · '+_im.id_frota+' ('+_im.origem+')':''),{permanent:true,direction:'bottom',offset:[0,hh/2],className:'placa'});
     girar.push([mk, pr.rumo]);
+    /* a ponta viva so existe quando ha rastro e ele ficou para tras (ver onde e desenhada) */
+    if(!noTempo && pose && !pr.doRastro && _distRumo([pose.lat,pose.lon],[pr.lat,pr.lon]) > 5)
+      pontas.push([[pose.lat,pose.lon],[pr.lat,pr.lon],cor]);
   });
   /* ORDEM IMPORTA: a faixa entra ANTES para a linha do rastro ficar por cima
      dela — é a mesma pilha do desktop (camadaFaixa embaixo, camadaTraco em
      cima). Invertido, a faixa apagaria o traço que ela deveria acompanhar. */
   faixas.forEach(([ln,w])=>L.polyline(ln,{color:'#00c896',weight:w,opacity:.32,lineCap:'round',lineJoin:'round'}).addTo(g));
   tracos.forEach(([ln,c])=>L.polyline(ln,{color:c,weight:2.5,opacity:.9}).addTo(g));
+  /* PONTA VIVA (18/09/2026). O rastro do dia sobe ao Supabase a cada 5 min; a posicao
+     do "agora", a cada 1 min. Resultado que o dono viu: "o rastro esta sempre atrasado,
+     nao anda junto". Esta linha TRACEJADA liga a ponta do rastro gravado ate onde a
+     maquina esta agora. Tracejada de proposito: o caminho exato daquele trecho ainda
+     nao chegou — o que se sabe e que ela saiu dali e esta aqui. Quando o trecho chega,
+     o rastro cheio cobre e ela some sozinha. */
+  pontas.forEach(([a,b,c])=>L.polyline([a,b],{color:c,weight:2,opacity:.55,dashArray:"5,6"}).addTo(g));
   _telL=g.addTo(_map);
   /* A ROTAÇÃO SÓ DEPOIS DE ENTRAR NO MAPA: o elemento do divIcon não existe
      enquanto o grupo não está no mapa — chamando getElement() antes, o
@@ -1363,9 +1403,13 @@ function desenhaTelemetria(){
      período, modo ou máquina. Mexer no mapa nunca reenquadra. */
   if(pts.length && !_telEnq){ _telEnq=true; try{ _map.fitBounds(L.latLngBounds(pts).pad(.12),{maxZoom:16}); }catch(e){} }
   if(window.RESV_UI) RESV_UI.atualizarJanela();   // janela aberta acompanha a atualização
+  if(window.SOLAR_UI) SOLAR_UI.atualizarJanela();
 }
 const fonteResv=id=>({ r:RESV.find(x=>x.id===id), c:RESVCAD[id],
   serie:RESVH.filter(x=>x.reservatorio_id===id) });
+/* a janela das usinas se alimenta daqui: situação, inversores e strings */
+const fonteSolar=id=>({ v:SOLAR.find(x=>x.id===id), inversores:SOLARINV.filter(x=>x.sitio_id===id),
+  strings:SOLARSTR.filter(x=>x.sitio_id===id) });
 /* POSIÇÃO VELHA (18/09/2026). A TECU do Steiger tira a posição do BARRAMENTO: com a
    máquina desligada ela segue viva e mandando, só que sem coordenada. Antes da
    migração 107 esse vazio apagava a última posição boa e o ícone SUMIA do mapa (o
