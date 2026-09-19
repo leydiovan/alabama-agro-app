@@ -787,11 +787,24 @@ function rotuloTMaqs(){
   return TMAQS.length+' máq.';
 }
 const VIVO_S=180;   // sem reportar há mais de 3 min = sem sinal (a caixa manda a cada 15 s)
+/* ... MAS com a chave desligada (firmware S1.3) ela manda a cada 5 min de proposito.
+   Sem esta janela maior, maquina no patio a noite apareceria como 'sem sinal' em vez de
+   'desligada', que e justamente o que o dono pediu para ver. */
+const VIVO_DESLIGADA_S=900;
 function maqLbl(id,dev){ const m=MAQS[id]||{}; return m.id_frota||m.nome||dev||('#'+id); }
 function maqSub(id){ const m=MAQS[id]||{}; return [m.nome&&m.nome!==m.id_frota?m.nome:'', [m.marca,m.modelo].filter(Boolean).join(' ')].filter(Boolean).join(' · '); }
 function estadoTele(t){
   const seg=(Date.now()-new Date(t.medido_em||t.atualizado_em||0).getTime())/1000;
-  if(!(seg<VIVO_S)) return {k:'off', txt:'sem sinal', cor:'#8b949e'};
+  /* ANDOU COM A CHAVE DESLIGADA vem antes de tudo: e reboque ou furto (firmware S1.3,
+     18/09/2026). A propria caixa volta a cadencia rapida quando isso acontece. */
+  if(t.moveu_sem_chave===true && seg<VIVO_S) return {k:'alerta', txt:'movendo SEM CHAVE', cor:'#ef4444'};
+  if(!(seg < (t.ignicao===false ? VIVO_DESLIGADA_S : VIVO_S))) return {k:'off', txt:'sem sinal', cor:'#8b949e'};
+  /* CHAVE DESLIGADA = cinza, pedido do dono (18/09/2026). So vale quando a caixa DIZ que
+     esta desligada: `ignicao` nulo e "nao sei" (caixa sem o fio, como a colhedora
+     TECU-03) e nao pode virar cinza. Com a chave desligada a caixa manda de 5 em 5 min,
+     entao o VIVO_S de 3 min a levaria para "sem sinal" — por isso este caso vem antes,
+     e a janela dele e mais larga. */
+  if(t.ignicao===false) return {k:'desl', txt:'desligada', cor:'#8b949e'};
   return (+t.vel_kmh||0)>1 ? {k:'and', txt:'em movimento', cor:'#00c896'}
                            : {k:'par', txt:'parada',       cor:'#ffc107'};
 }
