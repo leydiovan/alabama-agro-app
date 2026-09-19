@@ -1384,6 +1384,7 @@ function desenhaTelemetria(){
     const mk=L.marker(ll,{icon:L.divIcon({html:(ehArticulado(t.maquina_id)?svgSteiger(e.cor,implementoDe(t.maquina_id),e.k==='desl'||e.k==='off'):svgMaquina(faixa,e.cor)),className:'',iconSize:[w,hh],iconAnchor:[w/2,hh/2]}),zIndexOffset:1000}).addTo(g);
     const _im=implementoDe(t.maquina_id);
     mk.bindTooltip(maqLbl(t.maquina_id,t.device_id)+(_im?' · '+_im.id_frota+' ('+_im.origem+')':''),{permanent:true,direction:'bottom',offset:[0,hh/2],className:'placa'});
+    mk.on('click', ()=>painelMaquina(t.device_id));      // painel do veículo (18/09/2026)
     girar.push([mk, pr.rumo]);
     /* a ponta viva so existe quando ha rastro e ele ficou para tras (ver onde e desenhada) */
     if(!noTempo && pose && !pr.doRastro && _distRumo([pose.lat,pose.lon],[pr.lat,pr.lon]) > 5)
@@ -1454,11 +1455,145 @@ function posVelha(t){
   return `<div style="font-size:12px;color:#c9a227;margin-top:2px">no mapa, o último lugar conhecido`
        + ` · posição de ${haQuanto(t.posicao_em)}</div>`;
 }
+
+/* ===================== PAINEL DA MÁQUINA (18/09/2026) =====================
+   Pedido do dono: "quando clica na máquina tinha que abrir na tela como se fosse um
+   painel do veículo com as informações".
+
+   DE ONDE VEM CADA NÚMERO, que é o que evita mentira na tela:
+     - posição, velocidade, satélites, atraso  -> 'telemetria_atual' (a cada ~1 min);
+     - rotação, carga, temperatura, consumo, horímetro, combustível total, chave
+       -> 'telemetria_motor', a série nova (migração 109), lida ao abrir o painel.
+   Os dois chegam em cadências diferentes, então cada bloco mostra a IDADE do seu
+   próprio dado. Misturar instantes diferentes num mesmo mostrador foi o defeito que
+   já apareceu no ícone (17/09) — aqui não se repete.
+
+   "—" quer dizer SEM LEITURA, e não zero. Com a máquina desligada o barramento morre
+   e não há rotação nenhuma para mostrar; zero seria invenção. */
+let _painelDev = null, _painelTimer = null, _painelMotor = {};
+
+function fecharPainel(){
+  _painelDev = null;
+  if(_painelTimer){ clearInterval(_painelTimer); _painelTimer = null; }
+  const j = el('painelMaq'); if(j) j.remove();
+}
+async function painelMaquina(dev){
+  _painelDev = dev;
+  desenharPainel();                       // pinta na hora com o que já se tem
+  await carregarMotor(dev);
+  desenharPainel();
+  if(_painelTimer) clearInterval(_painelTimer);
+  /* atualiza sozinho, mas só com a tela à frente — mesma regra do resto do app:
+     timer de aba escondida é estrangulado pelo navegador e mostra número velho */
+  _painelTimer = setInterval(async ()=>{
+    if(document.visibilityState!=='visible' || !_painelDev) return;
+    await carregarMotor(_painelDev); desenharPainel();
+  }, 30000);
+}
+async function carregarMotor(dev){
+  try{
+    const {data,error} = await SB.from('telemetria_motor').select('*')
+      .eq('device_id',dev).order('recebido_em',{ascending:false}).limit(1);
+    if(!error && data && data.length) _painelMotor[dev] = data[0];
+  }catch(e){ console.warn('[motor]',e.message||e); }
+}
+/* mostrador redondo de rotação: arco de 240°, agulha e o número no meio */
+function gaugeRPM(rpm, max){
+  const A0=150, A1=390, R=54, cx=70, cy=70;            // 240° começando embaixo à esquerda
+  const pol=(a,r)=>[cx+r*Math.cos(a*Math.PI/180), cy+r*Math.sin(a*Math.PI/180)];
+  const arco=(de,ate,r,cor,w)=>{ const [x1,y1]=pol(de,r), [x2,y2]=pol(ate,r);
+    return '<path d="M'+x1+','+y1+' A'+r+','+r+' 0 '+((ate-de)>180?1:0)+',1 '+x2+','+y2+
+           '" fill="none" stroke="'+cor+'" stroke-width="'+w+'" stroke-linecap="round"/>'; };
+  const v = rpm==null ? null : Math.max(0, Math.min(max, rpm));
+  const ang = v==null ? A0 : A0 + (A1-A0)*v/max;
+  let s = arco(A0,A1,R,'#1d2a3d',12);
+  // faixa vermelha do fim da escala, como em painel de verdade
+  s += arco(A0+(A1-A0)*0.85, A1, R, '#5a1e24', 12);
+  if(v!=null) s += arco(A0, ang, R, v>max*0.85?'#ef4444':'#00c896', 12);
+  for(let k=0;k<=max/500;k++){ const a=A0+(A1-A0)*(k*500)/max;
+    const [x1,y1]=pol(a,R-9), [x2,y2]=pol(a,R-3);
+    s += '<line x1="'+x1+'" y1="'+y1+'" x2="'+x2+'" y2="'+y2+'" stroke="#44566f" stroke-width="1.5"/>'; }
+  if(v!=null){ const [ax,ay]=pol(ang,R-14);
+    s += '<line x1="'+cx+'" y1="'+cy+'" x2="'+ax+'" y2="'+ay+'" stroke="#e8edf5" stroke-width="2.5" stroke-linecap="round"/>'
+       + '<circle cx="'+cx+'" cy="'+cy+'" r="4" fill="#e8edf5"/>'; }
+  return '<svg viewBox="0 0 140 120" style="width:100%;max-width:190px">'+s+
+    '<text x="70" y="96" text-anchor="middle" fill="#e8edf5" font-size="22" font-weight="700">'+
+      (v==null?'—':Math.round(v))+'</text>'+
+    '<text x="70" y="110" text-anchor="middle" fill="#8ba0bd" font-size="10">RPM</text></svg>';
+}
+function desenharPainel(){
+  if(!_painelDev) return;
+  const t = TELE.find(x=>x.device_id===_painelDev); if(!t){ fecharPainel(); return; }
+  const m = _painelMotor[_painelDev] || {}, e = estadoTele(t), imp = implementoDe(t.maquina_id);
+  const num = (v,d,suf)=> (v==null||v==='') ? '—' : Number(v).toFixed(d).replace('.',',')+(suf||'');
+  const card = (rot,val,sub)=>'<div style="background:#132033;border:1px solid #26364d;border-radius:10px;padding:9px 11px">'+
+    '<div style="font-size:10px;color:#8ba0bd;text-transform:uppercase;letter-spacing:.04em">'+rot+'</div>'+
+    '<div style="font-size:19px;font-weight:700;color:#e8edf5;margin-top:1px">'+val+'</div>'+
+    (sub?'<div style="font-size:11px;color:#8ba0bd">'+sub+'</div>':'')+'</div>';
+
+  let j = el('painelMaq');
+  if(!j){
+    j = document.createElement('div'); j.id='painelMaq';
+    j.style.cssText='position:fixed;inset:0;z-index:5000;background:rgba(3,7,14,.72);'+
+      'display:flex;align-items:flex-end;justify-content:center';
+    j.onclick = ev => { if(ev.target===j) fecharPainel(); };
+    document.body.appendChild(j);
+  }
+  const horas = m.horimetro_min!=null ? (m.horimetro_min/60) : null;
+  const chave = m.ignicao==null ? '—' : (m.ignicao ? 'ligada' : 'desligada');
+  const corChave = m.ignicao==null ? '#8ba0bd' : (m.ignicao ? '#00c896' : '#8b949e');
+  j.innerHTML =
+   '<div style="background:#0d1826;border:1px solid #26364d;border-radius:16px 16px 0 0;'+
+   'box-sizing:border-box;width:100%;max-width:560px;max-height:92vh;overflow-y:auto;overflow-x:hidden;padding:14px 14px calc(env(safe-area-inset-bottom) + 16px)">'+
+     '<div style="display:flex;align-items:center;gap:9px">'+
+       '<span style="width:11px;height:11px;border-radius:50%;background:'+e.cor+';flex:none"></span>'+
+       '<b style="font-size:19px">'+maqLbl(t.maquina_id,t.device_id)+'</b>'+
+       '<span style="font-size:12px;color:'+e.cor+'">'+e.txt+'</span>'+
+       '<button onclick="fecharPainel()" style="margin-left:auto;background:#1b2a3f;color:#cbd5e1;'+
+         'border:1px solid #2d4057;border-radius:8px;padding:5px 11px;font-size:13px">fechar</button>'+
+     '</div>'+
+     '<div style="font-size:12px;color:var(--muted);margin:2px 0 10px">'+
+       (maqSub(t.maquina_id)||'')+(imp?' · '+imp.id_frota+' '+imp.nome:'')+'</div>'+
+
+     '<div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">'+
+       '<div style="flex:1;min-width:150px;text-align:center">'+gaugeRPM(m.rpm==null?null:+m.rpm, 2500)+'</div>'+
+       '<div style="flex:1;min-width:150px;text-align:center;background:#132033;border:1px solid #26364d;'+
+         'border-radius:12px;padding:12px">'+
+         '<div style="font-size:40px;font-weight:800;line-height:1">'+num(t.vel_kmh,1)+'</div>'+
+         '<div style="font-size:11px;color:#8ba0bd;letter-spacing:.06em">KM/H</div>'+
+         '<div style="font-size:12px;color:'+corChave+';margin-top:6px">chave '+chave+'</div>'+
+       '</div>'+
+     '</div>'+
+
+     '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px">'+
+       card('Água', num(m.temp_motor,0,' °C'))+
+       card('Carga do motor', num(m.carga_pct,0,' %'))+
+       card('Consumo', num(m.comb_lph,1,' L/h'))+
+       card('Horímetro', horas==null?'—':num(horas,1,' h'))+
+     '</div>'+
+
+     '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px">'+
+       card('Satélites', t.sats==null?'—':String(t.sats), t.hdop!=null?('HDOP '+num(t.hdop,1)):'')+
+       card('Atraso de entrega', t.atraso_s==null?'—':num(t.atraso_s,0,' s'))+
+     '</div>'+
+
+     /* cada bloco diz a idade do SEU dado: posição e motor chegam em cadências
+        diferentes, e juntar as duas idades numa só esconderia dado velho */
+     '<div style="font-size:11px;color:#8ba0bd;margin-top:10px;line-height:1.6">'+
+       'posição: '+haQuanto(t.medido_em)+
+       (t.posicao_em && (new Date(t.medido_em)-new Date(t.posicao_em))/1000>90
+          ? ' <span style="color:#c9a227">(no mapa, o último lugar conhecido, de '+haQuanto(t.posicao_em)+')</span>' : '')+
+       '<br>motor: '+(m.recebido_em?haQuanto(m.recebido_em):'sem leitura')+
+       (m.rpm==null&&m.ignicao!=null?' · sem barramento (máquina desligada)':'')+
+     '</div>'+
+   '</div>';
+}
+
 function folhaMaquinas(){
   if(!TELE.length) return '<div class="vazio">Nenhuma caixa reportando ainda.</div>';
   return '<div style="padding:10px 12px 90px">'+TELE.map(t=>{
     const e=estadoTele(t), sub=maqSub(t.maquina_id);
-    return `<div style="background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:12px 14px;margin-bottom:10px">
+    return `<div onclick="painelMaquina('${t.device_id}')" style="background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:12px 14px;margin-bottom:10px;cursor:pointer">
       <div style="display:flex;align-items:center;gap:8px">
         <span style="width:10px;height:10px;border-radius:50%;background:${e.cor};flex:none"></span>
         <b style="font-size:16px">${maqLbl(t.maquina_id,t.device_id)}</b>
