@@ -1,0 +1,5 @@
+celular: corrige as placas que nao apareciam no zoom
+
+O grupo de camadas so entrava no mapa depois de desenhar, entao o desenho nao
+sabia o zoom e ficava preso na vista de longe - sem placas, sem strings e sem
+as construcoes.

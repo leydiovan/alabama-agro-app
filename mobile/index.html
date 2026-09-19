@@ -1293,7 +1293,12 @@ function poseRastroMob(tr){
 }
 function desenhaTelemetria(){
   if(_telL){ try{ _map.removeLayer(_telL); }catch(e){} _telL=null; }
-  const g=L.layerGroup(); let i=0, pts=[], distTrab=0, faixaRef=0; const cores=[], girar=[], faixas=[], tracos=[], pontas=[];
+  /* O GRUPO JÁ ENTRA NO MAPA AQUI, antes de desenhar (18/09/2026). Quem
+     desenha precisa saber o ZOOM, e o jeito de perguntar é `grupo._map` —
+     que só existe depois do addTo. Com o addTo lá no fim, o solar_mapa.js
+     pensava que estava sempre na vista de longe e nunca mostrava as placas,
+     as strings nem as construções por mais que se aproximasse. */
+  const g=L.layerGroup().addTo(_map); let i=0, pts=[], distTrab=0, faixaRef=0; const cores=[], girar=[], faixas=[], tracos=[], pontas=[];
   /* reservatório ANTES das máquinas: fica por baixo delas. Talude, água, rótulo
      e a janela com o corte vêm do reservatorio_corte.js (arquivo ÚNICO, o mesmo
      do módulo de telemetria). */
@@ -1370,7 +1375,7 @@ function desenhaTelemetria(){
      nao chegou — o que se sabe e que ela saiu dali e esta aqui. Quando o trecho chega,
      o rastro cheio cobre e ela some sozinha. */
   pontas.forEach(([a,b,c])=>L.polyline([a,b],{color:c,weight:2,opacity:.55,dashArray:"5,6"}).addTo(g));
-  _telL=g.addTo(_map);
+  _telL=g;
   /* A ROTAÇÃO SÓ DEPOIS DE ENTRAR NO MAPA: o elemento do divIcon não existe
      enquanto o grupo não está no mapa — chamando getElement() antes, o
      `transform` ia para lugar nenhum e a máquina ficava sempre apontando para

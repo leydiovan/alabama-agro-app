@@ -320,6 +320,15 @@
        apenas o bloco central — carga da bateria, geração, consumo e o estado
        da bomba — e o detalhe (casa, bateria, hidrômetro, a pílula com o kW da
        bomba) só aparece quando alguém aproxima para olhar aquela usina. */
+    /* O ZOOM vem do mapa em que o grupo está. Se o grupo ainda não foi
+       adicionado, não há como saber — e o desenho cairia calado na vista de
+       longe, que foi exatamente o defeito do celular em 18/09/2026 (as placas
+       não apareciam nunca). Então avisa, em vez de errar em silêncio. */
+    if (!grupo._map && !desenhar._avisou) {
+      desenhar._avisou = 1;
+      console.warn('[solar_mapa] o grupo ainda não está no mapa: sem zoom, só a vista de longe. ' +
+                   'Use L.layerGroup().addTo(map) ANTES de desenhar.');
+    }
     const z = grupo._map ? grupo._map.getZoom() : 0;
     const perto = z >= 18;
 
