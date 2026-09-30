@@ -14,7 +14,9 @@
 
    DADOS
      `solar_vigia`  (migração 109) — situação PRONTA: OK / MUDO / FALHA /
-                    ALARME / BATERIA BAIXA, com a frase escrita. O critério
+                    ALARME / BATERIA BAIXA / LEITURA SUSPEITA (123), com a
+                    frase escrita. Desde 21/09/2026 traz também
+                    `pct_potencial` + `potencial_fonte` (122). O critério
                     mora na view; aqui só se pinta.
      `solar_sitio.geom` (migração 110) — contorno em UTM 23S, formato dos lotes.
      `solar_inversor_atual` — o detalhe por inversor, na janela.
@@ -26,8 +28,12 @@
    `detalhe` é opcional e cada sítio tem o seu; nada é herdado por padrão.
    ===================================================================== */
 (function () {
+  /* 'LEITURA SUSPEITA' (migração 123, 21/09/2026): o logger devolveu um número
+     impossível — não é defeito do sistema nem bateria vazia, é o dado que não
+     serve. Cor própria, âmbar apagado: não pode se parecer com OK (verde) nem
+     gritar como falha (vermelho). Desconhecido é uma terceira coisa. */
   const COR = { 'OK': '#00c896', 'ALARME': '#ffb300', 'BATERIA BAIXA': '#ffb300',
-                'FALHA': '#ff4444', 'MUDO': '#ff4444' };
+                'FALHA': '#ff4444', 'MUDO': '#ff4444', 'LEITURA SUSPEITA': '#c9a227' };
   const br = (n, d) => (n == null || isNaN(n)) ? '—' : Number(n).toFixed(d).replace('.', ',');
 
   /* linha do cadastro -> anéis em [lat,lon]. `conv(E,N)` é a conversão UTM de
@@ -510,9 +516,17 @@
        Este é o número que separa "nublado" de "defeito": 118 kW não diz nada
        sozinho — 118 kW às 9h de céu limpo pode ser ótimo, e às 12h30 seria
        alarme. A conta precisa da CURVA DE CÉU LIMPO de cada usina, que só sai
-       com dias de coleta; quando a view passar a devolver `pct_potencial`,
-       ele aparece aqui sem mais nenhuma mudança de tela. */
+       com dias de coleta.
+       CHEGOU EM 21/09/2026 (migração 122): a curva é a tabela `solar_ceu_limpo`,
+       medida (maior valor já visto naquela hora), e a view devolve o percentual
+       junto com `potencial_fonte`, que diz o quanto confiar nele.
+       NULO NÃO É ZERO, e aqui há nulos de naturezas diferentes. Com inversor
+       LIMITADO a view devolve nulo DE PROPÓSITO: naquele minuto está SOBRANDO
+       energia (bateria cheia, bomba já em carga total) e um percentual diria o
+       contrário — que falta sol. Então mostra-se a palavra, não o número. Sem
+       referência ainda, não se mostra nada. */
     const pot = num(v && v.pct_potencial, 0);
+    const potFonte = v && v.potencial_fonte;
     /* TUDO NUMA LINHA SÓ, e no VÃO ENTRE AS MESAS (dono, 18/09/2026). Duas
        linhas empilhadas tampavam as placas; uma linha fina cabe na faixa vazia
        que existe no meio da usina — o mesmo vão de sombra que separa as
@@ -529,7 +543,11 @@
       peca(soc, 'font:800 15px/1 system-ui,sans-serif;color:' + corRot) +
       bomba +
       (perto && detalhe.trim() ? peca(detalhe, 'font:700 11px/1 system-ui,sans-serif;color:#dbe9f7') : '') +
-      (perto && pot != null ? peca(pot + '% do possível', 'font:700 11px/1 system-ui,sans-serif;color:#ffd479') : '');
+      (perto && pot != null
+        ? peca(pot + '% do possível', 'font:700 11px/1 system-ui,sans-serif;color:#ffd479')
+        : perto && potFonte === 'limitado'
+        ? peca('sobrando', 'font:700 11px/1 system-ui,sans-serif;color:#00c896')
+        : '');
     L.marker(centro, { keyboard: false, zIndexOffset: 400, icon: L.divIcon({ className: '', iconSize: [0, 0], iconAnchor: [0, 0],
       html: '<div style="position:absolute;transform:translate(-50%,-50%);white-space:nowrap;cursor:pointer;' +
             'display:flex;align-items:center;gap:5px">' + miolo + '</div>' }) })

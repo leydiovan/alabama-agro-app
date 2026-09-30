@@ -495,9 +495,13 @@ function svgSteiger(cor, impl, desligada){
    Ate existir, vale esta ATRIBUICAO MANUAL PROVISORIA — pedido do dono ("coloca o
    desenho da Maestro no app"). Trocar por fonte de verdade quando a cascata nascer;
    a tela mostra a ORIGEM para ninguem confundir com dado lido da maquina.
-   Chave = maquina_id (3 = TRA-007, Steiger 470). IMP-003 no cadastro de implementos. */
+   Chave = maquina_id (3 = TRA-007, 2 = TRA-001, ambos Steiger 470). IMP-003/IMP-002 no cadastro de implementos. */
 const IMPL_PROVISORIO={
-  3:{id_frota:'IMP-003', nome:'Horsch Maestro 36.50 SW', desenho:'maestro', linhas:36, espM:0.5, origem:'provisório'}
+  3:{id_frota:'IMP-003', nome:'Horsch Maestro 36.50 SW', desenho:'maestro', linhas:36, espM:0.5, origem:'provisório'},
+  /* 30/09/2026, pedido do dono ("pode deixar uma horsch nele tambem"): 2 = TRA-001, o outro
+     Steiger 470, com a OUTRA Horsch do cadastro (IMP-002, Maestro Evolution 2024, 36 x 50 cm).
+     Desenho: usa o da SW (o unico aprovado) ate existir um da Evolution — a largura (18 m) e a mesma. */
+  2:{id_frota:'IMP-002', nome:'Horsch Maestro Evolution', desenho:'maestro', linhas:36, espM:0.5, origem:'provisório'}
 };
 function implementoDe(maqId){
   const i=IMPL_PROVISORIO[maqId]; if(!i) return null;
