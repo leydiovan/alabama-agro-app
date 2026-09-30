@@ -497,7 +497,9 @@ function svgSteiger(cor, impl, desligada){
    a tela mostra a ORIGEM para ninguem confundir com dado lido da maquina.
    Chave = maquina_id (3 = TRA-007, 2 = TRA-001, ambos Steiger 470). IMP-003/IMP-002 no cadastro de implementos. */
 const IMPL_PROVISORIO={
-  3:{id_frota:'IMP-003', nome:'Horsch Maestro 36.50 SW', desenho:'maestro', linhas:36, espM:0.5, origem:'provisório'},
+  /* 30/09/2026, pedido do dono ("consegue colocar no tra-007?"): o TRA-007 passa da Horsch 36.50 SW
+     (IMP-003) para a Case IH Fast Riser 6161 (IMP-004, 55 x 50 cm = 27,5 m), desenho aprovado no mesmo dia. */
+  3:{id_frota:'IMP-004', nome:'Case IH Fast Riser 6161', desenho:'fastriser', linhas:55, espM:0.5, origem:'provisório'},
   /* 30/09/2026, pedido do dono ("pode deixar uma horsch nele tambem"): 2 = TRA-001, o outro
      Steiger 470, com a OUTRA Horsch do cadastro (IMP-002, Maestro Evolution 2024, 36 x 50 cm).
      Desenho: usa o da SW (o unico aprovado) ate existir um da Evolution — a largura (18 m) e a mesma. */
@@ -549,7 +551,76 @@ function svgMaestro(espacamentoM, linhas, desligada){
   s+='<circle cx="'+cx+'" cy="'+(y(H)+1)+'" r="2" fill="#2a2a2a" stroke="#000" stroke-width=".8"/>';
   return s;
 }
-function svgImplemento(impl, desligada){ return (impl&&impl.desenho==='maestro') ? svgMaestro(impl.espM, impl.linhas, desligada) : ''; }
+/* CASE IH FAST RISER 6161 — 55 linhas x 50 cm = 27,5 m (IMP-004). APROVADO pelo dono em 30/09/2026 ("ficou bom").
+   Estrutura pelas fotos (drone Case IH, video 6Q8MqRrAHpQ, e o mod FS22 "Riser rapide 6161"):
+   DOBRA FRONTAL (transporte 17,7 x 6,2 m, ficha Case) -> CABECALHO longo e unico do engate ao meio
+   da barra -> 2 DIAGONAIS da frente do cabecalho ate a barra -> 2 TANQUES BRANCOS lado a lado no
+   centro, a frente da barra (semente a granel, 4.080 L), passarela atras dos tanques + escada para tras sobre as linhas -> 2 PNEUS
+   GRANDES no centro, sob os tanques -> PARES de rodas nas asas -> BARRA de 27,5 m em 5 secoes ->
+   55 linhas atras.
+   Gerador da previa aprovada: docs/icones_telemetria/gerar_previa_fastriser.mjs
+   ESTIMADO (conferir com trena): engate->barra 9,0 m; diagonais saem 1,8 m atras do engate e chegam
+   na barra a 7 m do centro; secao central 6 m (articulacoes a 3 m e 8,5 m do centro); tanques
+   2,0 x 2,6 m cada; pneus centrais a 1,6 m do centro; pares das asas a 4,5 / 8,5 / 12,3 m;
+   linha 1,8 m. */
+function svgFastRiser(espacamentoM, linhas, desligada){
+  var cx=VB_W/2, Y0=VB_H/2-25.5, y=function(m){return Y0+m*10;};
+  var H=7.39, meia=linhas*espacamentoM*10/2, yBarra=H+9.0, yb=y(yBarra);
+  var V = desligada ? '#6b7280' : '#c8102e', E = desligada ? '#3b4048' : '#3a0a0e';
+  var T = desligada ? '#9aa0a6' : '#ecebe6', TE = desligada ? '#4b5057' : '#8a8a86';
+  var s='';
+  function r(a){ s+='<rect '+a+'/>'; }
+  function viga(x1,y1,x2,y2,g){
+    s+='<line x1="'+x1+'" y1="'+y1+'" x2="'+x2+'" y2="'+y2+'" stroke="'+E+'" stroke-width="'+(g+1.6)+'" stroke-linecap="round"/>';
+    s+='<line x1="'+x1+'" y1="'+y1+'" x2="'+x2+'" y2="'+y2+'" stroke="'+V+'" stroke-width="'+g+'" stroke-linecap="round"/>'; }
+  // DIAGONAIS: da frente do cabecalho ate a barra
+  [-70,70].forEach(function(xb){ viga(cx, y(H+1.8), cx+xb, yb+1, 2.4); });
+  // CABECALHO: parte da frente mais fina (telescopica) + parte de tras mais grossa
+  viga(cx, y(H)+1, cx, y(H+3.5), 3.0);
+  viga(cx, y(H+3.5), cx, yb, 4.2);
+  // PARES de rodas nas asas, a frente da barra
+  [4.5, 8.5, 12.3].forEach(function(xm){ [-1,1].forEach(function(l){
+    [-2.6,2.6].forEach(function(dx){
+      r('fill="#1b1b1b" stroke="#000" stroke-width=".6" x="'+(cx+l*xm*10+dx-1.8)+'" y="'+(yb-9.5)+'" width="3.6" height="8.5" rx="1.6"'); });
+    r('fill="'+V+'" x="'+(cx+l*xm*10-2)+'" y="'+(yb-3)+'" width="4" height="3" rx=".5"'); }); });
+  // 55 LINHAS atras da barra: braco vermelho + rodas pretas de fechamento
+  for(var k=0;k<linhas;k++){ var xl=cx-meia+(k+0.5)*espacamentoM*10;
+    r('fill="'+V+'" stroke="'+E+'" stroke-width=".5" x="'+(xl-1.3)+'" y="'+(yb+2)+'" width="2.6" height="9" rx=".7"');
+    r('fill="#151515" x="'+(xl-1.6)+'" y="'+(yb+10)+'" width="3.2" height="8" rx="1"'); }
+  // BARRA de 27,5 m + 4 articulacoes (5 secoes)
+  r('fill="'+V+'" stroke="'+E+'" stroke-width="1.2" x="'+(cx-meia)+'" y="'+yb+'" width="'+(meia*2)+'" height="3.4" rx="1"');
+  [-85,-30,30,85].forEach(function(xa){
+    r('fill="#1b1b1b" x="'+(cx+xa-1.3)+'" y="'+(yb-0.8)+'" width="2.6" height="5" rx=".5"'); });
+  // 2 PNEUS GRANDES no centro, sob os tanques
+  [-16,16].forEach(function(dx){
+    r('fill="#1b1b1b" stroke="#000" stroke-width="1" x="'+(cx+dx-3)+'" y="'+(yb-17)+'" width="6" height="16" rx="2.6"'); });
+  // quadro central
+  r('fill="'+V+'" stroke="'+E+'" stroke-width="1.2" x="'+(cx-13)+'" y="'+(yb-30)+'" width="26" height="30" rx="2"');
+  // 2 TANQUES BRANCOS lado a lado, com a tampa de abastecimento
+  [-11,11].forEach(function(dx){
+    r('fill="'+T+'" stroke="'+TE+'" stroke-width="1.2" x="'+(cx+dx-10)+'" y="'+(yb-28)+'" width="20" height="26" rx="7"');
+    s+='<circle cx="'+(cx+dx)+'" cy="'+(yb-15)+'" r="3.2" fill="'+TE+'"/>'; });
+  // PASSARELA atras dos tanques, paralela a eles, com guarda-corpo, e ESCADA descendo para tras por
+  // cima das linhas, no lado ESQUERDO (dono, 30/09/2026: "fica atras das caixas, uma paralela atras
+  // das caixas e uma escada... fica sobre as linhas"; confirmado na foto do drone Case IH)
+  var GC = desligada ? '#b0b5bb' : '#d9dcdf';
+  r('fill="#2a2a2a" stroke="#000" stroke-width=".6" x="'+(cx-21)+'" y="'+(yb-2)+'" width="42" height="7" rx="1"');
+  for(var g=1;g<14;g++) s+='<line x1="'+(cx-21+g*3)+'" x2="'+(cx-21+g*3)+'" y1="'+(yb-1.5)+'" y2="'+(yb+4.5)+'" stroke="#4a4a4a" stroke-width=".5"/>';
+  s+='<path d="M'+(cx-21)+','+(yb-2)+' L'+(cx-21)+','+(yb+5)+' L'+(cx+21)+','+(yb+5)+' L'+(cx+21)+','+(yb-2)+'" fill="none" stroke="'+GC+'" stroke-width=".9"/>';
+  var xe=cx-19, ye=yb+5, le=16;
+  r('fill="#2a2a2a" stroke="#000" stroke-width=".5" x="'+xe+'" y="'+ye+'" width="5" height="'+le+'" rx=".6"');
+  for(var d=1;d<6;d++) s+='<line x1="'+(xe+.5)+'" x2="'+(xe+4.5)+'" y1="'+(ye+d*le/6)+'" y2="'+(ye+d*le/6)+'" stroke="#8a8a8a" stroke-width=".7"/>';
+  [xe, xe+5].forEach(function(xr){ s+='<line x1="'+xr+'" x2="'+xr+'" y1="'+ye+'" y2="'+(ye+le)+'" stroke="'+GC+'" stroke-width=".9"/>'; });
+  // engate
+  s+='<circle cx="'+cx+'" cy="'+(y(H)+1)+'" r="2" fill="#2a2a2a" stroke="#000" stroke-width=".8"/>';
+  return s;
+}
+function svgImplemento(impl, desligada){
+  if(!impl) return '';
+  if(impl.desenho==='maestro')   return svgMaestro(impl.espM, impl.linhas, desligada);
+  if(impl.desenho==='fastriser') return svgFastRiser(impl.espM, impl.linhas, desligada);
+  return '';
+}
 
 /* tamanho REAL no mapa, com piso: em pixel fixo o ícone mente nos dois extremos
    (gigante de longe, invisível de perto) */
