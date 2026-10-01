@@ -956,6 +956,428 @@ function svgValmet86(desligada){
 }
 /* halo do ESTADO centrado no trator (o Valmet vai de 2,35 m a frente a 1,7 m atras do centro) */
 function svgValmet86Icone(cor, desligada){ return `<svg viewBox="0 0 ${VB_W} ${VB_H}" style="width:100%;height:100%;overflow:visible"><g class="gir"><ellipse cx="${VB_W/2}" cy="${VB_H/2-3.2}" rx="17" ry="23" fill="${cor}" opacity=".30" stroke="${cor}" stroke-width="2.5"/>${svgValmet86(desligada)}</g></svg>`; }
+/* Colhedoras de graos STS (COL-001 9770, COL-002 9670): escolha pelo MODELO (STS). Plataforma por
+   modelo (dono, 01/10/2026): 9770 -> 635F (10,67 m); 9670 -> 630F (9,14 m). As de algodao (9970) nao sao STS. */
+function ehColhedoraSts(maqId){ const m=MAQS[maqId]||{}; return /\bSTS\b/i.test((m.modelo||'')+' '+(m.nome||'')); }
+function platSts(maqId){ const m=MAQS[maqId]||{}; return /9770/.test(m.modelo||'') ? 10.67 : 9.14; }
+/* COLHEDORA DE GRAOS JOHN DEERE 9770 STS (COL-001) / 9670 STS (COL-002) — VERDE. APROVADO pelo dono em 01/10/2026 ("ok").
+   Mesma escala e referencia dos outros (10 unidades = 1 m, frente para cima, centro do icone na
+   frente do teto da cabine).
+   OFICIAL (manual do operador Deere OMHXE13769, 9670/9770 STS): BITOLA TRASEIRA 3,3 m; 14,8 t sem
+   plataforma; graneleiro 8.850-10.570 L. TUBO DE DESCARGA 6,55 m (Construction Equipment Guide e
+   Ritchie Specs). Plataformas do cadastro: 635F de 35 pes (IMP-044, 10,67 m) e 630F de 30 pes
+   (IMP-045, 9,14 m). Pneus usuais: 520/85R38 DUPLO na frente (~1,85 x 0,52 m) e 28L-26 atras
+   (~1,60 x 0,71 m).
+   SEM ficha confiavel de comprimento e entre-eixos (so agregadores: 3,2 m e 10,5 m). ESTIMADO pelas
+   fotos: plataforma de 1,9 m de fundo; canal alimentador 1,45 m de largura; eixo dianteiro a 3,7 m da
+   frente da plataforma; ENTRE-EIXOS 3,6 m; cabine de 3,0 a 5,0 m (2,1 m de largura); graneleiro de
+   4,6 a 7,8 m (3,2 m); motor de 7,8 a 9,4 m com a TELA ROTATIVA; traseira a 9,6 m.
+   Pelas fotos (videos de STS no Brasil, inclusive de drone): cabine na frente, no centro; graneleiro
+   com as ABAS AMARELAS; TUBO DE DESCARGA saindo do canto ESQUERDO do corpo, ATRAS DA CABINE, e correndo para tras (dono, 01/10); DUPLO na
+   frente, simples atras, aros amarelos; plataforma verde com o MOLINETE.
+   ANTENA: StarFire (dono, 01/10/2026), no centro da frente do teto da cabine = centro do icone. larguraPlat em metros: a 9770 usa a 635F (10,67 m = 35 pes) e a 9670
+   a 630F (9,14 m = 30 pes) — dono, 01/10/2026. */
+/* Gerador da previa aprovada: docs/icones_telemetria/gerar_previa_colhedora_sts.mjs */
+function svgColhedoraSts(desligada, larguraPlat){
+  var cx=VB_W/2, Y0=VB_H/2-32, y=function(m){return Y0+m*10;};   // centro a 3,2 m da frente da plataforma
+  var VD = desligada ? '#6b7280' : '#367c2b', VE = desligada ? '#3b4048' : '#1d3a17';
+  var AM = desligada ? '#9aa0a6' : '#ffde00', PR = desligada ? '#3a3f45' : '#141414';
+  var meia=(larguraPlat||10.67)*10/2, s='';
+  function r(a){ s+='<rect '+a+'/>'; }
+  function pneu(xc, ym, D, L){
+    r('fill="#1b1b1b" stroke="#000" stroke-width="1" x="'+(cx+xc-L/2)+'" y="'+(y(ym)-D/2)+'" width="'+L+'" height="'+D+'" rx="2.5"');
+    for(var k=1;k<5;k++) s+='<line x1="'+(cx+xc-L/2+1)+'" x2="'+(cx+xc+L/2-1)+'" y1="'+(y(ym)-D/2+k*D/5)+'" y2="'+(y(ym)-D/2+k*D/5)+'" stroke="#3a3a3a" stroke-width="1"/>'; }
+  var eF=3.7, eT=eF+3.6;
+  [-17.5,-11.5,11.5,17.5].forEach(function(xc){ pneu(xc, eF, 18.5, 5.2); });   // frente: 520/85R38 duplo
+  [-16.5,16.5].forEach(function(xc){ pneu(xc, eT, 16, 7.1); });                // tras: 28L-26, bitola 3,3 m
+  // CORPO: canal alimentador + chassi
+  r('fill="'+VD+'" stroke="'+VE+'" stroke-width="1.2" x="'+(cx-7.25)+'" y="'+y(1.8)+'" width="14.5" height="14" rx="1.5"');
+  r('fill="'+VD+'" stroke="'+VE+'" stroke-width="1.4" x="'+(cx-12)+'" y="'+y(3.0)+'" width="24" height="'+((9.6-3.0)*10)+'" rx="3"');
+  // MOTOR atras com a TELA ROTATIVA (circulo) do lado direito
+  r('fill="'+VD+'" stroke="'+VE+'" stroke-width="1.2" x="'+(cx-13)+'" y="'+y(7.8)+'" width="26" height="16" rx="2.5"');
+  s+='<circle cx="'+(cx+7)+'" cy="'+y(8.6)+'" r="4" fill="'+PR+'" stroke="#000" stroke-width=".8"/>';
+  s+='<circle cx="'+(cx+7)+'" cy="'+y(8.6)+'" r="2.4" fill="none" stroke="#555" stroke-width=".6"/>';
+  // GRANELEIRO com as ABAS AMARELAS
+  r('fill="'+AM+'" stroke="'+VE+'" stroke-width="1" x="'+(cx-16)+'" y="'+y(4.6)+'" width="32" height="32" rx="2"');
+  r('fill="'+VD+'" stroke="'+VE+'" stroke-width="1" x="'+(cx-13.5)+'" y="'+(y(4.6)+2.5)+'" width="27" height="27" rx="1.5"');
+  r('fill="'+(desligada?'#4b5057':'#2a4d22')+'" x="'+(cx-10)+'" y="'+(y(4.6)+6)+'" width="20" height="20" rx="1"');
+  // CABINE na frente, no centro (teto verde, vidro escuro na frente)
+  r('fill="'+VD+'" stroke="'+VE+'" stroke-width="1.4" x="'+(cx-10.5)+'" y="'+y(3.0)+'" width="21" height="20" rx="3"');
+  r('fill="#111" opacity=".8" x="'+(cx-8.5)+'" y="'+y(3.2)+'" width="17" height="7" rx="2"');
+  // TUBO DE DESCARGA (6,55 m): SAI do canto ESQUERDO do corpo, ATRAS DA CABINE, e em repouso corre
+  // PARA TRAS pelo lado esquerdo, passando da traseira (dono, 01/10/2026 — corrigido: o rascunho o
+  // tinha deitado com a ponta na plataforma)
+  r('fill="'+VD+'" stroke="'+VE+'" stroke-width="1" x="'+(cx-17.5)+'" y="'+(y(5.1)-2)+'" width="5" height="4" rx="1"');   // pe do tubo
+  s+='<line x1="'+(cx-15)+'" y1="'+y(5.1)+'" x2="'+(cx-15.6)+'" y2="'+y(11.6)+'" stroke="'+VE+'" stroke-width="5" stroke-linecap="round"/>';
+  s+='<line x1="'+(cx-15)+'" y1="'+y(5.1)+'" x2="'+(cx-15.6)+'" y2="'+y(11.6)+'" stroke="'+VD+'" stroke-width="3.6" stroke-linecap="round"/>';
+  r('fill="'+PR+'" x="'+(cx-17.2)+'" y="'+(y(11.6)-1)+'" width="3.2" height="2.6" rx=".8"');   // bica na ponta
+  // PLATAFORMA (635F 35 pes / 630F 30 pes) — dono, 01/10/2026: "ela tem o CARACOL e o MOLINETE".
+  // Pelas fotos (630F/635F), da frente para tras: BARRA DE CORTE de ponta a ponta -> MOLINETE escuro
+  // (cilindro de barras com dedos) apoiado em BRACOS verdes nas pontas e no meio -> CARACOL (tubo verde
+  // com a helice em espiral; cada metade leva para o CENTRO, onde ficam os dedos retrateis) -> parede de
+  // tras, onde engata o canal alimentador. Laterais verdes com o DIVISOR pontudo na frente.
+  // ESTIMADO: 2,0 m de fundo; molinete 1,05 m (de 0,05 a 1,10 m); caracol 0,55 m (de 1,15 a 1,70 m).
+  var x0=cx-meia+3, x1=cx+meia-3, MO = desligada ? '#3f444a' : '#1f2124', MB = desligada ? '#5b626b' : '#4a4d52';
+  var CA = desligada ? '#7b828b' : '#43952f', CH = desligada ? '#3b4048' : '#1d3a17';
+  // parede de tras
+  r('fill="'+VD+'" stroke="'+VE+'" stroke-width="1.2" x="'+(cx-meia)+'" y="'+y(1.62)+'" width="'+(meia*2)+'" height="4.2" rx="1"');
+  // fundo da plataforma (calha)
+  r('fill="'+(desligada?'#4b5057':'#2f6326')+'" x="'+x0+'" y="'+y(0.1)+'" width="'+(x1-x0)+'" height="15.5"/>');
+  // CARACOL: tubo + helice (inclinada para o centro nas duas metades) + dedos no meio
+  r('fill="'+CA+'" stroke="'+CH+'" stroke-width=".8" x="'+x0+'" y="'+y(1.15)+'" width="'+(x1-x0)+'" height="5.5" rx="2.7"');
+  for(var xs=x0+2; xs<x1-2; xs+=4.5){
+    if(Math.abs(xs-cx)<6) continue;                         // centro: dedos retrateis, sem helice
+    var dx = xs<cx ? 2.2 : -2.2;                             // espiral empurra para o centro
+    s+='<line x1="'+xs+'" y1="'+(y(1.15)+.4)+'" x2="'+(xs+dx)+'" y2="'+(y(1.70)-.4)+'" stroke="'+CH+'" stroke-width="1"/>'; }
+  for(var xd=cx-5; xd<=cx+5; xd+=2.5) s+='<line x1="'+xd+'" y1="'+(y(1.15)+1)+'" x2="'+xd+'" y2="'+(y(1.70)-1)+'" stroke="#9aa0a6" stroke-width=".6"/>';
+  // MOLINETE — 3a versao (01/10/2026). Dono: "olha mais fotos, olha no Farming Simulator... falta
+  // detalhe" (sobre o molinete). Pela tela do mod oficial "John Deere 600F Series" (FS22, plataformas
+  // vistas de cima): o molinete e VAZADO — ve-se o FUNDO VERDE e o CARACOL por baixo; o que domina e o
+  // TUBO CENTRAL preto e grosso de ponta a ponta; em volta dele, BARRAS finas; a cada ~2 m, ARANHAS
+  // (suportes pretos de raios) cruzando do tubo ate as barras, nas pontas, no meio e entre eles.
+  // Dedos quase nao aparecem de cima: nao desenhados (a versao com dedos ficou "quadriculada").
+  var yM0=y(-0.10), yM1=y(1.05), yMc=(yM0+yM1)/2;
+  // barras finas (frente e tras do tubo)
+  [yM0+1, yMc-3.2, yMc+3.2, yM1-1].forEach(function(yb){
+    s+='<line x1="'+x0+'" x2="'+x1+'" y1="'+yb+'" y2="'+yb+'" stroke="'+MO+'" stroke-width=".9"/>'; });
+  // aranhas a cada ~2 m (de ponta a ponta, com uma no meio)
+  var nAr=Math.max(2,Math.round((x1-x0)/20)), passo=(x1-x0)/nAr;
+  for(var a=0;a<=nAr;a++){ var xa=x0+a*passo;
+    s+='<line x1="'+xa+'" x2="'+xa+'" y1="'+yM0+'" y2="'+yM1+'" stroke="#0d0d0d" stroke-width="1.3"/>';
+    s+='<line x1="'+(xa-2.2)+'" x2="'+xa+'" y1="'+(yM0+1)+'" y2="'+yMc+'" stroke="#0d0d0d" stroke-width=".7"/>';
+    s+='<line x1="'+(xa-2.2)+'" x2="'+xa+'" y1="'+(yM1-1)+'" y2="'+yMc+'" stroke="#0d0d0d" stroke-width=".7"/>';
+    s+='<line x1="'+(xa+2.2)+'" x2="'+xa+'" y1="'+(yM0+1)+'" y2="'+yMc+'" stroke="#0d0d0d" stroke-width=".7"/>';
+    s+='<line x1="'+(xa+2.2)+'" x2="'+xa+'" y1="'+(yM1-1)+'" y2="'+yMc+'" stroke="#0d0d0d" stroke-width=".7"/>'; }
+  // TUBO CENTRAL preto, grosso
+  s+='<line x1="'+x0+'" x2="'+x1+'" y1="'+yMc+'" y2="'+yMc+'" stroke="#0d0d0d" stroke-width="2.4" stroke-linecap="round"/>';
+  s+='<line x1="'+x0+'" x2="'+x1+'" y1="'+(yMc-.5)+'" y2="'+(yMc-.5)+'" stroke="'+MB+'" stroke-width=".5"/>';
+  // BRACOS do molinete (verdes): pontas e meio, da parede de tras ate o eixo do molinete
+  [x0+1.5, cx, x1-1.5].forEach(function(xa){
+    s+='<line x1="'+xa+'" y1="'+y(1.95)+'" x2="'+xa+'" y2="'+y(0.55)+'" stroke="'+VE+'" stroke-width="2.6" stroke-linecap="round"/>';
+    s+='<line x1="'+xa+'" y1="'+y(1.95)+'" x2="'+xa+'" y2="'+y(0.55)+'" stroke="'+VD+'" stroke-width="1.6" stroke-linecap="round"/>'; });
+  // BARRA DE CORTE na frente, de ponta a ponta
+  s+='<line x1="'+(cx-meia)+'" x2="'+(cx+meia)+'" y1="'+y(0.02)+'" y2="'+y(0.02)+'" stroke="#9aa0a6" stroke-width="1.1"/>';
+  // LATERAIS verdes com o DIVISOR pontudo na frente
+  [-1,1].forEach(function(l){ var xe=cx+l*meia, xi=cx+l*(meia-3);
+    s+='<path fill="'+VD+'" stroke="'+VE+'" stroke-width="1" d="M'+xe+','+y(2.0)+' L'+xe+','+y(0.1)+' L'+((xe+xi)/2)+','+(y(0)-3)+' L'+xi+','+y(0.1)+' L'+xi+','+y(2.0)+' Z"/>'; });
+  // ANTENA STARFIRE (centro do icone) no centro da frente do teto da cabine — dono, 01/10/2026: "as
+  // maquinas tem star fire". Mesma cupula amarela sobre base verde dos tratores John Deere, 2x o real.
+  s+='<circle cx="'+cx+'" cy="'+(VB_H/2)+'" r="3.6" fill="'+(desligada?'#4b5057':'#2f6b25')+'" stroke="'+(desligada?'#2b2f33':'#16330f')+'" stroke-width="1"/>';
+  s+='<circle cx="'+cx+'" cy="'+(VB_H/2)+'" r="2.5" fill="'+(desligada?'#b0b5bb':'#ffde00')+'" stroke="'+(desligada?'#6b7280':'#8a7a00')+'" stroke-width=".6"/>';
+  return s;
+}
+/* halo do ESTADO centrado no corpo da colhedora (plataforma 3,2 m a frente da antena; tubo ate 8,4 m atras) */
+function svgColhedoraStsIcone(cor, desligada, maqId){ return `<svg viewBox="0 0 ${VB_W} ${VB_H}" style="width:100%;height:100%;overflow:visible"><g class="gir"><ellipse cx="${VB_W/2}" cy="${VB_H/2+26}" rx="26" ry="52" fill="${cor}" opacity=".30" stroke="${cor}" stroke-width="2.5"/>${svgColhedoraSts(desligada, platSts(maqId))}</g></svg>`; }
+/* Colhedoras de ALGODAO John Deere 9970 (COL-003, COL-004): escolha pelo MODELO (9970). 5 linhas a 0,76 m. */
+function ehColhedoraAlgodao(maqId){ const m=MAQS[maqId]||{}; return /\b9970\b/.test((m.modelo||'')+' '+(m.nome||'')); }
+/* COLHEDORA DE ALGODAO JOHN DEERE 9970 (COL-003, COL-004) — VERDE com as pontas AMARELAS. APROVADO pelo dono em 01/10/2026 ("ok"); 5 linhas a 0,76 m; antena da TECU.
+   Mesma escala dos outros (10 unidades = 1 m, frente para cima). O CENTRO DO ICONE e a ANTENA no teto da
+   CABINE, que fica NO CENTRO da maquina (dono, 01/10/2026: "a cabine fica no centro, o duto vem das
+   unidades" — o 1o rascunho a tinha deslocado para a esquerda, errado).
+   Ficha (allmachines; "9970 Pro-Series Cotton Pickers", Beltwide 1998): rodas MOTRIZES 20.8x42 na FRENTE
+   (~1,90 x 0,53 m) e rodas-GUIA 11.25x24 atras (~1,15 x 0,29 m) — a direcao e traseira; cesto de ~30 m3;
+   ~13 t (4 linhas). Linhas: o cadastro da faixa de 3,8 m na COL-003 e a plantadeira de algodao (IMP-032)
+   planta a 76 cm -> 5 unidades a 76 cm (confirmar com o dono).
+   Pelas fotos (videos de 9970 no Brasil e fora; mods FS19/FS25): UNIDADES DE COLHEITA na frente (ver o
+   detalhe no bloco das unidades); CABINE no centro; DOIS DUTOS pretos do lado direito levando o algodao ao CESTO; CESTO grande, retangular, com laterais de GRADE, de logo atras da cabine ate quase a
+   traseira; rodas motrizes grandes na frente, rodinhas-guia atras.
+   SEM ficha de comprimento: ESTIMADO pelas fotos — unidades de 0 a 2,4 m (pontas amarelas ate 0,9 m);
+   cabine de 2,0 a 3,8 m, 1,6 m de largura, NO CENTRO; cesto de 3,95 a 8,55 m (atras da cabine),
+   3,2 m de largura; eixo motriz a 3,3 m (bitola ~3,5 m, rodas aparecendo dos lados do cesto); eixo-guia a 7,95 m (bitola ~2,6 m); traseira a 8,95 m.
+   ANTENA: da TECU (branca, redonda, pequena) no teto da cabine — NAO tem StarFire (dono, 01/10/2026). linhas/espM: 5 x 0,76 m por padrao. */
+/* Gerador da previa aprovada: docs/icones_telemetria/gerar_previa_colhedora_algodao.mjs */
+function svgColhedoraAlgodao(desligada, linhas, espM){
+  linhas=linhas||5; espM=espM||0.76;
+  var xa=VB_W/2, Y0=VB_H/2-21, y=function(m){return Y0+m*10;};   // antena: 2,1 m da frente, na cabine
+  var cx=xa;                                                     // CABINE NO CENTRO (dono, 01/10/2026 — corrigido: estava 0,6 m a esquerda)
+  var VD = desligada ? '#6b7280' : '#367c2b', VE = desligada ? '#3b4048' : '#1d3a17';
+  var AM = desligada ? '#9aa0a6' : '#ffd500', AE = desligada ? '#5b626b' : '#8a7400', PR = desligada ? '#3a3f45' : '#141414';
+  var s='';
+  function r(a){ s+='<rect '+a+'/>'; }
+  function pneu(xc, ym, D, L){
+    r('fill="#1b1b1b" stroke="#000" stroke-width="1" x="'+(xc-L/2)+'" y="'+(y(ym)-D/2)+'" width="'+L+'" height="'+D+'" rx="'+Math.min(2.5,L/2)+'"');
+    for(var k=1;k<5;k++) s+='<line x1="'+(xc-L/2+.8)+'" x2="'+(xc+L/2-.8)+'" y1="'+(y(ym)-D/2+k*D/5)+'" y2="'+(y(ym)-D/2+k*D/5)+'" stroke="#3a3a3a" stroke-width="1"/>'; }
+  // rodas: motrizes grandes na frente, guias pequenas atras
+  [-17.5,17.5].forEach(function(dx){ pneu(cx+dx, 3.3, 19, 5.3); });   // aparecem dos lados do cesto
+  [-13,13].forEach(function(dx){ pneu(cx+dx, 7.95, 11.5, 2.9); });
+  // chassi
+  r('fill="'+VD+'" stroke="'+VE+'" stroke-width="1.2" x="'+(cx-13)+'" y="'+y(2.2)+'" width="26" height="'+((8.95-2.2)*10)+'" rx="2.5"');
+  // UNIDADES DE COLHEITA PRO-12 (refeitas em 01/10/2026 — dono: "olha especificamente as unidades").
+  // Trabalho Deere (Beltwide 1998, "9970 and 9976 PRO-Series"): cada unidade tem tambor DIANTEIRO e TRASEIRO
+  // de 12 barras x 18 fusos; coluna do umedecedor montada do LADO (gabinete mais curto); o ar do ventilador e
+  // dividido por igual entre as 4/5/6 unidades. Pelas fotos (leilao J.M. Wood de 9970 PRO-12; videos):
+  //  - os LEVANTADORES AMARELOS sao SAPATAS LARGAS, pontudas so na frente, ENTRE as linhas (a planta entra na FRESTA entre
+  //    duas pontas): N linhas -> N+1 pontas (uma em cada divisa e uma em cada borda);
+  //  - atras deles, o GABINETE de cada unidade: caixas verdes altas, lado a lado, formando uma parede;
+  //  - os DUTOS sao dois tubos pretos do lado direito (ver o bloco dos dutos).
+  // ESTIMADO: sapatas de 0 a 1,7 m, 0,50 m de largura (fresta de ~0,26 m); gabinetes de 1,4 a 2,5 m.
+  var meia=linhas*espM*10/2, passo=espM*10;
+  // UNIDADES DESLOCADAS para a DIREITA (dono, 01/10/2026: "desloca a estrutura das unidades um pouco para a
+  // direita, sendo 2 unidades para a esquerda e 3 para a direita, ai o duto fica mais facil"): com 5 linhas,
+  // deslocadas para a direita; a cabine, as rodas e o cesto seguem no centro.
+  // reduzido depois (dono: "reduz um pouco esse deslocamento, puxando um pouco mais ao centralizado"): 1/4 de
+  // linha (~0,19 m) em vez de meia linha (~0,38 m)
+  var cu=cx+((linhas%2)?passo/4:0);
+  // UNIDADES (dono, 01/10/2026). Historico do mesmo dia: amarelo so nas PONTAS (nao o corpo); corpo verde
+  // maior; e depois: "o corpo ficou muito longo, pode ser a METADE; as estruturas amarelas ficam nas
+  // EXTREMIDADES com um ANGULO um pouco ABERTO para os lados, para AFUNILAR ao centro guiando a linha da cultura
+  // ao centro". Cada unidade: corpo verde de 0,54 m de largura e ~1,05 m de comprimento (de 0,75 a 1,8 m);
+  // na frente, DUAS pontas amarelas finas nas extremidades, em DIAGONAL: largas na frente (bordas de fora) e
+  // convergindo para a FRESTA da linha no centro — um FUNIL em "V" aberto para a frente. A fresta segue como
+  // fenda escura pelo corpo. Vao de ~0,22 m entre as unidades. ESTIMADO pelas fotos.
+  // BARRA TRANSVERSAL que segura as unidades e as liga ao chassi (com o corpo pela metade, sem ela as
+  // unidades ficavam soltas na frente da maquina)
+  // metade da grossura (dono, 01/10/2026: "a estrutura que segura as unidades ficou muito grossa, coloca com a
+  // metade"): ~0,30 m (era ~0,60 m), encostada atras das unidades e no chassi
+  r('fill="'+VD+'" stroke="'+VE+'" stroke-width="1" x="'+(cu-meia+1)+'" y="'+y(1.85)+'" width="'+(meia*2-2)+'" height="3.5" rx=".9"');
+  var mu=2.7, fr=0.45;                                       // meia largura do corpo; meia fresta
+  for(var k=0;k<linhas;k++){ var xu=cu-meia+(k+0.5)*passo;
+    r('fill="'+VD+'" stroke="'+VE+'" stroke-width="1" x="'+(xu-mu)+'" y="'+y(0.75)+'" width="'+(2*mu)+'" height="10.5" rx="1.2"');  // corpo verde (metade)
+    r('fill="'+PR+'" x="'+(xu-fr+.1)+'" y="'+y(0.75)+'" width="'+(2*fr-.2)+'" height="7" rx=".3"');                               // fenda da linha
+    s+='<circle cx="'+(xu+mu-1)+'" cy="'+y(1.55)+'" r=".8" fill="'+PR+'"/>';                                                      // coluna do umedecedor
+    // pontas amarelas (dono, 01/10/2026: "voce fez literalmente um Y; pega da versao anterior, COLADA, partindo do
+    // CANTO da unidade, uma do canto esquerdo e outra do direito, e abre para fora a ponta de cima uns 15 GRAUS"):
+    // sapata encorpada (0,17 m) colada na frente do corpo, nascendo no canto; segue para a frente 0,75 m
+    // inclinada para FORA (o angulo e calculado pelo vao entre as unidades — ver abaixo), ponta afiada na frente-fora.
+    [-1,1].forEach(function(l){
+      // ANGULO ajustado para NAO COLIDIR com a vizinha (dono, 01/10/2026: "ajusta o grau para nao colidir com
+      // a vizinha"): com 15 graus cada ponta abria ~0,20 m e as duas vizinhas (0,40 m) cruzavam o vao de 0,22 m
+      // entre os corpos. Agora o desvio sai do vao, deixando ~10 cm entre as pontas vizinhas (~4,6 graus com 76 cm;
+      // com 5 cm / 6,5 graus o contorno fazia as pontas parecerem encostadas).
+      var vao=passo-2*mu, desv=Math.max(0,(vao-1.0)/2);   // folga de ~10 cm entre as pontas vizinhas
+      var xo=xu+l*mu, xi=xu+l*(mu-1.7), dv=l*desv;
+      s+='<path fill="'+AM+'" stroke="'+AE+'" stroke-width=".55" d="M'+xo+','+y(0.75)+' L'+xi+','+y(0.75)+' L'+(xi+dv)+','+y(0.18)+' L'+(xo+dv)+','+y(0)+' Z"/>'; });
+  }
+  // CESTO: grande, retangular, laterais de GRADE
+  r('fill="'+VD+'" stroke="'+VE+'" stroke-width="1.4" x="'+(cx-16)+'" y="'+y(3.95)+'" width="32" height="'+((8.55-3.95)*10)+'" rx="1.5"');
+  r('fill="'+(desligada?'#4b5057':'#2a4d22')+'" x="'+(cx-14)+'" y="'+(y(3.95)+2)+'" width="28" height="'+((8.55-3.95)*10-4)+'" rx="1"');
+  for(var g=1; g<7; g++) s+='<line x1="'+(cx-14)+'" x2="'+(cx+14)+'" y1="'+(y(3.95)+2+g*(((8.55-3.95)*10-4)/7))+'" y2="'+(y(3.95)+2+g*(((8.55-3.95)*10-4)/7))+'" stroke="'+VE+'" stroke-width=".7"/>';
+  s+='<line x1="'+cx+'" x2="'+cx+'" y1="'+(y(3.95)+2)+'" y2="'+(y(8.55)-2)+'" stroke="'+VE+'" stroke-width=".7"/>';
+  // DUTOS: DOIS tubos PRETOS do lado DIREITO (dono, 01/10/2026). Ajuste da mesma data: "o duto e a cabine nao
+  // entram no cesto; os dutos do lado direito, um pouco mais a direita para ficarem visiveis os dois; nao e bem
+  // reto: sai mais ESPACADO embaixo, na unidade, e JUNTA mais na parte que chega no cesto". Saem das duas
+  // unidades da direita e convergem para a BORDA da frente do cesto, sem entrar nele. ESTIMADO pelas fotos; ~0,3 m de diametro.
+  // RETOS e INCLINADOS (dono: "ele nao e curvo, e inclinado; o duto em si e reto"): saem do centro das duas
+  // unidades da direita (afastados) e chegam mais juntos na borda da frente do cesto.
+  var uD1=cu-meia+(linhas-1.5)*passo, uD2=cu-meia+(linhas-0.5)*passo;      // centros das 2 unidades da direita
+  // mais FINOS (dono: "o duto nao e tao grosso"): ~0,30 m (era ~0,50 m)
+  [[uD1, cx+10.6],[uD2, cx+13.6]].forEach(function(d){ var xa=d[0], xb=d[1];
+    s+='<line x1="'+xa+'" y1="'+y(1.95)+'" x2="'+xb+'" y2="'+y(3.85)+'" stroke="'+(desligada?'#8a9098':'#6b6f75')+'" stroke-width="3.6" stroke-linecap="round"/>';
+    s+='<line x1="'+xa+'" y1="'+y(1.95)+'" x2="'+xb+'" y2="'+y(3.85)+'" stroke="#0a0a0a" stroke-width="2.8" stroke-linecap="round"/>';
+    s+='<line x1="'+(xa-.55)+'" y1="'+y(2.0)+'" x2="'+(xb-.55)+'" y2="'+y(3.8)+'" stroke="#3d4045" stroke-width=".45" stroke-linecap="round"/>'; });
+  // CABINE NO CENTRO, logo A FRENTE do cesto (nao entra nele), vidro escuro na frente
+  r('fill="'+VD+'" stroke="'+VE+'" stroke-width="1.4" x="'+(xa-8)+'" y="'+y(2.0)+'" width="16" height="18" rx="3"');
+  r('fill="#111" opacity=".8" x="'+(xa-6.5)+'" y="'+y(2.25)+'" width="13" height="6" rx="2"');
+  // ANTENA DA TECU (centro do icone) no teto da cabine — dono, 01/10/2026: "ela nao tem StarFire, vai ser a
+  // antena da TECU... branca, redonda, pequena". Desenhada um pouco maior que o real para aparecer no mapa.
+  s+='<circle cx="'+xa+'" cy="'+(VB_H/2)+'" r="1.7" fill="'+(desligada?'#c9ced4':'#f4f4f2')+'" stroke="'+(desligada?'#5b6672':'#4a4f55')+'" stroke-width=".7"/>';
+  return s;
+}
+/* halo do ESTADO centrado no corpo (unidades 2,1 m a frente da antena; traseira 6,85 m atras) */
+function svgColhedoraAlgodaoIcone(cor, desligada){ return `<svg viewBox="0 0 ${VB_W} ${VB_H}" style="width:100%;height:100%;overflow:visible"><g class="gir"><ellipse cx="${VB_W/2}" cy="${VB_H/2+24}" rx="23" ry="48" fill="${cor}" opacity=".30" stroke="${cor}" stroke-width="2.5"/>${svgColhedoraAlgodao(desligada, 5, 0.76)}</g></svg>`; }
+/* CARREGADEIRAS (01/10/2026): Case W20G (TRA-006, TRA-005), Caterpillar 924G (TRA-012) e o manipulador
+   JCB 530-70 (TRA-008). Escolha pelo MODELO. Centro do icone = antena da TECU na frente do teto da cabine. */
+function ehCaseW20g(maqId){ const m=MAQS[maqId]||{}; return /(^|[^0-9A-Za-z-])W20G([^0-9A-Za-z-]|$)/i.test((m.modelo||'')+' '+(m.nome||'')); }
+/* PA-CARREGADEIRA CASE W20G (TRA-006, TRA-005; 2024) — ARTICULADA, feita em Contagem/MG.
+   APROVADO pelo dono em 01/10/2026 ("todos ok"). Mesma escala e referencia dos outros (10 unidades = 1 m, frente para cima).
+   FICHA (encarte Fornecedora + folheto Technico): comprimento 6,928 m com a cacamba padrao de 1,91 m3
+   com dentes, apoiada no chao; ENTRE-EIXOS 2,743 m; BITOLA 1,880 m; largura sobre pneus 2,360 m;
+   CACAMBA 2,403 m; ARTICULACAO a 1,3175 m do eixo traseiro (= 1,4255 m do dianteiro, quase no meio);
+   eixo traseiro ate o contrapeso 1,713 m; pneus 17,5-25 (~1,35 x 0,445 m). Conta: ponta da cacamba
+   ate o eixo dianteiro = 6,928 - 2,743 - 1,713 = 2,472 m.
+   BRACO "XT" de elevacao paralela: 2 bracos com os 2 cilindros da cacamba POR CIMA (visiveis de cima).
+   Pelas fotos (Brasif, Technico): corpo AMARELO Case; BRACOS e CACAMBA cinza-escuro; cabine e TETO
+   PRETOS; grade traseira e para-choque/contrapeso PRETOS; escapamento preto atras da cabine; escada do
+   lado esquerdo, a frente da roda traseira.
+   ESTIMADO (sem cota na ficha): cabine de 1,5 a 3,1 m atras do eixo dianteiro, 1,40 m de largura;
+   capo de 1,30 m; fundo da cacamba visto de cima ~1,0 m; bracos a 0,60 m do meio.
+   Sem GPS de fabrica: o centro do icone e a ANTENA DA TECU (branca, redonda, pequena) na frente do
+   teto da cabine, a 4,25 m da ponta da cacamba. */
+/* Gerador da previa aprovada: docs/icones_telemetria/gerar_previa_carregadeiras.mjs */
+function svgCaseW20g(desligada){
+  var xa=VB_W/2, cx=xa, Y0=VB_H/2-42.5, y=function(m){return Y0+m*10;};   // antena a 4,25 m da ponta
+  var AM = desligada ? '#6b7280' : '#e9a515', AE = desligada ? '#3b4048' : '#5c3d06';
+  var PR = desligada ? '#3a3f45' : '#1d1e20', CZ = desligada ? '#4b5057' : '#383c41', CZE = desligada ? '#2a2e33' : '#0f1011';
+  var s='';
+  function r(a){ s+='<rect '+a+'/>'; }
+  function pneu(xc, ym, D, L){
+    r('fill="#1b1b1b" stroke="#000" stroke-width="1" x="'+(xc-L/2)+'" y="'+(y(ym)-D/2)+'" width="'+L+'" height="'+D+'" rx="2"');
+    for(var k=1;k<6;k++){ var yy=y(ym)-D/2+k*D/6;     // garras em V da L3
+      s+='<polyline points="'+(xc-L/2+.6)+','+(yy+1)+' '+xc+','+yy+' '+(xc+L/2-.6)+','+(yy+1)+'" fill="none" stroke="#3c3c3c" stroke-width=".9"/>'; } }
+  var eF=2.472, art=eF+1.4255, eT=eF+2.743, fim=6.928, bit=9.4;
+  [eF,eT].forEach(function(e){ [-1,1].forEach(function(l){ pneu(cx+l*bit, e, 13.5, 4.45); }); });
+  // CHASSI DIANTEIRO amarelo (entre as rodas da frente, ate a articulacao) + eixo
+  r('fill="'+PR+'" x="'+(cx-7.6)+'" y="'+(y(eF)-1.2)+'" width="15.2" height="2.4" rx=".8"');
+  r('fill="'+AM+'" stroke="'+AE+'" stroke-width="1" x="'+(cx-4.6)+'" y="'+y(eF-0.85)+'" width="9.2" height="'+((art-eF+0.85)*10)+'" rx="1.2"');
+  // para-lamas dianteiros amarelos (cobrem a metade de tras dos pneus da frente)
+  [-1,1].forEach(function(l){ r('fill="'+AM+'" stroke="'+AE+'" stroke-width="1" x="'+(cx+l*bit-2.7)+'" y="'+y(eF-0.1)+'" width="5.4" height="7.4" rx="2"'); });
+  // ARTICULACAO: pino + 2 cilindros de direcao cruzando
+  [-1,1].forEach(function(l){ s+='<line x1="'+(cx+l*3.8)+'" y1="'+y(art-0.55)+'" x2="'+(cx+l*5.2)+'" y2="'+y(art+0.5)+'" stroke="#2a2a2a" stroke-width="1.2" stroke-linecap="round"/>'; });
+  // CHASSI TRASEIRO amarelo + para-lamas grandes sobre as rodas de tras
+  r('fill="'+AM+'" stroke="'+AE+'" stroke-width="1.1" x="'+(cx-6.9)+'" y="'+y(art+0.05)+'" width="13.8" height="'+((fim-0.12-art-0.05)*10)+'" rx="1.5"');
+  [-1,1].forEach(function(l){ r('fill="'+AM+'" stroke="'+AE+'" stroke-width="1.1" x="'+(cx+l*bit-2.8)+'" y="'+y(eT-0.62)+'" width="5.6" height="12.4" rx="2.5"'); });
+  s+='<circle cx="'+cx+'" cy="'+y(art)+'" r="1.5" fill="#2a2a2a" stroke="#000" stroke-width=".6"/>';
+  // ESCADA do lado esquerdo, entre a roda da frente e a de tras
+  r('fill="'+PR+'" x="'+(cx-11.4)+'" y="'+y(art+0.1)+'" width="3.6" height="5" rx=".5"');
+  for(var k=1;k<4;k++) s+='<line x1="'+(cx-11.1)+'" x2="'+(cx-8.1)+'" y1="'+(y(art+0.1)+k*1.25)+'" y2="'+(y(art+0.1)+k*1.25)+'" stroke="#6a6f75" stroke-width=".5"/>';
+  // CAPO amarelo atras da cabine, com GRADE PRETA do radiador na traseira e CONTRAPESO preto
+  r('fill="'+AM+'" stroke="'+AE+'" stroke-width="1" x="'+(cx-6.4)+'" y="'+y(5.55)+'" width="12.8" height="'+((6.45-5.55)*10)+'" rx="1"');
+  s+='<line x1="'+(cx-5.4)+'" x2="'+(cx+5.4)+'" y1="'+y(5.95)+'" y2="'+y(5.95)+'" stroke="'+AE+'" stroke-width=".5"/>';
+  r('fill="'+PR+'" x="'+(cx-6.0)+'" y="'+y(6.45)+'" width="12" height="'+((6.78-6.45)*10)+'" rx=".6"');
+  for(var g=1;g<6;g++) s+='<line x1="'+(cx-6+g*2)+'" x2="'+(cx-6+g*2)+'" y1="'+(y(6.45)+.4)+'" y2="'+(y(6.78)-.4)+'" stroke="#55595e" stroke-width=".5"/>';
+  r('fill="'+PR+'" stroke="#000" stroke-width=".6" x="'+(cx-8.6)+'" y="'+y(6.76)+'" width="17.2" height="'+((fim-6.76)*10)+'" rx="1"');
+  // ESCAPAMENTO preto (direita) e pre-filtro de ar (esquerda), logo atras da cabine
+  s+='<circle cx="'+(cx+3.4)+'" cy="'+y(5.85)+'" r="1.0" fill="#202020" stroke="#000" stroke-width=".6"/>';
+  s+='<circle cx="'+(cx-3.4)+'" cy="'+y(5.85)+'" r="1.15" fill="'+PR+'" stroke="#000" stroke-width=".5"/>';
+  // BRACOS cinza-escuro (2), da torre junto da articulacao ate a cacamba, com a TRAVESSA e os
+  // CILINDROS DA CACAMBA por cima de cada braco
+  [-1,1].forEach(function(l){ var xb=cx+l*6.0;
+    s+='<line x1="'+xb+'" y1="'+y(art-0.3)+'" x2="'+xb+'" y2="'+y(0.95)+'" stroke="'+CZE+'" stroke-width="2.6" stroke-linecap="round"/>';
+    s+='<line x1="'+xb+'" y1="'+y(art-0.3)+'" x2="'+xb+'" y2="'+y(0.95)+'" stroke="'+CZ+'" stroke-width="1.8" stroke-linecap="round"/>';
+    s+='<line x1="'+(xb+l*.2)+'" y1="'+y(art-0.55)+'" x2="'+(xb+l*.2)+'" y2="'+y(1.35)+'" stroke="#141414" stroke-width="1.0" stroke-linecap="round"/>';
+    s+='<line x1="'+(xb+l*.2)+'" y1="'+y(1.95)+'" x2="'+(xb+l*.2)+'" y2="'+y(1.35)+'" stroke="#b9bdc2" stroke-width=".45"/>'; });   // haste cromada
+  s+='<line x1="'+(cx-6)+'" y1="'+y(1.75)+'" x2="'+(cx+6)+'" y2="'+y(1.75)+'" stroke="'+CZ+'" stroke-width="1.6"/>';
+  // CACAMBA de 2,40 m cinza-escuro, vista de cima: fundo escuro, laterais e DENTES na borda
+  r('fill="'+CZ+'" stroke="'+CZE+'" stroke-width="1" x="'+(cx-12.0)+'" y="'+y(0.15)+'" width="24.0" height="9.0" rx="1"');
+  r('fill="'+(desligada?'#2f3338':'#17181a')+'" x="'+(cx-11.1)+'" y="'+(y(0.15)+0.9)+'" width="22.2" height="6.4" rx=".6"');
+  for(var d=0;d<8;d++){ var xd=cx-10.5+d*3.0; r('fill="#9aa0a6" stroke="#4a4f55" stroke-width=".3" x="'+(xd-.55)+'" y="'+y(0)+'" width="1.1" height="2.2" rx=".3"'); }
+  // CABINE com TETO PRETO
+  r('fill="'+PR+'" stroke="#000" stroke-width="1.1" x="'+(cx-7)+'" y="'+y(3.97)+'" width="14" height="16" rx="1.6"');
+  r('fill="none" stroke="'+(desligada?'#5d636a':'#45494e')+'" stroke-width=".7" x="'+(cx-5.9)+'" y="'+(y(3.97)+1.1)+'" width="11.8" height="13.8" rx="1"');
+  // ANTENA DA TECU: branca, redonda, pequena — o centro do icone
+  s+='<circle cx="'+xa+'" cy="'+(VB_H/2)+'" r="1.7" fill="#f4f4f2" stroke="#4a4f55" stroke-width=".6"/>';
+  return s;
+}
+function svgCaseW20gIcone(cor, desligada){ return `<svg viewBox="0 0 ${VB_W} ${VB_H}" style="width:100%;height:100%;overflow:visible"><g class="gir"><ellipse cx="${VB_W/2}" cy="${VB_H/2-8}" rx="20" ry="40" fill="${cor}" opacity=".30" stroke="${cor}" stroke-width="2.5"/>${svgCaseW20g(desligada)}</g></svg>`; }
+function ehCat924g(maqId){ const m=MAQS[maqId]||{}; return /(^|[^0-9A-Za-z-])924G([^0-9A-Za-z-]|$)/i.test((m.modelo||'')+' '+(m.nome||'')); }
+/* PA-CARREGADEIRA CATERPILLAR 924G (TRA-012; 2008) — ARTICULADA, braco VERSALINK.
+   APROVADO pelo dono em 01/10/2026 ("todos ok"). Mesma escala e referencia dos outros (10 unidades = 1 m, frente para cima).
+   FICHA (spec sheet Cat 924G + CEG): comprimento 7,168 m com a cacamba GP de 1,8 m3 de borda
+   aparafusada, apoiada; ENTRE-EIXOS 2,800 m; BITOLA 1,880 m; ARTICULACAO a 1,400 m do eixo dianteiro
+   (no meio exato); eixo traseiro ate o para-choque 1,923 m; CACAMBA 2,550 m; largura sobre pneus
+   2,466 m com 20,5-25 (~1,49 x 0,52 m). Conta: ponta da cacamba ate o eixo dianteiro = 2,445 m.
+   BRACO VERSALINK: UMA lanca larga de peca unica, centrada, com UM cilindro de basculamento central
+   POR CIMA (alavanca e tirante ate a cacamba); os 2 cilindros de levante ficam por baixo.
+   Pelas fotos (Wikimedia Commons): tudo AMARELO Cat, inclusive o TETO da cabine; colunas e molduras
+   da cabine PRETAS; GRADE do radiador preta grande na traseira; para-choque amarelo com lanternas;
+   escapamento preto e pre-filtro atras da cabine; escada do lado esquerdo.
+   ESTIMADO: cabine da articulacao ate perto da roda traseira (1,40 x 1,60 m); capo de 1,30 m; lanca
+   de 0,9 m na torre abrindo para 1,3 m na cacamba.
+   Sem GPS de fabrica: o centro do icone e a ANTENA DA TECU na frente do teto da cabine, a 4,10 m da
+   borda da cacamba. */
+/* Gerador da previa aprovada: docs/icones_telemetria/gerar_previa_carregadeiras.mjs */
+function svgCat924g(desligada){
+  var xa=VB_W/2, cx=xa, Y0=VB_H/2-41, y=function(m){return Y0+m*10;};       // antena a 4,10 m da borda
+  var AM = desligada ? '#6b7280' : '#f6c21a', AE = desligada ? '#3b4048' : '#5f4500';
+  var PR = desligada ? '#3a3f45' : '#1b1c1e';
+  var s='';
+  function r(a){ s+='<rect '+a+'/>'; }
+  function pneu(xc, ym, D, L){
+    r('fill="#1b1b1b" stroke="#000" stroke-width="1" x="'+(xc-L/2)+'" y="'+(y(ym)-D/2)+'" width="'+L+'" height="'+D+'" rx="2"');
+    for(var k=1;k<6;k++){ var yy=y(ym)-D/2+k*D/6;
+      s+='<polyline points="'+(xc-L/2+.6)+','+(yy+1)+' '+xc+','+yy+' '+(xc+L/2-.6)+','+(yy+1)+'" fill="none" stroke="#3c3c3c" stroke-width=".9"/>'; } }
+  var eF=2.445, art=eF+1.4, eT=eF+2.8, fim=7.168, bit=9.4;
+  [eF,eT].forEach(function(e){ [-1,1].forEach(function(l){ pneu(cx+l*bit, e, 14.9, 5.2); }); });
+  // CHASSI DIANTEIRO + para-lamas dianteiros
+  r('fill="'+PR+'" x="'+(cx-7.2)+'" y="'+(y(eF)-1.2)+'" width="14.4" height="2.4" rx=".8"');
+  r('fill="'+AM+'" stroke="'+AE+'" stroke-width="1" x="'+(cx-4.8)+'" y="'+y(eF-0.85)+'" width="9.6" height="'+((art-eF+0.85)*10)+'" rx="1.2"');
+  [-1,1].forEach(function(l){ r('fill="'+AM+'" stroke="'+AE+'" stroke-width="1" x="'+(cx+l*bit-3.0)+'" y="'+y(eF-0.1)+'" width="6.0" height="8.2" rx="2"'); });
+  [-1,1].forEach(function(l){ s+='<line x1="'+(cx+l*3.9)+'" y1="'+y(art-0.55)+'" x2="'+(cx+l*5.2)+'" y2="'+y(art+0.5)+'" stroke="#2a2a2a" stroke-width="1.2" stroke-linecap="round"/>'; });
+  // CHASSI TRASEIRO + para-lamas traseiros amarelos
+  r('fill="'+AM+'" stroke="'+AE+'" stroke-width="1.1" x="'+(cx-6.9)+'" y="'+y(art+0.05)+'" width="13.8" height="'+((fim-0.05-art-0.05)*10)+'" rx="1.5"');
+  [-1,1].forEach(function(l){ r('fill="'+AM+'" stroke="'+AE+'" stroke-width="1.1" x="'+(cx+l*bit-3.1)+'" y="'+y(eT-0.68)+'" width="6.2" height="13.6" rx="2.6"'); });
+  s+='<circle cx="'+cx+'" cy="'+y(art)+'" r="1.5" fill="#2a2a2a" stroke="#000" stroke-width=".6"/>';
+  r('fill="'+PR+'" x="'+(cx-11.6)+'" y="'+y(art+0.12)+'" width="3.6" height="5" rx=".5"');
+  for(var k=1;k<4;k++) s+='<line x1="'+(cx-11.3)+'" x2="'+(cx-8.3)+'" y1="'+(y(art+0.12)+k*1.25)+'" y2="'+(y(art+0.12)+k*1.25)+'" stroke="#6a6f75" stroke-width=".5"/>';
+  // CAPO amarelo, GRADE PRETA grande na traseira, para-choque amarelo com lanternas
+  r('fill="'+AM+'" stroke="'+AE+'" stroke-width="1" x="'+(cx-6.5)+'" y="'+y(5.45)+'" width="13" height="'+((6.55-5.45)*10)+'" rx="1"');
+  s+='<line x1="'+(cx-5.5)+'" x2="'+(cx+5.5)+'" y1="'+y(5.9)+'" y2="'+y(5.9)+'" stroke="'+AE+'" stroke-width=".5"/>';
+  r('fill="'+PR+'" x="'+(cx-6.2)+'" y="'+y(6.55)+'" width="12.4" height="'+((6.98-6.55)*10)+'" rx=".6"');
+  for(var g=1;g<6;g++) s+='<line x1="'+(cx-6.2+g*2.07)+'" x2="'+(cx-6.2+g*2.07)+'" y1="'+(y(6.55)+.4)+'" y2="'+(y(6.98)-.4)+'" stroke="#55595e" stroke-width=".5"/>';
+  r('fill="'+AM+'" stroke="'+AE+'" stroke-width=".8" x="'+(cx-8.8)+'" y="'+y(6.96)+'" width="17.6" height="'+((fim-6.96)*10)+'" rx="1"');
+  [-1,1].forEach(function(l){ r('fill="'+(desligada?'#5a5f66':'#c0262b')+'" x="'+(cx+l*7.4-0.8)+'" y="'+(y(6.96)+.3)+'" width="1.6" height="1.2" rx=".3"'); });
+  s+='<circle cx="'+(cx+3.4)+'" cy="'+y(5.75)+'" r="1.0" fill="#202020" stroke="#000" stroke-width=".6"/>';
+  s+='<circle cx="'+(cx-3.4)+'" cy="'+y(5.75)+'" r="1.2" fill="'+PR+'" stroke="#000" stroke-width=".5"/>';
+  // LANCA VERSALINK: peca unica amarela, estreita na torre e larga na cacamba, com vazado no meio
+  s+='<polygon points="'+(cx-4.5)+','+y(art-0.25)+' '+(cx+4.5)+','+y(art-0.25)+' '+(cx+6.5)+','+y(1.0)+' '+(cx-6.5)+','+y(1.0)+'" fill="'+AM+'" stroke="'+AE+'" stroke-width="1"/>';
+  s+='<polygon points="'+(cx-2.3)+','+y(art-0.75)+' '+(cx+2.3)+','+y(art-0.75)+' '+(cx+4.0)+','+y(1.55)+' '+(cx-4.0)+','+y(1.55)+'" fill="'+(desligada?'#2f3338':'#2b2416')+'"/>';
+  // CILINDRO DE BASCULAMENTO central por cima, com alavanca e tirante ate a cacamba
+  s+='<line x1="'+cx+'" y1="'+y(art-0.35)+'" x2="'+cx+'" y2="'+y(2.0)+'" stroke="#141414" stroke-width="1.8" stroke-linecap="round"/>';
+  s+='<line x1="'+cx+'" y1="'+y(2.45)+'" x2="'+cx+'" y2="'+y(2.0)+'" stroke="#b9bdc2" stroke-width=".6"/>';
+  r('fill="'+PR+'" stroke="#000" stroke-width=".5" x="'+(cx-1.0)+'" y="'+y(1.05)+'" width="2.0" height="9.5" rx=".5"');   // alavanca + tirante
+  // CACAMBA GP de 2,55 m amarela, borda aparafusada (sem dentes)
+  r('fill="'+AM+'" stroke="'+AE+'" stroke-width="1" x="'+(cx-12.75)+'" y="'+y(0.1)+'" width="25.5" height="9.2" rx="1"');
+  r('fill="'+(desligada?'#2f3338':'#1d1a12')+'" x="'+(cx-11.85)+'" y="'+(y(0.1)+0.9)+'" width="23.7" height="6.6" rx=".6"');
+  r('fill="#9aa0a6" stroke="#4a4f55" stroke-width=".3" x="'+(cx-12.4)+'" y="'+y(0)+'" width="24.8" height="1.4" rx=".4"');
+  for(var p=0;p<9;p++) s+='<circle cx="'+(cx-11+p*2.75)+'" cy="'+(y(0)+.7)+'" r=".3" fill="#4a4f55"/>';
+  // CABINE: TETO AMARELO com colunas e moldura PRETAS
+  r('fill="'+PR+'" x="'+(cx-7)+'" y="'+y(3.85)+'" width="14" height="16" rx="1.6"');
+  r('fill="'+AM+'" stroke="'+AE+'" stroke-width=".6" x="'+(cx-6.1)+'" y="'+(y(3.85)+.9)+'" width="12.2" height="14.2" rx="1.2"');
+  [[-1,0],[1,0],[-1,1],[1,1]].forEach(function(c){ r('fill="'+PR+'" x="'+(cx+c[0]*6.1-1)+'" y="'+(y(3.85)+c[1]*14.2)+'" width="2" height="1.8" rx=".4"'); });
+  s+='<circle cx="'+xa+'" cy="'+(VB_H/2)+'" r="1.7" fill="#f4f4f2" stroke="#4a4f55" stroke-width=".6"/>';
+  return s;
+}
+function svgCat924gIcone(cor, desligada){ return `<svg viewBox="0 0 ${VB_W} ${VB_H}" style="width:100%;height:100%;overflow:visible"><g class="gir"><ellipse cx="${VB_W/2}" cy="${VB_H/2-5}" rx="21" ry="41" fill="${cor}" opacity=".30" stroke="${cor}" stroke-width="2.5"/>${svgCat924g(desligada)}</g></svg>`; }
+function ehJcb53070(maqId){ const m=MAQS[maqId]||{}; return /(^|[^0-9A-Za-z-])530-70([^0-9A-Za-z-]|$)/i.test((m.modelo||'')+' '+(m.nome||'')); }
+/* MANIPULADOR TELESCOPICO JCB 530-70 LOADALL (TRA-008; 2022) — versao "SIDE ENGINE" feita na India,
+   a vendida no Brasil (loja JCB pt-BR: pneus 13.00-24 na frente e 12.5/80-18 atras).
+   APROVADO pelo dono em 01/10/2026 ("todos ok"). Mesma escala e referencia dos outros (10 unidades = 1 m, frente para cima).
+   FICHA (folheto indiano Side Engine + ficha Bell): ate a face do porta-garfo 4,92 m; ENTRE-EIXOS
+   2,54 m; BITOLA dianteira 1,99 m; largura sobre pneus 2,36 m; centro da roda dianteira ate o
+   porta-garfo 1,42 m; centro da roda traseira ate a traseira 0,95 m; cabine 0,79 m por dentro.
+   As 4 rodas NAO sao iguais: frente 13.00-24 (~1,27 x 0,33 m), tras 12.5/80-18 (~0,98 x 0,31 m);
+   direcao so nas de tras. Garfos ~1,05 m (medidos no desenho de cotas).
+   ARRANJO de cima: CABINE a ESQUERDA, MOTOR DE LADO a DIREITA (capo baixo com grade lateral), LANCA
+   no meio entre os dois, com o pivo na traseira, passando 0,78 m a frente dos pneus ate o porta-garfo.
+   Cores: amarelo JCB, cabine e para-lamas pretos.
+   ESTIMADO: cabine de 0,65 a 2,05 m atras do eixo dianteiro, 0,94 m por fora; lanca de 0,44 m;
+   porta-garfo de 1,30 m; desenhado com GARFOS (se o TRA-008 anda com cacamba, trocar).
+   Sem GPS de fabrica: o centro do icone e a ANTENA DA TECU na frente do teto da cabine (que fica a
+   ESQUERDA), a 3,30 m da ponta dos garfos. */
+/* Gerador da previa aprovada: docs/icones_telemetria/gerar_previa_carregadeiras.mjs */
+function svgJcb53070(desligada){
+  var xa=VB_W/2, cx=xa+5.7, Y0=VB_H/2-33, y=function(m){return Y0+m*10;};   // antena: frente do teto da cabine
+  var AM = desligada ? '#6b7280' : '#f2b10f', AE = desligada ? '#3b4048' : '#5c4000';
+  var PR = desligada ? '#3a3f45' : '#1c1d1f', CH = desligada ? '#575d66' : '#c98f0b';
+  var s='';
+  function r(a){ s+='<rect '+a+'/>'; }
+  function pneu(xc, ym, D, L){
+    r('fill="#1b1b1b" stroke="#000" stroke-width="1" x="'+(xc-L/2)+'" y="'+(y(ym)-D/2)+'" width="'+L+'" height="'+D+'" rx="1.8"');
+    for(var k=1;k<5;k++){ var yy=y(ym)-D/2+k*D/5;
+      s+='<polyline points="'+(xc-L/2+.5)+','+(yy+.8)+' '+xc+','+yy+' '+(xc+L/2-.5)+','+(yy+.8)+'" fill="none" stroke="#3c3c3c" stroke-width=".8"/>'; } }
+  var gF=1.05, eF=gF+1.42, eT=eF+2.54, fim=eT+0.95, xl=cx+0.9;   // xl = eixo da lanca
+  [-1,1].forEach(function(l){ pneu(cx+l*9.95, eF, 12.7, 3.3); pneu(cx+l*9.8, eT, 9.8, 3.1); });
+  // CHASSI amarelo (mais escuro) entre as rodas + eixos pretos
+  r('fill="'+CH+'" stroke="'+AE+'" stroke-width=".8" x="'+(cx-8.2)+'" y="'+y(eF-0.35)+'" width="16.4" height="'+((eT+0.2-eF+0.35)*10)+'" rx="1"');
+  r('fill="'+PR+'" x="'+(cx-8.4)+'" y="'+(y(eF)-1)+'" width="16.8" height="2" rx=".6"');
+  // para-lamas pretos sobre as rodas da frente (metade de tras) e de tras
+  [-1,1].forEach(function(l){ r('fill="'+PR+'" stroke="#000" stroke-width=".6" x="'+(cx+l*9.95-2.1)+'" y="'+y(eF-0.1)+'" width="4.2" height="7.2" rx="1.6"');
+    r('fill="'+PR+'" stroke="#000" stroke-width=".6" x="'+(cx+l*9.8-1.95)+'" y="'+y(eT-0.15)+'" width="3.9" height="5.6" rx="1.4"'); });
+  // TRASEIRA amarela larga, com lanternas e engate
+  r('fill="'+AM+'" stroke="'+AE+'" stroke-width="1" x="'+(cx-9.4)+'" y="'+y(eT+0.42)+'" width="18.8" height="'+((fim-eT-0.42)*10)+'" rx="1.2"');
+  [-1,1].forEach(function(l){ r('fill="'+(desligada?'#5a5f66':'#c0262b')+'" x="'+(cx+l*8-0.8)+'" y="'+(y(fim)-1.6)+'" width="1.6" height="1.1" rx=".3"'); });
+  s+='<circle cx="'+cx+'" cy="'+(y(fim)-.6)+'" r="1.0" fill="#2a2a2a" stroke="#000" stroke-width=".5"/>';
+  // MOTOR DE LADO, a DIREITA: capo amarelo baixo com a grade preta virada para fora
+  r('fill="'+AM+'" stroke="'+AE+'" stroke-width="1" x="'+(cx+3.0)+'" y="'+y(eF+0.68)+'" width="5.6" height="'+((eT-0.3-eF-0.68)*10)+'" rx="1.2"');
+  r('fill="'+PR+'" x="'+(cx+7.0)+'" y="'+y(eF+1.0)+'" width="1.2" height="'+((eT-0.85-eF-1.0)*10)+'" rx=".3"');
+  for(var g=1;g<7;g++) s+='<line x1="'+(cx+7.0)+'" x2="'+(cx+8.2)+'" y1="'+(y(eF+1.0)+g*((eT-0.85-eF-1.0)*10)/7)+'" y2="'+(y(eF+1.0)+g*((eT-0.85-eF-1.0)*10)/7)+'" stroke="#55595e" stroke-width=".4"/>';
+  s+='<circle cx="'+(cx+4.6)+'" cy="'+y(eT-0.85)+'" r=".8" fill="#202020" stroke="#000" stroke-width=".5"/>';   // escapamento
+  // LANCA amarela no meio: pivo na traseira, cabeca na frente; faixa preta (decalque) por cima
+  r('fill="'+AM+'" stroke="'+AE+'" stroke-width="1.1" x="'+(xl-2.2)+'" y="'+y(gF+0.55)+'" width="4.4" height="'+((eT+0.25-gF-0.55)*10)+'" rx="1"');
+  s+='<line x1="'+xl+'" y1="'+y(eF+0.2)+'" x2="'+xl+'" y2="'+y(eT-0.2)+'" stroke="'+(desligada?'#3b4048':'#1a1a1a')+'" stroke-width=".8"/>';
+  r('fill="'+(desligada?'#4b5057':'#3a3d40')+'" stroke="#111" stroke-width=".5" x="'+(xl-1.7)+'" y="'+y(gF+0.2)+'" width="3.4" height="4.5" rx=".6"');   // secao interna
+  r('fill="'+AM+'" stroke="'+AE+'" stroke-width=".8" x="'+(xl-2.6)+'" y="'+y(gF+0.5)+'" width="5.2" height="2.6" rx=".6"');   // cabeca da lanca
+  s+='<circle cx="'+xl+'" cy="'+y(eT)+'" r="1.1" fill="#2a2a2a" stroke="#000" stroke-width=".5"/>';
+  // PORTA-GARFO de 1,30 m e os 2 GARFOS
+  r('fill="'+PR+'" stroke="#000" stroke-width=".6" x="'+(xl-6.5)+'" y="'+y(gF)+'" width="13" height="2.2" rx=".5"');
+  [-1,1].forEach(function(l){ r('fill="'+(desligada?'#5f656c':'#4b5056')+'" stroke="#1a1a1a" stroke-width=".5" x="'+(xl+l*4.5-0.6)+'" y="'+y(0)+'" width="1.2" height="'+(gF*10)+'" rx=".3"'); });
+  // CABINE a ESQUERDA, teto preto com o vidro
+  r('fill="'+PR+'" stroke="#000" stroke-width="1" x="'+(cx-10.4)+'" y="'+y(eF+0.65)+'" width="9.4" height="'+((2.05-0.65)*10)+'" rx="1.3"');
+  r('fill="none" stroke="'+(desligada?'#5d636a':'#45494e')+'" stroke-width=".6" x="'+(cx-9.5)+'" y="'+(y(eF+0.65)+.9)+'" width="7.6" height="'+((2.05-0.65)*10-1.8)+'" rx=".8"');
+  s+='<circle cx="'+xa+'" cy="'+(VB_H/2)+'" r="1.7" fill="#f4f4f2" stroke="#4a4f55" stroke-width=".6"/>';
+  return s;
+}
+function svgJcb53070Icone(cor, desligada){ return `<svg viewBox="0 0 ${VB_W} ${VB_H}" style="width:100%;height:100%;overflow:visible"><g class="gir"><ellipse cx="${VB_W/2+5.7}" cy="${VB_H/2-3}" rx="18" ry="35" fill="${cor}" opacity=".30" stroke="${cor}" stroke-width="2.5"/>${svgJcb53070(desligada)}</g></svg>`; }
 /* Geometria pela FICHA TECNICA do Steiger 470 (17/09/2026): comprimento 7,39 m,
    entre-eixos 3,75 m, pneus 710/70 R42 DUPLOS (2,06 x 0,71 m). Referencia = ANTENA
    Trimble AG-392 na FRENTE do teto da cabine (dono): o centro do icone e a antena,
@@ -2053,7 +2475,7 @@ function desenhaTelemetria(){
     const e=estadoTele(t), ll=noTempo?[noTempo[0],noTempo[1]]:[pr.lat,pr.lon]; pts.push(ll);
     const faixa=Number((MAQS[t.maquina_id]||{}).faixa_m)||3.8;
     const w=iconePxMob(+t.lat), hh=w*(VB_H/VB_W);
-    const mk=L.marker(ll,{icon:L.divIcon({html:(ehArticulado(t.maquina_id)?svgSteiger(e.cor,implementoDe(t.maquina_id),e.k==='desl'||e.k==='off'):ehT8(t.maquina_id)?svgT8Icone(e.cor,e.k==='desl'||e.k==='off'):ehMagnum(t.maquina_id)?svgMagnumIcone(e.cor,e.k==='desl'||e.k==='off'):ehJd7225(t.maquina_id)?svgJd7225Icone(e.cor,e.k==='desl'||e.k==='off'):ehJd8420(t.maquina_id)?svgJd8420Icone(e.cor,e.k==='desl'||e.k==='off'):ehJd7815(t.maquina_id)?svgJd7815Icone(e.cor,e.k==='desl'||e.k==='off'):ehJd6190(t.maquina_id)?svgJd6190Icone(e.cor,e.k==='desl'||e.k==='off'):ehJd6125(t.maquina_id)?svgJd6125Icone(e.cor,e.k==='desl'||e.k==='off'):ehMf4292(t.maquina_id)?svgMf4292Icone(e.cor,e.k==='desl'||e.k==='off'):ehMf6360(t.maquina_id)?svgMf6360Icone(e.cor,e.k==='desl'||e.k==='off'):ehMf296(t.maquina_id)?svgMf296Icone(e.cor,e.k==='desl'||e.k==='off'):ehValmet86(t.maquina_id)?svgValmet86Icone(e.cor,e.k==='desl'||e.k==='off'):svgMaquina(faixa,e.cor)),className:'',iconSize:[w,hh],iconAnchor:[w/2,hh/2]}),zIndexOffset:1000}).addTo(g);
+    const mk=L.marker(ll,{icon:L.divIcon({html:(ehArticulado(t.maquina_id)?svgSteiger(e.cor,implementoDe(t.maquina_id),e.k==='desl'||e.k==='off'):ehT8(t.maquina_id)?svgT8Icone(e.cor,e.k==='desl'||e.k==='off'):ehMagnum(t.maquina_id)?svgMagnumIcone(e.cor,e.k==='desl'||e.k==='off'):ehJd7225(t.maquina_id)?svgJd7225Icone(e.cor,e.k==='desl'||e.k==='off'):ehJd8420(t.maquina_id)?svgJd8420Icone(e.cor,e.k==='desl'||e.k==='off'):ehJd7815(t.maquina_id)?svgJd7815Icone(e.cor,e.k==='desl'||e.k==='off'):ehJd6190(t.maquina_id)?svgJd6190Icone(e.cor,e.k==='desl'||e.k==='off'):ehJd6125(t.maquina_id)?svgJd6125Icone(e.cor,e.k==='desl'||e.k==='off'):ehMf4292(t.maquina_id)?svgMf4292Icone(e.cor,e.k==='desl'||e.k==='off'):ehMf6360(t.maquina_id)?svgMf6360Icone(e.cor,e.k==='desl'||e.k==='off'):ehMf296(t.maquina_id)?svgMf296Icone(e.cor,e.k==='desl'||e.k==='off'):ehValmet86(t.maquina_id)?svgValmet86Icone(e.cor,e.k==='desl'||e.k==='off'):ehColhedoraSts(t.maquina_id)?svgColhedoraStsIcone(e.cor,e.k==='desl'||e.k==='off',t.maquina_id):ehColhedoraAlgodao(t.maquina_id)?svgColhedoraAlgodaoIcone(e.cor,e.k==='desl'||e.k==='off'):ehCaseW20g(t.maquina_id)?svgCaseW20gIcone(e.cor,e.k==='desl'||e.k==='off'):ehCat924g(t.maquina_id)?svgCat924gIcone(e.cor,e.k==='desl'||e.k==='off'):ehJcb53070(t.maquina_id)?svgJcb53070Icone(e.cor,e.k==='desl'||e.k==='off'):svgMaquina(faixa,e.cor)),className:'',iconSize:[w,hh],iconAnchor:[w/2,hh/2]}),zIndexOffset:1000}).addTo(g);
     const _im=implementoDe(t.maquina_id);
     mk.bindTooltip(maqLbl(t.maquina_id,t.device_id)+(_im?' · '+_im.id_frota+' ('+_im.origem+')':''),{permanent:true,direction:'bottom',offset:[0,hh/2],className:'placa'});
     mk.on('click', ()=>painelMaquina(t.device_id));      // painel do veículo (18/09/2026)
