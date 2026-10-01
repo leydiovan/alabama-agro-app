@@ -375,7 +375,8 @@ function salvarTelFiltro(){ try{ localStorage.setItem('tel_rastro',JSON.stringif
    a própria detecção conta como trabalho — dentro de lote e entre 1 e 8 km/h
    (mesma regra da migração 91) — e por isso desenha muito menos.
    O corte é no DESENHO, não na busca: trocar o modo não vai ao banco de novo. */
-function loteDeMob(lat,lon){
+function loteDeMob(lat,lon){ const l=loteMob(lat,lon); return l?l.nome:null; }
+function loteMob(lat,lon){                  // o lote inteiro (com o anel) — o recorte da faixa precisa dele
   for(const l of LOTES){
     const b=l._bb||(l._bb=(()=>{ let a=90,z=-90,c=180,d=-180;
       l.ring.forEach(p=>{ if(p[0]<a)a=p[0]; if(p[0]>z)z=p[0]; if(p[1]<c)c=p[1]; if(p[1]>d)d=p[1]; });
@@ -386,7 +387,7 @@ function loteDeMob(lat,lon){
       if((r[i][0]>lat)!==(r[j][0]>lat) &&
          lon < (r[j][1]-r[i][1])*(lat-r[i][0])/((r[j][0]-r[i][0])||1e-12)+r[i][1]) dentro=!dentro;
     }
-    if(dentro) return l.nome;
+    if(dentro) return l;
   }
   return null;
 }
@@ -419,15 +420,70 @@ function pilotoPerto(p, t){
   while(lo<hi){ const m=(lo+hi)>>1; if(ts[m]<t) lo=m+1; else hi=m; }
   return (lo<ts.length && ts[lo]-t<=60000) || (lo>0 && t-ts[lo-1]<=60000);
 }
-function soTrabalho(linhas, pil){
-  const out=[]; let atual=[];
+/* RECORTE DA FAIXA NA POLIGONAL (01/10/2026). Dono, com a faixa do TRA-001 já pintando pelo
+   piloto: "está pintando fora da poligonal". Testar só o MEIO do trecho deixava passar, no Pivô 03
+   em 01/10, 35 trechos com uma ponta fora do lote e 59 com a faixa de 18 m vazando a divisa.
+   Agora a faixa de cada trecho é RECORTADA pelo anel do lote (Sutherland–Hodgman): o quadrilátero
+   da faixa (convexo) é o recorte, o anel (pode ser côncavo) é o sujeito, e sobra só o pedaço de
+   DENTRO. Em graus mesmo: recorte é afim, não precisa projetar. Faixa inteira dentro (o caso comum)
+   volta o próprio quadrilátero, sem custo. */
+function _dentroAnel(anel, lat, lon){
+  let d=false;
+  for(let i=0,j=anel.length-1;i<anel.length;j=i++){
+    if((anel[i][0]>lat)!==(anel[j][0]>lat) &&
+       lon < (anel[j][1]-anel[i][1])*(lat-anel[i][0])/((anel[j][0]-anel[i][0])||1e-12)+anel[i][1]) d=!d;
+  }
+  return d;
+}
+function recortaFaixa(anel, quad){
+  if(quad.every(p=>_dentroAnel(anel,p[0],p[1]))) return quad;     // inteira dentro
+  let a2=0; for(let i=0;i<4;i++){ const p=quad[i], q=quad[(i+1)%4]; a2+=p[1]*q[0]-q[1]*p[0]; }
+  const sg=a2>=0?1:-1;                                              // lado de dentro do quad
+  let out=anel;
+  for(let i=0;i<4 && out.length;i++){
+    const A=quad[i], B=quad[(i+1)%4], inp=out;
+    const lado=P=>sg*((B[1]-A[1])*(P[0]-A[0])-(B[0]-A[0])*(P[1]-A[1]));
+    const cruza=(S,E,ls,le)=>{ const t=ls/(ls-le); return [S[0]+t*(E[0]-S[0]), S[1]+t*(E[1]-S[1])]; };
+    out=[];
+    for(let k=0;k<inp.length;k++){
+      const E=inp[k], S=inp[(k+inp.length-1)%inp.length], le=lado(E), ls=lado(S);
+      if(le>=0){ if(ls<0) out.push(cruza(S,E,ls,le)); out.push(E); }
+      else if(ls>=0) out.push(cruza(S,E,ls,le));
+    }
+  }
+  return out.length>=3 ? out : null;
+}
+/* área em m² de um polígono [lat,lon] (planta local) — os hectares da legenda saem do recortado */
+function areaM2(poly){
+  const la0=poly[0][0], kx=111320*Math.cos(la0*Math.PI/180), ky=111320; let s=0;
+  for(let i=0;i<poly.length;i++){ const p=poly[i], q=poly[(i+1)%poly.length]; s+=(p[1]*kx)*(q[0]*ky)-(q[1]*kx)*(p[0]*ky); }
+  return Math.abs(s)/2;
+}
+/* larg (m) é opcional: com ela, trecho cuja faixa CRUZA a divisa sai da linha grossa e vai para
+   out.bordas como polígono recortado {poly, t}. Sem ela (contagem/legado), só o teste do meio. */
+function soTrabalho(linhas, pil, larg){
+  const out=[]; out.bordas=[]; let atual=[];
   linhas.forEach(ln=>{
     for(let i=1;i<ln.length;i++){
       const a=ln[i-1], b=ln[i], va=+a[2]||0, vb=+b[2]||0;
       /* 01/10/2026: com piloto, pelo piloto; sem piloto, pela velocidade. Sempre DENTRO da poligonal. */
       const ritmo = (pil && pil.tem) ? (vb>1 && pilotoPerto(pil, ((+a[3]||0)+(+b[3]||0))/2))
                                      : (va>1 && va<=8 && vb>1 && vb<=8);
-      const trab = ritmo && !!loteDeMob((a[0]+b[0])/2,(a[1]+b[1])/2);
+      const lt = ritmo ? loteMob((a[0]+b[0])/2,(a[1]+b[1])/2) : null;
+      let trab = !!lt;
+      if(trab && larg){
+        const dx=(b[1]-a[1])*111320*Math.cos(a[0]*Math.PI/180), dy=(b[0]-a[0])*111320, D=Math.hypot(dx,dy);
+        if(D){
+          const px=-dy/D, py=dx/D, h=larg/2;
+          const g=(o,q)=>[q[0]+py*o/111320, q[1]+px*o/(111320*Math.cos(q[0]*Math.PI/180))];
+          const quad=[g(h,a),g(h,b),g(-h,b),g(-h,a)];
+          if(!quad.every(q=>_dentroAnel(lt.ring,q[0],q[1]))){       // cruza a divisa
+            const poly=recortaFaixa(lt.ring, quad);
+            if(poly) out.bordas.push({poly, t:+b[3]||0});
+            trab=false;                                              // não entra na linha grossa
+          }
+        }
+      }
       if(trab){ if(!atual.length) atual.push(a); atual.push(b); }
       else if(atual.length>1){ out.push(atual); atual=[]; } else atual=[];
     }
@@ -2456,7 +2512,7 @@ function desenhaTelemetria(){
      que só existe depois do addTo. Com o addTo lá no fim, o solar_mapa.js
      pensava que estava sempre na vista de longe e nunca mostrava as placas,
      as strings nem as construções por mais que se aproximasse. */
-  const g=L.layerGroup().addTo(_map); let i=0, pts=[], distTrab=0, faixaRef=0; const cores=[], girar=[], faixas=[], tracos=[], pontas=[];
+  const g=L.layerGroup().addTo(_map); let i=0, pts=[], distTrab=0, areaBorda=0, faixaRef=0; const cores=[], girar=[], faixas=[], bordas=[], tracos=[], pontas=[];
   /* reservatório ANTES das máquinas: fica por baixo delas. Talude, água, rótulo
      e a janela com o corte vêm do reservatorio_corte.js (arquivo ÚNICO, o mesmo
      do módulo de telemetria). */
@@ -2487,7 +2543,10 @@ function desenhaTelemetria(){
       const faixaM=_imp?_imp.larguraM:(Number((MAQS[t.maquina_id]||{}).faixa_m)||3.8);
       const wpx=Math.max(2, faixaM*pxPorMetro(+t.lat||-12.65));
       if(TRMODO==='trab'){
-        tlCortar(soTrabalho(tr.linhas, tr.piloto)).forEach(ln=>{
+        const _st=soTrabalho(tr.linhas, tr.piloto, faixaM);
+        _st.bordas.forEach(bd=>{ if(TL.t!=null && bd.t>TL.t) return;          // timelapse: só até o instante
+          bordas.push(bd.poly); areaBorda+=areaM2(bd.poly); });
+        tlCortar(_st).forEach(ln=>{
           faixas.push([ln.map(p=>[p[0],p[1]]), wpx]);
           for(let k=1;k<ln.length;k++){   // distância trabalhada -> hectares na legenda
             const a=ln[k-1], b=ln[k];
@@ -2525,7 +2584,10 @@ function desenhaTelemetria(){
   /* ORDEM IMPORTA: a faixa entra ANTES para a linha do rastro ficar por cima
      dela — é a mesma pilha do desktop (camadaFaixa embaixo, camadaTraco em
      cima). Invertido, a faixa apagaria o traço que ela deveria acompanhar. */
-  faixas.forEach(([ln,w])=>L.polyline(ln,{color:'#00c896',weight:w,opacity:.32,lineCap:'round',lineJoin:'round'}).addTo(g));
+  /* ponta RETA (butt) e junção CHANFRADA (bevel), não redondas: a redonda passava meia faixa além do fim da passada,
+     justamente na divisa (01/10/2026). Os trechos que cruzam a divisa vêm recortados em `bordas`. */
+  faixas.forEach(([ln,w])=>L.polyline(ln,{color:'#00c896',weight:w,opacity:.32,lineCap:'butt',lineJoin:'bevel'}).addTo(g));
+  bordas.forEach(pl=>L.polygon(pl,{color:'#00c896',weight:0,fillOpacity:.32}).addTo(g));
   tracos.forEach(([ln,c])=>L.polyline(ln,{color:c,weight:2.5,opacity:.9}).addTo(g));
   /* PONTA VIVA (18/09/2026). O rastro do dia sobe ao Supabase a cada 5 min; a posicao
      do "agora", a cada 1 min. Resultado que o dono viu: "o rastro esta sempre atrasado,
@@ -2550,7 +2612,7 @@ function desenhaTelemetria(){
        descontar sobreposição", aviso de escala — foi para o `title`: quem
        precisa, segura e lê; quem não precisa, tem o mapa de volta. O dono
        pediu depois de ver o painel ocupando três linhas no celular. */
-    const fx=faixaRef||0, fpx=fx*pxPorMetro(-12.65), ha=distTrab*fx/10000;
+    const fx=faixaRef||0, fpx=fx*pxPorMetro(-12.65), ha=(distTrab*fx+areaBorda)/10000;
     const dica='faixa de '+String(fx).replace('.',',')+' m · teto, sem descontar sobreposição'
       +(fpx<3?' · aproxime para ver a faixa na escala':'');
     const nota=(TRMODO==='trab'&&TRPER!=='off'&&fx>0)
