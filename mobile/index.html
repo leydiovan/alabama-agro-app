@@ -390,13 +390,44 @@ function loteDeMob(lat,lon){
   }
   return null;
 }
-function soTrabalho(linhas){
+/* PILOTO PINTA A FAIXA (01/10/2026). Pedido do dono, depois de o TRA-001 passar a manhã
+   trabalhando no Pivô 03 sem pintar: "faz pintar pelo piloto ... e apenas dentro da poligonal".
+   A Maestro anda a ~11 km/h e o teto antigo de 8 km/h descartava 88% dos trechos com piloto
+   (docs/tra001-piloto-01out2026.md). Desde a S1.9 o piloto chega em telemetria_motor.piloto,
+   1 leitura por minuto. Máquina que MANDA piloto: pinta com piloto engatado, andando e dentro do
+   lote. Máquina sem piloto no CAN: continua a regra de velocidade (1 a 8 km/h) dentro do lote.
+   Busca SÓ as leituras engatadas (leve no celular) + 1 linha para saber se a máquina manda
+   piloto. PAGINADO: o select do Supabase para em 1.000 linhas sem avisar, e um dia tem 1.440. */
+async function carregarPilotos(dev, desdeMs){
+  const iso=new Date(desdeMs).toISOString();      // instante absoluto: aqui o UTC é o certo
+  const c=await SB.from('telemetria_motor').select('medido_em').eq('device_id',dev)
+    .not('piloto','is',null).gte('medido_em',iso).limit(1);
+  if(c.error) throw c.error;
+  const tem=!!(c.data&&c.data.length), ts=[];
+  if(tem) for(let de=0;;de+=1000){
+    const {data,error}=await SB.from('telemetria_motor').select('medido_em').eq('device_id',dev)
+      .eq('piloto',true).gte('medido_em',iso).order('medido_em').range(de,de+999);
+    if(error) throw error;
+    (data||[]).forEach(r=>ts.push(Date.parse(r.medido_em)));
+    if(!data || data.length<1000) break;
+  }
+  return {tem, ts};
+}
+/* engatado no instante t = há leitura "piloto engatado" a até 60 s (a caixa manda 1 por minuto) */
+function pilotoPerto(p, t){
+  const ts=p.ts; let lo=0, hi=ts.length;
+  while(lo<hi){ const m=(lo+hi)>>1; if(ts[m]<t) lo=m+1; else hi=m; }
+  return (lo<ts.length && ts[lo]-t<=60000) || (lo>0 && t-ts[lo-1]<=60000);
+}
+function soTrabalho(linhas, pil){
   const out=[]; let atual=[];
   linhas.forEach(ln=>{
     for(let i=1;i<ln.length;i++){
       const a=ln[i-1], b=ln[i], va=+a[2]||0, vb=+b[2]||0;
-      const trab = va>1 && va<=8 && vb>1 && vb<=8 &&
-                   !!loteDeMob((a[0]+b[0])/2,(a[1]+b[1])/2);
+      /* 01/10/2026: com piloto, pelo piloto; sem piloto, pela velocidade. Sempre DENTRO da poligonal. */
+      const ritmo = (pil && pil.tem) ? (vb>1 && pilotoPerto(pil, ((+a[3]||0)+(+b[3]||0))/2))
+                                     : (va>1 && va<=8 && vb>1 && vb<=8);
+      const trab = ritmo && !!loteDeMob((a[0]+b[0])/2,(a[1]+b[1])/2);
       if(trab){ if(!atual.length) atual.push(a); atual.push(b); }
       else if(atual.length>1){ out.push(atual); atual=[]; } else atual=[];
     }
@@ -2327,6 +2358,13 @@ async function carregarRastro(){
       const o=novo[j.device_id]||(novo[j.device_id]={linhas:[], maquina_id:j.maquina_id});
       o.linhas=o.linhas.concat(linhas);
     });
+    /* piloto do mesmo período (01/10/2026). Falha numa máquina não derruba o rastro:
+       ela só volta para a regra da velocidade até a próxima carga. */
+    const [ay,am,ad]=diaLocalMob(-(dias-1)).split('-').map(Number), desdeMs=new Date(ay,am-1,ad).getTime();
+    await Promise.all(Object.keys(novo).map(async dev=>{
+      try{ novo[dev].piloto=await carregarPilotos(dev, desdeMs); }
+      catch(e){ console.warn('[piloto]',dev,e.message||e); if(TRAILS[dev]&&TRAILS[dev].piloto) novo[dev].piloto=TRAILS[dev].piloto; }
+    }));
     TRAILS=novo;
   }catch(e){ console.warn('[rastro]',e.message||e); }
 }
@@ -2449,7 +2487,7 @@ function desenhaTelemetria(){
       const faixaM=_imp?_imp.larguraM:(Number((MAQS[t.maquina_id]||{}).faixa_m)||3.8);
       const wpx=Math.max(2, faixaM*pxPorMetro(+t.lat||-12.65));
       if(TRMODO==='trab'){
-        tlCortar(soTrabalho(tr.linhas)).forEach(ln=>{
+        tlCortar(soTrabalho(tr.linhas, tr.piloto)).forEach(ln=>{
           faixas.push([ln.map(p=>[p[0],p[1]]), wpx]);
           for(let k=1;k<ln.length;k++){   // distância trabalhada -> hectares na legenda
             const a=ln[k-1], b=ln[k];
