@@ -1465,6 +1465,241 @@ function svgJcb53070(desligada){
   return s;
 }
 function svgJcb53070Icone(cor, desligada){ return `<svg viewBox="0 0 ${VB_W} ${VB_H}" style="width:100%;height:100%;overflow:visible"><g class="gir"><ellipse cx="${VB_W/2+5.7}" cy="${VB_H/2-3}" rx="18" ry="35" fill="${cor}" opacity=".30" stroke="${cor}" stroke-width="2.5"/>${svgJcb53070(desligada)}</g></svg>`; }
+/* AUTOPROPELIDOS (01/10/2026): Jacto Uniport 8030 NPK (ADU-001) e Montana Parruda MA 2627 M (PUL-001, PUL-002).
+   Escolha pelo MODELO. A Parruda desenha a barra ABERTA quando a posicao cai DENTRO de um lote e DOBRADA fora
+   (dono: "barra aberta dentro da poligonal e fechada na estrada"). */
+function ehUniport8030(maqId){ const m=MAQS[maqId]||{}; return /(^|[^0-9A-Za-z-])8030([^0-9A-Za-z-]|$)/i.test((m.modelo||'')+' '+(m.nome||'')); }
+/* ADUBADEIRA AUTOPROPELIDA JACTO UNIPORT 8030 NPK (ADU-001) — "8030" = 8.000 kg de caçamba.
+   APROVADO pelo dono em 01/10/2026 ("uniport npk ok"). Mesma escala e referencia dos outros (10 unidades = 1 m, frente para cima).
+   FICHA (folheto oficial Jacto 01/2024): comprimento 9,08 m; largura 3,20 m; ENTRE-EIXOS 4,10 m;
+   BITOLA 2,80 a 3,30 m (desenhada a minima, que da os 3,20 m); 4 pneus IGUAIS VF 380/90 R46
+   (~1,85 x 0,38 m); motor Cummins NA FRENTE; caçamba unica de 8 m3 (NPK e nome da linha, nao 3
+   compartimentos); 2 DISCOS centrifugos atras; faixa ate 50 m (granulado); eixo traseiro esterça.
+   Pela FOTO AEREA do folheto: capo laranja curto com grade escura na frente -> CABINE com teto
+   laranja -> CAÇAMBA de inox com LONA PRETA (o maior bloco) -> DISTRIBUIDOR de inox atras, mais
+   largo, com os 2 discos lado a lado e o defletor; PASSARELA laranja com guarda-corpo ao longo do
+   lado ESQUERDO da caçamba, escada na frente-esquerda. Cores: laranja Jacto, inox, preto.
+   ESTIMADO (sem cota na ficha): capo 0-1,8 m; cabine 1,8-3,6 m (1,8 m de largura); caçamba
+   3,6-7,9 m (2,4 m); distribuidor 7,9-9,08 m (2,8 m, defletor 3,0 m); eixo dianteiro a 1,9 m.
+   A posicao da antena GPS de fabrica nao e publicada: o centro do icone e a ANTENA DA TECU no teto
+   da cabine, a 2,6 m da frente (o ponto que a foto aerea mostra no teto). */
+/* Gerador da previa aprovada: docs/icones_telemetria/gerar_previa_uniport.mjs */
+function svgUniport8030(desligada){
+  var xa=VB_W/2, cx=xa, Y0=VB_H/2-26, y=function(m){return Y0+m*10;};   // antena a 2,6 m da frente
+  var LJ = desligada ? '#6b7280' : '#e8731a', LE = desligada ? '#3b4048' : '#5a2a05';
+  var IX = desligada ? '#9aa0a6' : '#c9ced3', IE = desligada ? '#5b6168' : '#6a7077';
+  var PR = desligada ? '#3a3f45' : '#1c1d1f';
+  var s='';
+  function r(a){ s+='<rect '+a+'/>'; }
+  function pneu(xc, ym, D, L){
+    r('fill="#1b1b1b" stroke="#000" stroke-width="1" x="'+(xc-L/2)+'" y="'+(y(ym)-D/2)+'" width="'+L+'" height="'+D+'" rx="1.8"');
+    for(var k=1;k<7;k++){ var yy=y(ym)-D/2+k*D/7;
+      s+='<polyline points="'+(xc-L/2+.5)+','+(yy+.9)+' '+xc+','+yy+' '+(xc+L/2-.5)+','+(yy+.9)+'" fill="none" stroke="#3c3c3c" stroke-width=".8"/>'; } }
+  var eF=1.9, eT=eF+4.10, bit=14;
+  [eF,eT].forEach(function(e){ [-1,1].forEach(function(l){ pneu(cx+l*bit, e, 18.5, 3.8); }); });
+  // CHASSI laranja ligando as rodas (bracos das rodas) e a viga central
+  [eF,eT].forEach(function(e){ r('fill="'+LJ+'" stroke="'+LE+'" stroke-width=".7" x="'+(cx-12.2)+'" y="'+(y(e)-1.1)+'" width="24.4" height="2.2" rx=".8"'); });
+  r('fill="'+LJ+'" stroke="'+LE+'" stroke-width=".8" x="'+(cx-5)+'" y="'+y(1.4)+'" width="10" height="'+((8.0-1.4)*10)+'" rx="1"');
+  // para-lamas pretos estreitos acompanhando cada roda
+  [eF,eT].forEach(function(e){ [-1,1].forEach(function(l){ r('fill="'+PR+'" x="'+(cx+l*bit-2.3)+'" y="'+(y(e)-5.5)+'" width="4.6" height="11" rx="1.8"'); }); });
+  // CAPO laranja curto, com a GRADE escura na frente
+  r('fill="'+LJ+'" stroke="'+LE+'" stroke-width="1.1" x="'+(cx-8.5)+'" y="'+y(0)+'" width="17" height="18.5" rx="2.2"');
+  r('fill="'+(desligada?'#4b5057':'#2f3236')+'" x="'+(cx-7.5)+'" y="'+(y(0)+.6)+'" width="15" height="3.2" rx="1"');
+  for(var g=1;g<6;g++) s+='<line x1="'+(cx-7.5+g*2.5)+'" x2="'+(cx-7.5+g*2.5)+'" y1="'+(y(0)+.9)+'" y2="'+(y(0)+3.5)+'" stroke="#55595e" stroke-width=".45"/>';
+  s+='<line x1="'+(cx-6.5)+'" x2="'+(cx+6.5)+'" y1="'+y(1.05)+'" y2="'+y(1.05)+'" stroke="'+LE+'" stroke-width=".5"/>';
+  // CAÇAMBA de inox (2,4 m) com a LONA PRETA por cima: cumeeira no meio e as amarras
+  r('fill="'+IX+'" stroke="'+IE+'" stroke-width="1.1" x="'+(cx-12)+'" y="'+y(3.6)+'" width="24" height="'+((7.9-3.6)*10)+'" rx="1.2"');
+  r('fill="'+PR+'" x="'+(cx-10.8)+'" y="'+(y(3.6)+1.2)+'" width="21.6" height="'+((7.9-3.6)*10-2.4)+'" rx=".8"');
+  s+='<line x1="'+cx+'" x2="'+cx+'" y1="'+(y(3.6)+1.6)+'" y2="'+(y(7.9)-1.6)+'" stroke="#3a3c40" stroke-width=".8"/>';
+  for(var a=1;a<6;a++){ var ya=y(3.6)+1.2+a*((7.9-3.6)*10-2.4)/6;
+    s+='<line x1="'+(cx-10.8)+'" x2="'+(cx+10.8)+'" y1="'+ya+'" y2="'+ya+'" stroke="#2c2e31" stroke-width=".5"/>'; }
+  // lanternas vermelhas nos cantos de tras da caçamba
+  [-1,1].forEach(function(l){ s+='<circle cx="'+(cx+l*11)+'" cy="'+(y(7.9)-.6)+'" r=".7" fill="'+(desligada?'#5a5f66':'#d0262b')+'"/>'; });
+  // DISTRIBUIDOR de inox atras: 2 DISCOS lado a lado e o DEFLETOR plano
+  r('fill="'+IX+'" stroke="'+IE+'" stroke-width="1" x="'+(cx-14)+'" y="'+y(7.9)+'" width="28" height="'+((8.88-7.9)*10)+'" rx="1"');
+  [-1,1].forEach(function(l){
+    s+='<circle cx="'+(cx+l*5.5)+'" cy="'+y(8.4)+'" r="3.7" fill="'+(desligada?'#7d838a':'#8e949b')+'" stroke="'+IE+'" stroke-width=".7"/>';
+    for(var p=0;p<4;p++){ var an=p*Math.PI/4+(l>0?0.3:0);
+      s+='<line x1="'+(cx+l*5.5-3.2*Math.cos(an))+'" y1="'+(y(8.4)-3.2*Math.sin(an))+'" x2="'+(cx+l*5.5+3.2*Math.cos(an))+'" y2="'+(y(8.4)+3.2*Math.sin(an))+'" stroke="'+IE+'" stroke-width=".5"/>'; }
+    s+='<circle cx="'+(cx+l*5.5)+'" cy="'+y(8.4)+'" r=".8" fill="'+IE+'"/>'; });
+  r('fill="'+(desligada?'#b5bac0':'#dfe3e7')+'" stroke="'+IE+'" stroke-width=".7" x="'+(cx-15)+'" y="'+y(8.84)+'" width="30" height="'+((9.08-8.84)*10)+'" rx=".5"');
+  // PASSARELA laranja com GUARDA-CORPO ao longo do lado ESQUERDO da caçamba, e a ESCADA na frente
+  // grade VAZADA: de cima a roda aparece por baixo dela (dono vê a roda, como na foto aerea)
+  ['-15.6','-12.4'].forEach(function(xo){ var xx=cx+Number(xo);
+    s+='<line x1="'+xx+'" x2="'+xx+'" y1="'+y(3.3)+'" y2="'+y(7.75)+'" stroke="'+LE+'" stroke-width="1.5"/>';
+    s+='<line x1="'+xx+'" x2="'+xx+'" y1="'+y(3.3)+'" y2="'+y(7.75)+'" stroke="'+LJ+'" stroke-width=".9"/>'; });
+  for(var t=0;t<10;t++){ var yt=y(3.3)+.4+t*((7.75-3.3)*10-.8)/9;
+    s+='<line x1="'+(cx-15.6)+'" x2="'+(cx-12.4)+'" y1="'+yt+'" y2="'+yt+'" stroke="'+LJ+'" stroke-width=".7"/>'; }
+  r('fill="'+LJ+'" stroke="'+LE+'" stroke-width=".7" x="'+(cx-15.8)+'" y="'+y(2.75)+'" width="3.4" height="5.5" rx=".4"');
+  for(var e2=1;e2<4;e2++) s+='<line x1="'+(cx-15.5)+'" x2="'+(cx-12.7)+'" y1="'+(y(2.75)+e2*1.37)+'" y2="'+(y(2.75)+e2*1.37)+'" stroke="'+LE+'" stroke-width=".5"/>';
+  // CABINE: vidro escuro em volta do TETO laranja, retrovisores para os lados e giroflex
+  r('fill="'+(desligada?'#2f3338':'#1f2a33')+'" stroke="#000" stroke-width=".8" x="'+(cx-9)+'" y="'+y(1.8)+'" width="18" height="18" rx="2.4"');
+  r('fill="'+LJ+'" stroke="'+LE+'" stroke-width=".8" x="'+(cx-8)+'" y="'+(y(1.8)+1)+'" width="16" height="16" rx="2"');
+  [-1,1].forEach(function(l){ s+='<line x1="'+(cx+l*9)+'" y1="'+(y(1.95))+'" x2="'+(cx+l*11.5)+'" y2="'+(y(1.7))+'" stroke="#111" stroke-width=".9" stroke-linecap="round"/>';
+    r('fill="#111" x="'+(cx+l*11.5-(l>0?0:1.4))+'" y="'+(y(1.7)-1)+'" width="1.4" height="2" rx=".3"'); });
+  s+='<circle cx="'+cx+'" cy="'+y(3.25)+'" r=".9" fill="'+(desligada?'#9aa0a6':'#ffb300')+'" stroke="#5a4000" stroke-width=".4"/>';   // giroflex
+  // ANTENA DA TECU: branca, redonda, pequena — o centro do icone
+  s+='<circle cx="'+xa+'" cy="'+(VB_H/2)+'" r="1.7" fill="#f4f4f2" stroke="#4a4f55" stroke-width=".6"/>';
+  return s;
+}
+function ehParruda(maqId){ const m=MAQS[maqId]||{}; return /(^|[^0-9A-Za-z-])2627([^0-9A-Za-z-]|$)/i.test((m.modelo||'')+' '+(m.nome||'')); }
+/* PULVERIZADOR AUTOPROPELIDO MONTANA PARRUDA MA 2627 M (PUL-001, PUL-002) — 2.600 L, barra de 27 m, Mecanico 4x2.
+   Levado ao app em 01/10/2026 com a regra do dono: "a Parruda vai estar com a barra aberta dentro da poligonal e fechada na estrada". Mesma escala e referencia dos outros (10 unidades = 1 m, frente para cima).
+   FONTES: catalogo de pecas Montana "Parruda Mecanica" (nov/2007): barra com espacamento de 50 cm, porta-bico
+   Trijet, quadro de levante TRASEIRO, "suporte dianteiro das barras" (asas dobram PARA A FRENTE), bitola
+   regulavel, passarela e escada; anuncios (Construmaq / Mercado Livre MA 2627 2011): barra 27 m, aro 46", azul.
+   SEM FICHA DE DIMENSOES publica: medidas ESTIMADAS pelas 12 fotos do anuncio, com o pneu como escala (±10%):
+   comprimento ~7,6 m dobrada; entre-eixos ~4,2 m; bitola ~2,7 m; pneus aro 46 (~1,75 x 0,30 m, 4 iguais, aro
+   creme); capo "capsula" verde-agua ~1,2 x 1,3 m na frente com grade oval escura e 2 pares de farois; cabine
+   ~1,5 x 1,6 m logo atras; tanque verde-agua ~2,4 x 1,3 m entre os eixos; chassi, pernas e barra AZUL Montana.
+   aberta=true desenha a barra de 27 m aberta atras (trabalho); false, as asas dobradas pelos lados (transporte).
+   Sem GPS de fabrica: o centro do icone e a ANTENA DA TECU no teto da cabine, a 2,0 m da frente. */
+/* Gerador da previa aprovada: docs/icones_telemetria/gerar_previa_parruda.mjs */
+function svgParruda(desligada, aberta){
+  var xa=VB_W/2, cx=xa, Y0=VB_H/2-20, y=function(m){return Y0+m*10;};   // antena a 2,0 m da frente
+  var AZ = desligada ? '#6b7280' : '#1f6fd1', AE = desligada ? '#3b4048' : '#0b3470';
+  var VA = desligada ? '#8a9098' : '#5fd3c0', VE = desligada ? '#4a5058' : '#1d6f63';
+  var PR = desligada ? '#3a3f45' : '#1c1d1f', CR = desligada ? '#b5bac0' : '#efe6c8';
+  var s='';
+  function r(a){ s+='<rect '+a+'/>'; }
+  function pneu(xc, ym, D, L){
+    r('fill="#1b1b1b" stroke="#000" stroke-width="1" x="'+(xc-L/2)+'" y="'+(y(ym)-D/2)+'" width="'+L+'" height="'+D+'" rx="1.5"');
+    for(var k=1;k<8;k++){ var yy=y(ym)-D/2+k*D/8;
+      s+='<polyline points="'+(xc-L/2+.4)+','+(yy+.8)+' '+xc+','+yy+' '+(xc+L/2-.4)+','+(yy+.8)+'" fill="none" stroke="#3c3c3c" stroke-width=".7"/>'; }
+    r('fill="'+CR+'" x="'+(xc-.5)+'" y="'+(y(ym)-3)+'" width="1" height="6" rx=".4"'); }   // aro creme, visto de cima so uma tira
+  // TRELICA da barra entre (x1,y) e (x2,y): dois tubos e diagonais em zigue-zague
+  function trelica(x1, x2, yy, alt, passo){
+    var a=Math.min(x1,x2), b=Math.max(x1,x2);
+    s+='<line x1="'+a+'" x2="'+b+'" y1="'+(yy-alt/2)+'" y2="'+(yy-alt/2)+'" stroke="'+AE+'" stroke-width="1.5"/>';
+    s+='<line x1="'+a+'" x2="'+b+'" y1="'+(yy+alt/2)+'" y2="'+(yy+alt/2)+'" stroke="'+AE+'" stroke-width="1.5"/>';
+    s+='<line x1="'+a+'" x2="'+b+'" y1="'+(yy-alt/2)+'" y2="'+(yy-alt/2)+'" stroke="'+AZ+'" stroke-width=".9"/>';
+    s+='<line x1="'+a+'" x2="'+b+'" y1="'+(yy+alt/2)+'" y2="'+(yy+alt/2)+'" stroke="'+AZ+'" stroke-width=".9"/>';
+    var up=true; for(var x=a; x<b; x+=passo){ var x2b=Math.min(b,x+passo);
+      s+='<line x1="'+x+'" y1="'+(yy+(up?alt/2:-alt/2))+'" x2="'+x2b+'" y2="'+(yy+(up?-alt/2:alt/2))+'" stroke="'+AZ+'" stroke-width=".6"/>'; up=!up; } }
+  var eF=1.1, eT=eF+4.2, bit=13.5, yB=6.7;              // yB = linha da barra, atras do eixo traseiro
+  // BARRA ABERTA (27 m) — por baixo de tudo, atras da maquina
+  if(aberta){
+    [-1,1].forEach(function(l){
+      trelica(cx+l*12, cx+l*135, y(yB), 4.2, 6);
+      // articulacoes: principal 5,5 m · intermediaria 4,5 m · ponteira 2,5 m (de cada lado, a partir do quadro)
+      [55, 100, 125].forEach(function(dx){ s+='<circle cx="'+(cx+l*(12+dx))+'" cy="'+y(yB)+'" r="1.4" fill="'+AE+'"/>'; });
+      for(var b=0;b<27;b++) s+='<circle cx="'+(cx+l*(2.5+b*5))+'" cy="'+(y(yB)+2.6)+'" r=".55" fill="'+(desligada?'#9aa0a6':'#e8eef5')+'"/>';   // bicos a cada 0,50 m
+    });
+  }
+  [eF,eT].forEach(function(e){ [-1,1].forEach(function(l){ pneu(cx+l*bit, e, 17.5, 3.0); }); });
+  // PERNAS e CHASSI azuis: duas longarinas, travessas nos eixos e as pernas ate as rodas
+  [-1,1].forEach(function(l){ r('fill="'+AZ+'" stroke="'+AE+'" stroke-width=".8" x="'+(cx+l*5.5-1.2)+'" y="'+y(0.9)+'" width="2.4" height="'+((yB-0.5-0.9)*10)+'" rx=".6"'); });
+  [eF,eT].forEach(function(e){ r('fill="'+AZ+'" stroke="'+AE+'" stroke-width=".8" x="'+(cx-12)+'" y="'+(y(e)-1.2)+'" width="24" height="2.4" rx=".8"'); });
+  // QUADRO DE LEVANTE traseiro (onde a barra se apoia) e os bracos
+  r('fill="'+AZ+'" stroke="'+AE+'" stroke-width="1" x="'+(cx-12)+'" y="'+y(yB-0.45)+'" width="24" height="9" rx="1"');
+  [-1,1].forEach(function(l){ s+='<line x1="'+(cx+l*5.5)+'" y1="'+y(eT+0.4)+'" x2="'+(cx+l*9)+'" y2="'+y(yB-0.4)+'" stroke="'+AE+'" stroke-width="1.6"/>'; });
+  // TANQUE de 2.600 L verde-agua entre os eixos, com a tampa no meio
+  s+='<rect x="'+(cx-6.5)+'" y="'+y(2.95)+'" width="13" height="24.5" rx="6.2" fill="'+VA+'" stroke="'+VE+'" stroke-width="1.1"/>';
+  s+='<line x1="'+cx+'" x2="'+cx+'" y1="'+(y(2.95)+3)+'" y2="'+(y(5.4)-3)+'" stroke="'+VE+'" stroke-width=".5" opacity=".6"/>';
+  s+='<circle cx="'+cx+'" cy="'+y(4.15)+'" r="2" fill="'+(desligada?'#5b6168':'#2e8f80')+'" stroke="'+VE+'" stroke-width=".6"/>';
+  // PASSARELA (grade azul) do lado esquerdo do tanque e a ESCADA atras, a esquerda, junto da roda traseira
+  r('fill="none" stroke="'+AZ+'" stroke-width=".9" x="'+(cx-10)+'" y="'+y(3.0)+'" width="3.2" height="23" rx=".4"');
+  for(var t=1;t<8;t++) s+='<line x1="'+(cx-10)+'" x2="'+(cx-6.8)+'" y1="'+(y(3.0)+t*2.9)+'" y2="'+(y(3.0)+t*2.9)+'" stroke="'+AZ+'" stroke-width=".5"/>';
+  r('fill="'+PR+'" x="'+(cx-11.3)+'" y="'+y(eT+0.65)+'" width="3" height="5" rx=".4"');
+  for(var e2=1;e2<4;e2++) s+='<line x1="'+(cx-11)+'" x2="'+(cx-8.6)+'" y1="'+(y(eT+0.65)+e2*1.25)+'" y2="'+(y(eT+0.65)+e2*1.25)+'" stroke="#6a6f75" stroke-width=".5"/>';
+  // CABINE: vidro escuro, teto claro com a faixa preta; retrovisores em hastes para os lados
+  r('fill="'+(desligada?'#2f3338':'#1f2a33')+'" stroke="#000" stroke-width=".8" x="'+(cx-7.5)+'" y="'+y(1.25)+'" width="15" height="16" rx="2.2"');
+  r('fill="'+(desligada?'#c3c8ce':'#eef3f2')+'" stroke="'+VE+'" stroke-width=".7" x="'+(cx-6.6)+'" y="'+(y(1.25)+.9)+'" width="13.2" height="14.2" rx="1.8"');
+  r('fill="'+PR+'" x="'+(cx-6.6)+'" y="'+(y(1.25)+10.5)+'" width="13.2" height="1.6"');
+  [-1,1].forEach(function(l){ s+='<line x1="'+(cx+l*7.5)+'" y1="'+y(1.5)+'" x2="'+(cx+l*10.5)+'" y2="'+y(1.3)+'" stroke="#111" stroke-width=".8" stroke-linecap="round"/>';
+    r('fill="#111" x="'+(cx+l*10.5-(l>0?0:1.3))+'" y="'+(y(1.3)-1)+'" width="1.3" height="2" rx=".3"'); });
+  // CAPO "CAPSULA" verde-agua na frente, com a GRADE OVAL escura e os 2 pares de farois
+  s+='<rect x="'+(cx-6)+'" y="'+y(0)+'" width="12" height="13.5" rx="5.5" fill="'+VA+'" stroke="'+VE+'" stroke-width="1.1"/>';
+  s+='<ellipse cx="'+cx+'" cy="'+(y(0)+2.4)+'" rx="4.6" ry="1.8" fill="'+(desligada?'#4b5057':'#3a3530')+'"/>';
+  [-1,1].forEach(function(l){ [0,1].forEach(function(k){ s+='<circle cx="'+(cx+l*(3+k*1.6))+'" cy="'+(y(0)+5.2)+'" r=".65" fill="'+(desligada?'#c3c8ce':'#fff7d6')+'" stroke="#555" stroke-width=".3"/>'; }); });
+  // ASAS DOBRADAS (transporte): as duas correm PARA A FRENTE pelos lados, por cima das rodas, ate o capo
+  if(!aberta){
+    [-1,1].forEach(function(l){ var xb=cx+l*16.0;   // por cima das rodas, ~3,7 m de largura total
+      r('fill="none" stroke="'+AE+'" stroke-width="1.6" x="'+(xb-2.4)+'" y="'+y(0.25)+'" width="4.8" height="'+((yB-0.25)*10)+'" rx=".6"');
+      for(var q=0;q<2;q++){ var xq=xb+(q?1.1:-1.1);
+        trelicaV(xq, y(0.25), y(yB), 1.8, 6); }
+      r('fill="'+AE+'" x="'+(xb-2.6)+'" y="'+(y(0.25)-1)+'" width="5.2" height="1.6" rx=".5"');   // suporte dianteiro das barras
+    });
+  }
+  function trelicaV(xx, y1, y2, larg, passo){
+    s+='<line x1="'+(xx-larg/2)+'" x2="'+(xx-larg/2)+'" y1="'+y1+'" y2="'+y2+'" stroke="'+AZ+'" stroke-width=".9"/>';
+    s+='<line x1="'+(xx+larg/2)+'" x2="'+(xx+larg/2)+'" y1="'+y1+'" y2="'+y2+'" stroke="'+AZ+'" stroke-width=".9"/>';
+    var up=true; for(var yy=y1; yy<y2; yy+=passo){ var yb=Math.min(y2,yy+passo);
+      s+='<line x1="'+(xx+(up?larg/2:-larg/2))+'" y1="'+yy+'" x2="'+(xx+(up?-larg/2:larg/2))+'" y2="'+yb+'" stroke="'+AZ+'" stroke-width=".5"/>'; up=!up; } }
+  // ANTENA DA TECU: branca, redonda, pequena — o centro do icone
+  s+='<circle cx="'+xa+'" cy="'+(VB_H/2)+'" r="1.7" fill="#f4f4f2" stroke="#4a4f55" stroke-width=".6"/>';
+  return s;
+}
+function svgUniport8030Icone(cor, desligada){ return `<svg viewBox="0 0 ${VB_W} ${VB_H}" style="width:100%;height:100%;overflow:visible"><g class="gir"><ellipse cx="${VB_W/2}" cy="${VB_H/2+19}" rx="20" ry="50" fill="${cor}" opacity=".30" stroke="${cor}" stroke-width="2.5"/>${svgUniport8030(desligada)}</g></svg>`; }
+function svgParrudaIcone(cor, desligada, aberta){ return `<svg viewBox="0 0 ${VB_W} ${VB_H}" style="width:100%;height:100%;overflow:visible"><g class="gir"><ellipse cx="${VB_W/2}" cy="${VB_H/2+15}" rx="22" ry="42" fill="${cor}" opacity=".30" stroke="${cor}" stroke-width="2.5"/>${svgParruda(desligada, aberta)}</g></svg>`; }
+/* MOTONIVELADORA Dresser HWB 140C (TRA-009): escolha pelo MODELO (140C). Escarificador central a frente da lamina. */
+function ehMotoniveladora(maqId){ const m=MAQS[maqId]||{}; return /(^|[^0-9A-Za-z-])140c([^0-9A-Za-z-]|$)/i.test((m.modelo||'')+' '+(m.nome||'')); }
+/* MOTONIVELADORA DRESSER HWB 140C (TRA-009) — feita no Brasil pela Huber-Warco (Mogi das Cruzes), Dresser desde 1975.
+   APROVADO pelo dono em 01/10/2026 ("motoniveladora ok"). Mesma escala e referencia dos outros (10 unidades = 1 m, frente para cima).
+   SEM FICHA PUBLICADA da 140C: medidas da gemea mais proxima com ficha, KOMATSU GD511A-1 (135 hp, 13.00-24,
+   lamina de 12 pes, anos 80; ritchiespecs) e do Cat 140G: comprimento ~7,9 m sem escarificador; largura nos
+   pneus 2,40 m; eixo dianteiro ate o CENTRO DO TANDEM 5,78 m; eixos do tandem a 1,50 m; bitola ~2,05 m; pneus
+   13.00-24 (~1,30 x 0,33 m), 6 rodas (2 na frente, 4 no tandem); LAMINA 3,66 m (12 pes) com centro ~2,5 m atras
+   do eixo dianteiro; circulo ~1,5 m. Anuncios da 140C: 6 pneus, cabine fechada, AMARELA, escarificador traseiro
+   de 5 hastes (HWB 140 de 1979). Vista de cima: so o eixo da frente na ponta, a VIGA estreita (~0,4 m) em arco
+   ate a cabine, a BARRA EM "A" por baixo ate o circulo, a LAMINA enviesada (~25 graus, como trabalha),
+   a CABINE sobre o comeco do tandem e o MOTOR atras. ESCARIFICADOR CENTRAL em V um pouco A FRENTE da lamina
+   (dono, 01/10/2026; o anuncio da HWB 140 de 1979 com escarificador traseiro de 5 hastes nao e o caso da TRA-009).
+   ESTIMADO: para-choque 0,9 m a frente do eixo; cabine 1,4 x 1,4 m; capo 1,3 x 1,6 m.
+   Sem GPS: o centro do icone e a ANTENA DA TECU na frente do teto da cabine, a 5,3 m da frente. */
+/* Gerador da previa aprovada: docs/icones_telemetria/gerar_previa_motoniveladora.mjs */
+function svgMotoniveladora(desligada){
+  var xa=VB_W/2, cx=xa, Y0=VB_H/2-53, y=function(m){return Y0+m*10;};   // antena a 5,3 m da frente
+  var AM = desligada ? '#6b7280' : '#f2b705', AE = desligada ? '#3b4048' : '#5c4300';
+  var PR = desligada ? '#3a3f45' : '#1d1e20', AC = desligada ? '#5b6168' : '#4a4f55';
+  var s='';
+  function r(a){ s+='<rect '+a+'/>'; }
+  function pneu(xc, ym, D, L){
+    r('fill="#1b1b1b" stroke="#000" stroke-width="1" x="'+(xc-L/2)+'" y="'+(y(ym)-D/2)+'" width="'+L+'" height="'+D+'" rx="1.6"');
+    for(var k=1;k<6;k++){ var yy=y(ym)-D/2+k*D/6;
+      s+='<polyline points="'+(xc-L/2+.4)+','+(yy+.8)+' '+xc+','+yy+' '+(xc+L/2-.4)+','+(yy+.8)+'" fill="none" stroke="#3c3c3c" stroke-width=".7"/>'; } }
+  var eF=0.9, bit=10.25, tA=eF+5.03, tB=eF+6.53, cL=eF+2.5;
+  // RODAS: 2 na frente, 4 no tandem
+  [-1,1].forEach(function(l){ pneu(cx+l*bit, eF, 13, 3.3); pneu(cx+l*bit, tA, 13, 3.3); pneu(cx+l*bit, tB, 13, 3.3); });
+  // EIXO DIANTEIRO e PARA-CHOQUE
+  r('fill="'+AM+'" stroke="'+AE+'" stroke-width=".8" x="'+(cx-8.5)+'" y="'+(y(eF)-1)+'" width="17" height="2" rx=".6"');
+  r('fill="'+AM+'" stroke="'+AE+'" stroke-width=".9" x="'+(cx-4.5)+'" y="'+y(0)+'" width="9" height="3.5" rx="1"');
+  // TANDEM: as duas caixas laterais ligando os pneus de cada lado
+  [-1,1].forEach(function(l){ r('fill="'+AM+'" stroke="'+AE+'" stroke-width=".8" x="'+(cx+l*bit-1.3)+'" y="'+y(tA-0.2)+'" width="2.6" height="'+((tB-tA+0.4)*10)+'" rx=".8"'); });
+  // BARRA EM "A" por baixo da viga: ponta logo atras do eixo, abre ate o circulo
+  s+='<polygon points="'+cx+','+y(eF+0.45)+' '+(cx+6.5)+','+y(cL-0.3)+' '+(cx-6.5)+','+y(cL-0.3)+'" fill="none" stroke="'+AC+'" stroke-width="1.6" stroke-linejoin="round"/>';
+  // ESCARIFICADOR CENTRAL em "V", um pouco A FRENTE da lamina (dono, 01/10/2026: "esse modelo de motoniveladora
+  // tem o escarificador um pouco a frente da lamina"): viga em V com a ponta para a frente e os dentes por baixo.
+  (function(){ var yv=y(cL-1.45), ab=9.5, fu=5.5;      // ponta do V, meia abertura (0,95 m), profundidade do V (0,55 m)
+    s+='<polyline points="'+(cx-ab)+','+(yv+fu)+' '+cx+','+yv+' '+(cx+ab)+','+(yv+fu)+'" fill="none" stroke="'+AE+'" stroke-width="2.6" stroke-linejoin="round"/>';
+    s+='<polyline points="'+(cx-ab)+','+(yv+fu)+' '+cx+','+yv+' '+(cx+ab)+','+(yv+fu)+'" fill="none" stroke="'+AM+'" stroke-width="1.6" stroke-linejoin="round"/>';
+    for(var k=-3;k<=3;k++){ var xk=cx+k*ab/3.3, yk=yv+Math.abs(k)*fu/3.3;
+      r('fill="'+AC+'" stroke="#111" stroke-width=".4" x="'+(xk-.75)+'" y="'+(yk-.3)+'" width="1.5" height="3.4" rx=".4"'); }
+    [-1,1].forEach(function(l){ s+='<line x1="'+(cx+l*2)+'" y1="'+(yv-1)+'" x2="'+(cx+l*4)+'" y2="'+(yv+2.5)+'" stroke="'+AE+'" stroke-width=".9"/>'; }); })();
+  // CIRCULO
+  s+='<circle cx="'+cx+'" cy="'+y(cL)+'" r="7.5" fill="none" stroke="'+AC+'" stroke-width="1.6"/>';
+  s+='<circle cx="'+cx+'" cy="'+y(cL)+'" r="7.5" fill="none" stroke="'+AE+'" stroke-width=".5" stroke-dasharray="1.2 1.6"/>';
+  // LAMINA de 3,66 m, enviesada ~25 graus (ponta esquerda a frente), com o aco da borda
+  (function(){ var ang=25*Math.PI/180, h=18.3, dx=h*Math.cos(ang), dy=h*Math.sin(ang), yc=y(cL+0.3);
+    s+='<line x1="'+(cx-dx)+'" y1="'+(yc-dy)+'" x2="'+(cx+dx)+'" y2="'+(yc+dy)+'" stroke="'+AE+'" stroke-width="3.6" stroke-linecap="square"/>';
+    s+='<line x1="'+(cx-dx)+'" y1="'+(yc-dy)+'" x2="'+(cx+dx)+'" y2="'+(yc+dy)+'" stroke="'+AM+'" stroke-width="2.4" stroke-linecap="square"/>';
+    s+='<line x1="'+(cx-dx-.9*Math.sin(ang))+'" y1="'+(yc-dy+.9*Math.cos(ang))+'" x2="'+(cx+dx-.9*Math.sin(ang))+'" y2="'+(yc+dy+.9*Math.cos(ang))+'" stroke="'+(desligada?'#9aa0a6':'#8e949b')+'" stroke-width=".7"/>'; })();
+  // VIGA estreita (o "pescoco") da frente ate a cabine, e os 2 CILINDROS de levante da lamina
+  r('fill="'+AM+'" stroke="'+AE+'" stroke-width="1" x="'+(cx-2.1)+'" y="'+y(eF-0.3)+'" width="4.2" height="'+((5.1-eF+0.3)*10)+'" rx="1.4"');
+  [-1,1].forEach(function(l){ s+='<line x1="'+(cx+l*2.6)+'" y1="'+y(cL-0.5)+'" x2="'+(cx+l*4.2)+'" y2="'+y(cL+0.2)+'" stroke="#141414" stroke-width="1.1" stroke-linecap="round"/>'; });
+  // CAPO do motor atras da cabine e a grade traseira
+  r('fill="'+AM+'" stroke="'+AE+'" stroke-width="1" x="'+(cx-6.5)+'" y="'+y(6.5)+'" width="13" height="'+((8.05-6.5)*10)+'" rx="1.2"');
+  r('fill="'+PR+'" x="'+(cx-5.5)+'" y="'+y(7.7)+'" width="11" height="3" rx=".5"');
+  for(var g=1;g<6;g++) s+='<line x1="'+(cx-5.5+g*1.83)+'" x2="'+(cx-5.5+g*1.83)+'" y1="'+(y(7.7)+.4)+'" y2="'+(y(7.7)+2.6)+'" stroke="#55595e" stroke-width=".4"/>';
+  s+='<circle cx="'+(cx+3.2)+'" cy="'+y(6.85)+'" r=".9" fill="#202020" stroke="#000" stroke-width=".5"/>';   // escapamento
+  // CABINE fechada: vidro escuro e teto amarelo
+  r('fill="'+(desligada?'#2f3338':'#1f2a33')+'" stroke="#000" stroke-width=".8" x="'+(cx-7)+'" y="'+y(5.1)+'" width="14" height="14" rx="1.8"');
+  r('fill="'+AM+'" stroke="'+AE+'" stroke-width=".7" x="'+(cx-6.1)+'" y="'+(y(5.1)+.9)+'" width="12.2" height="12.2" rx="1.4"');
+  // ANTENA DA TECU: branca, redonda, pequena — o centro do icone
+  s+='<circle cx="'+xa+'" cy="'+(VB_H/2)+'" r="1.7" fill="#f4f4f2" stroke="#4a4f55" stroke-width=".6"/>';
+  return s;
+}
+function svgMotoniveladoraIcone(cor, desligada){ return `<svg viewBox="0 0 ${VB_W} ${VB_H}" style="width:100%;height:100%;overflow:visible"><g class="gir"><ellipse cx="${VB_W/2}" cy="${VB_H/2-13}" rx="17" ry="44" fill="${cor}" opacity=".30" stroke="${cor}" stroke-width="2.5"/>${svgMotoniveladora(desligada)}</g></svg>`; }
 /* Geometria pela FICHA TECNICA do Steiger 470 (17/09/2026): comprimento 7,39 m,
    entre-eixos 3,75 m, pneus 710/70 R42 DUPLOS (2,06 x 0,71 m). Referencia = ANTENA
    Trimble AG-392 na FRENTE do teto da cabine (dono): o centro do icone e a antena,
@@ -2572,7 +2807,7 @@ function desenhaTelemetria(){
     const e=estadoTele(t), ll=noTempo?[noTempo[0],noTempo[1]]:[pr.lat,pr.lon]; pts.push(ll);
     const faixa=Number((MAQS[t.maquina_id]||{}).faixa_m)||3.8;
     const w=iconePxMob(+t.lat), hh=w*(VB_H/VB_W);
-    const mk=L.marker(ll,{icon:L.divIcon({html:(ehArticulado(t.maquina_id)?svgSteiger(e.cor,implementoDe(t.maquina_id),e.k==='desl'||e.k==='off'):ehT8(t.maquina_id)?svgT8Icone(e.cor,e.k==='desl'||e.k==='off'):ehMagnum(t.maquina_id)?svgMagnumIcone(e.cor,e.k==='desl'||e.k==='off'):ehJd7225(t.maquina_id)?svgJd7225Icone(e.cor,e.k==='desl'||e.k==='off'):ehJd8420(t.maquina_id)?svgJd8420Icone(e.cor,e.k==='desl'||e.k==='off'):ehJd7815(t.maquina_id)?svgJd7815Icone(e.cor,e.k==='desl'||e.k==='off'):ehJd6190(t.maquina_id)?svgJd6190Icone(e.cor,e.k==='desl'||e.k==='off'):ehJd6125(t.maquina_id)?svgJd6125Icone(e.cor,e.k==='desl'||e.k==='off'):ehMf4292(t.maquina_id)?svgMf4292Icone(e.cor,e.k==='desl'||e.k==='off'):ehMf6360(t.maquina_id)?svgMf6360Icone(e.cor,e.k==='desl'||e.k==='off'):ehMf296(t.maquina_id)?svgMf296Icone(e.cor,e.k==='desl'||e.k==='off'):ehValmet86(t.maquina_id)?svgValmet86Icone(e.cor,e.k==='desl'||e.k==='off'):ehColhedoraSts(t.maquina_id)?svgColhedoraStsIcone(e.cor,e.k==='desl'||e.k==='off',t.maquina_id):ehColhedoraAlgodao(t.maquina_id)?svgColhedoraAlgodaoIcone(e.cor,e.k==='desl'||e.k==='off'):ehCaseW20g(t.maquina_id)?svgCaseW20gIcone(e.cor,e.k==='desl'||e.k==='off'):ehCat924g(t.maquina_id)?svgCat924gIcone(e.cor,e.k==='desl'||e.k==='off'):ehJcb53070(t.maquina_id)?svgJcb53070Icone(e.cor,e.k==='desl'||e.k==='off'):svgMaquina(faixa,e.cor)),className:'',iconSize:[w,hh],iconAnchor:[w/2,hh/2]}),zIndexOffset:1000}).addTo(g);
+    const mk=L.marker(ll,{icon:L.divIcon({html:(ehArticulado(t.maquina_id)?svgSteiger(e.cor,implementoDe(t.maquina_id),e.k==='desl'||e.k==='off'):ehT8(t.maquina_id)?svgT8Icone(e.cor,e.k==='desl'||e.k==='off'):ehMagnum(t.maquina_id)?svgMagnumIcone(e.cor,e.k==='desl'||e.k==='off'):ehJd7225(t.maquina_id)?svgJd7225Icone(e.cor,e.k==='desl'||e.k==='off'):ehJd8420(t.maquina_id)?svgJd8420Icone(e.cor,e.k==='desl'||e.k==='off'):ehJd7815(t.maquina_id)?svgJd7815Icone(e.cor,e.k==='desl'||e.k==='off'):ehJd6190(t.maquina_id)?svgJd6190Icone(e.cor,e.k==='desl'||e.k==='off'):ehJd6125(t.maquina_id)?svgJd6125Icone(e.cor,e.k==='desl'||e.k==='off'):ehMf4292(t.maquina_id)?svgMf4292Icone(e.cor,e.k==='desl'||e.k==='off'):ehMf6360(t.maquina_id)?svgMf6360Icone(e.cor,e.k==='desl'||e.k==='off'):ehMf296(t.maquina_id)?svgMf296Icone(e.cor,e.k==='desl'||e.k==='off'):ehValmet86(t.maquina_id)?svgValmet86Icone(e.cor,e.k==='desl'||e.k==='off'):ehColhedoraSts(t.maquina_id)?svgColhedoraStsIcone(e.cor,e.k==='desl'||e.k==='off',t.maquina_id):ehColhedoraAlgodao(t.maquina_id)?svgColhedoraAlgodaoIcone(e.cor,e.k==='desl'||e.k==='off'):ehCaseW20g(t.maquina_id)?svgCaseW20gIcone(e.cor,e.k==='desl'||e.k==='off'):ehCat924g(t.maquina_id)?svgCat924gIcone(e.cor,e.k==='desl'||e.k==='off'):ehJcb53070(t.maquina_id)?svgJcb53070Icone(e.cor,e.k==='desl'||e.k==='off'):ehUniport8030(t.maquina_id)?svgUniport8030Icone(e.cor,e.k==='desl'||e.k==='off'):ehParruda(t.maquina_id)?svgParrudaIcone(e.cor,e.k==='desl'||e.k==='off',!!loteMob(ll[0],ll[1])):ehMotoniveladora(t.maquina_id)?svgMotoniveladoraIcone(e.cor,e.k==='desl'||e.k==='off'):svgMaquina(faixa,e.cor)),className:'',iconSize:[w,hh],iconAnchor:[w/2,hh/2]}),zIndexOffset:1000}).addTo(g);
     const _im=implementoDe(t.maquina_id);
     mk.bindTooltip(maqLbl(t.maquina_id,t.device_id)+(_im?' · '+_im.id_frota+' ('+_im.origem+')':''),{permanent:true,direction:'bottom',offset:[0,hh/2],className:'placa'});
     mk.on('click', ()=>painelMaquina(t.device_id));      // painel do veículo (18/09/2026)
