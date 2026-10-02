@@ -91,6 +91,13 @@ svg{display:block}
 .leaflet-tooltip.placa{background:rgba(13,43,8,.92);border:1px solid #4f9e3f;color:#e8edf5;
   font:600 11px/1 system-ui;letter-spacing:.05em;padding:3px 6px;border-radius:4px;box-shadow:none}
 .leaflet-tooltip.placa::before{display:none}
+/* rótulo do croqui (Safra > Croquis): texto direto sobre a mancha de cor, duas
+   linhas, sem caixa — a cor da banda já é o fundo; a sombra garante a leitura */
+.leaflet-tooltip.crqplaca{background:none;border:0;box-shadow:none;padding:0;color:#fff;
+  font:700 11px/1.25 system-ui;text-align:center;white-space:nowrap;
+  text-shadow:0 0 3px #000,0 0 6px #000,0 1px 2px #000}
+.leaflet-tooltip.crqplaca::before{display:none}
+.leaflet-tooltip.crqplaca small{font-weight:600;font-size:10px;opacity:.9}
 .chip{flex:none;background:var(--vidro);backdrop-filter:blur(10px);border:1px solid var(--border);
   color:var(--muted);border-radius:20px;padding:8px 14px;font:600 12px inherit;cursor:pointer;
   min-height:36px;display:flex;align-items:center;gap:6px;white-space:nowrap}
@@ -348,7 +355,7 @@ const SUBS={ clima:[['mapa','Mapa',IC.mapa],['agora','Agora',IC.agora],['hist','
              tel:[['mapa','Mapa',IC.mapa],['agora','Máquinas',IC.agora],['vigia','Vigia',IC.vigia]],
              /* 'ativ' e não 'hist': a faixa de período do Histórico do clima
                 pega qualquer SUB==='hist' fora do mapa */
-             safra:[['mapa','Mapa',IC.mapa],['ativ','Atividades',IC.lista]] };
+             safra:[['mapa','Mapa',IC.mapa],['ativ','Atividades',IC.lista],['croq','Croquis',IC.camadas]] };
 
 let SB=null, SECAO='clima', SUB='mapa', MENU=null;   // MENU: null | 'esq' | 'dir'
 /* DESLOGADO trava o ciclo de recarga depois que a sessao cai. Sem ele, o
@@ -3219,7 +3226,7 @@ function desenhaMapa(){
     if(_heat){ _map.removeLayer(_heat); _heat=null; }
     if(_estL){ _map.removeLayer(_estL); _estL=null; }
     if(_telL){ try{ _map.removeLayer(_telL); }catch(e){} _telL=null; }
-    desenhaSafra();
+    if(SUB==='croq') desenhaCroqui(); else desenhaSafra();
     setTimeout(()=>{ try{ _map.invalidateSize(); }catch(e){} },100);
     return;
   }
@@ -3705,6 +3712,93 @@ function safLigar(){
     if(a.status==='executada'&&a.dia!=null){ const d=new Date(a.dia); d.setHours(23,59,59,999); SAFD=d.getTime(); } else SAFD=null;
     trocarTela(pinta); });
 }
+/* ---------- CROQUIS (Safra > Croquis, 02/10/2026) ----------
+   Cada croqui é uma LEITURA TEMÁTICA da safra sobre o mesmo mapa (pedido do
+   dono: "um botão na tela para alternar entre outros croquis que vamos fazer").
+   Para criar um novo: acrescentar {id, nome, desenha, cartao} em CROQUIS — o
+   chip do topo e a gaveta montam a lista sozinhos. Tudo derivado de SAFRA. */
+let CROQ='var', CRQSEL=null;
+const CRQCORES=['#ffd23f','#3bceac','#ee4266','#8e7dff','#0ead69','#ff8c42','#4cc9f0','#f72585'];
+/* nome curto da variedade: "BRASMAX OLÍMPO 80i82RSF IPRO - SALVA" -> "Olímpo" */
+function safVarCurta(v){
+  let s=String(v||'').replace(/\s*-\s*(CERTIFICADA|SALVA)\s*$/i,'').trim();
+  const bm=/^BRASMAX\s+(\S+)/i.exec(s);
+  if(bm) s=bm[1].charAt(0)+bm[1].slice(1).toLowerCase();
+  const cz=/^CZ\s*\d{2}([A-Z]\d{2})/i.exec(s);   // "CZ 47B91I2X" -> "B91" (como se fala na fazenda)
+  if(cz) s=cz[1].toUpperCase();
+  return s||'—';
+}
+/* centro de massa do polígono (a média dos vértices puxa para o arco, que tem
+   mais pontos — numa meia-lua o rótulo cairia fora do lugar) */
+function safCentroArea(r){
+  let A=0,x=0,y=0;
+  for(let i=0,j=r.length-1;i<r.length;j=i++){ const c=r[j][0]*r[i][1]-r[i][0]*r[j][1];
+    A+=c; x+=(r[j][0]+r[i][0])*c; y+=(r[j][1]+r[i][1])*c; }
+  return Math.abs(A)<1e-12?safCentro(r):[x/(3*A),y/(3*A)];
+}
+/* plantios que contam no croqui: executados ou feitos e esperando aprovação */
+const crqPlantios=()=>SAFRA.filter(a=>a.tipo_ativ==='Plantio'&&safFeita(a,safFimHoje()));
+function crqCores(){
+  const vs=[...new Set(crqPlantios().map(a=>safVarCurta(a.plantio&&a.plantio.variedade)))].sort();
+  const m={}; vs.forEach((v,i)=>m[v]=CRQCORES[i%CRQCORES.length]); return m;
+}
+function crqDesenhaVariedades(g){
+  const pls=crqPlantios(), cor=crqCores(), hoje=safFimHoje(), tot={};
+  pls.forEach(a=>{ const r=safGeo(a); if(!r) return;
+    const v=safVarCurta(a.plantio&&a.plantio.variedade), sel=CRQSEL===a.codigo;
+    tot[v]=(tot[v]||0)+(a.area||0);
+    L.polygon(r,{color:sel?'#fff':'#0b1221',weight:sel?3:1.2,fillColor:cor[v],fillOpacity:.78,bubblingMouseEvents:false})
+      .on('click',()=>{ CRQSEL=a.codigo; desenhaCroqui(); }).addTo(g);
+    L.marker(safCentroArea(r),{icon:L.divIcon({className:'',html:'',iconSize:[0,0]}),interactive:false})
+      .bindTooltip(`${safEsc(v)}<br><small>${safDM(a.dia)} · ${safBR(a.area,1)} ha</small>`,
+        {permanent:true,direction:'center',className:'crqplaca'}).addTo(g);
+  });
+  return Object.keys(tot).sort().map(v=>
+    `<span><i style="background:${cor[v]};height:9px"></i>&nbsp;${safEsc(v)}<b>&nbsp;${safBR(tot[v],1)} ha</b></span>`).join('');
+}
+function crqCartaoVariedades(){
+  const a=SAFRA.find(x=>x.codigo===CRQSEL); if(!a) return '';
+  const pl=a.plantio||{}, D=safFimHoje(), cor=crqCores()[safVarCurta(pl.variedade)]||'#9aa9c0';
+  const lin=(r,v)=>`<div class="cl"><span>${r}</span><b>${v}</b></div>`;
+  return `<div class="ch"><span class="dot" style="background:${cor}"></span>
+      <b>${safEsc(safVarCurta(pl.variedade))} · ${safEsc(a.lote_nome)}</b>
+      <button id="cfecha" aria-label="fechar">${IC.fechar}</button></div>
+    <div class="sfcorpo">
+    ${lin('Variedade', safEsc(pl.variedade||'—'))}
+    ${lin('Plantio', safDM(a.dia)+(safAprovar(a)?' <span style="color:var(--gold);font-size:11px">a aprovar</span>':''))}
+    ${lin('Emergência', pl.emergencia?safDM(safDia(pl.emergencia)):'<span class="fraco">não registrada</span>')}
+    ${lin('Dias após o plantio', safDap(a,D)+' DAP')}
+    ${lin('Área', safBR(a.area,2)+' ha'+(a.poli?' <span class="fraco" style="font-size:11px">(banda)</span>':''))}
+    ${pl.populacao?lin('População', safEsc(pl.populacao)+' sem/ha'):''}
+    ${pl.sementes_m?lin('Sementes por metro', safEsc(pl.sementes_m)):''}
+    ${safSemKg(a)?lin('Semente', safSemKg(a)):''}
+    ${lin('Comanda', safEsc(a.codigo))}
+    ${a.obs?`<div class="muted" style="font-size:12px;padding:6px 0 2px;color:var(--warn)">⚠ ${safEsc(a.obs)}</div>`:''}
+    </div>`;
+}
+const CROQUIS=[
+  {id:'var', nome:'Variedades', desenha:crqDesenhaVariedades, cartao:crqCartaoVariedades}
+];
+const croqAtual=()=>CROQUIS.find(c=>c.id===CROQ)||CROQUIS[0];
+function desenhaCroqui(){
+  if(!_map) return;
+  if(_safL){ _map.removeLayer(_safL); _safL=null; }
+  const g=L.layerGroup();
+  // tocar fora das bandas fecha o cartão (lote sem nada fica só com o contorno)
+  LOTES.forEach(l=>L.polygon(l.ring,{stroke:false,fillOpacity:0,bubblingMouseEvents:false})
+    .on('click',()=>{ CRQSEL=null; desenhaCroqui(); }).addTo(g));
+  const leg=croqAtual().desenha(g);
+  _safL=g.addTo(_map);
+  const lg=el('legenda');
+  if(lg){ lg.className='legenda mini'; lg.style.display='';
+    lg.innerHTML=leg||'<span class="fraco">Nenhum plantio lançado nesta safra.</span>'; }
+  const c=el('cartao'); if(!c) return;
+  const h=CRQSEL?croqAtual().cartao():'';
+  if(!h){ c.style.display='none'; c.innerHTML=''; return; }
+  c.style.display=''; c.innerHTML=h;
+  const b=el('cfecha'); if(b) b.onclick=()=>{ CRQSEL=null; desenhaCroqui(); };
+}
+
 /* folha "Atividades": resumo + tudo o que foi feito, do mais novo para o mais velho */
 function folhaSafra(){
   if(!SAFRA_OK) return _safTentou?`<div class="vazio">${IC.safra}Não deu para ler as atividades agora.<br>
@@ -3766,7 +3860,8 @@ function avisoVigia(){
 let _modo=null;   // 'mapa' | 'folha' — só remonta a estrutura quando o modo muda
 
 function pinta(){
-  const noMapa = (SECAO==='clima' || SECAO==='tel' || SECAO==='safra') && SUB==='mapa';
+  const noMapa = ((SECAO==='clima' || SECAO==='tel' || SECAO==='safra') && SUB==='mapa')
+              || (SECAO==='safra' && SUB==='croq');
   const mapaClima = SECAO==='clima' && SUB==='mapa';
   const modo = noMapa?'mapa':'folha';
   let corpo='';
@@ -3850,6 +3945,14 @@ function pinta(){
            >${maqLbl(t.maquina_id,t.device_id)}</button>`).join('')}
       </div>`:''}`:''}
     ${SECAO==='safra'&&SUB==='mapa'?safPilula():''}
+    ${SECAO==='safra'&&SUB==='croq'?`
+      <div class="faixa p1">
+        <button class="chip sel ${SELETOR==='croq'?'on':''}" data-abrir="croq">Croqui: ${croqAtual().nome} ▾</button>
+      </div>
+      ${SELETOR==='croq'?`<div class="gaveta">${CROQUIS.map(c=>
+        `<button data-croq="${c.id}" class="${CROQ===c.id?'on':''}">${c.nome}</button>`).join('')}
+        <div class="muted" style="font-size:11px;padding:6px 4px 2px">Novos croquis entram nesta lista ao longo da safra.</div>
+      </div>`:''}`:''}
     ${noMapa?`
       <div class="legenda" id="legenda" style="margin-top:0"></div>
       <div class="cartao" id="cartao" style="display:none"></div>`:''}`;
@@ -3869,7 +3972,7 @@ function pinta(){
   el('fdir').onclick=()=>{ MENU=MENU==='dir'?null:'dir'; pinta(); };
   if(el('veu')) el('veu').onclick=()=>{ MENU=null; pinta(); };
   document.querySelectorAll('[data-sec]').forEach(b=>b.onclick=()=>{
-    SECAO=b.dataset.sec; SUB=(SUBS[SECAO]||[['mapa']])[0][0]; MENU=null; SELETOR=null; ESTSEL=null; SAFSEL=null; SAFCOM=null; SAFD=null; if(window.RESV_UI) RESV_UI.fecharJanela(); _telEnq=false; medDesligar(); tlParar(); TL.ativo=false; TL.t=null; trocarTela(pinta); });   /* entrou noutra seção: enquadra de novo, e a medição não vai junto */
+    SECAO=b.dataset.sec; SUB=(SUBS[SECAO]||[['mapa']])[0][0]; MENU=null; SELETOR=null; ESTSEL=null; SAFSEL=null; SAFCOM=null; SAFD=null; CRQSEL=null; if(window.RESV_UI) RESV_UI.fecharJanela(); _telEnq=false; medDesligar(); tlParar(); TL.ativo=false; TL.t=null; trocarTela(pinta); });   /* entrou noutra seção: enquadra de novo, e a medição não vai junto */
   document.querySelectorAll('[data-sub]').forEach(b=>b.onclick=()=>{
     SUB=b.dataset.sub; MENU=null; SELETOR=null; ESTSEL=null; if(window.RESV_UI) RESV_UI.fecharJanela(); _telEnq=false; medDesligar(); tlParar(); TL.ativo=false; TL.t=null; trocarTela(pinta); });
   if(el('avvigia')) el('avvigia').onclick=()=>{
@@ -3939,6 +4042,8 @@ function pinta(){
   document.querySelectorAll('[data-vm]').forEach(b=>b.onclick=()=>{
     VARMAPA=b.dataset.vm; SELETOR=null; pinta(); });
 
+  document.querySelectorAll('[data-croq]').forEach(b=>b.onclick=()=>{
+    CROQ=b.dataset.croq; CRQSEL=null; SELETOR=null; pinta(); });
   if(SECAO==='safra'){
     safLigar();
     /* entrou na seção sem passar por um carregar(): busca uma vez e repinta.
