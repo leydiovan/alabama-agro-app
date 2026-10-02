@@ -170,6 +170,30 @@ svg{display:block}
 .cartao .cl span{font-size:12px;color:var(--muted)}
 .cartao .cl b{font-size:15px;font-variant-numeric:tabular-nums;white-space:nowrap}
 
+/* ---------- safra: linha do tempo + cartão do lote ---------- */
+/* a pílula fica onde a faixa de chips fica nas outras seções (a Safra não tem
+   chips). O trilho é um <input range> nativo: no celular é o que melhor pega o
+   dedo, e `touch-action:none` impede o navegador de achar que é rolagem. */
+.sfpill{position:absolute;z-index:26;left:12px;right:12px;top:calc(env(safe-area-inset-top) + 56px);
+  background:var(--vidro);backdrop-filter:blur(10px);border:1px solid var(--border);
+  border-radius:20px;padding:6px 12px 6px 6px;display:flex;align-items:center;gap:10px;pointer-events:auto}
+.sfpill input[type=range]{flex:1;min-width:0;accent-color:var(--gold);height:24px;touch-action:none}
+.sfpill b{font:800 13px inherit;font-variant-numeric:tabular-nums;min-width:46px;text-align:right}
+.sfpill button{background:var(--gold);color:#1a1100;border:0;width:30px;height:30px;border-radius:50%;
+  display:inline-flex;align-items:center;justify-content:center;flex:none;cursor:pointer;padding:0}
+.sfpill button svg{width:16px;height:16px}
+.cartao .sfcorpo{max-height:42vh;overflow-y:auto;-webkit-overflow-scrolling:touch}
+.sfop{display:flex;gap:9px;width:100%;text-align:left;background:transparent;border:0;
+  border-bottom:1px solid var(--border);color:var(--text);padding:8px 2px;cursor:pointer;font:inherit}
+.sfop:last-child{border-bottom:0}
+.sfop.on{background:rgba(255,193,7,.09);border-radius:8px}
+.sfop .sfd{width:8px;height:8px;border-radius:50%;margin-top:6px;flex:none}
+.sfop .sft{flex:1;min-width:0}
+.sfop b{font-size:13.5px}
+.sfop em{font-style:normal;color:var(--muted);font-size:12px;float:right;margin-left:8px}
+.sfop small{display:block;font-size:11.5px;color:var(--muted);margin-top:2px;line-height:1.35}
+.sfop .sfobs{color:var(--warn)}
+
 /* ---------- botões flutuantes ---------- */
 .fab{position:fixed;bottom:calc(env(safe-area-inset-bottom) + 18px);z-index:60;
   width:56px;height:56px;border-radius:50%;border:1px solid var(--border2);
@@ -321,7 +345,10 @@ const IC={
 const SECOES=[['clima','Clima',IC.clima],['rel','Relatórios',IC.rel],
               ['tel','Telemetria',IC.tel],['safra','Safra',IC.safra]];
 const SUBS={ clima:[['mapa','Mapa',IC.mapa],['agora','Agora',IC.agora],['hist','Histórico',IC.hist]],
-             tel:[['mapa','Mapa',IC.mapa],['agora','Máquinas',IC.agora],['vigia','Vigia',IC.vigia]] };
+             tel:[['mapa','Mapa',IC.mapa],['agora','Máquinas',IC.agora],['vigia','Vigia',IC.vigia]],
+             /* 'ativ' e não 'hist': a faixa de período do Histórico do clima
+                pega qualquer SUB==='hist' fora do mapa */
+             safra:[['mapa','Mapa',IC.mapa],['ativ','Atividades',IC.lista]] };
 
 let SB=null, SECAO='clima', SUB='mapa', MENU=null;   // MENU: null | 'esq' | 'dir'
 /* DESLOGADO trava o ciclo de recarga depois que a sessao cai. Sem ele, o
@@ -2455,6 +2482,7 @@ async function carregar(){
     ]);
     ESTACOES=e.data||[]; ATUAL=a.data||[]; HORAS=h.data||[];
     await carregarTelemetria();
+    if(SECAO==='safra') await carregarSafra();   // só busca a safra se alguém está olhando
     if(l&&l.data) LOTES=(l.data||[]).map(x=>{ const g=x.geom;
       if(!g||!Array.isArray(g.ring)||g.ring.length<3) return null;
       return {nome:x.nome,ring:g.ring.map(p=>utm2ll(+p[0],+p[1]))}; }).filter(Boolean);
@@ -3164,7 +3192,7 @@ function destruirMapa(){
   medDesligar();
   pararVento();
   if(_map){ try{ _map.remove(); }catch(e){} }
-  _map=null; _heat=null; _lotesL=null; _estL=null; _telL=null; _telEnq=false;
+  _map=null; _heat=null; _lotesL=null; _estL=null; _telL=null; _telEnq=false; _safL=null; safParar();
 }
 function desenhaMapa(){
   const m=el('mapa'); if(!m||!window.L) return;
@@ -3182,8 +3210,19 @@ function desenhaMapa(){
     _map.whenReady(()=>{ try{ _map.invalidateSize(); }catch(e){} });
   }
   if(_lotesL) _map.removeLayer(_lotesL);
+  /* na Safra o contorno vira branco discreto: o vermelho brigava com o verde do plantio */
   _lotesL=L.layerGroup(LOTES.map(l=>L.polygon(l.ring,
-    {color:'#ff4444',weight:1.1,opacity:.8,fill:false,interactive:false}))).addTo(_map);
+    SECAO==='safra'?{color:'#ffffff',weight:1,opacity:.55,fill:false,interactive:false}
+                   :{color:'#ff4444',weight:1.1,opacity:.8,fill:false,interactive:false}))).addTo(_map);
+  if(SECAO==='safra'){
+    pararVento();
+    if(_heat){ _map.removeLayer(_heat); _heat=null; }
+    if(_estL){ _map.removeLayer(_estL); _estL=null; }
+    if(_telL){ try{ _map.removeLayer(_telL); }catch(e){} _telL=null; }
+    desenhaSafra();
+    setTimeout(()=>{ try{ _map.invalidateSize(); }catch(e){} },100);
+    return;
+  }
   /* TELEMETRIA usa o MESMO mapa (dois Leaflet vivos num celular é desperdício),
      mas nada do clima: sem mancha interpolada, sem vento, sem legenda de escala. */
   if(SECAO==='tel'){
@@ -3477,6 +3516,206 @@ const semDado=(t)=>`<div class="vazio">${IC.clima}${t||'Nenhuma estação enviou
 const emObra=(n)=>`<div class="vazio">${IC.obra}<b style="color:var(--text);font-size:16px">${n}</b><br>
   <span style="font-size:13px">Em construção.</span></div>`;
 
+/* ===================== SAFRA (02/10/2026) =====================
+   O que já foi feito em cada lote, no mapa, e como a safra evoluiu até hoje.
+   FONTE ÚNICA: a view `safra_atividades` (migração 141). Ela existe porque a
+   conta de CONSULTA não lê `comandas` (migração 81) — lendo a tabela, a aba
+   sairia vazia para todo mundo menos o admin. A view não traz preço nem custo.
+   Nada aqui é guardado: o mapa é refeito do banco a cada leitura (diretriz
+   "UI = reflexo do banco"). Comanda LANÇADA = programada (ou feita e ainda não
+   aprovada): aparece tracejada, e só no "hoje" — no passado não se sabia dela.
+   O controle de tempo (SAFD) é só DESENHO: arrastar não vai ao banco. */
+let SAFRA=[], SAFRA_OK=0, _safTentou=false, SAFD=null, SAFSEL=null, SAFCOM=null, _safL=null, _safPlay=null;
+function safraAtual(){ const d=new Date(), y=d.getFullYear(); return d.getMonth()>=6?`${y}/${y+1}`:`${y-1}/${y}`; }
+const safEsc=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+/* dose vem como texto, às vezes "0,308", às vezes "2.15" (depende de quem gravou) */
+const safN=v=>{ if(v==null||v==='') return null; const n=+String(v).replace(',','.'); return isNaN(n)?null:n; };
+const safBR=(v,c)=>v==null||isNaN(v)?'—':(+v).toLocaleString('pt-BR',{minimumFractionDigits:c||0,maximumFractionDigits:c||0});
+/* data 'AAAA-MM-DD' -> meia-noite LOCAL (new Date('AAAA-MM-DD') seria UTC e
+   jogaria o dia para trás aqui no fuso -3 — armadilha do CLAUDE.md) */
+const safDia=iso=>{ if(!iso) return null; const p=String(iso).slice(0,10).split('-').map(Number);
+  return p.length===3?new Date(p[0],p[1]-1,p[2]).getTime():null; };
+const safDM=ms=>{ const d=new Date(ms); return String(d.getDate()).padStart(2,'0')+'/'+String(d.getMonth()+1).padStart(2,'0'); };
+const safFimHoje=()=>{ const d=new Date(); d.setHours(23,59,59,999); return d.getTime(); };
+const safFim=()=>SAFD==null?safFimHoje():SAFD;
+const SAFTIPO={'Plantio':['#2ecc71','🌱'],'Pulverização Terrestre':['#4aa3ff','💧'],'Pulverização Aérea':['#8fd3ff','✈️'],
+  'Adubação':['#ff9f43','🧪'],'Tratamento de Sementes':['#c084fc','🫘'],
+  'Colheita de Grãos':['#ffc107','🌾'],'Colheita de Fibras':['#ffc107','☁️']};
+const safCor=t=>(SAFTIPO[t]||['#9aa9c0'])[0];
+const safIco=t=>(SAFTIPO[t]||['','•'])[1];
+/* verde mais escuro quanto mais tempo de plantado (dias após o plantio) */
+const safCorDap=d=>d<7?'#d4f5a2':d<21?'#86dc5c':d<60?'#2ea043':'#1b7a33';
+const safCurto=n=>String(n).replace(/^Pivo\s*/i,'P').replace(/^Lote\s*/i,'');
+const safCentro=r=>{ let a=0,b=0; r.forEach(p=>{a+=p[0];b+=p[1];}); return [a/r.length,b/r.length]; };
+const safGeo=a=>a.poli||((LOTES.find(l=>l.nome===a.lote_nome)||{}).ring)||null;
+const safDap=(a,D)=>Math.floor((D-a.dia)/864e5);
+function safDose(p){
+  const n=safN(p.dose), un=String(p.un||'').toLowerCase();
+  if(n==null) return '';
+  if(un==='kg'&&n<1) return safBR(n*1000,0)+' g';
+  return n.toLocaleString('pt-BR',{maximumFractionDigits:3})+' '+(un==='kg'?'kg':(p.un||''));
+}
+/* lançada com data ANTES de hoje = feita no campo, falta aprovar (ex.: plantio
+   com telemetria esperando a Aprovação de campo); de hoje em diante = programada */
+const safSit=a=>{ if(a.status==='executada') return safDM(a.dia);
+  const h=new Date(); h.setHours(0,0,0,0);
+  return (a.dia!=null&&a.dia<h.getTime())?`a aprovar · ${safDM(a.dia)}`:'programada'; };
+const safProds=a=>(a.produtos||[]).map(p=>safEsc(String(p.nome||'').replace(/®/g,''))+' '+safDose(p)).join(' · ');
+/* primeiro dia da linha do tempo: a 1ª operação da safra (ou 1º de julho) */
+function safT0(){
+  const ds=SAFRA.filter(a=>a.dia!=null).map(a=>a.dia);
+  if(ds.length) return Math.min(...ds);
+  const y=+safraAtual().slice(0,4); return new Date(y,6,1).getTime();
+}
+async function carregarSafra(){
+  _safTentou=true;
+  try{
+    let todos=[];
+    for(let de=0;;de+=1000){     // paginar: o Supabase para em 1000 linhas SEM avisar
+      const {data,error}=await SB.from('safra_atividades').select('*').eq('safra',safraAtual())
+        .order('data_execucao',{ascending:true}).order('codigo').range(de,de+999);
+      if(error) throw error;
+      todos=todos.concat(data||[]); if(!data||data.length<1000) break;
+    }
+    SAFRA=todos.map(r=>Object.assign({},r,{
+      dia:safDia(r.data_execucao||r.data_emissao), area:safN(r.area_ha),
+      poli:Array.isArray(r.ring)&&r.ring.length>2?r.ring.map(p=>utm2ll(+p[0],+p[1])):null }));
+    SAFRA_OK=Date.now();
+  }catch(e){ console.warn('safra',e); }    // falha de rede NÃO apaga o que já está desenhado
+}
+function safParar(){ if(_safPlay){ clearInterval(_safPlay); _safPlay=null; } }
+function desenhaSafra(){
+  if(!_map) return;
+  if(_safL){ _map.removeLayer(_safL); _safL=null; }
+  const g=L.layerGroup(), hoje=SAFD==null, D=safFim();
+  const feitas=SAFRA.filter(a=>a.status==='executada'&&a.dia!=null&&a.dia<=D);
+  const prog=hoje?SAFRA.filter(a=>a.status==='lancada'):[];
+  const toque=n=>()=>safAbrir(n);
+  // 1) alvo de toque em TODO lote — tocar num lote sem nada feito também responde
+  LOTES.forEach(l=>L.polygon(l.ring,{stroke:false,fillOpacity:0,bubblingMouseEvents:false})
+    .on('click',toque(l.nome)).addTo(g));
+  // 2) área plantada, tingida pelos dias após o plantio
+  feitas.filter(a=>a.tipo_ativ==='Plantio').forEach(a=>{ const r=safGeo(a); if(!r) return;
+    L.polygon(r,{color:'#2ecc71',weight:1,fillColor:safCorDap(safDap(a,D)),fillOpacity:.55,bubblingMouseEvents:false})
+      .on('click',toque(a.lote_nome)).addTo(g); });
+  // 3) o que acabou de acontecer: operação dos 3 últimos dias, borda na cor do tipo
+  feitas.filter(a=>a.tipo_ativ!=='Plantio'&&D-a.dia<3*864e5).forEach(a=>{ const r=safGeo(a); if(!r) return;
+    L.polygon(r,{color:safCor(a.tipo_ativ),weight:2.6,fill:false,interactive:false}).addTo(g); });
+  // 4) programado (só no hoje): tracejado dourado
+  prog.forEach(a=>{ const r=safGeo(a); if(!r) return;
+    L.polygon(r,{color:'#ffc107',weight:2,dashArray:'6 5',fill:false,interactive:false}).addTo(g); });
+  // 5) destaque: a operação tocada no cartão, ou o lote aberto
+  const sel=SAFCOM&&SAFRA.find(x=>x.codigo===SAFCOM), rs=sel&&safGeo(sel);
+  if(rs) L.polygon(rs,{color:'#fff',weight:3,fillColor:safCor(sel.tipo_ativ),fillOpacity:.3,interactive:false}).addTo(g);
+  else if(SAFSEL){ const l=LOTES.find(x=>x.nome===SAFSEL);
+    if(l) L.polygon(l.ring,{color:'#fff',weight:2.4,fill:false,interactive:false}).addTo(g); }
+  // 6) rótulo só nos lotes com alguma coisa feita/programada — 30 rótulos tapariam a lavoura
+  new Set(feitas.concat(prog).map(a=>a.lote_nome)).forEach(n=>{ const l=LOTES.find(x=>x.nome===n); if(!l) return;
+    L.marker(safCentro(l.ring),{icon:L.divIcon({className:'',html:'',iconSize:[0,0]}),interactive:false})
+      .bindTooltip(safEsc(safCurto(n)),{permanent:true,direction:'center',className:'placa'}).addTo(g); });
+  _safL=g.addTo(_map);
+  // legenda: hectares plantados até a data + as convenções
+  const lg=el('legenda');
+  if(lg){
+    const ha=feitas.filter(a=>a.tipo_ativ==='Plantio').reduce((s,a)=>s+(a.area||0),0);
+    lg.className='legenda mini'; lg.style.display='';
+    lg.innerHTML=`<span><i style="background:#86dc5c;height:9px"></i>&nbsp;Plantado <b>&nbsp;${safBR(ha,1)} ha</b></span>
+      <span><i style="background:#4aa3ff"></i>&nbsp;Aplicado ≤3 d</span>
+      ${hoje?`<span><i style="background:none;border-top:2px dashed #ffc107;height:0"></i>&nbsp;Programado / a aprovar</span>`:''}`;
+  }
+  cartaoSafra();
+}
+function safAbrir(nome){ SAFSEL=nome; SAFCOM=null; desenhaSafra(); }
+function cartaoSafra(){
+  const c=el('cartao'); if(!c) return;
+  if(!SAFSEL){ c.style.display='none'; c.innerHTML=''; return; }
+  const D=safFim(), hoje=SAFD==null;
+  const ops=SAFRA.filter(a=>a.lote_nome===SAFSEL&&(a.status==='executada'?(a.dia!=null&&a.dia<=D):hoje))
+                 .sort((a,b)=>(a.dia||0)-(b.dia||0));
+  const area=(SAFRA.find(a=>a.lote_nome===SAFSEL&&a.area_lote!=null)||{}).area_lote;
+  const pl=ops.filter(a=>a.tipo_ativ==='Plantio'&&a.status==='executada');
+  const linhasPl=pl.map(a=>{ const v=a.plantio&&a.plantio.variedade;
+    return `<div class="cl"><span>🌱 ${safDM(a.dia)} · ${safBR(a.area,1)} ha${v?' · '+safEsc(v.replace(/\s*-\s*(CERTIFICADA|SALVA)$/i,'')):''}</span>
+      <b>${safDap(a,D)} DAP</b></div>`; }).join('');
+  const lis=ops.map(a=>{
+    const pl=a.plantio||{}, on=SAFCOM===a.codigo;
+    const det=a.tipo_ativ==='Plantio'
+      ? [pl.variedade?safEsc(pl.variedade):'', pl.populacao?safEsc(pl.populacao)+' sem/ha':''].filter(Boolean).join(' · ')
+      : safProds(a);
+    return `<button class="sfop ${on?'on':''}" data-sfop="${safEsc(a.codigo)}">
+      <span class="sfd" style="background:${safCor(a.tipo_ativ)}"></span>
+      <span class="sft"><em>${safSit(a)}</em><b>${safIco(a.tipo_ativ)} ${safEsc(a.tipo_ativ)}</b>
+        <small>${safBR(a.area,2)} ha${a.poli?' · parte do lote':''}${det?' · '+det:''}</small>
+        ${on&&a.obs?`<small class="sfobs">⚠ ${safEsc(a.obs)}</small>`:''}</span></button>`; }).join('');
+  c.style.display='';
+  c.innerHTML=`<div class="ch"><span class="dot" style="background:${pl.length?'#2ecc71':'var(--muted2)'}"></span>
+      <b>${safEsc(SAFSEL)}</b>${area?`<span class="fraco" style="font-size:12px">${safBR(+area,1)} ha</span>`:''}
+      <button id="cfecha" aria-label="fechar">${IC.fechar}</button></div>
+    <div class="sfcorpo">${linhasPl}${ops.length?lis
+      :`<div class="muted" style="padding:10px 0;font-size:13px">Nada lançado neste lote até ${safDM(D)}.</div>`}</div>`;
+  const b=el('cfecha'); if(b) b.onclick=()=>{ SAFSEL=null; SAFCOM=null; desenhaSafra(); };
+  c.querySelectorAll('[data-sfop]').forEach(x=>x.onclick=()=>{
+    SAFCOM=SAFCOM===x.dataset.sfop?null:x.dataset.sfop; desenhaSafra(); });
+}
+/* linha do tempo: índice em DIAS desde o 1º dia da safra; o último = hoje */
+function safPilula(){
+  const t0=safT0(), n=Math.max(1,Math.round((safFimHoje()-t0)/864e5));
+  const i=SAFD==null?n:Math.max(0,Math.min(n,Math.round((SAFD-t0)/864e5)));
+  return `<div class="sfpill"><button id="sfpp" title="${_safPlay?'Pausar':'Ver a safra acontecendo'}">${_safPlay?IC.pausa:IC.play}</button>
+    <input type="range" id="sfrange" min="0" max="${n}" step="1" value="${i}" aria-label="Data">
+    <b id="sfdata">${SAFD==null?'Hoje':safDM(SAFD)}</b></div>`;
+}
+function safIrPara(i){
+  const t0=safT0(), n=Math.max(1,Math.round((safFimHoje()-t0)/864e5));
+  i=Math.max(0,Math.min(n,i));
+  if(i>=n) SAFD=null; else { const d=new Date(t0+i*864e5); d.setHours(23,59,59,999); SAFD=d.getTime(); }
+  const r=el('sfrange'); if(r) r.value=i;
+  const b=el('sfdata'); if(b) b.textContent=SAFD==null?'Hoje':safDM(SAFD);
+  desenhaSafra();
+  return i>=n;
+}
+function safLigar(){
+  const r=el('sfrange');
+  if(r) r.oninput=()=>{ safParar(); const p=el('sfpp'); if(p) p.innerHTML=IC.play; safIrPara(+r.value); };
+  const p=el('sfpp');
+  if(p) p.onclick=()=>{
+    if(_safPlay){ safParar(); p.innerHTML=IC.play; return; }
+    let i=+(el('sfrange')||{}).value||0;
+    if(SAFD==null) i=0;                      // no "hoje": recomeça do 1º dia
+    p.innerHTML=IC.pausa; safIrPara(i);
+    _safPlay=setInterval(()=>{ i++; if(safIrPara(i)){ safParar(); const q=el('sfpp'); if(q) q.innerHTML=IC.play; } },160);
+  };
+  document.querySelectorAll('[data-sfir]').forEach(x=>x.onclick=()=>{
+    const a=SAFRA.find(s=>s.codigo===x.dataset.sfir); if(!a) return;
+    SUB='mapa'; SAFSEL=a.lote_nome; SAFCOM=a.codigo;
+    if(a.status==='executada'&&a.dia!=null){ const d=new Date(a.dia); d.setHours(23,59,59,999); SAFD=d.getTime(); } else SAFD=null;
+    trocarTela(pinta); });
+}
+/* folha "Atividades": resumo + tudo o que foi feito, do mais novo para o mais velho */
+function folhaSafra(){
+  if(!SAFRA_OK) return _safTentou?`<div class="vazio">${IC.safra}Não deu para ler as atividades agora.<br>
+    <span style="font-size:13px">Tenta de novo em instantes.</span></div>`:'<div class="vazio">Carregando…</div>';
+  if(!SAFRA.length) return `<div class="vazio">${IC.safra}Nenhuma atividade lançada na safra ${safraAtual()}.</div>`;
+  const ex=SAFRA.filter(a=>a.status==='executada'), pr=SAFRA.filter(a=>a.status==='lancada');
+  const ha=ex.filter(a=>a.tipo_ativ==='Plantio').reduce((s,a)=>s+(a.area||0),0);
+  const nl=new Set(ex.map(a=>a.lote_nome)).size;
+  const item=a=>{ const det=a.tipo_ativ==='Plantio'?safEsc((a.plantio&&a.plantio.variedade)||''):safProds(a);
+    return `<div class="item" data-sfir="${safEsc(a.codigo)}" style="cursor:pointer;align-items:flex-start">
+      <span class="dot" style="background:${safCor(a.tipo_ativ)};margin-top:5px"></span>
+      <div style="min-width:0"><div class="nm">${safIco(a.tipo_ativ)} ${safEsc(a.tipo_ativ)} · ${safEsc(a.lote_nome)}</div>
+        <div class="sb">${a.status==='lancada'?`<b style="color:var(--gold)">${safSit(a)}</b>`:safDM(a.dia)} · ${safBR(a.area,1)} ha${a.poli?' (parte)':''}${det?'<br>'+det:''}</div></div></div>`; };
+  const porMes={}; ex.slice().sort((a,b)=>(b.dia||0)-(a.dia||0)).forEach(a=>{
+    const k=new Date(a.dia).toLocaleDateString('pt-BR',{month:'long',year:'numeric'}); (porMes[k]=porMes[k]||[]).push(a); });
+  return `<div class="sec">Safra ${safraAtual()}</div>
+    <div class="grid">
+      <div class="card"><div class="lb">Plantado</div><div class="vl">${safBR(ha,1)}<span class="u">ha</span></div></div>
+      <div class="card"><div class="lb">Operações feitas</div><div class="vl">${ex.length}</div><div class="ex">em ${nl} lote${nl===1?'':'s'}</div></div>
+    </div>
+    ${pr.length?`<div class="sec">Programado / a aprovar (${pr.length})</div>${pr.map(item).join('')}`:''}
+    ${Object.keys(porMes).map(k=>`<div class="sec">${k}</div>${porMes[k].map(item).join('')}`).join('')}
+    <div class="muted" style="font-size:12px;text-align:center;margin:18px 0 6px">Toque numa atividade para vê-la no mapa.</div>`;
+}
+
 /* ---------- render ---------- */
 /* No topo à direita vai a DATA E HORA da última leitura — não o período.
    Repetir "Agora" ali não dizia nada (e continuava "Agora" mesmo com 7 dias
@@ -3509,11 +3748,12 @@ function avisoVigia(){
 let _modo=null;   // 'mapa' | 'folha' — só remonta a estrutura quando o modo muda
 
 function pinta(){
-  const noMapa = (SECAO==='clima' || SECAO==='tel') && SUB==='mapa';
+  const noMapa = (SECAO==='clima' || SECAO==='tel' || SECAO==='safra') && SUB==='mapa';
   const mapaClima = SECAO==='clima' && SUB==='mapa';
   const modo = noMapa?'mapa':'folha';
   let corpo='';
   if(SECAO==='tel') corpo = (SUB==='agora') ? folhaMaquinas() : (SUB==='vigia') ? folhaVigia() : '';
+  else if(SECAO==='safra') corpo = (SUB==='ativ') ? folhaSafra() : '';
   else if(SECAO!=='clima') corpo=emObra(SECOES.find(s=>s[0]===SECAO)[1]);
   else if(SUB==='agora') corpo=folhaAgora();
   else if(SUB==='hist') corpo=folhaHist();
@@ -3591,6 +3831,7 @@ function pinta(){
         ${TELE.map(t=>`<button data-tmq="${t.maquina_id||''}" class="${maqVisivel(t.maquina_id)&&TMAQS.length?'on':''}"
            >${maqLbl(t.maquina_id,t.device_id)}</button>`).join('')}
       </div>`:''}`:''}
+    ${SECAO==='safra'&&SUB==='mapa'?safPilula():''}
     ${noMapa?`
       <div class="legenda" id="legenda" style="margin-top:0"></div>
       <div class="cartao" id="cartao" style="display:none"></div>`:''}`;
@@ -3610,7 +3851,7 @@ function pinta(){
   el('fdir').onclick=()=>{ MENU=MENU==='dir'?null:'dir'; pinta(); };
   if(el('veu')) el('veu').onclick=()=>{ MENU=null; pinta(); };
   document.querySelectorAll('[data-sec]').forEach(b=>b.onclick=()=>{
-    SECAO=b.dataset.sec; SUB=(SUBS[SECAO]||[['mapa']])[0][0]; MENU=null; SELETOR=null; ESTSEL=null; if(window.RESV_UI) RESV_UI.fecharJanela(); _telEnq=false; medDesligar(); tlParar(); TL.ativo=false; TL.t=null; trocarTela(pinta); });   /* entrou noutra seção: enquadra de novo, e a medição não vai junto */
+    SECAO=b.dataset.sec; SUB=(SUBS[SECAO]||[['mapa']])[0][0]; MENU=null; SELETOR=null; ESTSEL=null; SAFSEL=null; SAFCOM=null; SAFD=null; if(window.RESV_UI) RESV_UI.fecharJanela(); _telEnq=false; medDesligar(); tlParar(); TL.ativo=false; TL.t=null; trocarTela(pinta); });   /* entrou noutra seção: enquadra de novo, e a medição não vai junto */
   document.querySelectorAll('[data-sub]').forEach(b=>b.onclick=()=>{
     SUB=b.dataset.sub; MENU=null; SELETOR=null; ESTSEL=null; if(window.RESV_UI) RESV_UI.fecharJanela(); _telEnq=false; medDesligar(); tlParar(); TL.ativo=false; TL.t=null; trocarTela(pinta); });
   if(el('avvigia')) el('avvigia').onclick=()=>{
@@ -3680,9 +3921,16 @@ function pinta(){
   document.querySelectorAll('[data-vm]').forEach(b=>b.onclick=()=>{
     VARMAPA=b.dataset.vm; SELETOR=null; pinta(); });
 
+  if(SECAO==='safra'){
+    safLigar();
+    /* entrou na seção sem passar por um carregar(): busca uma vez e repinta.
+       `_safTentou` impede o laço se a leitura falhar (a folha diz que falhou). */
+    if(!SAFRA_OK && !_safTentou) carregarSafra().then(()=>{ if(SECAO==='safra') pinta(); });
+  }
+
   /* o `ATUAL.some(...)` é condição do CLIMA (não desenhar mancha sem leitura).
-     O mapa da telemetria não depende de estação nenhuma. */
-  if(noMapa && (SECAO==='tel' || ATUAL.some(x=>x.temp!==null))) garantirLeaflet(desenhaMapa);
+     O mapa da telemetria e o da safra não dependem de estação nenhuma. */
+  if(noMapa && (SECAO==='tel' || SECAO==='safra' || ATUAL.some(x=>x.temp!==null))) garantirLeaflet(desenhaMapa);
 }
 /* trocar de seção/submenu muda o modo -> aí sim o mapa é destruído de verdade */
 function trocarTela(fn){ destruirMapa(); _modo=null; fn(); }
