@@ -3557,9 +3557,13 @@ function safDose(p){
 }
 /* lançada com data ANTES de hoje = feita no campo, falta aprovar (ex.: plantio
    com telemetria esperando a Aprovação de campo); de hoje em diante = programada */
-const safSit=a=>{ if(a.status==='executada') return safDM(a.dia);
-  const h=new Date(); h.setHours(0,0,0,0);
-  return (a.dia!=null&&a.dia<h.getTime())?`a aprovar · ${safDM(a.dia)}`:'programada'; };
+const safAprovar=a=>{ if(a.status!=='lancada'||a.dia==null) return false;
+  const h=new Date(); h.setHours(0,0,0,0); return a.dia<h.getTime(); };
+/* "aconteceu até D": executada, ou feita e esperando aprovação. O dono cobrou
+   (02/10): o plantio de ontem estava no campo e o mapa não mostrava — a
+   aprovação é burocracia do sistema, não muda o que está plantado. */
+const safFeita=(a,D)=>a.dia!=null&&a.dia<=D&&(a.status==='executada'||safAprovar(a));
+const safSit=a=>a.status==='executada'?safDM(a.dia):safAprovar(a)?`a aprovar · ${safDM(a.dia)}`:'programada';
 const safProds=a=>(a.produtos||[]).map(p=>safEsc(String(p.nome||'').replace(/®/g,''))+' '+safDose(p)).join(' · ');
 /* primeiro dia da linha do tempo: a 1ª operação da safra (ou 1º de julho) */
 function safT0(){
@@ -3588,15 +3592,17 @@ function desenhaSafra(){
   if(!_map) return;
   if(_safL){ _map.removeLayer(_safL); _safL=null; }
   const g=L.layerGroup(), hoje=SAFD==null, D=safFim();
-  const feitas=SAFRA.filter(a=>a.status==='executada'&&a.dia!=null&&a.dia<=D);
-  const prog=hoje?SAFRA.filter(a=>a.status==='lancada'):[];
+  const feitas=SAFRA.filter(a=>safFeita(a,D));
+  const prog=hoje?SAFRA.filter(a=>a.status==='lancada'&&!safAprovar(a)):[];
   const toque=n=>()=>safAbrir(n);
   // 1) alvo de toque em TODO lote — tocar num lote sem nada feito também responde
   LOTES.forEach(l=>L.polygon(l.ring,{stroke:false,fillOpacity:0,bubblingMouseEvents:false})
     .on('click',toque(l.nome)).addTo(g));
   // 2) área plantada, tingida pelos dias após o plantio
-  feitas.filter(a=>a.tipo_ativ==='Plantio').forEach(a=>{ const r=safGeo(a); if(!r) return;
-    L.polygon(r,{color:'#2ecc71',weight:1,fillColor:safCorDap(safDap(a,D)),fillOpacity:.55,bubblingMouseEvents:false})
+  //    (a aprovar: mesma tinta, borda tracejada dourada — está plantado, falta o sistema)
+  feitas.filter(a=>a.tipo_ativ==='Plantio').forEach(a=>{ const r=safGeo(a); if(!r) return; const ap=safAprovar(a);
+    L.polygon(r,{color:ap?'#ffc107':'#2ecc71',weight:ap?2:1,dashArray:ap?'6 5':null,
+      fillColor:safCorDap(safDap(a,D)),fillOpacity:.55,bubblingMouseEvents:false})
       .on('click',toque(a.lote_nome)).addTo(g); });
   // 3) o que acabou de acontecer: operação dos 3 últimos dias, borda na cor do tipo
   feitas.filter(a=>a.tipo_ativ!=='Plantio'&&D-a.dia<3*864e5).forEach(a=>{ const r=safGeo(a); if(!r) return;
@@ -3617,9 +3623,10 @@ function desenhaSafra(){
   // legenda: hectares plantados até a data + as convenções
   const lg=el('legenda');
   if(lg){
-    const ha=feitas.filter(a=>a.tipo_ativ==='Plantio').reduce((s,a)=>s+(a.area||0),0);
+    const pls=feitas.filter(a=>a.tipo_ativ==='Plantio');
+    const ha=pls.reduce((s,a)=>s+(a.area||0),0), hap=pls.filter(safAprovar).reduce((s,a)=>s+(a.area||0),0);
     lg.className='legenda mini'; lg.style.display='';
-    lg.innerHTML=`<span><i style="background:#86dc5c;height:9px"></i>&nbsp;Plantado <b>&nbsp;${safBR(ha,1)} ha</b></span>
+    lg.innerHTML=`<span><i style="background:#86dc5c;height:9px"></i>&nbsp;Plantado <b>&nbsp;${safBR(ha,1)} ha</b>${hap?`<span class="fraco">&nbsp;(${safBR(hap,1)} a aprovar)</span>`:''}</span>
       <span><i style="background:#4aa3ff"></i>&nbsp;Aplicado ≤3 d</span>
       ${hoje?`<span><i style="background:none;border-top:2px dashed #ffc107;height:0"></i>&nbsp;Programado / a aprovar</span>`:''}`;
   }
@@ -3630,12 +3637,12 @@ function cartaoSafra(){
   const c=el('cartao'); if(!c) return;
   if(!SAFSEL){ c.style.display='none'; c.innerHTML=''; return; }
   const D=safFim(), hoje=SAFD==null;
-  const ops=SAFRA.filter(a=>a.lote_nome===SAFSEL&&(a.status==='executada'?(a.dia!=null&&a.dia<=D):hoje))
+  const ops=SAFRA.filter(a=>a.lote_nome===SAFSEL&&(safFeita(a,D)||(hoje&&a.status==='lancada')))
                  .sort((a,b)=>(a.dia||0)-(b.dia||0));
   const area=(SAFRA.find(a=>a.lote_nome===SAFSEL&&a.area_lote!=null)||{}).area_lote;
-  const pl=ops.filter(a=>a.tipo_ativ==='Plantio'&&a.status==='executada');
+  const pl=ops.filter(a=>a.tipo_ativ==='Plantio'&&safFeita(a,D));
   const linhasPl=pl.map(a=>{ const v=a.plantio&&a.plantio.variedade;
-    return `<div class="cl"><span>🌱 ${safDM(a.dia)} · ${safBR(a.area,1)} ha${v?' · '+safEsc(v.replace(/\s*-\s*(CERTIFICADA|SALVA)$/i,'')):''}</span>
+    return `<div class="cl"><span>🌱 ${safDM(a.dia)} · ${safBR(a.area,1)} ha${v?' · '+safEsc(v.replace(/\s*-\s*(CERTIFICADA|SALVA)$/i,'')):''}${safAprovar(a)?' <span style="color:var(--gold)">(a aprovar)</span>':''}</span>
       <b>${safDap(a,D)} DAP</b></div>`; }).join('');
   const lis=ops.map(a=>{
     const pl=a.plantio||{}, on=SAFCOM===a.codigo;
@@ -3697,7 +3704,8 @@ function folhaSafra(){
     <span style="font-size:13px">Tenta de novo em instantes.</span></div>`:'<div class="vazio">Carregando…</div>';
   if(!SAFRA.length) return `<div class="vazio">${IC.safra}Nenhuma atividade lançada na safra ${safraAtual()}.</div>`;
   const ex=SAFRA.filter(a=>a.status==='executada'), pr=SAFRA.filter(a=>a.status==='lancada');
-  const ha=ex.filter(a=>a.tipo_ativ==='Plantio').reduce((s,a)=>s+(a.area||0),0);
+  const hap=pr.filter(a=>a.tipo_ativ==='Plantio'&&safAprovar(a)).reduce((s,a)=>s+(a.area||0),0);
+  const ha=ex.filter(a=>a.tipo_ativ==='Plantio').reduce((s,a)=>s+(a.area||0),0)+hap;
   const nl=new Set(ex.map(a=>a.lote_nome)).size;
   const item=a=>{ const det=a.tipo_ativ==='Plantio'?safEsc((a.plantio&&a.plantio.variedade)||''):safProds(a);
     return `<div class="item" data-sfir="${safEsc(a.codigo)}" style="cursor:pointer;align-items:flex-start">
@@ -3708,7 +3716,7 @@ function folhaSafra(){
     const k=new Date(a.dia).toLocaleDateString('pt-BR',{month:'long',year:'numeric'}); (porMes[k]=porMes[k]||[]).push(a); });
   return `<div class="sec">Safra ${safraAtual()}</div>
     <div class="grid">
-      <div class="card"><div class="lb">Plantado</div><div class="vl">${safBR(ha,1)}<span class="u">ha</span></div></div>
+      <div class="card"><div class="lb">Plantado</div><div class="vl">${safBR(ha,1)}<span class="u">ha</span></div>${hap?`<div class="ex">${safBR(hap,1)} ha a aprovar</div>`:''}</div>
       <div class="card"><div class="lb">Operações feitas</div><div class="vl">${ex.length}</div><div class="ex">em ${nl} lote${nl===1?'':'s'}</div></div>
     </div>
     ${pr.length?`<div class="sec">Programado / a aprovar (${pr.length})</div>${pr.map(item).join('')}`:''}
