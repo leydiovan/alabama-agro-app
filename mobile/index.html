@@ -3755,6 +3755,17 @@ function crqDesenhaVariedades(g){
   return Object.keys(tot).sort().map(v=>
     `<span><i style="background:${cor[v]};height:9px"></i>&nbsp;${safEsc(v)}<b>&nbsp;${safBR(tot[v],1)} ha</b></span>`).join('');
 }
+/* emergência é um PERÍODO (o dono informa quando começou e quando terminou):
+   plantio.emergencia_ini / emergencia_fim (+ emergencia_fim_previsto enquanto
+   o fim for só a expectativa dele). `emergencia` (data única) fica de reserva. */
+function safEmerg(pl){
+  const ini=safDia(pl.emergencia_ini||pl.emergencia), fim=safDia(pl.emergencia_fim);
+  if(ini==null) return '<span class="fraco">não registrada</span>';
+  const h=new Date(); h.setHours(0,0,0,0);
+  if(fim==null) return `${safDM(ini)} → <span style="color:var(--gold)">em andamento</span>`;
+  const prev=pl.emergencia_fim_previsto&&fim>=h.getTime();
+  return `${safDM(ini)} → ${safDM(fim)}${prev?' <span class="fraco" style="font-size:11px">(previsto)</span>':''}`;
+}
 function crqCartaoVariedades(){
   const a=SAFRA.find(x=>x.codigo===CRQSEL); if(!a) return '';
   const pl=a.plantio||{}, D=safFimHoje(), cor=crqCores()[safVarCurta(pl.variedade)]||'#9aa9c0';
@@ -3766,7 +3777,7 @@ function crqCartaoVariedades(){
     ${lin('Variedade', safEsc(safVarCurta(pl.variedade)))}
     ${safTipoSem(pl.variedade)?lin('Semente', safTipoSem(pl.variedade)+(safSemKg(a)?' · '+safSemKg(a):'')):''}
     ${lin('Plantio', safDM(a.dia)+(safAprovar(a)?' <span style="color:var(--gold);font-size:11px">a aprovar</span>':''))}
-    ${lin('Emergência', pl.emergencia?safDM(safDia(pl.emergencia)):'<span class="fraco">não registrada</span>')}
+    ${lin('Emergência', safEmerg(pl))}
     ${lin('Dias após o plantio', safDap(a,D)+' DAP')}
     ${lin('Área', safBR(a.area,2)+' ha'+(a.poli?' <span class="fraco" style="font-size:11px">(banda)</span>':''))}
     ${pl.populacao?lin('População', safEsc(pl.populacao)+' sem/ha'):''}
