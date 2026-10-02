@@ -3564,6 +3564,12 @@ const safAprovar=a=>{ if(a.status!=='lancada'||a.dia==null) return false;
    aprovação é burocracia do sistema, não muda o que está plantado. */
 const safFeita=(a,D)=>a.dia!=null&&a.dia<=D&&(a.status==='executada'||safAprovar(a));
 const safSit=a=>a.status==='executada'?safDM(a.dia):safAprovar(a)?`a aprovar · ${safDM(a.dia)}`:'programada';
+/* semente do plantio em kg/ha (o nome já aparece como variedade). Semente em
+   "big bag" está cadastrada por bag de 1 t (dono, 02/10/2026) -> ×1000 kg. */
+const safSemKg=a=>{ const p=(a.produtos||[]).find(x=>/semente/i.test(x.tipo||'')); if(!p) return '';
+  const n=safN(p.dose), un=String(p.un||'').toLowerCase(); if(n==null) return '';
+  const kg=/big/.test(un)?n*1000:un==='kg'?n:null;
+  return kg!=null?safBR(kg,1)+' kg/ha':safDose(p)+'/ha'; };
 const safProds=a=>(a.produtos||[]).map(p=>safEsc(String(p.nome||'').replace(/®/g,''))+' '+safDose(p)).join(' · ');
 /* primeiro dia da linha do tempo: a 1ª operação da safra (ou 1º de julho) */
 function safT0(){
@@ -3641,13 +3647,14 @@ function cartaoSafra(){
                  .sort((a,b)=>(a.dia||0)-(b.dia||0));
   const area=(SAFRA.find(a=>a.lote_nome===SAFSEL&&a.area_lote!=null)||{}).area_lote;
   const pl=ops.filter(a=>a.tipo_ativ==='Plantio'&&safFeita(a,D));
-  const linhasPl=pl.map(a=>{ const v=a.plantio&&a.plantio.variedade;
-    return `<div class="cl"><span>🌱 ${safDM(a.dia)} · ${safBR(a.area,1)} ha${v?' · '+safEsc(v.replace(/\s*-\s*(CERTIFICADA|SALVA)$/i,'')):''}${safAprovar(a)?' <span style="color:var(--gold)">(a aprovar)</span>':''}</span>
+  const linhasPl=pl.map(a=>{ const v=a.plantio&&a.plantio.variedade, sm=a.plantio&&a.plantio.sementes_m;
+    return `<div class="cl"><span>🌱 ${safDM(a.dia)} · ${safBR(a.area,1)} ha${v?' · '+safEsc(v.replace(/\s*-\s*(CERTIFICADA|SALVA)$/i,'')):''}${sm?' · '+safEsc(sm)+' sem/m':''}${safAprovar(a)?' <span style="color:var(--gold)">(a aprovar)</span>':''}</span>
       <b>${safDap(a,D)} DAP</b></div>`; }).join('');
   const lis=ops.map(a=>{
     const pl=a.plantio||{}, on=SAFCOM===a.codigo;
     const det=a.tipo_ativ==='Plantio'
-      ? [pl.variedade?safEsc(pl.variedade):'', pl.populacao?safEsc(pl.populacao)+' sem/ha':''].filter(Boolean).join(' · ')
+      ? [pl.variedade?safEsc(pl.variedade):'', pl.populacao?safEsc(pl.populacao)+' sem/ha':'',
+         pl.sementes_m?safEsc(pl.sementes_m)+' sem/m':'', safSemKg(a)].filter(Boolean).join(' · ')
       : safProds(a);
     return `<button class="sfop ${on?'on':''}" data-sfop="${safEsc(a.codigo)}">
       <span class="sfd" style="background:${safCor(a.tipo_ativ)}"></span>
@@ -3707,7 +3714,10 @@ function folhaSafra(){
   const hap=pr.filter(a=>a.tipo_ativ==='Plantio'&&safAprovar(a)).reduce((s,a)=>s+(a.area||0),0);
   const ha=ex.filter(a=>a.tipo_ativ==='Plantio').reduce((s,a)=>s+(a.area||0),0)+hap;
   const nl=new Set(ex.map(a=>a.lote_nome)).size;
-  const item=a=>{ const det=a.tipo_ativ==='Plantio'?safEsc((a.plantio&&a.plantio.variedade)||''):safProds(a);
+  const item=a=>{ const pl=a.plantio||{};
+    const det=a.tipo_ativ==='Plantio'
+      ?[pl.variedade?safEsc(pl.variedade):'', pl.sementes_m?safEsc(pl.sementes_m)+' sem/m':''].filter(Boolean).join(' · ')
+      :safProds(a);
     return `<div class="item" data-sfir="${safEsc(a.codigo)}" style="cursor:pointer;align-items:flex-start">
       <span class="dot" style="background:${safCor(a.tipo_ativ)};margin-top:5px"></span>
       <div style="min-width:0"><div class="nm">${safIco(a.tipo_ativ)} ${safEsc(a.tipo_ativ)} · ${safEsc(a.lote_nome)}</div>
