@@ -20,8 +20,19 @@
    GEOMETRIA DO CORTE (conferida pelo dono em 14/09/2026; registro em
    `Chat Claude estação e telemetria/docs/nivel-reservatorio-22ago2026.md`):
    terreno de fora +2,00 · crista +6,00 · talude 3,07:1 dos dois lados · testa
-   ~5,5 m · adutoras DN 400 a 30 cm acima do terreno (fundo do cano +2,30, topo +2,70 — corrigido pelo dono em 14/09/2026; antes estava "topo +2,40 seguindo o chão"), reta e 90° para
+   ~5,5 m · adutoras DN 400 (fundo do cano +2,40, topo +2,80), reta e 90° para
    baixo até a boca da sucção = 0,00 · lado fundo −0,30 (onde fica a sonda).
+   COTA DA ADUTORA — como foi medida (02/10/2026, pelo dono): a água ficou
+   exatamente na PARTE DE CIMA do cano com a telemetria marcando 2,80 m (a série
+   horária passa em 2,803 m às 08h e vinha descendo). Então topo do cano = +2,80
+   e, com DN 400, fundo = +2,40. Vale como duas coisas: fixa a cota do cano e
+   CONFERE a sonda contra um ponto físico — a medição de 05/09 em bancada (zero
+   4,00 mA, span 1,600 mA/m) bate no campo.
+   Antes de 02/10 o desenho usava fundo +2,30 / topo +2,70 (cota de 14/09/2026,
+   "30 cm acima do terreno"). Subiu 10 cm. CONSEQUÊNCIA A CONFERIR: com o terreno
+   de fora em +2,00 o vão passa de 30 para 40 cm — ou o terreno ali é +2,10. Só o
+   topo do cano foi medido; o resto é dedução. Quem for ao piscinão, mede o vão.
+
    Cores do real: grama por fora, lona PRETA por dentro, testa bege.
 
    0 mA NÃO É VAZIO: em falha a view manda nível nulo — não se desenha água e a
@@ -136,14 +147,14 @@
       <line x1="508" y1="${y(-0.02)}" x2="520" y2="${y(-0.02)-14}" stroke="#e8edf5" stroke-width="1.4"/>
       ${txt(515, y(0)+22, 'fundo — largura fora de escala', {a:'middle', s:10, c:'#8ba0bd', m:1})}
       ${regua}
-      <path d="M 112 ${y(2.5)} H ${xs} V ${y(0.25)}" fill="none" stroke="#4b535c" stroke-width="16" stroke-linejoin="round"/>
-      <path d="M 112 ${y(2.5)} H ${xs} V ${y(0.25)}" fill="none" stroke="#aab4be" stroke-width="10" stroke-linejoin="round"/>
-      <!-- adutora 30 cm acima do terreno (dono, 14/09/2026): cano em escala (16 px = 40 cm), fundo em +2,30, com dois apoios e a cota -->
-      <rect x="137" y="${y(2.3)}" width="6" height="${0.3*V}" fill="#90a4ae"/>
-      <rect x="182" y="${y(2.3)}" width="6" height="${0.3*V}" fill="#90a4ae"/>
-      ${txt(162, y(2)+16*F, '↕ 30 cm', {a:'middle', s:10, b:1, c:'#ffe082'})}
+      <path d="M 112 ${y(2.6)} H ${xs} V ${y(0.25)}" fill="none" stroke="#4b535c" stroke-width="16" stroke-linejoin="round"/>
+      <path d="M 112 ${y(2.6)} H ${xs} V ${y(0.25)}" fill="none" stroke="#aab4be" stroke-width="10" stroke-linejoin="round"/>
+      <!-- adutora: cano em escala (16 px = 40 cm), fundo em +2,40 e topo em +2,80 (medido 02/10/2026 — ver cabecalho), com dois apoios e a cota do vao -->
+      <rect x="137" y="${y(2.4)}" width="6" height="${0.4*V}" fill="#90a4ae"/>
+      <rect x="182" y="${y(2.4)}" width="6" height="${0.4*V}" fill="#90a4ae"/>
+      ${txt(162, y(2)+16*F, '↕ 40 cm', {a:'middle', s:10, b:1, c:'#ffe082'})}
       <path d="M ${xs-13} ${y(0)} L ${xs-7} ${y(0.28)} H ${xs+7} L ${xs+13} ${y(0)} Z" fill="#aab4be" stroke="#4b535c" stroke-width="2"/>
-      ${txt(196, y(2.7)-8, 'adutora de sucção DN 400', {s:11, m:1})}
+      ${txt(196, y(2.8)-8, 'adutora de sucção DN 400', {s:11, m:1})}
       ${txt(xs+18, y(0)+4*F, compacto?'◄ sucção 0,00':'◄ boca da sucção = 0,00', {s:11, b:1, c:'#ffe082'})}
       <rect x="14" y="${y(2)-72}" width="98" height="72" fill="#cfd8dc" stroke="#78909c" stroke-width="2"/>
       <polygon points="${P([[6,y(2)-72],[63,y(2)-100],[120,y(2)-72]])}" fill="#90a4ae"/>
