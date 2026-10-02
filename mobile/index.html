@@ -94,7 +94,7 @@ svg{display:block}
 /* rótulo do croqui (Safra > Croquis): texto direto sobre a mancha de cor, duas
    linhas, sem caixa — a cor da banda já é o fundo; a sombra garante a leitura */
 .leaflet-tooltip.crqplaca{background:none;border:0;box-shadow:none;padding:0;color:#fff;
-  font:700 11px/1.25 system-ui;text-align:center;white-space:nowrap;
+  font:700 11px/1.25 system-ui;text-align:center;white-space:normal;width:132px;   /* nome completo quebra em 2 linhas; o Leaflet centraliza pela largura medida */
   text-shadow:0 0 3px #000,0 0 6px #000,0 1px 2px #000}
 .leaflet-tooltip.crqplaca::before{display:none}
 .leaflet-tooltip.crqplaca small{font-weight:600;font-size:10px;opacity:.9}
@@ -3719,15 +3719,14 @@ function safLigar(){
    chip do topo e a gaveta montam a lista sozinhos. Tudo derivado de SAFRA. */
 let CROQ='var', CRQSEL=null;
 const CRQCORES=['#ffd23f','#3bceac','#ee4266','#8e7dff','#0ead69','#ff8c42','#4cc9f0','#f72585'];
-/* nome curto da variedade: "BRASMAX OLÍMPO 80i82RSF IPRO - SALVA" -> "Olímpo" */
+/* NOME COMPLETO da variedade (regra do dono, 02/10/2026: no chat ele escreve
+   "Olímpo"/"B91", mas o sistema trabalha SEMPRE com o nome completo). Só sai o
+   tipo de semente do fim ("- SALVA"/"- CERTIFICADA"), que é outra informação e
+   aparece à parte no cartão (safTipoSem). Não abreviar. */
 function safVarCurta(v){
-  let s=String(v||'').replace(/\s*-\s*(CERTIFICADA|SALVA)\s*$/i,'').trim();
-  const bm=/^BRASMAX\s+(\S+)/i.exec(s);
-  if(bm) s=bm[1].charAt(0)+bm[1].slice(1).toLowerCase();
-  const cz=/^CZ\s*\d{2}([A-Z]\d{2})/i.exec(s);   // "CZ 47B91I2X" -> "B91" (como se fala na fazenda)
-  if(cz) s=cz[1].toUpperCase();
-  return s||'—';
+  return String(v||'').replace(/\s*-\s*(CERTIFICADA|SALVA)\s*$/i,'').trim()||'—';
 }
+function safTipoSem(v){ const m=/-\s*(CERTIFICADA|SALVA)\s*$/i.exec(String(v||'')); return m?m[1].toLowerCase():''; }
 /* centro de massa do polígono (a média dos vértices puxa para o arco, que tem
    mais pontos — numa meia-lua o rótulo cairia fora do lugar) */
 function safCentroArea(r){
@@ -3764,14 +3763,15 @@ function crqCartaoVariedades(){
       <b>${safEsc(safVarCurta(pl.variedade))} · ${safEsc(a.lote_nome)}</b>
       <button id="cfecha" aria-label="fechar">${IC.fechar}</button></div>
     <div class="sfcorpo">
-    ${lin('Variedade', safEsc(pl.variedade||'—'))}
+    ${lin('Variedade', safEsc(safVarCurta(pl.variedade)))}
+    ${safTipoSem(pl.variedade)?lin('Semente', safTipoSem(pl.variedade)+(safSemKg(a)?' · '+safSemKg(a):'')):''}
     ${lin('Plantio', safDM(a.dia)+(safAprovar(a)?' <span style="color:var(--gold);font-size:11px">a aprovar</span>':''))}
     ${lin('Emergência', pl.emergencia?safDM(safDia(pl.emergencia)):'<span class="fraco">não registrada</span>')}
     ${lin('Dias após o plantio', safDap(a,D)+' DAP')}
     ${lin('Área', safBR(a.area,2)+' ha'+(a.poli?' <span class="fraco" style="font-size:11px">(banda)</span>':''))}
     ${pl.populacao?lin('População', safEsc(pl.populacao)+' sem/ha'):''}
     ${pl.sementes_m?lin('Sementes por metro', safEsc(pl.sementes_m)):''}
-    ${safSemKg(a)?lin('Semente', safSemKg(a)):''}
+    ${!safTipoSem(pl.variedade)&&safSemKg(a)?lin('Semente', safSemKg(a)):''}
     ${lin('Comanda', safEsc(a.codigo))}
     ${a.obs?`<div class="muted" style="font-size:12px;padding:6px 0 2px;color:var(--warn)">⚠ ${safEsc(a.obs)}</div>`:''}
     </div>`;
