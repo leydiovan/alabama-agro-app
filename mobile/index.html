@@ -200,6 +200,14 @@ svg{display:block}
 .sfop em{font-style:normal;color:var(--muted);font-size:12px;float:right;margin-left:8px}
 .sfop small{display:block;font-size:11.5px;color:var(--muted);margin-top:2px;line-height:1.35}
 .sfop .sfobs{color:var(--warn)}
+/* pílula do resumo dos croquis (% do plantio e % do ciclo): fica logo abaixo do
+   chip do croqui, é um botão que abre a tabela por cultura e regime */
+.crqres{position:absolute;z-index:26;left:12px;top:calc(env(safe-area-inset-top) + 102px);
+  max-width:calc(100% - 24px);background:var(--vidro);backdrop-filter:blur(10px);
+  border:1px solid var(--border);color:var(--text);border-radius:20px;padding:7px 13px;
+  font:600 12.5px inherit;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+  pointer-events:auto;cursor:pointer}
+.crqres b{color:var(--gold);font-weight:800}
 
 /* ---------- botões flutuantes ---------- */
 .fab{position:fixed;bottom:calc(env(safe-area-inset-bottom) + 18px);z-index:60;
@@ -3607,7 +3615,19 @@ async function carregarSafra(){
       poli:Array.isArray(r.ring)&&r.ring.length>2?r.ring.map(p=>utm2ll(+p[0],+p[1])):null }));
     SAFRA_OK=Date.now();
   }catch(e){ console.warn('safra',e); }    // falha de rede NÃO apaga o que já está desenhado
+  /* área PLANEJADA de plantio (view `safra_plantio_planejado`, migração 142) — o
+     denominador da % do plantio. Busca à parte: se falhar, o mapa não depende dela,
+     e a lista anterior fica (resposta vazia sem erro só é aceita se a de cima deu certo). */
+  try{
+    const {data,error}=await SB.from('safra_plantio_planejado').select('*').eq('safra',safraAtual()).range(0,999);
+    if(!error && data && (data.length || SAFRA_OK)) SAFPLAN=data.map(r=>({lote:r.lote_nome,cultura:safCult(r.cultura),ciclo:r.ciclo,area:safN(r.area_ha)||0,irr:!!r.irrigado}));
+  }catch(e){ console.warn('safra planejado',e); }
 }
+/* cultura sem acento e minúscula: `comandas.cultura` vem 'soja'/'algodao' e
+   `planejamento.cultura` vem 'Soja'/'Algodão' — sem isto os dois lados não casam */
+const safCult=s=>String(s||'').normalize('NFD').replace(/[̀-ͯ]/g,'').toLowerCase().trim();
+const SAFCULTNOME={soja:'Soja',algodao:'Algodão',feijao:'Feijão',milho:'Milho'};
+let SAFPLAN=[];
 function safParar(){ if(_safPlay){ clearInterval(_safPlay); _safPlay=null; } }
 function desenhaSafra(){
   if(!_map) return;
@@ -3619,12 +3639,17 @@ function desenhaSafra(){
   // 1) alvo de toque em TODO lote — tocar num lote sem nada feito também responde
   LOTES.forEach(l=>L.polygon(l.ring,{stroke:false,fillOpacity:0,bubblingMouseEvents:false})
     .on('click',toque(l.nome)).addTo(g));
-  // 2) área plantada, tingida pelos dias após o plantio
+  // 2) área plantada, tingida pela EVOLUÇÃO DO CICLO na data D — verde no plantio,
+  //    vermelho na colheita — com a % escrita na banda (pedido do dono, 03/10/2026:
+  //    "a porcentagem carregando… do verde até o vermelho"). Arrastar ou tocar a linha
+  //    do tempo faz a % subir dia a dia. Sem ciclo cadastrado, cai para o verde por DAP.
   //    (a aprovar: mesma tinta, borda tracejada dourada — está plantado, falta o sistema)
-  feitas.filter(a=>a.tipo_ativ==='Plantio').forEach(a=>{ const r=safGeo(a); if(!r) return; const ap=safAprovar(a);
-    L.polygon(r,{color:ap?'#ffc107':'#2ecc71',weight:ap?2:1,dashArray:ap?'6 5':null,
-      fillColor:safCorDap(safDap(a,D)),fillOpacity:.55,bubblingMouseEvents:false})
-      .on('click',toque(a.lote_nome)).addTo(g); });
+  feitas.filter(a=>a.tipo_ativ==='Plantio').forEach(a=>{ const r=safGeo(a); if(!r) return; const ap=safAprovar(a), e=safEvol(a,D);
+    L.polygon(r,{color:ap?'#ffc107':'#0b1221',weight:ap?2:1,dashArray:ap?'6 5':null,
+      fillColor:e?safCorEvol(e.pct):safCorDap(safDap(a,D)),fillOpacity:.62,bubblingMouseEvents:false})
+      .on('click',toque(a.lote_nome)).addTo(g);
+    if(e) L.marker(safCentroArea(r),{icon:L.divIcon({className:'',html:'',iconSize:[0,0]}),interactive:false})
+      .bindTooltip(`${safBR(e.pct,0)}%`,{permanent:true,direction:'center',className:'crqplaca'}).addTo(g); });
   // 3) o que acabou de acontecer: operação dos 3 últimos dias, borda na cor do tipo
   feitas.filter(a=>a.tipo_ativ!=='Plantio'&&D-a.dia<3*864e5).forEach(a=>{ const r=safGeo(a); if(!r) return;
     L.polygon(r,{color:safCor(a.tipo_ativ),weight:2.6,fill:false,interactive:false}).addTo(g); });
@@ -3647,7 +3672,8 @@ function desenhaSafra(){
     const pls=feitas.filter(a=>a.tipo_ativ==='Plantio');
     const ha=pls.reduce((s,a)=>s+(a.area||0),0), hap=pls.filter(safAprovar).reduce((s,a)=>s+(a.area||0),0);
     lg.className='legenda mini'; lg.style.display='';
-    lg.innerHTML=`<span><i style="background:#86dc5c;height:9px"></i>&nbsp;Plantado <b>&nbsp;${safBR(ha,1)} ha</b>${hap?`<span class="fraco">&nbsp;(${safBR(hap,1)} a aprovar)</span>`:''}</span>
+    lg.innerHTML=`<span>Plantado <b>&nbsp;${safBR(ha,1)} ha</b>${hap?`<span class="fraco">&nbsp;(${safBR(hap,1)} a aprovar)</span>`:''}</span>
+      <span>Ciclo&nbsp;0%&nbsp;<i style="width:64px;height:9px;background:${SAFGRAD}"></i>&nbsp;100%</span>
       <span><i style="background:#4aa3ff"></i>&nbsp;Aplicado ≤3 d</span>
       ${hoje?`<span><i style="background:none;border-top:2px dashed #ffc107;height:0"></i>&nbsp;Programado / a aprovar</span>`:''}`;
   }
@@ -3664,7 +3690,7 @@ function cartaoSafra(){
   const pl=ops.filter(a=>a.tipo_ativ==='Plantio'&&safFeita(a,D));
   const linhasPl=pl.map(a=>{ const v=a.plantio&&a.plantio.variedade, sm=a.plantio&&a.plantio.sementes_m;
     return `<div class="cl"><span>🌱 ${safDM(a.dia)} · ${safBR(a.area,1)} ha${v?' · '+safEsc(v.replace(/\s*-\s*(CERTIFICADA|SALVA)$/i,'')):''}${sm?' · '+safEsc(sm)+' sem/m':''}${safAprovar(a)?' <span style="color:var(--gold)">(a aprovar)</span>':''}</span>
-      <b>${safDap(a,D)} DAP</b></div>`; }).join('');
+      <b>${safDap(a,D)} DAP${(e=>e?` · <span style="color:${safCorEvol(e.pct)}">${safBR(e.pct,0)}%</span>`:'')(safEvol(a,D))}</b></div>`; }).join('');
   const lis=ops.map(a=>{
     const pl=a.plantio||{}, on=SAFCOM===a.codigo;
     const det=a.tipo_ativ==='Plantio'
@@ -3774,6 +3800,105 @@ function safEmerg(pl){
   const prev=pl.emergencia_fim_previsto&&fim>=h.getTime();
   return `${safDM(ini)} → ${safDM(fim)}${prev?' <span class="fraco" style="font-size:11px">(previsto)</span>':''}`;
 }
+/* COLHEITA PREVISTA pelo ciclo da variedade (pedido do dono, 03/10/2026).
+   O ciclo vem do banco (tabela `variedade_ciclo`, migração 142, exposta na view como
+   `ciclo_dias`/`ciclo_base`) — NÃO há número de ciclo neste arquivo. `ciclo_base`
+   diz de onde se conta: 'plantio' ou 'emergencia'; se for emergência e ela ainda não
+   foi registrada, conta do plantio e marca `aprox` para a tela avisar.
+   Soma de dias por CALENDÁRIO (new Date(a,m,d+n)), não por milissegundos. */
+function safColheita(a){
+  const n=+a.ciclo_dias; if(!n||a.dia==null) return null;
+  const pl=a.plantio||{}, emer=safDia(pl.emergencia_ini||pl.emergencia);
+  const querEmer=a.ciclo_base==='emergencia', ref=(querEmer&&emer!=null)?emer:a.dia;
+  const d=new Date(ref); const dia=new Date(d.getFullYear(),d.getMonth(),d.getDate()+n).getTime();
+  return {dia, ciclo:n, base:(querEmer&&emer!=null)?'emergência':'plantio', aprox:querEmer&&emer==null};
+}
+const safDMA=ms=>safDM(ms)+'/'+String(new Date(ms).getFullYear()).slice(-2);
+/* EVOLUÇÃO DO CICLO de uma banda plantada: dias corridos ÷ ciclo, de 0 a 100%.
+   Conta a partir da MESMA data de referência da colheita prevista (plantio ou
+   emergência, conforme `ciclo_base`), então "100%" = dia da colheita prevista. */
+/* `D` = data de referência (fim do dia). Sem ela, hoje. O mapa da Safra passa a data
+   da linha do tempo, e é isso que faz a % "carregar" quando se arrasta ou dá play. */
+function safEvol(a,D){
+  const c=safColheita(a); if(!c) return null;
+  const f=new Date(c.dia), ref=new Date(f.getFullYear(),f.getMonth(),f.getDate()-c.ciclo).getTime();
+  const dias=Math.max(0,Math.min(c.ciclo,Math.floor(((D==null?safFimHoje():D)-ref)/864e5)));
+  return {pct:dias/c.ciclo*100, dias, ciclo:c.ciclo, base:c.base};
+}
+/* ESCALA ÚNICA do ciclo — verde (0%) → amarelo (50%) → vermelho (100%, colheita).
+   Pedido do dono (03/10/2026): "vai mudando de cor do verde até o vermelho conforme
+   a porcentagem do ciclo". Contínua (matiz 120°→0°), usada no mapa da Safra, no
+   croqui de Evolução, na barra do cartão e nas legendas (`SAFGRAD`). */
+const safCorEvol=p=>'hsl('+Math.round(120*(1-Math.max(0,Math.min(100,+p||0))/100))+',78%,45%)';
+const SAFGRAD='linear-gradient(90deg,hsl(120,78%,45%),hsl(60,78%,45%),hsl(0,78%,45%))';
+/* RESUMO DA SAFRA por cultura e por regime (pedido do dono, 03/10/2026: "evolução
+   soja, algodão, geral… irrigado e sequeiro, que muda bastante a época").
+   · % do plantio  = área plantada ÷ área PLANEJADA (view `safra_plantio_planejado`)
+   · % do ciclo    = média da evolução das bandas plantadas, PONDERADA PELA ÁREA
+     (banda sem ciclo cadastrado fica fora da média — não vira zero escondido)
+   Linhas: Geral, cada cultura, e dentro dela irrigado e sequeiro. Só aparece linha
+   com área planejada ou plantada. Tudo derivado a cada desenho; nada guardado. */
+function safResumo(){
+  const pls=crqPlantios().map(a=>({cult:safCult(a.cultura||(a.plantio&&a.plantio.cultura)), irr:!!a.irrigado, area:a.area||0, ev:safEvol(a)}));
+  const linha=(nome,nivel,fp,fa)=>{
+    const plan=SAFPLAN.filter(fp).reduce((s,r)=>s+r.area,0), bs=pls.filter(fa);
+    const plant=bs.reduce((s,b)=>s+b.area,0), com=bs.filter(b=>b.ev), ac=com.reduce((s,b)=>s+b.area,0);
+    return {nome,nivel,plan,plant,pctPlant:plan>0?plant/plan*100:null, pctCiclo:ac>0?com.reduce((s,b)=>s+b.ev.pct*b.area,0)/ac:null};
+  };
+  const cults=[...new Set(SAFPLAN.map(r=>r.cultura).concat(pls.map(b=>b.cult)))].filter(Boolean).sort();
+  const out=[linha('Geral',0,()=>true,()=>true)];
+  cults.forEach(c=>{
+    out.push(linha(SAFCULTNOME[c]||c,1,r=>r.cultura===c,b=>b.cult===c));
+    [[true,'irrigado'],[false,'sequeiro']].forEach(([irr,rot])=>{
+      const l=linha(rot,2,r=>r.cultura===c&&r.irr===irr,b=>b.cult===c&&b.irr===irr);
+      if(l.plan>0||l.plant>0) out.push(l);
+    });
+  });
+  return out.filter(l=>l.plan>0||l.plant>0);
+}
+const safPct=v=>v==null?'—':safBR(v,v<10&&v>0?1:0)+'%';
+/* tabela do resumo — usada no cartão do croqui e na folha Atividades */
+function safResumoHTML(){
+  const L=safResumo(); if(!L.length) return '';
+  return `<table style="font-size:12.5px"><thead><tr><th></th><th>Plantio</th><th>Ciclo</th><th>ha plant. / plan.</th></tr></thead><tbody>${
+    L.map(l=>`<tr${l.nivel===0?' style="font-weight:800"':''}>
+      <td style="padding-left:${6+l.nivel*10}px${l.nivel===2?';color:var(--muted)':l.nivel===1?';font-weight:700':''}">${safEsc(l.nome)}</td>
+      <td>${safPct(l.pctPlant)}</td><td>${safPct(l.pctCiclo)}</td>
+      <td style="color:var(--muted)">${safBR(l.plant,1)} / ${safBR(l.plan,1)}</td></tr>`).join('')
+  }</tbody></table>
+  <div class="muted" style="font-size:11px;margin-top:6px">Plantio = plantado ÷ planejado. Ciclo = evolução média das áreas já plantadas, pelo ciclo da variedade.</div>`;
+}
+function crqDesenhaEvolucao(g){
+  const pls=crqPlantios();
+  pls.forEach(a=>{ const r=safGeo(a); if(!r) return; const e=safEvol(a), sel=CRQSEL===a.codigo;
+    L.polygon(r,{color:sel?'#fff':'#0b1221',weight:sel?3:1.2,fillColor:e?safCorEvol(e.pct):'#6b7a90',fillOpacity:.8,bubblingMouseEvents:false})
+      .on('click',()=>{ CRQSEL=a.codigo; desenhaCroqui(); }).addTo(g);
+    L.marker(safCentroArea(r),{icon:L.divIcon({className:'',html:'',iconSize:[0,0]}),interactive:false})
+      .bindTooltip(e?`${safBR(e.pct,0)}%<br><small>dia ${e.dias} de ${e.ciclo}</small>`:`sem ciclo<br><small>${safBR(a.area,1)} ha</small>`,
+        {permanent:true,direction:'center',className:'crqplaca'}).addTo(g);
+  });
+  const g0=safResumo()[0];
+  return `<span>Ciclo médio&nbsp;<b>${g0?safPct(g0.pctCiclo):'—'}</b></span>
+    <span>0%&nbsp;<i style="width:64px;height:9px;background:${SAFGRAD}"></i>&nbsp;100% (colheita)</span>`;
+}
+/* do mais cedo (quente) ao mais tarde (frio): a ordem da colheita se lê pela cor */
+const CRQCOLH=['#ff6b35','#f7b32b','#c5d86d','#3bceac','#4cc9f0','#8e7dff','#f72585'];
+function crqDesenhaColheita(g){
+  const pls=crqPlantios().map(a=>({a,c:safColheita(a)}));
+  const datas=[...new Set(pls.filter(x=>x.c).map(x=>x.c.dia))].sort((x,y)=>x-y);
+  const corDe=d=>CRQCOLH[datas.indexOf(d)%CRQCOLH.length], tot={};
+  pls.forEach(({a,c})=>{ const r=safGeo(a); if(!r) return; const sel=CRQSEL===a.codigo;
+    if(c) tot[c.dia]=(tot[c.dia]||0)+(a.area||0);
+    L.polygon(r,{color:sel?'#fff':'#0b1221',weight:sel?3:1.2,fillColor:c?corDe(c.dia):'#6b7a90',fillOpacity:.78,bubblingMouseEvents:false})
+      .on('click',()=>{ CRQSEL=a.codigo; desenhaCroqui(); }).addTo(g);
+    L.marker(safCentroArea(r),{icon:L.divIcon({className:'',html:'',iconSize:[0,0]}),interactive:false})
+      .bindTooltip(c?`~${safDM(c.dia)}<br><small>${safBR(a.area,1)} ha · ${c.ciclo} d</small>`:`sem ciclo<br><small>${safBR(a.area,1)} ha</small>`,
+        {permanent:true,direction:'center',className:'crqplaca'}).addTo(g);
+  });
+  const semCiclo=pls.filter(x=>!x.c).length;
+  return datas.map(d=>`<span><i style="background:${corDe(d)};height:9px"></i>&nbsp;${safDM(d)}<b>&nbsp;${safBR(tot[d],1)} ha</b></span>`).join('')
+       + (semCiclo?`<span class="fraco">${semCiclo} sem ciclo cadastrado</span>`:'');
+}
 function crqCartaoVariedades(){
   const a=SAFRA.find(x=>x.codigo===CRQSEL); if(!a) return '';
   const pl=a.plantio||{}, D=safFimHoje(), cor=crqCores()[safVarCurta(pl.variedade)]||'#9aa9c0';
@@ -3787,6 +3912,16 @@ function crqCartaoVariedades(){
     ${lin('Plantio', safDM(a.dia)+(safAprovar(a)?' <span style="color:var(--gold);font-size:11px">a aprovar</span>':''))}
     ${lin('Emergência', safEmerg(pl))}
     ${lin('Dias após o plantio', safDap(a,D)+' DAP')}
+    ${(()=>{ const c=safColheita(a);
+      if(!c) return lin('Colheita prevista','<span class="fraco">sem ciclo cadastrado</span>');
+      const falta=Math.ceil((c.dia-D)/864e5), e=safEvol(a);
+      return lin('Evolução do ciclo', safBR(e.pct,0)+'% <span class="fraco" style="font-size:11px">dia '+e.dias+' de '+e.ciclo+'</span>')
+           + `<div style="height:6px;border-radius:3px;background:rgba(255,255,255,.14);margin:0 0 6px"><div style="height:6px;border-radius:3px;width:${Math.max(2,e.pct).toFixed(0)}%;background:${safCorEvol(e.pct)}"></div></div>`
+           + lin('Colheita prevista','~'+safDMA(c.dia)+(falta>0?` <span class="fraco" style="font-size:11px">faltam ${falta} d</span>`:''))
+           + lin('Ciclo', c.ciclo+' dias <span class="fraco" style="font-size:11px">do '+c.base+(c.aprox?' (emergência não registrada)':'')+'</span>'); })()}
+    ${(()=>{ const tot=+a.area_lote||0; if(!tot) return '';
+      const pl=crqPlantios().filter(x=>x.lote_nome===a.lote_nome).reduce((s,x)=>s+(x.area||0),0);
+      return lin('Plantado no lote', safBR(Math.min(100,pl/tot*100),0)+'% <span class="fraco" style="font-size:11px">'+safBR(pl,1)+' de '+safBR(tot,1)+' ha</span>'); })()}
     ${lin('Área', safBR(a.area,2)+' ha'+(a.poli?' <span class="fraco" style="font-size:11px">(banda)</span>':''))}
     ${pl.populacao?lin('População', safEsc(pl.populacao)+' sem/ha'):''}
     ${pl.sementes_m?lin('Sementes por metro', safEsc(pl.sementes_m)):''}
@@ -3796,8 +3931,23 @@ function crqCartaoVariedades(){
     </div>`;
 }
 const CROQUIS=[
-  {id:'var', nome:'Variedades', desenha:crqDesenhaVariedades, cartao:crqCartaoVariedades}
+  {id:'var', nome:'Variedades', desenha:crqDesenhaVariedades, cartao:crqCartaoVariedades},
+  {id:'evol', nome:'Evolução do ciclo', desenha:crqDesenhaEvolucao, cartao:crqCartaoVariedades},
+  {id:'colh', nome:'Colheita prevista', desenha:crqDesenhaColheita, cartao:crqCartaoVariedades}
 ];
+/* cartão do RESUMO (abre ao tocar a pílula do topo): a tabela por cultura e regime */
+const CRQ_RESUMO='__resumo';
+function crqCartaoResumo(){
+  return `<div class="ch"><span class="dot" style="background:var(--gold)"></span><b>Safra ${safraAtual()}</b>
+      <button id="cfecha" aria-label="fechar">${IC.fechar}</button></div>
+    <div class="sfcorpo">${safResumoHTML()||'<div class="muted" style="padding:10px 0;font-size:13px">Sem planejamento nem plantio lançado.</div>'}</div>`;
+}
+/* pílula do topo dos croquis: os dois números gerais, e é o botão do resumo */
+function crqPilula(){
+  const g=safResumo()[0]; if(!g) return '';
+  return `<button class="crqres" id="crqres" aria-label="Resumo da safra">🌱 Plantio <b>${safPct(g.pctPlant)}</b>
+    <span class="fraco">${safBR(g.plant,0)} de ${safBR(g.plan,0)} ha</span> · Ciclo <b>${safPct(g.pctCiclo)}</b> <span class="fraco">▾</span></button>`;
+}
 const croqAtual=()=>CROQUIS.find(c=>c.id===CROQ)||CROQUIS[0];
 function desenhaCroqui(){
   if(!_map) return;
@@ -3812,7 +3962,7 @@ function desenhaCroqui(){
   if(lg){ lg.className='legenda mini'; lg.style.display='';
     lg.innerHTML=leg||'<span class="fraco">Nenhum plantio lançado nesta safra.</span>'; }
   const c=el('cartao'); if(!c) return;
-  const h=CRQSEL?croqAtual().cartao():'';
+  const h=CRQSEL===CRQ_RESUMO?crqCartaoResumo():CRQSEL?croqAtual().cartao():'';
   if(!h){ c.style.display='none'; c.innerHTML=''; return; }
   c.style.display=''; c.innerHTML=h;
   const b=el('cfecha'); if(b) b.onclick=()=>{ CRQSEL=null; desenhaCroqui(); };
@@ -3842,6 +3992,7 @@ function folhaSafra(){
       <div class="card"><div class="lb">Plantado</div><div class="vl">${safBR(ha,1)}<span class="u">ha</span></div>${hap?`<div class="ex">${safBR(hap,1)} ha a aprovar</div>`:''}</div>
       <div class="card"><div class="lb">Operações feitas</div><div class="vl">${ex.length}</div><div class="ex">em ${nl} lote${nl===1?'':'s'}</div></div>
     </div>
+    ${safResumoHTML()?`<div class="sec">Evolução da safra</div><div class="card w">${safResumoHTML()}</div>`:''}
     ${pr.length?`<div class="sec">Programado / a aprovar (${pr.length})</div>${pr.map(item).join('')}`:''}
     ${Object.keys(porMes).map(k=>`<div class="sec">${k}</div>${porMes[k].map(item).join('')}`).join('')}
     <div class="muted" style="font-size:12px;text-align:center;margin:18px 0 6px">Toque numa atividade para vê-la no mapa.</div>`;
@@ -3971,7 +4122,7 @@ function pinta(){
       ${SELETOR==='croq'?`<div class="gaveta">${CROQUIS.map(c=>
         `<button data-croq="${c.id}" class="${CROQ===c.id?'on':''}">${c.nome}</button>`).join('')}
         <div class="muted" style="font-size:11px;padding:6px 4px 2px">Novos croquis entram nesta lista ao longo da safra.</div>
-      </div>`:''}`:''}
+      </div>`:crqPilula()}`:''}
     ${noMapa?`
       <div class="legenda" id="legenda" style="margin-top:0"></div>
       <div class="cartao" id="cartao" style="display:none"></div>`:''}`;
@@ -4061,6 +4212,7 @@ function pinta(){
   document.querySelectorAll('[data-vm]').forEach(b=>b.onclick=()=>{
     VARMAPA=b.dataset.vm; SELETOR=null; pinta(); });
 
+  if(el('crqres')) el('crqres').onclick=()=>{ CRQSEL=CRQSEL===CRQ_RESUMO?null:CRQ_RESUMO; desenhaCroqui(); };
   document.querySelectorAll('[data-croq]').forEach(b=>b.onclick=()=>{
     CROQ=b.dataset.croq; CRQSEL=null; SELETOR=null; pinta(); });
   if(SECAO==='safra'){
