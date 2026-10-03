@@ -3690,7 +3690,7 @@ function cartaoSafra(){
   const pl=ops.filter(a=>a.tipo_ativ==='Plantio'&&safFeita(a,D));
   const linhasPl=pl.map(a=>{ const v=a.plantio&&a.plantio.variedade, sm=a.plantio&&a.plantio.sementes_m;
     return `<div class="cl"><span>🌱 ${safDM(a.dia)} · ${safBR(a.area,1)} ha${v?' · '+safEsc(v.replace(/\s*-\s*(CERTIFICADA|SALVA)$/i,'')):''}${sm?' · '+safEsc(sm)+' sem/m':''}${safAprovar(a)?' <span style="color:var(--gold)">(a aprovar)</span>':''}</span>
-      <b>${safDap(a,D)} DAP${(e=>e?` · <span style="color:${safCorEvol(e.pct)}">${safBR(e.pct,0)}%</span>`:'')(safEvol(a,D))}</b></div>`; }).join('');
+      <b>${safDap(a,D)} DAP${(e=>e?` · <span style="color:${safCorEvol(e.pct)}">${safBR(e.pct,0)}%</span>`:'')(safEvol(a,D))}${(s=>s?` · <span style="color:var(--gold)">${safEsc(s.e)}</span>`:'')(safEstadio(a.plantio||{},D))}</b></div>`; }).join('');
   const lis=ops.map(a=>{
     const pl=a.plantio||{}, on=SAFCOM===a.codigo;
     const det=a.tipo_ativ==='Plantio'
@@ -3814,6 +3814,17 @@ function safEmerg(pl){
    dias (a banda sul do P3 levou 5: 29/09 → 03/10), o dono mandou "adotar uma média" —
    o MEIO do período (01/10). Só com o início registrado, vale o início, até o fim ser
    informado. Dia fracionário arredonda para baixo (meia-noite local). */
+/* ESTÁDIO FENOLÓGICO observado no campo (VE, VC, V1… R8) — lista datada em
+   `plantio.estadios` [{data, estadio, obs}], que o dono vai informando ao longo da
+   safra (03/10/2026: "o P3 sul na média está em VE"). É OBSERVAÇÃO, não cálculo: a
+   tela mostra o último registro até a data `D`, com o dia em que foi visto — estádio
+   de três semanas atrás não pode aparecer com cara de hoje. */
+function safEstadio(pl,D){
+  const fim=D==null?safFimHoje():D;
+  const l=(Array.isArray(pl&&pl.estadios)?pl.estadios:[]).map(e=>({e:String(e.estadio||''),dia:safDia(e.data),obs:e.obs||''}))
+    .filter(x=>x.e&&x.dia!=null&&x.dia<=fim).sort((a,b)=>a.dia-b.dia);
+  return l.length?l[l.length-1]:null;
+}
 function safEmerRef(pl){
   const ini=safDia(pl.emergencia_ini||pl.emergencia), fim=safDia(pl.emergencia_fim);
   if(ini==null) return null;
@@ -3890,7 +3901,7 @@ function crqDesenhaEvolucao(g){
     L.polygon(r,{color:sel?'#fff':'#0b1221',weight:sel?3:1.2,fillColor:e?safCorEvol(e.pct):'#6b7a90',fillOpacity:.8,bubblingMouseEvents:false})
       .on('click',()=>{ CRQSEL=a.codigo; desenhaCroqui(); }).addTo(g);
     L.marker(safCentroArea(r),{icon:L.divIcon({className:'',html:'',iconSize:[0,0]}),interactive:false})
-      .bindTooltip(e?`${safBR(e.pct,0)}%<br><small>${e.aguarda?'aguarda emergência':'dia '+e.dias+' de '+e.ciclo}</small>`:`sem ciclo<br><small>${safBR(a.area,1)} ha</small>`,
+      .bindTooltip(e?`${safBR(e.pct,0)}%<br><small>${e.aguarda?'aguarda emergência':'dia '+e.dias+' de '+e.ciclo}${(s=>s?' · '+safEsc(s.e):'')(safEstadio(a.plantio||{}))}</small>`:`sem ciclo<br><small>${safBR(a.area,1)} ha</small>`,
         {permanent:true,direction:'center',className:'crqplaca'}).addTo(g);
   });
   const g0=safResumo()[0];
@@ -3933,6 +3944,7 @@ function crqCartaoVariedades(){
     ${safTipoSem(pl.variedade)?lin('Semente', safTipoSem(pl.variedade)+(safSemKg(a)?' · '+safSemKg(a):'')):''}
     ${lin('Plantio', safDM(a.dia)+(safAprovar(a)?' <span style="color:var(--gold);font-size:11px">a aprovar</span>':''))}
     ${lin('Emergência', safEmerg(pl))}
+    ${(e=>e?lin('Estádio', '<span style="color:var(--gold)">'+safEsc(e.e)+'</span> <span class="fraco" style="font-size:11px">em '+safDM(e.dia)+(e.obs?' · '+safEsc(e.obs):'')+'</span>'):'')(safEstadio(pl))}
     ${lin('Dias após o plantio', safDap(a,D)+' DAP')}
     ${(()=>{ const c=safColheita(a);
       if(!c) return lin('Colheita prevista','<span class="fraco">sem ciclo cadastrado</span>');
