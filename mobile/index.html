@@ -3803,15 +3803,30 @@ function safEmerg(pl){
 /* COLHEITA PREVISTA pelo ciclo da variedade (pedido do dono, 03/10/2026).
    O ciclo vem do banco (tabela `variedade_ciclo`, migração 142, exposta na view como
    `ciclo_dias`/`ciclo_base`) — NÃO há número de ciclo neste arquivo. `ciclo_base`
-   diz de onde se conta: 'plantio' ou 'emergencia'; se for emergência e ela ainda não
-   foi registrada, conta do plantio e marca `aprox` para a tela avisar.
+   diz de onde se conta: 'plantio' ou 'emergencia'.
+   CICLO CONTADO DA EMERGÊNCIA E BANDA AINDA SEM EMERGÊNCIA = CICLO NÃO COMEÇOU
+   (`aguarda:true`, sem data de colheita). A 1ª versão caía para a data do plantio e
+   mostrava "2%" numa banda que nem tinha emergido — o dono corrigiu em 03/10/2026:
+   "não começou a emergir". Não inventar início: é 0% e "aguardando emergência" até a
+   data ser registrada em `plantio.emergencia_ini`.
    Soma de dias por CALENDÁRIO (new Date(a,m,d+n)), não por milissegundos. */
+/* DATA DE EMERGÊNCIA QUE VALE PARA O CICLO: quando a emergência se arrasta por vários
+   dias (a banda sul do P3 levou 5: 29/09 → 03/10), o dono mandou "adotar uma média" —
+   o MEIO do período (01/10). Só com o início registrado, vale o início, até o fim ser
+   informado. Dia fracionário arredonda para baixo (meia-noite local). */
+function safEmerRef(pl){
+  const ini=safDia(pl.emergencia_ini||pl.emergencia), fim=safDia(pl.emergencia_fim);
+  if(ini==null) return null;
+  if(fim==null||fim<=ini) return ini;
+  const m=new Date((ini+fim)/2); return new Date(m.getFullYear(),m.getMonth(),m.getDate()).getTime();
+}
 function safColheita(a){
   const n=+a.ciclo_dias; if(!n||a.dia==null) return null;
-  const pl=a.plantio||{}, emer=safDia(pl.emergencia_ini||pl.emergencia);
-  const querEmer=a.ciclo_base==='emergencia', ref=(querEmer&&emer!=null)?emer:a.dia;
-  const d=new Date(ref); const dia=new Date(d.getFullYear(),d.getMonth(),d.getDate()+n).getTime();
-  return {dia, ciclo:n, base:(querEmer&&emer!=null)?'emergência':'plantio', aprox:querEmer&&emer==null};
+  const pl=a.plantio||{}, emer=safEmerRef(pl);
+  const querEmer=a.ciclo_base==='emergencia';
+  if(querEmer&&emer==null) return {dia:null, ciclo:n, base:'emergência', aguarda:true};
+  const d=new Date(querEmer?emer:a.dia); const dia=new Date(d.getFullYear(),d.getMonth(),d.getDate()+n).getTime();
+  return {dia, ciclo:n, base:querEmer?'emergência':'plantio', aguarda:false};
 }
 const safDMA=ms=>safDM(ms)+'/'+String(new Date(ms).getFullYear()).slice(-2);
 /* EVOLUÇÃO DO CICLO de uma banda plantada: dias corridos ÷ ciclo, de 0 a 100%.
@@ -3821,6 +3836,7 @@ const safDMA=ms=>safDM(ms)+'/'+String(new Date(ms).getFullYear()).slice(-2);
    da linha do tempo, e é isso que faz a % "carregar" quando se arrasta ou dá play. */
 function safEvol(a,D){
   const c=safColheita(a); if(!c) return null;
+  if(c.aguarda) return {pct:0, dias:0, ciclo:c.ciclo, base:c.base, aguarda:true};   // ainda não emergiu: ciclo em 0%
   const f=new Date(c.dia), ref=new Date(f.getFullYear(),f.getMonth(),f.getDate()-c.ciclo).getTime();
   const dias=Math.max(0,Math.min(c.ciclo,Math.floor(((D==null?safFimHoje():D)-ref)/864e5)));
   return {pct:dias/c.ciclo*100, dias, ciclo:c.ciclo, base:c.base};
@@ -3874,7 +3890,7 @@ function crqDesenhaEvolucao(g){
     L.polygon(r,{color:sel?'#fff':'#0b1221',weight:sel?3:1.2,fillColor:e?safCorEvol(e.pct):'#6b7a90',fillOpacity:.8,bubblingMouseEvents:false})
       .on('click',()=>{ CRQSEL=a.codigo; desenhaCroqui(); }).addTo(g);
     L.marker(safCentroArea(r),{icon:L.divIcon({className:'',html:'',iconSize:[0,0]}),interactive:false})
-      .bindTooltip(e?`${safBR(e.pct,0)}%<br><small>dia ${e.dias} de ${e.ciclo}</small>`:`sem ciclo<br><small>${safBR(a.area,1)} ha</small>`,
+      .bindTooltip(e?`${safBR(e.pct,0)}%<br><small>${e.aguarda?'aguarda emergência':'dia '+e.dias+' de '+e.ciclo}</small>`:`sem ciclo<br><small>${safBR(a.area,1)} ha</small>`,
         {permanent:true,direction:'center',className:'crqplaca'}).addTo(g);
   });
   const g0=safResumo()[0];
@@ -3884,19 +3900,25 @@ function crqDesenhaEvolucao(g){
 /* do mais cedo (quente) ao mais tarde (frio): a ordem da colheita se lê pela cor */
 const CRQCOLH=['#ff6b35','#f7b32b','#c5d86d','#3bceac','#4cc9f0','#8e7dff','#f72585'];
 function crqDesenhaColheita(g){
+  /* `c.dia` só existe quando o ciclo já começou; banda aguardando emergência
+     (c.aguarda) ainda não tem data de colheita — fica cinza, sem data inventada */
   const pls=crqPlantios().map(a=>({a,c:safColheita(a)}));
-  const datas=[...new Set(pls.filter(x=>x.c).map(x=>x.c.dia))].sort((x,y)=>x-y);
+  const datas=[...new Set(pls.filter(x=>x.c&&x.c.dia!=null).map(x=>x.c.dia))].sort((x,y)=>x-y);
   const corDe=d=>CRQCOLH[datas.indexOf(d)%CRQCOLH.length], tot={};
-  pls.forEach(({a,c})=>{ const r=safGeo(a); if(!r) return; const sel=CRQSEL===a.codigo;
-    if(c) tot[c.dia]=(tot[c.dia]||0)+(a.area||0);
-    L.polygon(r,{color:sel?'#fff':'#0b1221',weight:sel?3:1.2,fillColor:c?corDe(c.dia):'#6b7a90',fillOpacity:.78,bubblingMouseEvents:false})
+  let haAg=0;
+  pls.forEach(({a,c})=>{ const r=safGeo(a); if(!r) return; const sel=CRQSEL===a.codigo, tem=c&&c.dia!=null;
+    if(tem) tot[c.dia]=(tot[c.dia]||0)+(a.area||0); else if(c&&c.aguarda) haAg+=(a.area||0);
+    L.polygon(r,{color:sel?'#fff':'#0b1221',weight:sel?3:1.2,fillColor:tem?corDe(c.dia):'#6b7a90',fillOpacity:.78,bubblingMouseEvents:false})
       .on('click',()=>{ CRQSEL=a.codigo; desenhaCroqui(); }).addTo(g);
     L.marker(safCentroArea(r),{icon:L.divIcon({className:'',html:'',iconSize:[0,0]}),interactive:false})
-      .bindTooltip(c?`~${safDM(c.dia)}<br><small>${safBR(a.area,1)} ha · ${c.ciclo} d</small>`:`sem ciclo<br><small>${safBR(a.area,1)} ha</small>`,
+      .bindTooltip(tem?`~${safDM(c.dia)}<br><small>${safBR(a.area,1)} ha · ${c.ciclo} d</small>`
+                 :c?`aguarda emergência<br><small>${safBR(a.area,1)} ha · ${c.ciclo} d</small>`
+                 :`sem ciclo<br><small>${safBR(a.area,1)} ha</small>`,
         {permanent:true,direction:'center',className:'crqplaca'}).addTo(g);
   });
   const semCiclo=pls.filter(x=>!x.c).length;
   return datas.map(d=>`<span><i style="background:${corDe(d)};height:9px"></i>&nbsp;${safDM(d)}<b>&nbsp;${safBR(tot[d],1)} ha</b></span>`).join('')
+       + (haAg?`<span><i style="background:#6b7a90;height:9px"></i>&nbsp;aguarda emergência<b>&nbsp;${safBR(haAg,1)} ha</b></span>`:'')
        + (semCiclo?`<span class="fraco">${semCiclo} sem ciclo cadastrado</span>`:'');
 }
 function crqCartaoVariedades(){
@@ -3914,11 +3936,15 @@ function crqCartaoVariedades(){
     ${lin('Dias após o plantio', safDap(a,D)+' DAP')}
     ${(()=>{ const c=safColheita(a);
       if(!c) return lin('Colheita prevista','<span class="fraco">sem ciclo cadastrado</span>');
+      if(c.aguarda) return lin('Evolução do ciclo','0% <span class="fraco" style="font-size:11px">aguardando emergência</span>')
+           + lin('Colheita prevista','<span class="fraco">'+c.ciclo+' dias após a emergência</span>')
+           + lin('Ciclo', c.ciclo+' dias <span class="fraco" style="font-size:11px">da emergência</span>');
       const falta=Math.ceil((c.dia-D)/864e5), e=safEvol(a);
       return lin('Evolução do ciclo', safBR(e.pct,0)+'% <span class="fraco" style="font-size:11px">dia '+e.dias+' de '+e.ciclo+'</span>')
            + `<div style="height:6px;border-radius:3px;background:rgba(255,255,255,.14);margin:0 0 6px"><div style="height:6px;border-radius:3px;width:${Math.max(2,e.pct).toFixed(0)}%;background:${safCorEvol(e.pct)}"></div></div>`
            + lin('Colheita prevista','~'+safDMA(c.dia)+(falta>0?` <span class="fraco" style="font-size:11px">faltam ${falta} d</span>`:''))
-           + lin('Ciclo', c.ciclo+' dias <span class="fraco" style="font-size:11px">do '+c.base+(c.aprox?' (emergência não registrada)':'')+'</span>'); })()}
+           + lin('Ciclo', c.ciclo+' dias <span class="fraco" style="font-size:11px">'+(c.base==='plantio'?'do plantio'
+               :'da emergência'+(safDia(pl.emergencia_fim)!=null&&safEmerRef(pl)!==safDia(pl.emergencia_ini||pl.emergencia)?' (média '+safDM(safEmerRef(pl))+')':' ('+safDM(safEmerRef(pl))+')'))+'</span>'); })()}
     ${(()=>{ const tot=+a.area_lote||0; if(!tot) return '';
       const pl=crqPlantios().filter(x=>x.lote_nome===a.lote_nome).reduce((s,x)=>s+(x.area||0),0);
       return lin('Plantado no lote', safBR(Math.min(100,pl/tot*100),0)+'% <span class="fraco" style="font-size:11px">'+safBR(pl,1)+' de '+safBR(tot,1)+' ha</span>'); })()}
