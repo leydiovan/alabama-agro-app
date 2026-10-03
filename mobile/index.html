@@ -91,6 +91,25 @@ svg{display:block}
 .leaflet-tooltip.placa{background:rgba(13,43,8,.92);border:1px solid #4f9e3f;color:#e8edf5;
   font:600 11px/1 system-ui;letter-spacing:.05em;padding:3px 6px;border-radius:4px;box-shadow:none}
 .leaflet-tooltip.placa::before{display:none}
+/* PLACA DA MÁQUINA ACOMPANHA O ZOOM (03/10/2026). Máquina é ponto, não tem polígono
+   onde "caber": de longe a placa só encolhe (nunca some — é ela que diz quem é a
+   máquina). O desenho da telemetria já é refeito a cada zoom; a classe sai de telPlaca(). */
+.leaflet-tooltip.placa.pm{font-size:9.5px;padding:2px 5px;letter-spacing:.03em}
+.leaflet-tooltip.placa.pp{font-size:8px;padding:1px 4px;letter-spacing:0;border-radius:3px}
+/* RÓTULO QUE CABE NO POLÍGONO (aba Safra). `.sfl` é o conteúdo do rótulo; o
+   safAjustaRotulos() mede o polígono NA TELA e aplica `transform:scale()` para o
+   texto nunca passar da área. Quando encolher demais deixaria ilegível, o rótulo
+   perde partes: .n1 tira a 2ª linha (.p2), .n2 tira também o ícone (.pi), .n9 some. */
+.sfl{display:inline-block;transform-origin:50% 50%;white-space:nowrap}
+.sfl.quebra{white-space:normal}
+.sfl.n1 .p2,.sfl.n2 .p2,.sfl.n2 .pi{display:none}
+.sfl.n9{visibility:hidden}
+/* tooltip "nu" para o nome do lote: a caixinha verde vai no conteúdo (.sflplaca),
+   porque só o conteúdo pode ser escalado — o Leaflet usa o transform do tooltip */
+.leaflet-tooltip.sfnu{background:none;border:0;box-shadow:none;padding:0}
+.leaflet-tooltip.sfnu::before{display:none}
+.sflplaca{background:rgba(13,43,8,.92);border:1px solid #4f9e3f;color:#e8edf5;
+  font:600 11px/1 system-ui;letter-spacing:.05em;padding:3px 6px;border-radius:4px}
 /* rótulo do croqui (Safra > Croquis): texto direto sobre a mancha de cor, duas
    linhas, sem caixa — a cor da banda já é o fundo; a sombra garante a leitura */
 .leaflet-tooltip.crqplaca{background:none;border:0;box-shadow:none;padding:0;color:#fff;
@@ -2791,6 +2810,10 @@ function poseRastroMob(tr){
     const tt = +ln[ln.length-1][3] || 0; if(tt > tf){ tf = tt; alvo = ln; } });
   return _poseDaLinha(alvo, 3);          // ponto do celular: [lat, lon, vel, t_ms]
 }
+/* tamanho da placa da máquina conforme o zoom: normal de perto (z>=15), média em
+   13–14, pequena de longe. Pedido do dono (03/10/2026): de longe "só vê um monte de
+   escrita"; na telemetria "tem coisa que não tem polígono, só tem que dar uma ajustada". */
+function telPlaca(){ const z=_map?_map.getZoom():15; return z>=15?'':z>=13?' pm':' pp'; }
 function desenhaTelemetria(){
   if(_telL){ try{ _map.removeLayer(_telL); }catch(e){} _telL=null; }
   /* O GRUPO JÁ ENTRA NO MAPA AQUI, antes de desenhar (18/09/2026). Quem
@@ -2860,7 +2883,7 @@ function desenhaTelemetria(){
     const w=iconePxMob(+t.lat), hh=w*(VB_H/VB_W);
     const mk=L.marker(ll,{icon:L.divIcon({html:(ehArticulado(t.maquina_id)?svgSteiger(e.cor,implementoDe(t.maquina_id),e.k==='desl'||e.k==='off'):ehT8(t.maquina_id)?svgT8Icone(e.cor,e.k==='desl'||e.k==='off'):ehMagnum(t.maquina_id)?svgMagnumIcone(e.cor,e.k==='desl'||e.k==='off'):ehJd7225(t.maquina_id)?svgJd7225Icone(e.cor,e.k==='desl'||e.k==='off'):ehJd8420(t.maquina_id)?svgJd8420Icone(e.cor,e.k==='desl'||e.k==='off'):ehJd7815(t.maquina_id)?svgJd7815Icone(e.cor,e.k==='desl'||e.k==='off'):ehJd6190(t.maquina_id)?svgJd6190Icone(e.cor,e.k==='desl'||e.k==='off'):ehJd6125(t.maquina_id)?svgJd6125Icone(e.cor,e.k==='desl'||e.k==='off'):ehMf4292(t.maquina_id)?svgMf4292Icone(e.cor,e.k==='desl'||e.k==='off'):ehMf6360(t.maquina_id)?svgMf6360Icone(e.cor,e.k==='desl'||e.k==='off'):ehMf296(t.maquina_id)?svgMf296Icone(e.cor,e.k==='desl'||e.k==='off'):ehValmet86(t.maquina_id)?svgValmet86Icone(e.cor,e.k==='desl'||e.k==='off'):ehColhedoraSts(t.maquina_id)?svgColhedoraStsIcone(e.cor,e.k==='desl'||e.k==='off',t.maquina_id):ehColhedoraAlgodao(t.maquina_id)?svgColhedoraAlgodaoIcone(e.cor,e.k==='desl'||e.k==='off'):ehCaseW20g(t.maquina_id)?svgCaseW20gIcone(e.cor,e.k==='desl'||e.k==='off'):ehCat924g(t.maquina_id)?svgCat924gIcone(e.cor,e.k==='desl'||e.k==='off'):ehJcb53070(t.maquina_id)?svgJcb53070Icone(e.cor,e.k==='desl'||e.k==='off'):ehUniport8030(t.maquina_id)?svgUniport8030Icone(e.cor,e.k==='desl'||e.k==='off'):ehParruda(t.maquina_id)?svgParrudaIcone(e.cor,e.k==='desl'||e.k==='off',!!loteMob(ll[0],ll[1])):ehMotoniveladora(t.maquina_id)?svgMotoniveladoraIcone(e.cor,e.k==='desl'||e.k==='off'):svgMaquina(faixa,e.cor)),className:'',iconSize:[w,hh],iconAnchor:[w/2,hh/2]}),zIndexOffset:1000}).addTo(g);
     const _im=implementoDe(t.maquina_id);
-    mk.bindTooltip(maqLbl(t.maquina_id,t.device_id)+(_im?' · '+_im.id_frota+' ('+_im.origem+')':''),{permanent:true,direction:'bottom',offset:[0,hh/2],className:'placa'});
+    mk.bindTooltip(maqLbl(t.maquina_id,t.device_id)+(_im?' · '+_im.id_frota+' ('+_im.origem+')':''),{permanent:true,direction:'bottom',offset:[0,hh/2],className:'placa'+telPlaca()});
     mk.on('click', ()=>painelMaquina(t.device_id));      // painel do veículo (18/09/2026)
     girar.push([mk, pr.rumo]);
     /* a ponta viva so existe quando ha rastro e ele ficou para tras (ver onde e desenhada) */
@@ -3243,6 +3266,8 @@ function desenhaMapa(){
     if(_estL){ _map.removeLayer(_estL); _estL=null; }
     if(_telL){ try{ _map.removeLayer(_telL); }catch(e){} _telL=null; }
     if(SUB==='croq') desenhaCroqui(); else desenhaSafra();
+    /* a escala do rótulo depende do tamanho do polígono NA TELA: refaz a cada zoom */
+    if(!_map._safZoom){ _map._safZoom=1; _map.on('zoomend',()=>{ if(SECAO==='safra'){ try{ safAjustaRotulos(); }catch(e){} } }); }
     setTimeout(()=>{ try{ _map.invalidateSize(); }catch(e){} },100);
     return;
   }
@@ -3643,9 +3668,77 @@ const SAFICO={
 const safIcoCult=(a,px)=>{ const s=SAFICO[safCult(a.cultura||(a.plantio&&a.plantio.cultura))]; px=px||18;
   return s?`<img src="${s}" alt="" style="width:${px}px;height:${px}px;vertical-align:-7px;margin-right:3px;filter:drop-shadow(0 0 2px #000) drop-shadow(0 0 1px #000)">`:''; };
 function safParar(){ if(_safPlay){ clearInterval(_safPlay); _safPlay=null; } }
+/* ---------- RÓTULO QUE CABE NO POLÍGONO (03/10/2026) ----------
+   Queixa do dono: o mapa abre de longe e "só vê um monte de escrita" — rótulo de
+   tamanho fixo em pixel não encolhe com o polígono, então passa por cima dos vizinhos.
+   Regra combinada com ele:
+     · DE LONGE o texto fica PRESO ao polígono: encolhe junto, nunca passa da área;
+     · DE PERTO trava no tamanho normal: mais zoom não aumenta a letra;
+     · quando encolher deixaria ilegível, o rótulo vai "em partes": some a 2ª linha,
+       depois o ícone, fica só o principal, e por fim some — "desde que não fique maior
+       que o polígono".
+   COMO: cada rótulo é registrado (safReg) com o anel do seu polígono. O
+   safAjustaRotulos() mede, NA TELA, a largura e a altura do polígono passando pelo
+   ponto do rótulo (as duas "cordas" — numa meia-lua a caixa envolvente mentiria), mede
+   o tamanho natural do texto e aplica `transform:scale()` = o menor entre 1 e o que
+   cabe. Roda ao desenhar e a cada `zoomend`. O nome do lote não passa da escala das
+   bandas dele, para não cobrir as porcentagens. */
+let _safRot=[];
+function safLbl(principal,segunda,icone,quebra){
+  return '<div class="sfl'+(quebra?' quebra':'')+'">'+(icone?'<span class="pi">'+icone+'</span>':'')+principal
+       +(segunda?'<span class="p2"><br><small>'+segunda+'</small></span>':'')+'</div>';
+}
+function safReg(mk,ring,lote,tipo){ _safRot.push({mk,ring,lote,tipo}); return mk; }
+/* ponto para o NOME do lote quando o miolo está ocupado pelos rótulos das bandas:
+   na vertical do centro de massa, a 72% do caminho até a borda norte. Se cair fora
+   do anel (lote côncavo), volta para o centro. */
+function safTopo(ring){
+  const c=safCentroArea(ring); let norte=-1e9; ring.forEach(p=>{ if(p[0]>norte) norte=p[0]; });
+  const pt=[c[0]+(norte-c[0])*.72, c[1]]; let dentro=false;
+  for(let i=0,j=ring.length-1;i<ring.length;j=i++){ const a=ring[i],b=ring[j];
+    if((a[0]>pt[0])!==(b[0]>pt[0]) && pt[1]<(b[1]-a[1])*(pt[0]-a[0])/(b[0]-a[0])+a[1]) dentro=!dentro; }
+  return dentro?pt:c;
+}
+function _safCordas(pts,c){
+  const corta=(e,o)=>{ const xs=[];
+    for(let i=0,j=pts.length-1;i<pts.length;j=i++){ const a=pts[j],b=pts[i];
+      if((a[o]>c[o])!==(b[o]>c[o])) xs.push(a[e]+(c[o]-a[o])/(b[o]-a[o])*(b[e]-a[e])); }
+    xs.sort((p,q)=>p-q);
+    for(let k=0;k+1<xs.length;k+=2) if(xs[k]<=c[e]&&c[e]<=xs[k+1]) return xs[k+1]-xs[k];
+    return null; };
+  return [corta('x','y'),corta('y','x')];
+}
+function safAjustaRotulos(){
+  if(!_map||!_safRot.length) return;
+  const NIV=['','n1','n2'], MIN=[.62,.62,.45];   // abaixo de 0,62 a letra de 11–15 px já não se lê
+  const ajusta=(r,teto)=>{
+    const tt=r.mk.getTooltip&&r.mk.getTooltip(), et=tt&&tt.getElement&&tt.getElement(), s=et&&et.querySelector('.sfl'); if(!s) return null;
+    const base=s.dataset.b||(s.dataset.b=s.className.replace(/\b(n1|n2|n9)\b/g,'').replace(/\s+/g,' ').trim());
+    const c=_map.latLngToLayerPoint(r.mk.getLatLng()), pts=r.ring.map(p=>_map.latLngToLayerPoint(p));
+    let [w,h]=_safCordas(pts,c);
+    if(w==null||h==null){                      // ponto fora do anel (polígono côncavo): metade da caixa
+      let x0=1e9,x1=-1e9,y0=1e9,y1=-1e9; pts.forEach(p=>{ x0=Math.min(x0,p.x);x1=Math.max(x1,p.x);y0=Math.min(y0,p.y);y1=Math.max(y1,p.y); });
+      w=(x1-x0)*.5; h=(y1-y0)*.5; }
+    /* banda minúscula na tela (fazenda inteira): nem a % sozinha cabe com leitura —
+       some, e fica só o nome do lote. Medido no teste com o Leaflet: pivô de ~30 px
+       ficava com três rótulos empilhados. */
+    if(r.tipo!=='lote'&&(w<30||h<22)){ s.className=base+' n9'; s.style.transform='none'; return 0; }
+    const niveis=r.tipo==='lote'?1:NIV.length;
+    for(let i=0;i<niveis;i++){
+      s.className=base+(NIV[i]?' '+NIV[i]:''); s.style.transform='none';
+      const k=Math.min(1,teto==null?1:teto,w*.88/(s.offsetWidth||1),h*.88/(s.offsetHeight||1));
+      if(k>=(r.tipo==='lote'?.5:MIN[i])){ s.style.transform=k<.999?'scale('+k.toFixed(3)+')':'none'; return k; }
+    }
+    s.className=base+' n9'; s.style.transform='none'; return 0;
+  };
+  const kLote={};
+  _safRot.filter(r=>r.tipo!=='lote').forEach(r=>{ const k=ajusta(r); if(k) kLote[r.lote]=Math.min(kLote[r.lote]==null?1:kLote[r.lote],k); });
+  _safRot.filter(r=>r.tipo==='lote').forEach(r=>ajusta(r,kLote[r.lote]));
+}
 function desenhaSafra(){
   if(!_map) return;
   if(_safL){ _map.removeLayer(_safL); _safL=null; }
+  _safRot=[];
   const g=L.layerGroup(), hoje=SAFD==null, D=safFim();
   const feitas=SAFRA.filter(a=>safFeita(a,D));
   const prog=hoje?SAFRA.filter(a=>a.status==='lancada'&&!safAprovar(a)):[];
@@ -3662,9 +3755,9 @@ function desenhaSafra(){
     L.polygon(r,{color:ap?'#ffc107':'#0b1221',weight:ap?2:1,dashArray:ap?'6 5':null,
       fillColor:e?safCorEvol(e.pct):safCorDap(safDap(a,D)),fillOpacity:.62,bubblingMouseEvents:false})
       .on('click',toque(a.lote_nome)).addTo(g);
-    if(e) L.marker(safCentroArea(r),{icon:L.divIcon({className:'',html:'',iconSize:[0,0]}),interactive:false})
-      .bindTooltip(`${safIcoCult(a,26)}<span style="font-size:15px">${safBR(e.pct,0)}%</span>${(s=>s?'<br><small>'+safEsc(s.e)+'</small>':'')(safEstadio(a.plantio||{},D))}`,
-        {permanent:true,direction:'center',className:'crqplaca'}).addTo(g); });
+    if(e) safReg(L.marker(safCentroArea(r),{icon:L.divIcon({className:'',html:'',iconSize:[0,0]}),interactive:false})
+      .bindTooltip(safLbl(`<span style="font-size:15px">${safBR(e.pct,0)}%</span>`,(s=>s?safEsc(s.e):'')(safEstadio(a.plantio||{},D)),safIcoCult(a,26)),
+        {permanent:true,direction:'center',className:'crqplaca'}),r,a.lote_nome,'banda').addTo(g); });
   // 3) o que acabou de acontecer: operação dos 3 últimos dias, borda na cor do tipo
   feitas.filter(a=>a.tipo_ativ!=='Plantio'&&D-a.dia<3*864e5).forEach(a=>{ const r=safGeo(a); if(!r) return;
     L.polygon(r,{color:safCor(a.tipo_ativ),weight:2.6,fill:false,interactive:false}).addTo(g); });
@@ -3678,9 +3771,13 @@ function desenhaSafra(){
     if(l) L.polygon(l.ring,{color:'#fff',weight:2.4,fill:false,interactive:false}).addTo(g); }
   // 6) rótulo só nos lotes com alguma coisa feita/programada — 30 rótulos tapariam a lavoura
   new Set(feitas.concat(prog).map(a=>a.lote_nome)).forEach(n=>{ const l=LOTES.find(x=>x.nome===n); if(!l) return;
-    L.marker(safCentro(l.ring),{icon:L.divIcon({className:'',html:'',iconSize:[0,0]}),interactive:false})
-      .bindTooltip(safEsc(safCurto(n)),{permanent:true,direction:'center',className:'placa'}).addTo(g); });
+    /* lote com banda plantada: o nome sobe para perto da borda norte — no centro ele
+       cobria as % das bandas lado a lado (P02/P01, divididos leste×oeste) */
+    const temBanda=feitas.some(a=>a.tipo_ativ==='Plantio'&&a.lote_nome===n&&safGeo(a));
+    safReg(L.marker(temBanda?safTopo(l.ring):safCentro(l.ring),{icon:L.divIcon({className:'',html:'',iconSize:[0,0]}),interactive:false})
+      .bindTooltip('<div class="sfl sflplaca">'+safEsc(safCurto(n))+'</div>',{permanent:true,direction:'center',className:'sfnu'}),l.ring,n,'lote').addTo(g); });
   _safL=g.addTo(_map);
+  safAjustaRotulos(); setTimeout(safAjustaRotulos,180);   // 2ª vez: o mapa pode ainda estar ganhando tamanho
   // legenda: hectares plantados até a data + as convenções
   const lg=el('legenda');
   if(lg){
@@ -3797,9 +3894,9 @@ function crqDesenhaVariedades(g){
     tot[v]=(tot[v]||0)+(a.area||0);
     L.polygon(r,{color:sel?'#fff':'#0b1221',weight:sel?3:1.2,fillColor:cor[v],fillOpacity:.78,bubblingMouseEvents:false})
       .on('click',()=>{ CRQSEL=a.codigo; desenhaCroqui(); }).addTo(g);
-    L.marker(safCentroArea(r),{icon:L.divIcon({className:'',html:'',iconSize:[0,0]}),interactive:false})
-      .bindTooltip(`${safEsc(v)}<br><small>${safDM(a.dia)} · ${safBR(a.area,1)} ha</small>`,
-        {permanent:true,direction:'center',className:'crqplaca'}).addTo(g);
+    safReg(L.marker(safCentroArea(r),{icon:L.divIcon({className:'',html:'',iconSize:[0,0]}),interactive:false})
+      .bindTooltip(safLbl(safEsc(v),`${safDM(a.dia)} · ${safBR(a.area,1)} ha`,'',true),
+        {permanent:true,direction:'center',className:'crqplaca'}),r,a.lote_nome,'banda').addTo(g);
   });
   return Object.keys(tot).sort().map(v=>
     `<span><i style="background:${cor[v]};height:9px"></i>&nbsp;${safEsc(v)}<b>&nbsp;${safBR(tot[v],1)} ha</b></span>`).join('');
@@ -3915,9 +4012,10 @@ function crqDesenhaEvolucao(g){
   pls.forEach(a=>{ const r=safGeo(a); if(!r) return; const e=safEvol(a), sel=CRQSEL===a.codigo;
     L.polygon(r,{color:sel?'#fff':'#0b1221',weight:sel?3:1.2,fillColor:e?safCorEvol(e.pct):'#6b7a90',fillOpacity:.8,bubblingMouseEvents:false})
       .on('click',()=>{ CRQSEL=a.codigo; desenhaCroqui(); }).addTo(g);
-    L.marker(safCentroArea(r),{icon:L.divIcon({className:'',html:'',iconSize:[0,0]}),interactive:false})
-      .bindTooltip(e?`${safIcoCult(a,26)}<span style="font-size:15px">${safBR(e.pct,0)}%</span><br><small>${e.aguarda?'aguarda emergência':'dia '+e.dias+' de '+e.ciclo}${(s=>s?' · '+safEsc(s.e):'')(safEstadio(a.plantio||{}))}</small>`:`sem ciclo<br><small>${safBR(a.area,1)} ha</small>`,
-        {permanent:true,direction:'center',className:'crqplaca'}).addTo(g);
+    safReg(L.marker(safCentroArea(r),{icon:L.divIcon({className:'',html:'',iconSize:[0,0]}),interactive:false})
+      .bindTooltip(e?safLbl(`<span style="font-size:15px">${safBR(e.pct,0)}%</span>`,(e.aguarda?'aguarda emergência':'dia '+e.dias+' de '+e.ciclo)+(s=>s?' · '+safEsc(s.e):'')(safEstadio(a.plantio||{})),safIcoCult(a,26))
+                 :safLbl('sem ciclo',safBR(a.area,1)+' ha'),
+        {permanent:true,direction:'center',className:'crqplaca'}),r,a.lote_nome,'banda').addTo(g);
   });
   const g0=safResumo()[0];
   return `<span>Ciclo médio&nbsp;<b>${g0?safPct(g0.pctCiclo):'—'}</b></span>
@@ -3936,11 +4034,11 @@ function crqDesenhaColheita(g){
     if(tem) tot[c.dia]=(tot[c.dia]||0)+(a.area||0); else if(c&&c.aguarda) haAg+=(a.area||0);
     L.polygon(r,{color:sel?'#fff':'#0b1221',weight:sel?3:1.2,fillColor:tem?corDe(c.dia):'#6b7a90',fillOpacity:.78,bubblingMouseEvents:false})
       .on('click',()=>{ CRQSEL=a.codigo; desenhaCroqui(); }).addTo(g);
-    L.marker(safCentroArea(r),{icon:L.divIcon({className:'',html:'',iconSize:[0,0]}),interactive:false})
-      .bindTooltip(tem?`~${safDM(c.dia)}<br><small>${safBR(a.area,1)} ha · ${c.ciclo} d</small>`
-                 :c?`aguarda emergência<br><small>${safBR(a.area,1)} ha · ${c.ciclo} d</small>`
-                 :`sem ciclo<br><small>${safBR(a.area,1)} ha</small>`,
-        {permanent:true,direction:'center',className:'crqplaca'}).addTo(g);
+    safReg(L.marker(safCentroArea(r),{icon:L.divIcon({className:'',html:'',iconSize:[0,0]}),interactive:false})
+      .bindTooltip(tem?safLbl('~'+safDM(c.dia),safBR(a.area,1)+' ha · '+c.ciclo+' d')
+                 :c?safLbl('aguarda emergência',safBR(a.area,1)+' ha · '+c.ciclo+' d')
+                 :safLbl('sem ciclo',safBR(a.area,1)+' ha'),
+        {permanent:true,direction:'center',className:'crqplaca'}),r,a.lote_nome,'banda').addTo(g);
   });
   const semCiclo=pls.filter(x=>!x.c).length;
   return datas.map(d=>`<span><i style="background:${corDe(d)};height:9px"></i>&nbsp;${safDM(d)}<b>&nbsp;${safBR(tot[d],1)} ha</b></span>`).join('')
@@ -4005,12 +4103,14 @@ const croqAtual=()=>CROQUIS.find(c=>c.id===CROQ)||CROQUIS[0];
 function desenhaCroqui(){
   if(!_map) return;
   if(_safL){ _map.removeLayer(_safL); _safL=null; }
+  _safRot=[];
   const g=L.layerGroup();
   // tocar fora das bandas fecha o cartão (lote sem nada fica só com o contorno)
   LOTES.forEach(l=>L.polygon(l.ring,{stroke:false,fillOpacity:0,bubblingMouseEvents:false})
     .on('click',()=>{ CRQSEL=null; desenhaCroqui(); }).addTo(g));
   const leg=croqAtual().desenha(g);
   _safL=g.addTo(_map);
+  safAjustaRotulos(); setTimeout(safAjustaRotulos,180);
   const lg=el('legenda');
   if(lg){ lg.className='legenda mini'; lg.style.display='';
     lg.innerHTML=leg||'<span class="fraco">Nenhum plantio lançado nesta safra.</span>'; }
