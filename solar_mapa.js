@@ -392,7 +392,7 @@
      casa — que é o caso do *"se tiver puxando só da bateria, a seta vem só da
      bateria para a bomba"*. */
   function painelFluxo(v, kFv, kBat, kCar) {
-    const L1 = 232, A = 74;                       // o painel inteiro, em pixels
+    const L1 = 264, A = 74;                       // o painel inteiro, em pixels
     const SOL = '#ffd479', VBAT = '#00c896', VCAR = '#5aa9ff';
     const soc = (v && v.soc_pct != null) ? Number(v.soc_pct) : null;
     const corS = soc == null ? '#8b949e' : soc >= 50 ? '#00c896' : soc >= 20 ? '#ffb300' : '#ff4444';
@@ -401,7 +401,11 @@
     const vale = n => (n != null && !isNaN(n) && Math.abs(n) >= 0.5);
 
     /* caixas: bateria à esquerda, casa no meio, bomba à direita */
-    const cxB = 6, cxC = 96, cxP = 176, cy = 28, cwB = 50, cwC = 40, cwP = 50, ch = 36;
+    /* VÃOS DE 56 px entre as caixas (eram 40, alargados a pedido do dono em
+       04/10/2026: *"só tem que espaçar um pouquinho para ficar melhor os
+       números"*). O rótulo "77,8 kW" a 9,5 px mede ~38 px: em 40 px ele
+       encostava nas duas caixas e a seta sumia debaixo do texto. */
+    const cxB = 6, cxC = 112, cxP = 208, cy = 28, cwB = 50, cwC = 40, cwP = 50, ch = 36;
     const mB = cxB + cwB / 2, mC = cxC + cwC / 2, mP = cxP + cwP / 2, mY = cy + ch / 2;
 
     const caixa = (x, w, borda) =>
@@ -447,6 +451,14 @@
          encosta na borda das placas e o desenho diz de onde a energia vem. */
       d += seta(mC, -7, mC, cy - 2, SOL) +
            rotulo(mC + 8, 12, br(kFv, 1) + ' kW', SOL, false);
+      /* "% DO POSSÍVEL" vem junto porque o bloco antigo saiu (04/10/2026) e era
+         ele quem mostrava. É o número que separa NUBLADO de DEFEITO — 49 kW às
+         7 h de céu limpo é ótimo e às 12 h30 seria alarme —, então não podia
+         morrer com o bloco. Com inversor LIMITADO a view devolve nulo de
+         propósito (está SOBRANDO energia) e aí vai a palavra, não o número. */
+      const pp = v && v.pct_potencial, pf = v && v.potencial_fonte;
+      if (pp != null) d += rotulo(mC + 8, 24, br(pp, 0) + '% do possível', '#ffb300', false);
+      else if (pf === 'limitado') d += rotulo(mC + 8, 24, 'sobrando', VBAT, false);
     }
     /* 2 · casa <-> BATERIA, e o sentido vira com o sinal */
     if (vale(kBat)) {
@@ -595,17 +607,15 @@
        tela, sempre, seja qual for o zoom. Desenho e alvo de toque são coisas
        diferentes, e tratá-los como a mesma coisa é o que torna mapa impossível
        de usar no telefone. */
-    const icone = { casa: '⌂', bateria: '▮', poco: '◎', hidrometro: '◍' };
-    const abaDe = { casa: 'inversores', bateria: 'bateria', poco: 'geral', hidrometro: 'geral' };
-    if (perto) (c.benfeitorias || []).forEach(b => {
-      if (!icone[b.tipo] || !b.ponto) return;
-      L.marker(b.ponto, { keyboard: false, zIndexOffset: 700, icon: L.divIcon({ className: '', iconSize: [26, 26], iconAnchor: [13, 13],
-        html: '<div style="width:26px;height:26px;border-radius:50%;background:rgba(10,12,16,.72);border:1.5px solid #8fb9e0;' +
-              'display:flex;align-items:center;justify-content:center;color:#cfe4f7;font:700 14px/1 system-ui,sans-serif;cursor:pointer">' +
-              icone[b.tipo] + '</div>' }) })
-        .addTo(grupo).on('click', () => aoClicar(abaDe[b.tipo]))
-        .bindTooltip(b.rot || b.id, { direction: 'top' });
-    });
+    /* OS CRACHÁS REDONDOS SAÍRAM em 04/10/2026, a pedido do dono: *"aquelas
+       escritas e ícones antigos que tem lá no hidrômetro e casa antiga tá
+       poluindo, pode tirar"*. Eram cinco medalhões de 26 px — casa, bateria,
+       poço, cano, hidrômetro — empilhados num punhado de metros quadrados:
+       numa área onde tudo cabe num raio de ~2 m, cinco círculos de 26 px se
+       sobrepõem e escondem justamente as construções que deviam apontar.
+       O DESENHO delas continua (polígono da casa com telhado, caixa da
+       bateria, cano, hidrômetro) e o tooltip no toque continua dizendo o nome —
+       o que saiu foi a camada de enfeite por cima. */
 
     /* BENFEITORIAS. A casa vai com TELHADO DE UMA ÁGUA visto de cima: um plano
        só, com a borda alta marcada em claro. É o que se enxerga numa foto
@@ -638,27 +648,19 @@
         L.circleMarker(b.linha[1], { radius: 3, color: '#6b4a2a', fillColor: '#6b4a2a', fillOpacity: .95,
           bubblingMouseEvents: false }).addTo(grupo).bindTooltip('entra no solo', { direction: 'top' });
       } else if (b.tipo === 'poco') {
-        /* O POÇO, e ao lado dele o estado da BOMBA. O estado vem PRONTO da
-           view (migração 113) — aqui não se recalcula nada. Três estados, e o
-           terceiro importa: `null` é DESCONHECIDO (dado velho), e desconhecido
-           não pode se parecer com desligado. */
-        const lig = v && v.bomba_ligada;
-        const corB = lig === true ? '#00c896' : lig === false ? '#6b7683' : '#ffb300';
+        /* A BOCA DO POÇO. O ESTADO da bomba não mora mais aqui (04/10/2026):
+           quem diz é a sinaleira do fluxograma, de perto, e o centro da rosca,
+           de longe. Aqui ficou só o furo no chão, que é o que a planta tem a
+           dizer. */
         L.circle(b.ponto, { radius: b.raio || 0.5, color: '#00c2d1', weight: 2, fillColor: '#00363d',
           fillOpacity: .9, bubblingMouseEvents: false }).addTo(grupo)
           .bindTooltip(b.rot || 'poço', { direction: 'top' });
-        const txt = lig === true ? 'BOMBA LIGADA' : lig === false ? 'bomba desligada' : 'bomba: sem leitura';
-        const detalhe = (v && v.p_carga_kw != null) ? ' · ' + br(v.p_carga_kw, 1) + ' kW' : '';
-        /* A pílula com o texto e o kW é detalhe de perto; de longe quem conta
-           o estado da bomba é o ícone no bloco central. */
-        if (perto) L.marker(b.ponto, { keyboard: false, zIndexOffset: 600, icon: L.divIcon({ className: '', iconSize: [0, 0], iconAnchor: [0, 0],
-          html: '<div style="position:absolute;transform:translate(-50%,-190%);display:flex;align-items:center;gap:4px;white-space:nowrap;' +
-                'background:rgba(10,12,16,.82);border:1px solid ' + corB + ';border-radius:999px;padding:2px 7px;' +
-                'font:700 11px/1 system-ui,sans-serif;color:' + corB + '">' +
-                '<span style="width:8px;height:8px;border-radius:50%;background:' + corB +
-                (lig === true ? ';box-shadow:0 0 6px ' + corB : '') + '"></span>' + txt + detalhe + '</div>' }) })
-          .addTo(grupo).bindTooltip('estado inferido pelo consumo da usina — ainda não há sinal direto da bomba',
-            { direction: 'top' });
+        /* A PÍLULA "BOMBA LIGADA · 77,8 kW" saiu junto (04/10/2026). Ela era a
+           resposta certa quando não havia mais nada; agora o FLUXOGRAMA embaixo
+           das placas diz o mesmo com mais contexto (de onde vem a energia), e
+           duas respostas para a mesma pergunta na mesma tela é ruído, não
+           redundância útil. O estado da bomba segue na sinaleira do fluxograma
+           e, de longe, no centro da rosca. */
       } else if (b.tipo === 'hidrometro') {
         L.polygon(b.anel, { color: '#1f7a34', weight: 1.2, fillColor: '#2ecc71', fillOpacity: .95,
           bubblingMouseEvents: false }).addTo(grupo).bindTooltip(b.rot || 'hidrômetro', { direction: 'top' });
@@ -677,191 +679,163 @@
             kCar = Number(v && v.p_carga_kw);
       const vale = n => (n != null && !isNaN(n) && Math.abs(n) >= 0.5);
       if (vale(kFv) || vale(kBat) || vale(kCar)) {
-        temFluxo = true;
-        estiloFluxo();
-        /* ANCORADO NA BORDA DE BAIXO DAS PLACAS, centrado — *"usa o desenho das
-           placas e na parte inferior dela, embaixo"*. O ponto é geográfico (anda
-           com o mapa), mas o painel tem tamanho FIXO em pixels: é um esquema,
-           não uma planta, e esquema que encolhe com o zoom não serve para nada. */
+        /* ================= A TRAVA DOS 80% (dono, 04/10/2026) =================
+           *"quando dá zoom ele trava quando atingir 80% da largura das placas"*.
+
+           O painel é um ESQUEMA de tamanho fixo (264 px). Fixo resolve a leitura
+           e cria outro problema: no zoom 18 as placas de um poço têm 86 px e o
+           painel ficava quase três vezes mais largo que a usina que ele
+           descreve — um balão maior que a coisa.
+
+           Então ele passa a ACOMPANHAR o zoom, limitado a 80% da largura das
+           placas, e TRAVA quando chega ao tamanho natural:
+
+               escala = min( 1 , 0,8 × largura das placas em px ÷ 264 )
+
+           Zoom baixo, o painel encolhe para caber nos 80%. Zoom alto, ele bate
+           no tamanho natural e para de crescer — o "trava" do pedido.
+
+           E UM PISO, que o pedido não cobre mas a aritmética cobra: em escala
+           0,26 (o que daria no zoom 18) o texto de 9,5 px vira 2,5 px — não é um
+           painel pequeno, é um borrão. Abaixo de 0,55 ele não se desenha e a
+           ROSCA fica no lugar; aproximar um passo o traz. Assim o painel só
+           aparece quando dá para ler, e aparece MAIS CEDO em usina grande — que
+           é o certo: quem manda é o tamanho na tela, não o número do zoom. */
         const bb = L.polygon(c.anel).getBounds();
-        const pe = L.latLng(bb.getSouth(), bb.getCenter().lng);
-        L.marker(pe, { keyboard: false, zIndexOffset: 500, icon: L.divIcon({ className: '',
-          iconSize: [0, 0], iconAnchor: [0, 0],
-          html: '<div style="position:absolute;transform:translate(-50%,6px);cursor:pointer">' +
-                painelFluxo(v, kFv, kBat, kCar) + '</div>' }) })
-          .on('click', () => aoClicar('geral')).addTo(grupo)
-          .bindTooltip('fluxo de energia ao vivo — clique abre a usina', { direction: 'top' });
+        const mapa = grupo._map;
+        let escala = 1;
+        if (mapa && mapa.latLngToLayerPoint) {
+          const pO = mapa.latLngToLayerPoint(L.latLng(bb.getSouth(), bb.getWest()));
+          const pL = mapa.latLngToLayerPoint(L.latLng(bb.getSouth(), bb.getEast()));
+          escala = Math.min(1, 0.8 * Math.abs(pL.x - pO.x) / 264);
+        }
+        if (escala >= 0.55) {
+          temFluxo = true;
+          estiloFluxo();
+          /* ANCORADO NA BORDA DE BAIXO DAS PLACAS, centrado — *"usa o desenho das
+             placas e na parte inferior dela, embaixo"*. O ponto é geográfico (anda
+             com o mapa); o tamanho é em pixels. `transform-origin:top center` com
+             `translate(-50%,6px) scale(s)` mantém o topo colado na borda das placas
+             e o painel centrado, qualquer que seja a escala. */
+          const pe = L.latLng(bb.getSouth(), bb.getCenter().lng);
+          L.marker(pe, { keyboard: false, zIndexOffset: 500, icon: L.divIcon({ className: '',
+            iconSize: [0, 0], iconAnchor: [0, 0],
+            html: '<div style="position:absolute;transform-origin:top center;' +
+                  'transform:translate(-50%,6px) scale(' + escala.toFixed(3) + ');cursor:pointer">' +
+                  painelFluxo(v, kFv, kBat, kCar) + '</div>' }) })
+            .on('click', () => aoClicar('geral')).addTo(grupo)
+            .bindTooltip('fluxo de energia ao vivo — clique abre a usina', { direction: 'top' });
+        }
       }
     }
 
-    /* O BLOCO CENTRAL — o que se lê sem clicar em nada (dono, 18/09/2026):
-       a carga da bateria, quanto está gerando, quanto está consumindo e se a
-       BOMBA está ligada. São os quatro números que decidem bombear agora ou
-       esperar; o resto abre no clique.
-       A bomba vira ÍCONE e não texto: de longe, com cinco usinas na tela, um
-       rótulo escrito em cada uma vira parede de letra. O ícone diz o estado
-       pela cor e some da leitura quando não é o que se procura. */
-    const soc = (v && v.soc_pct != null) ? Math.round(Number(v.soc_pct)) + '%'
-              : (v && v.situacao === 'MUDO') ? 'sem sinal'
-              : (v && v.situacao === 'FALHA') ? 'falha' : '—';
-    const corRot = (v && v.soc_pct != null) ? '#ffffff' : cor;
-    const lig = v && v.bomba_ligada;
-    /* três estados, e o terceiro importa: `null` é DESCONHECIDO (leitura
-       velha), e desconhecido não pode se parecer com desligado. */
-    const corB = lig === true ? '#00c896' : lig === false ? '#6b7683' : '#ffb300';
-    const bomba = '<svg width="16" height="16" viewBox="0 0 24 24" style="flex:none;filter:drop-shadow(0 1px 2px #000)' +
-      (lig === true ? ' drop-shadow(0 0 4px ' + corB + ')' : '') + '">' +
-      '<circle cx="10" cy="15" r="6.5" fill="none" stroke="' + corB + '" stroke-width="2.6"/>' +
-      '<path d="M10 8.5 V3.5 h9" fill="none" stroke="' + corB + '" stroke-width="2.6" stroke-linecap="round"/></svg>';
-    /* A BATERIA como desenho de bateria (dono, 18/09/2026). O número sozinho
-       ("88%") obriga a ler; o símbolo com o nível preenchido se entende de
-       relance, que é o ponto de uma tela vista de longe. A cor segue a carga —
-       e sem leitura ele fica vazio e cinza, que não é o mesmo que zero. */
-    const s = (v && v.soc_pct != null) ? Number(v.soc_pct) : null;
-    const corS2 = s == null ? '#8b949e' : s >= 50 ? '#00c896' : s >= 20 ? '#ffb300' : '#ff4444';
-    const larg = s == null ? 0 : Math.max(1.5, Math.min(100, s) / 100 * 14);
-    const pilha = '<svg width="22" height="13" viewBox="0 0 24 14" style="flex:none;filter:drop-shadow(0 1px 2px #000)">' +
-      '<rect x="1" y="1.5" width="18" height="11" rx="2.2" fill="none" stroke="' + corS2 + '" stroke-width="2"/>' +
-      '<rect x="20.5" y="5" width="2.6" height="4" rx="1" fill="' + corS2 + '"/>' +
-      (s == null ? '' : '<rect x="3" y="3.5" width="' + larg.toFixed(1) + '" height="7" rx="1" fill="' + corS2 + '"/>') +
-      '</svg>';
-    const num = (n, d) => (n == null || isNaN(n)) ? null : br(n, d);
-    const ger = num(v && v.p_fv_kw, 0), cons = num(v && v.p_carga_kw, 0);
-    const detalhe = [ger != null ? 'ger ' + ger : null, cons != null ? 'cons ' + cons : null]
-      .filter(Boolean).join(' · ') + ((ger != null || cons != null) ? ' kW' : '');
-    /* QUANTO DO POSSÍVEL ELA ESTÁ GERANDO (pedido do dono, 18/09/2026).
-       Este é o número que separa "nublado" de "defeito": 118 kW não diz nada
-       sozinho — 118 kW às 9h de céu limpo pode ser ótimo, e às 12h30 seria
-       alarme. A conta precisa da CURVA DE CÉU LIMPO de cada usina, que só sai
-       com dias de coleta.
-       CHEGOU EM 21/09/2026 (migração 122): a curva é a tabela `solar_ceu_limpo`,
-       medida (maior valor já visto naquela hora), e a view devolve o percentual
-       junto com `potencial_fonte`, que diz o quanto confiar nele.
-       NULO NÃO É ZERO, e aqui há nulos de naturezas diferentes. Com inversor
-       LIMITADO a view devolve nulo DE PROPÓSITO: naquele minuto está SOBRANDO
-       energia (bateria cheia, bomba já em carga total) e um percentual diria o
-       contrário — que falta sol. Então mostra-se a palavra, não o número. Sem
-       referência ainda, não se mostra nada. */
-    const pot = num(v && v.pct_potencial, 0);
-    const potFonte = v && v.potencial_fonte;
-    /* TUDO NUMA LINHA SÓ, e no VÃO ENTRE AS MESAS (dono, 18/09/2026). Duas
-       linhas empilhadas tampavam as placas; uma linha fina cabe na faixa vazia
-       que existe no meio da usina — o mesmo vão de sombra que separa as
-       fileiras. O centro do polígono já cai nessa faixa porque as fileiras são
-       simétricas (2 nos poços, 6 nos pivôs, sempre par). */
+    /* ------------------------------------------- as peças da ROSCA
+       Ideia do dono (04/10/2026): *"um círculo, parecido com o gráfico de
+       rosca: a extremidade do círculo vira a barra de carga da bateria e o
+       centro a sinaleira do motor"*.
+
+       POR QUE O CÍRCULO GANHOU DA PÍLULA que eu tinha feito antes: ele **não
+       tem eixo longo**. A pílula crescia para o lado conforme o número — "100%"
+       é mais larga que "9%" — e era esse crescimento lateral que embaralhava
+       quando duas usinas ficam perto. O disco ocupa o mesmo espaço sempre.
+
+       E a SINALEIRA é a metáfora certa: lâmpada de painel ACESA = motor
+       rodando. Não é código de cor a decorar, é o que o operador vê no quadro. */
     const centro = L.polygon(c.anel).getBounds().getCenter();
-    const peca = (txt, est) => '<span style="' + est + ';' + sombra + '">' + txt + '</span>';
-    /* DE LONGE, SÓ A CARGA E A BOMBA — nada mais (dono, 18/09/2026). Geração e
-       consumo são números que alguém vai ler quando estiver olhando AQUELA
-       usina; na vista de fazenda inteira eles só ocupam espaço e escondem o
-       mapa. Quem aproxima quer o detalhe; quem está longe quer saber se tem
-       carga e se a bomba está rodando. */
-    const miolo = pilha +
-      peca(soc, 'font:800 15px/1 system-ui,sans-serif;color:' + corRot) +
-      bomba +
-      (perto && detalhe.trim() ? peca(detalhe, 'font:700 11px/1 system-ui,sans-serif;color:#dbe9f7') : '') +
-      (perto && pot != null
-        ? peca(pot + '% do possível', 'font:700 11px/1 system-ui,sans-serif;color:#ffd479')
-        : perto && potFonte === 'limitado'
-        ? peca('sobrando', 'font:700 11px/1 system-ui,sans-serif;color:#00c896')
-        : '');
-    /* ----------------- O SELO — a vista de fazenda inteira (04/10/2026)
-       Pedido do dono: *"quando o mapa está bem distante embaralha muita
-       informação e texto fica maior que os lotes... quero um ícone que aparece
-       a % de bateria, se a bomba está ligada ou não"*.
-
-       O DEFEITO É DE ESCALA, NÃO DE CONTEÚDO. O bloco central já mostra só as
-       duas coisas certas de longe (carga e bomba) — o que não acompanha é o
-       TAMANHO: ele é fixo em pixels (o número em 15 px, o conjunto ~80 px de
-       largura) e o lote encolhe com o zoom enquanto ele não. Em z 14 um poço
-       de 50×30 m tem 5×3 px e o rótulo tem 80: o rótulo fica ~16× maior que a
-       coisa que ele rotula, cinco vezes na mesma tela. Daí o embaralhado.
-
-       O selo diz as MESMAS duas informações em ~37 px:
-         · a CARGA na **cor da borda** (mesmos cortes do resto do arquivo:
-           ≥50 verde, ≥20 âmbar, <20 vermelho, sem leitura cinza) e o número
-           miúdo dentro — a cor se lê de relance, o número confere;
-         · a BOMBA num ponto, com as **três** cores de sempre (verde ligada,
-           cinza desligada, âmbar DESCONHECIDA — desconhecido não pode parecer
-           desligado), e brilho só quando está ligada.
-
-       E ganha FUNDO, que o bloco central não tem: a 10 px sobre imagem de
-       satélite, sombra de texto não basta — o contraste tem de vir de uma
-       caixa, senão o número desaparece em cima de telhado claro ou de palhada.
-
-       NÃO É UM TERCEIRO CRITÉRIO, é a mesma informação em outro tamanho: `soc`
-       e `corB` são os mesmos que o bloco usa. Se o critério mudar, muda nos
-       dois juntos — que é a razão de o selo morar aqui e não num arquivo novo. */
-    /* ================= O SELO: ROSCA + SINALEIRA (dono, 04/10/2026) =========
-       Ideia dele, e melhor que a pílula que eu tinha feito:
-       *"um círculo, parecido com o gráfico de rosca: a extremidade do círculo
-       vira a barra de carga da bateria e o centro a sinaleira do motor"*.
-
-       POR QUE É MELHOR, e não só diferente: **o círculo não tem eixo longo**. A
-       pílula cresce para o lado conforme o número — "100%" é mais larga que
-       "9%" — e é esse crescimento lateral que embaralha quando duas usinas
-       ficam perto (Poço 01 e 02). O disco ocupa o mesmo espaço sempre, em
-       qualquer direção, e fica previsível de posicionar.
-
-       E a SINALEIRA é a metáfora certa para o que se procura: lâmpada de painel
-       ACESA = motor rodando. Não é um código de cores a decorar, é a mesma coisa
-       que o operador vê no quadro.
-
-       O ARCO dispensa ler número: ele é a própria barra, e o número exato
-       continua no bloco (z ≥ 15) e na janela. De longe quem olha quer "está
-       cheia ou está baixa", não "39 ou 41".
-
-       Tamanho: 26 px no total, contra 50 da pílula e 80 do bloco. */
     const RAIO = 9.5, GROSSO = 3.5, VOLTA = 2 * Math.PI * RAIO;
     const frac = (v && v.soc_pct != null) ? Math.max(0, Math.min(100, Number(v.soc_pct))) / 100 : null;
-    /* A SINALEIRA, três estados — e "apagada" tem de PARECER apagada:
-         ligada      — verde viva, com brilho (lâmpada acesa);
-         desligada   — disco escuro com aro: a lâmpada existe e está apagada;
-         sem leitura — âmbar, que é o "não sei" do resto do arquivo. */
+    const corS2 = (v && v.soc_pct == null) ? '#8b949e'
+                : v.soc_pct >= 50 ? '#00c896' : v.soc_pct >= 20 ? '#ffb300' : '#ff4444';
+    const lig = v && v.bomba_ligada;
+    /* a sinaleira, três estados — e "apagada" tem de PARECER apagada:
+         ligada      verde viva, com brilho (lâmpada acesa);
+         desligada   disco escuro com aro: a lâmpada existe e está apagada;
+         sem leitura vazada âmbar, o "não sei" do resto do arquivo.
+       O SOQUETE escuro atrás dela (r 6,6) não é enfeite: sem ele a carga e a
+       sinaleira se FUNDEM quando calham da mesma cor — pego na prévia de
+       04/10/2026 com a usina dos pivôs (28% = arco âmbar, bomba sem leitura =
+       sinaleira âmbar), que a 26 px virava um borrão âmbar só. */
     const lampada = lig === true
       ? '<circle cx="13" cy="13" r="5.2" fill="#00c896" style="filter:drop-shadow(0 0 4px #00c896)"/>'
       : lig === false
       ? '<circle cx="13" cy="13" r="5.2" fill="#2b333e" stroke="#59636f" stroke-width="1.4"/>'
       : '<circle cx="13" cy="13" r="5.2" fill="none" stroke="#ffb300" stroke-width="1.8"/>';
+    /* o anel de FORA é a SITUAÇÃO, e só existe quando há o que avisar: de longe
+       quem dizia FALHA/MUDO era o contorno do polígono, e em z 14 ele tem 5 px
+       e fica DEBAIXO da rosca — uma usina em falha viraria rosca igual às sãs. */
     const sitRuim = v && v.situacao && v.situacao !== 'OK';
-    const selo =
-      '<svg width="26" height="26" viewBox="0 0 26 26" style="display:block;overflow:visible;' +
-      'filter:drop-shadow(0 1px 3px #000)">' +
-        /* fundo: sem ele o arco some em cima de telhado claro ou palhada */
+
+    /* ================= AS TRÊS FAIXAS, revistas em 04/10/2026 ===============
+       Pedido do dono: *"o segundo estágio de zoom pode deixar a rosca em vez de
+       aparecer o modelo antigo; você apenas coloca a % escrita embaixo da
+       rosca, e depois com mais zoom já vai direto para o fluxograma"*.
+
+       Então o BLOCO CENTRAL SAIU — pilha, número grande, ícone da bomba,
+       geração, consumo e "% do possível". Era o desenho de 18/09/2026, e cada
+       pedaço dele tem hoje um lugar melhor:
+         carga e bomba  → a rosca (lê-se de relance, e não cresce para o lado)
+         geração e consumo → o fluxograma, com de ONDE vem e para ONDE vai
+         "% do possível"  → foi junto para o fluxograma, ao lado da seta do sol
+       Nada se perdeu; o que saiu foi a terceira forma de dizer a mesma coisa.
+
+         z < Z_BLOCO     rosca sozinha
+         Z_BLOCO..Z_DET  rosca + a % escrita embaixo
+         z >= Z_DETALHE  o fluxograma
+       com uma RESSALVA que o pedido não cobre e a noite cobra: se não houver
+       fluxo nenhum (de madrugada as três potências são zero), o fluxograma não
+       se desenha — e aí a rosca VOLTA, para a usina não sumir do mapa justo
+       quando alguém abre para ver se ela está viva. */
+
+    /* A % ESCRITA, só do segundo estágio para cima (dono, 04/10/2026: *"você
+       apenas coloca a % escrita embaixo da rosca"*): de longe o arco basta — o
+       número vira letra miúda que ninguém lê àquela distância; a partir do
+       momento em que a pessoa aproximou, ela quer o valor exato.
+
+       O NÚMERO VAI DENTRO DO SVG, não num `<span>` ao lado. Três razões, e a
+       terceira foi a que me pegou: (1) um elemento só, que escala junto e não
+       depende de flexbox; (2) a sombra do texto fica na mesma pintura do resto;
+       (3) a ferramenta de prévia extrai o `<svg>` — com o número de fora, ele
+       não aparecia na imagem e eu ia jurar que o código estava errado. Desenho
+       que se parte em dois pedaços é desenho que alguém vai conferir pela
+       metade. */
+    const pctTxt = (v && v.soc_pct != null) ? Math.round(Number(v.soc_pct)) + '%'
+                 : (v && v.situacao === 'MUDO') ? 'sem sinal'
+                 : (v && v.situacao === 'FALHA') ? 'falha' : '—';
+    const corPct = (v && v.soc_pct != null) ? '#ffffff' : cor;
+    const comPct = z >= Z_BLOCO;
+    const ALT = comPct ? 41 : 26;
+
+    const rosca =
+      '<svg width="26" height="' + ALT + '" viewBox="0 0 26 ' + ALT + '" ' +
+      'style="display:block;overflow:visible;filter:drop-shadow(0 1px 3px #000)">' +
         '<circle cx="13" cy="13" r="11.4" fill="rgba(11,18,27,.85)"/>' +
-        /* o anel de fora é a SITUAÇÃO, e só existe quando há o que avisar —
-           de longe o contorno do polígono (5 px em z 14) fica debaixo do selo */
         (sitRuim ? '<circle cx="13" cy="13" r="12.2" fill="none" stroke="' + cor + '" stroke-width="1.6"/>' : '') +
-        /* trilho da rosca + o arco da carga, começando às 12 h e andando no
-           sentido do relógio (o `rotate(-90)` é o que põe o zero em cima) */
         '<circle cx="13" cy="13" r="' + RAIO + '" fill="none" stroke="rgba(255,255,255,.16)" stroke-width="' + GROSSO + '"/>' +
         (frac == null ? '' :
           '<circle cx="13" cy="13" r="' + RAIO + '" fill="none" stroke="' + corS2 + '" stroke-width="' + GROSSO + '"' +
           ' stroke-linecap="round" transform="rotate(-90 13 13)"' +
           ' stroke-dasharray="' + (frac * VOLTA).toFixed(2) + ' ' + VOLTA.toFixed(2) + '"/>') +
-        /* O SOQUETE: um disco escuro atrás da lâmpada, sempre. Sem ele, carga
-           e sinaleira se FUNDEM quando calham da mesma cor — pego na prévia de
-           04/10/2026 com a usina dos pivôs (28% = arco âmbar, bomba sem leitura
-           = sinaleira âmbar): a 26 px os dois viram um borrão âmbar e não se lê
-           nenhum dos dois. O soquete garante um vão escuro entre o aro e o
-           centro seja qual for a combinação de cores. */
         '<circle cx="13" cy="13" r="6.6" fill="#0b121b"/>' +
         lampada +
+        (comPct
+          ? '<text x="13" y="38" text-anchor="middle" font-family="system-ui,sans-serif" ' +
+            'font-size="11.5" font-weight="800" fill="' + corPct + '" ' +
+            'stroke="#0b121b" stroke-width="3" paint-order="stroke">' + pctTxt + '</text>'
+          : '') +
       '</svg>';
 
-    L.marker(centro, { keyboard: false, zIndexOffset: 400, icon: L.divIcon({ className: '', iconSize: [0, 0], iconAnchor: [0, 0],
-      html: longe
-        ? '<div style="position:absolute;transform:translate(-50%,-50%);cursor:pointer">' + selo + '</div>'
-        /* COM FLUXO O BLOCO SOBE 26 px: o nó do sol fica no MESMO ponto (o
-           centro do conjunto de placas), e texto por cima do sol não se lê
-           nem deixa ver de onde as setas saem. Sobe só quando há fluxo — sem
-           ele o bloco continua no vão entre as mesas, como foi pedido em
-           18/09/2026. */
-        : '<div style="position:absolute;transform:translate(-50%,' + (temFluxo ? 'calc(-50% - 26px)' : '-50%') + ');' +
-          'white-space:nowrap;cursor:pointer;display:flex;align-items:center;gap:5px">' + miolo + '</div>' }) })
-      .on('click', aoClicar).addTo(grupo)
-      .bindTooltip((lig === true ? 'bomba LIGADA' : lig === false ? 'bomba desligada' : 'bomba: sem leitura') +
-                   ' · carga da bateria, geração e consumo', { direction: 'top' });
+    if (!temFluxo) {
+      L.marker(centro, { keyboard: false, zIndexOffset: 400, icon: L.divIcon({ className: '',
+        iconSize: [0, 0], iconAnchor: [0, 0],
+        /* o -40% (e não -50%) sobe a rosca um pouco: com o número embaixo, o
+           centro do CONJUNTO desce, e quem tem de ficar sobre a usina é o
+           disco, não o conjunto. */
+        html: '<div style="position:absolute;transform:translate(-50%,' + (comPct ? '-40%' : '-50%') + ');' +
+              'cursor:pointer">' + rosca + '</div>' }) })
+        .on('click', aoClicar).addTo(grupo)
+        .bindTooltip((lig === true ? 'bomba LIGADA' : lig === false ? 'bomba desligada' : 'bomba: sem leitura') +
+                     ' · carga da bateria ' + pctTxt, { direction: 'top' });
+    }
   }
 
   /* ---------------------------------------------------------------- janela */
