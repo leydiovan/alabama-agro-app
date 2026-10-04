@@ -36,6 +36,18 @@
                 'FALHA': '#ff4444', 'MUDO': '#ff4444', 'LEITURA SUSPEITA': '#c9a227' };
   const br = (n, d) => (n == null || isNaN(n)) ? '—' : Number(n).toFixed(d).replace('.', ',');
 
+  /* AS TRÊS FAIXAS DE ZOOM (a terceira entrou em 04/10/2026 — ver "O SELO").
+     Ficam aqui como constantes com nome porque são número de ajuste: quem
+     achar o ponto de troca errado mexe em UM lugar, e não em cinco `z >= 18`
+     espalhados. A conta que justifica os valores, nesta latitude (−12,65°),
+     é `m/px = 152738 / 2^z` — a mesma do módulo:
+       z 18 → 0,58 m/px · um poço de 50×30 m dá 86×52 px → cabe detalhe
+       z 16 → 2,3 m/px  · 21×13 px → só o bloco central
+       z 14 → 9,3 m/px  · 5×3 px   → nem o bloco central cabe: vai o selo */
+  const Z_DETALHE = 18;   // daqui para cima: módulos, benfeitorias, geração, consumo
+  const Z_BLOCO   = 15;   // daqui para cima: pilha + número grande + ícone da bomba
+                          // abaixo de Z_BLOCO: o selo compacto
+
   /* linha do cadastro -> anéis em [lat,lon]. `conv(E,N)` é a conversão UTM de
      quem chama (cada página já tem a sua). */
   function prepararCadastro(row, conv) {
@@ -317,9 +329,185 @@
 
   /* A usina no mapa: contorno pintado pela situação, fileiras de placas em
      escuro (é o que se vê do alto) e as benfeitorias marcadas. */
+  /* ================= FLUXO DE ENERGIA ANIMADO (04/10/2026) =================
+     Pedido do dono: *"fazer o desenho da casa de bomba e da bateria animada
+     quando dá zoom, igual padrão dos software específico: mostra as setas da
+     carga saindo das placas indo para a bateria, e quanto tá sendo para
+     carregar e quanto tá indo para bomba; se tiver puxando só da bateria a
+     seta vem só da bateria para a bomba"*.
+
+     A CONTA FECHA NO BANCO, não é estimativa. `solar_vigia` entrega as três
+     potências e elas se somam: **p_fv = p_bateria + p_carga**, com
+     `p_bateria` POSITIVO = carregando. Conferido com o dado de 04/10/2026
+     06:10, que por sorte tinha os dois casos ao mesmo tempo:
+       poço 01 · fv 44,1 · bat −33,6 · carga 77,8 → 44,1 + 33,6 = 77,7 ✔
+                 (bomba rodando: placas E bateria alimentando)
+       poço 03 · fv 45,5 · bat +45,3 · carga  0,2 → 45,5 − 45,3 = 0,2 ✔
+                 (bomba parada: placas carregando a bateria)
+
+     DAÍ SAEM AS TRÊS SETAS, e nenhuma é inventada:
+       placas → bateria   quando p_bateria > 0        vale p_bateria
+       placas → bomba     quando a bomba puxa          vale min(p_fv, p_carga)
+       bateria → bomba    quando p_bateria < 0        vale |p_bateria|
+
+     SÓ NOS POÇOS (o dono, no mesmo pedido: *"esse ícone vai ser apenas para os
+     poços"*). A usina dos pivôs não tem bomba nem benfeitorias cadastradas —
+     o código cai fora sozinho por falta de `bateria`/`poco`, mas o `tipo`
+     também é conferido para não depender de ausência de dado.
+
+     A ANIMAÇÃO é CSS sobre o `<path>` que o Leaflet já desenha: tracejado que
+     anda (`stroke-dashoffset`), que é como os supervisórios mostram energia em
+     trânsito. Não há `setInterval` aqui de propósito — timer de aba em segundo
+     plano é estrangulado pelo navegador (regra do `CLAUDE.md`), e animação de
+     CSS para junto com a aba e volta sozinha, sem vigia. */
+  function estiloFluxo() {
+    if (document.getElementById('solFluxoCss')) return;
+    const e = document.createElement('style');
+    e.id = 'solFluxoCss';
+    e.textContent =
+      '@keyframes solFluxoAnda{to{stroke-dashoffset:-24}}' +
+      /* o `stroke-dasharray` NÃO mora aqui: cada seta calcula o seu pelo
+         comprimento do trecho (padrão fixo some em trecho curto). Aqui fica só
+         o que é comum — o andar. */
+      '.solFluxo{stroke-linecap:round;animation:solFluxoAnda 1.15s linear infinite}' +
+      '@media (prefers-reduced-motion:reduce){.solFluxo{animation:none}}';
+    document.head.appendChild(e);
+  }
+
+  /* --------------------------------------------- O PAINEL DE FLUXO (SVG)
+     Desenho esquemático de tamanho FIXO, pendurado na borda de baixo das
+     placas. Três caixas — BATERIA · CASA (inversor) · BOMBA — e as setas de
+     energia entre elas, no padrão dos supervisórios.
+
+     POR QUE ESQUEMA E NÃO AS BENFEITORIAS DE VERDADE (decisão do dono,
+     04/10/2026): *"a poligonal da casinha e da bateria pode deixar do jeito que
+     está lá; vamos fazer algo mais visual"*. E a geometria explica por quê: num
+     poço, bateria, casa, poço e hidrômetro cabem todos num raio de ~2 m. Setas
+     geográficas entre eles seriam **invisíveis mesmo no zoom máximo** (em z 18,
+     0,58 m/px, dois metros são 3 px). O esquema mostra o que a planta não
+     consegue — e a planta continua lá, intacta, para quem quiser a posição.
+
+     A DIREÇÃO DA SETA DA BATERIA VIRA com o sinal de `p_bateria_kw`:
+     carregando, aponta da casa para a bateria; descarregando, da bateria para a
+     casa — que é o caso do *"se tiver puxando só da bateria, a seta vem só da
+     bateria para a bomba"*. */
+  function painelFluxo(v, kFv, kBat, kCar) {
+    const L1 = 232, A = 74;                       // o painel inteiro, em pixels
+    const SOL = '#ffd479', VBAT = '#00c896', VCAR = '#5aa9ff';
+    const soc = (v && v.soc_pct != null) ? Number(v.soc_pct) : null;
+    const corS = soc == null ? '#8b949e' : soc >= 50 ? '#00c896' : soc >= 20 ? '#ffb300' : '#ff4444';
+    const lig = v && v.bomba_ligada;
+    const corL = lig === true ? '#00c896' : lig === false ? '#2b333e' : 'none';
+    const vale = n => (n != null && !isNaN(n) && Math.abs(n) >= 0.5);
+
+    /* caixas: bateria à esquerda, casa no meio, bomba à direita */
+    const cxB = 6, cxC = 96, cxP = 176, cy = 28, cwB = 50, cwC = 40, cwP = 50, ch = 36;
+    const mB = cxB + cwB / 2, mC = cxC + cwC / 2, mP = cxP + cwP / 2, mY = cy + ch / 2;
+
+    const caixa = (x, w, borda) =>
+      '<rect x="' + x + '" y="' + cy + '" width="' + w + '" height="' + ch + '" rx="5" ' +
+      'fill="rgba(16,26,38,.92)" stroke="' + borda + '" stroke-width="1.3"/>';
+
+    /* UMA SETA = trilho apagado + tracejado que anda + PONTA.
+       O sentido do caminho É o sentido do fluxo (o CSS puxa o tracejado para a
+       frente), então quem inverte a bateria inverte os PONTOS, não a cor.
+
+       A PONTA não é enfeite — ela é o que faz a direção ser legível **sem a
+       animação**: em imagem parada (print, PDF, a prévia deste commit) e no
+       sistema de quem liga "reduzir movimento", o tracejado fica imóvel e os
+       dois sentidos ficam idênticos. Pego na rasterização de 04/10/2026.
+
+       E o TRACEJADO é proporcional ao trecho: o padrão fixo de 7/17 cabia nos
+       80 px entre as caixas mas sumia nos 22 px da descida das placas — ficava
+       um risquinho só, com cara de linha morta em vez de energia descendo. */
+    const seta = (x1, y1, x2, y2, cor2) => {
+      const dx = x2 - x1, dy = y2 - y1, comp = Math.hypot(dx, dy);
+      const ux = dx / comp, uy = dy / comp, PONTA = 6.5;
+      const px2 = x2 - ux * PONTA, py2 = y2 - uy * PONTA;      // a linha para antes da ponta
+      const tr = (comp / 3).toFixed(1), vao = (comp / 3 * 1.4).toFixed(1);
+      const cam = 'M ' + x1 + ' ' + y1 + ' L ' + px2.toFixed(1) + ' ' + py2.toFixed(1);
+      const nx = -uy, ny = ux;                                  // normal, p/ abrir a ponta
+      const pts = [ x2 + ',' + y2,
+        (px2 + nx * 4).toFixed(1) + ',' + (py2 + ny * 4).toFixed(1),
+        (px2 - nx * 4).toFixed(1) + ',' + (py2 - ny * 4).toFixed(1) ].join(' ');
+      return '<path d="' + cam + '" fill="none" stroke="' + cor2 + '" stroke-width="1" opacity=".3"/>' +
+        '<path class="solFluxo" d="' + cam + '" fill="none" stroke="' + cor2 + '" stroke-width="2.6"' +
+        ' opacity=".95" style="stroke-dasharray:' + tr + ' ' + vao + '"/>' +
+        '<polygon points="' + pts + '" fill="' + cor2 + '"/>';
+    };
+    const rotulo = (x, y, txt, cor2, meio) =>
+      '<text x="' + x + '" y="' + y + '" fill="' + cor2 + '" font-size="9.5" font-weight="700" ' +
+      'font-family="system-ui,sans-serif" text-anchor="' + (meio ? 'middle' : 'start') + '" ' +
+      'stroke="#0b121b" stroke-width="2.6" paint-order="stroke">' + txt + '</text>';
+
+    let d = '';
+    /* 1 · das PLACAS para a casa — vem de cima, porque as placas estão em cima */
+    if (vale(kFv)) {
+      /* começa ACIMA do painel (y negativo, com `overflow:visible`): a linha
+         encosta na borda das placas e o desenho diz de onde a energia vem. */
+      d += seta(mC, -7, mC, cy - 2, SOL) +
+           rotulo(mC + 8, 12, br(kFv, 1) + ' kW', SOL, false);
+    }
+    /* 2 · casa <-> BATERIA, e o sentido vira com o sinal */
+    if (vale(kBat)) {
+      const carrega = kBat > 0;
+      d += (carrega ? seta(cxC - 2, mY, cxB + cwB + 2, mY, VBAT)
+                    : seta(cxB + cwB + 2, mY, cxC - 2, mY, VBAT)) +
+           rotulo((cxB + cwB + cxC) / 2, mY - 7, br(Math.abs(kBat), 1) + ' kW', VBAT, true);
+    }
+    /* 3 · casa para a BOMBA */
+    if (vale(kCar)) {
+      d += seta(cxC + cwC + 2, mY, cxP - 2, mY, VCAR) +
+           rotulo((cxC + cwC + cxP) / 2, mY - 7, br(kCar, 1) + ' kW', VCAR, true);
+    }
+
+    /* ---- os três desenhos ---- */
+    const nivel = soc == null ? 0 : Math.max(2, Math.min(100, soc) / 100 * 26);
+    const desBateria =
+      caixa(cxB, cwB, corS) +
+      '<rect x="' + (mB - 15) + '" y="' + (cy + 8) + '" width="30" height="13" rx="2.5" fill="none" stroke="' + corS + '" stroke-width="1.8"/>' +
+      '<rect x="' + (mB + 16) + '" y="' + (cy + 12) + '" width="2.6" height="5" rx="1" fill="' + corS + '"/>' +
+      (soc == null ? '' : '<rect x="' + (mB - 13) + '" y="' + (cy + 10) + '" width="' + nivel.toFixed(1) + '" height="9" rx="1.5" fill="' + corS + '"/>') +
+      '<text x="' + mB + '" y="' + (cy + 31) + '" fill="#e8edf5" font-size="9.5" font-weight="800" ' +
+      'font-family="system-ui,sans-serif" text-anchor="middle">' +
+      (soc == null ? '—' : Math.round(soc) + '%') + '</text>';
+
+    /* a CASA é o inversor: telhado + o raio, que é o símbolo universal dele */
+    const desCasa =
+      caixa(cxC, cwC, '#8ba0bd') +
+      '<path d="M ' + (mC - 12) + ' ' + (cy + 17) + ' L ' + mC + ' ' + (cy + 7) + ' L ' + (mC + 12) + ' ' + (cy + 17) + ' Z" ' +
+      'fill="none" stroke="#c3ccd8" stroke-width="1.6" stroke-linejoin="round"/>' +
+      '<rect x="' + (mC - 9) + '" y="' + (cy + 17) + '" width="18" height="10" fill="none" stroke="#c3ccd8" stroke-width="1.6"/>' +
+      '<path d="M ' + (mC + 1.5) + ' ' + (cy + 18.5) + ' l -4.5 5.5 h3.5 l -2 4.5 l 5.5 -6 h -3.5 z" fill="' + SOL + '"/>';
+
+    /* a BOMBA com a sinaleira do motor — a mesma linguagem do selo de longe */
+    const desBomba =
+      caixa(cxP, cwP, lig === true ? VBAT : '#8ba0bd') +
+      '<circle cx="' + (mP - 4) + '" cy="' + (cy + 20) + '" r="8" fill="none" stroke="#c3ccd8" stroke-width="2.2"/>' +
+      '<path d="M ' + (mP - 4) + ' ' + (cy + 11) + ' V ' + (cy + 6) + ' h 10" fill="none" stroke="#c3ccd8" stroke-width="2.2" stroke-linecap="round"/>' +
+      '<circle cx="' + (mP + 13) + '" cy="' + (cy + 24) + '" r="4.6" fill="#0b121b"/>' +
+      (lig === true
+        ? '<circle cx="' + (mP + 13) + '" cy="' + (cy + 24) + '" r="3.4" fill="' + VBAT + '" style="filter:drop-shadow(0 0 3px ' + VBAT + ')"/>'
+        : lig === false
+        ? '<circle cx="' + (mP + 13) + '" cy="' + (cy + 24) + '" r="3.4" fill="' + corL + '" stroke="#59636f" stroke-width="1"/>'
+        : '<circle cx="' + (mP + 13) + '" cy="' + (cy + 24) + '" r="3.4" fill="none" stroke="#ffb300" stroke-width="1.4"/>');
+
+    return '<svg width="' + L1 + '" height="' + A + '" viewBox="0 0 ' + L1 + ' ' + A + '" ' +
+      'style="display:block;overflow:visible;filter:drop-shadow(0 2px 5px #000)">' +
+      d + desBateria + desCasa + desBomba +
+      '<text x="' + mB + '" y="' + (A - 1) + '" fill="#8ba0bd" font-size="8" font-family="system-ui,sans-serif" text-anchor="middle">bateria</text>' +
+      '<text x="' + mC + '" y="' + (A - 1) + '" fill="#8ba0bd" font-size="8" font-family="system-ui,sans-serif" text-anchor="middle">inversor</text>' +
+      '<text x="' + mP + '" y="' + (A - 1) + '" fill="#8ba0bd" font-size="8" font-family="system-ui,sans-serif" text-anchor="middle">bomba</text>' +
+      '</svg>';
+  }
+
   function desenhar(L, grupo, v, c, aoClicar) {
     if (!c || !c.anel) return;
     const cor = COR[v && v.situacao] || '#8b949e';
+    /* declarada AQUI, no topo, e não junto do bloco central: as setas de
+       energia (mais abaixo) também usam, e `const` tem zona morta — usar antes
+       da linha em que é declarada dá ReferenceError, não `undefined`. */
+    const sombra = 'text-shadow:0 0 3px #000,0 0 9px #000,0 2px 3px #000';
     /* DE LONGE, SÓ O QUE SE DECIDE OLHANDO (dono, 18/09/2026: "ficou muito
        poluído"). Numa vista de fazenda inteira, cinco usinas × quatro ícones
        viram um enxame de bolinhas que esconde o mapa. Então de longe fica
@@ -336,7 +524,8 @@
                    'Use L.layerGroup().addTo(map) ANTES de desenhar.');
     }
     const z = grupo._map ? grupo._map.getZoom() : 0;
-    const perto = z >= 18;
+    const perto = z >= Z_DETALHE;
+    const longe = z < Z_BLOCO;
 
     L.polygon(c.anel, { color: cor, weight: 2, opacity: .95, fillColor: '#1b2430', fillOpacity: .35,
                         bubblingMouseEvents: false }).addTo(grupo).on('click', aoClicar);
@@ -350,7 +539,12 @@
          não são desenhados — senão elas viram um quadrado preto por cima das
          placas (o dono pediu para tirar em 18/09/2026). De perto, quem mostra
          a fileira são os próprios módulos. */
-      if (z < 17) c.fileiras.forEach(f => L.polygon(f, { stroke: false, fillColor: '#0d1b2a',
+      /* E o piso de baixo entrou em 04/10/2026, junto com o selo: abaixo de
+         `Z_BLOCO` as fileiras são SUB-PIXEL (em z 14, 9,3 m/px, uma fileira de
+         3 m de largura dá 0,3 px). Não desenham informação — borram o contorno
+         da usina com uma mancha escura e custam desenho à toa, cinco vezes na
+         tela. De tão longe, quem diz "a usina é aqui" é o próprio contorno. */
+      if (z >= Z_BLOCO && z < 17) c.fileiras.forEach(f => L.polygon(f, { stroke: false, fillColor: '#0d1b2a',
         fillOpacity: .85, interactive: false }).addTo(grupo));
       if (z >= 17 && c.modulos && c.modulos.length)
         L.polygon(c.modulos.map(m => [m]), { color: '#5aa9ff', weight: .6, opacity: .85,
@@ -476,6 +670,30 @@
       }
     });
 
+    /* ------------------------------------------ o painel de fluxo de energia */
+    let temFluxo = false;
+    if (perto && c.tipo === 'poco') {
+      const kFv = Number(v && v.p_fv_kw), kBat = Number(v && v.p_bateria_kw),
+            kCar = Number(v && v.p_carga_kw);
+      const vale = n => (n != null && !isNaN(n) && Math.abs(n) >= 0.5);
+      if (vale(kFv) || vale(kBat) || vale(kCar)) {
+        temFluxo = true;
+        estiloFluxo();
+        /* ANCORADO NA BORDA DE BAIXO DAS PLACAS, centrado — *"usa o desenho das
+           placas e na parte inferior dela, embaixo"*. O ponto é geográfico (anda
+           com o mapa), mas o painel tem tamanho FIXO em pixels: é um esquema,
+           não uma planta, e esquema que encolhe com o zoom não serve para nada. */
+        const bb = L.polygon(c.anel).getBounds();
+        const pe = L.latLng(bb.getSouth(), bb.getCenter().lng);
+        L.marker(pe, { keyboard: false, zIndexOffset: 500, icon: L.divIcon({ className: '',
+          iconSize: [0, 0], iconAnchor: [0, 0],
+          html: '<div style="position:absolute;transform:translate(-50%,6px);cursor:pointer">' +
+                painelFluxo(v, kFv, kBat, kCar) + '</div>' }) })
+          .on('click', () => aoClicar('geral')).addTo(grupo)
+          .bindTooltip('fluxo de energia ao vivo — clique abre a usina', { direction: 'top' });
+      }
+    }
+
     /* O BLOCO CENTRAL — o que se lê sem clicar em nada (dono, 18/09/2026):
        a carga da bateria, quanto está gerando, quanto está consumindo e se a
        BOMBA está ligada. São os quatro números que decidem bombear agora ou
@@ -487,7 +705,6 @@
               : (v && v.situacao === 'MUDO') ? 'sem sinal'
               : (v && v.situacao === 'FALHA') ? 'falha' : '—';
     const corRot = (v && v.soc_pct != null) ? '#ffffff' : cor;
-    const sombra = 'text-shadow:0 0 3px #000,0 0 9px #000,0 2px 3px #000';
     const lig = v && v.bomba_ligada;
     /* três estados, e o terceiro importa: `null` é DESCONHECIDO (leitura
        velha), e desconhecido não pode se parecer com desligado. */
@@ -548,9 +765,100 @@
         : perto && potFonte === 'limitado'
         ? peca('sobrando', 'font:700 11px/1 system-ui,sans-serif;color:#00c896')
         : '');
+    /* ----------------- O SELO — a vista de fazenda inteira (04/10/2026)
+       Pedido do dono: *"quando o mapa está bem distante embaralha muita
+       informação e texto fica maior que os lotes... quero um ícone que aparece
+       a % de bateria, se a bomba está ligada ou não"*.
+
+       O DEFEITO É DE ESCALA, NÃO DE CONTEÚDO. O bloco central já mostra só as
+       duas coisas certas de longe (carga e bomba) — o que não acompanha é o
+       TAMANHO: ele é fixo em pixels (o número em 15 px, o conjunto ~80 px de
+       largura) e o lote encolhe com o zoom enquanto ele não. Em z 14 um poço
+       de 50×30 m tem 5×3 px e o rótulo tem 80: o rótulo fica ~16× maior que a
+       coisa que ele rotula, cinco vezes na mesma tela. Daí o embaralhado.
+
+       O selo diz as MESMAS duas informações em ~37 px:
+         · a CARGA na **cor da borda** (mesmos cortes do resto do arquivo:
+           ≥50 verde, ≥20 âmbar, <20 vermelho, sem leitura cinza) e o número
+           miúdo dentro — a cor se lê de relance, o número confere;
+         · a BOMBA num ponto, com as **três** cores de sempre (verde ligada,
+           cinza desligada, âmbar DESCONHECIDA — desconhecido não pode parecer
+           desligado), e brilho só quando está ligada.
+
+       E ganha FUNDO, que o bloco central não tem: a 10 px sobre imagem de
+       satélite, sombra de texto não basta — o contraste tem de vir de uma
+       caixa, senão o número desaparece em cima de telhado claro ou de palhada.
+
+       NÃO É UM TERCEIRO CRITÉRIO, é a mesma informação em outro tamanho: `soc`
+       e `corB` são os mesmos que o bloco usa. Se o critério mudar, muda nos
+       dois juntos — que é a razão de o selo morar aqui e não num arquivo novo. */
+    /* ================= O SELO: ROSCA + SINALEIRA (dono, 04/10/2026) =========
+       Ideia dele, e melhor que a pílula que eu tinha feito:
+       *"um círculo, parecido com o gráfico de rosca: a extremidade do círculo
+       vira a barra de carga da bateria e o centro a sinaleira do motor"*.
+
+       POR QUE É MELHOR, e não só diferente: **o círculo não tem eixo longo**. A
+       pílula cresce para o lado conforme o número — "100%" é mais larga que
+       "9%" — e é esse crescimento lateral que embaralha quando duas usinas
+       ficam perto (Poço 01 e 02). O disco ocupa o mesmo espaço sempre, em
+       qualquer direção, e fica previsível de posicionar.
+
+       E a SINALEIRA é a metáfora certa para o que se procura: lâmpada de painel
+       ACESA = motor rodando. Não é um código de cores a decorar, é a mesma coisa
+       que o operador vê no quadro.
+
+       O ARCO dispensa ler número: ele é a própria barra, e o número exato
+       continua no bloco (z ≥ 15) e na janela. De longe quem olha quer "está
+       cheia ou está baixa", não "39 ou 41".
+
+       Tamanho: 26 px no total, contra 50 da pílula e 80 do bloco. */
+    const RAIO = 9.5, GROSSO = 3.5, VOLTA = 2 * Math.PI * RAIO;
+    const frac = (v && v.soc_pct != null) ? Math.max(0, Math.min(100, Number(v.soc_pct))) / 100 : null;
+    /* A SINALEIRA, três estados — e "apagada" tem de PARECER apagada:
+         ligada      — verde viva, com brilho (lâmpada acesa);
+         desligada   — disco escuro com aro: a lâmpada existe e está apagada;
+         sem leitura — âmbar, que é o "não sei" do resto do arquivo. */
+    const lampada = lig === true
+      ? '<circle cx="13" cy="13" r="5.2" fill="#00c896" style="filter:drop-shadow(0 0 4px #00c896)"/>'
+      : lig === false
+      ? '<circle cx="13" cy="13" r="5.2" fill="#2b333e" stroke="#59636f" stroke-width="1.4"/>'
+      : '<circle cx="13" cy="13" r="5.2" fill="none" stroke="#ffb300" stroke-width="1.8"/>';
+    const sitRuim = v && v.situacao && v.situacao !== 'OK';
+    const selo =
+      '<svg width="26" height="26" viewBox="0 0 26 26" style="display:block;overflow:visible;' +
+      'filter:drop-shadow(0 1px 3px #000)">' +
+        /* fundo: sem ele o arco some em cima de telhado claro ou palhada */
+        '<circle cx="13" cy="13" r="11.4" fill="rgba(11,18,27,.85)"/>' +
+        /* o anel de fora é a SITUAÇÃO, e só existe quando há o que avisar —
+           de longe o contorno do polígono (5 px em z 14) fica debaixo do selo */
+        (sitRuim ? '<circle cx="13" cy="13" r="12.2" fill="none" stroke="' + cor + '" stroke-width="1.6"/>' : '') +
+        /* trilho da rosca + o arco da carga, começando às 12 h e andando no
+           sentido do relógio (o `rotate(-90)` é o que põe o zero em cima) */
+        '<circle cx="13" cy="13" r="' + RAIO + '" fill="none" stroke="rgba(255,255,255,.16)" stroke-width="' + GROSSO + '"/>' +
+        (frac == null ? '' :
+          '<circle cx="13" cy="13" r="' + RAIO + '" fill="none" stroke="' + corS2 + '" stroke-width="' + GROSSO + '"' +
+          ' stroke-linecap="round" transform="rotate(-90 13 13)"' +
+          ' stroke-dasharray="' + (frac * VOLTA).toFixed(2) + ' ' + VOLTA.toFixed(2) + '"/>') +
+        /* O SOQUETE: um disco escuro atrás da lâmpada, sempre. Sem ele, carga
+           e sinaleira se FUNDEM quando calham da mesma cor — pego na prévia de
+           04/10/2026 com a usina dos pivôs (28% = arco âmbar, bomba sem leitura
+           = sinaleira âmbar): a 26 px os dois viram um borrão âmbar e não se lê
+           nenhum dos dois. O soquete garante um vão escuro entre o aro e o
+           centro seja qual for a combinação de cores. */
+        '<circle cx="13" cy="13" r="6.6" fill="#0b121b"/>' +
+        lampada +
+      '</svg>';
+
     L.marker(centro, { keyboard: false, zIndexOffset: 400, icon: L.divIcon({ className: '', iconSize: [0, 0], iconAnchor: [0, 0],
-      html: '<div style="position:absolute;transform:translate(-50%,-50%);white-space:nowrap;cursor:pointer;' +
-            'display:flex;align-items:center;gap:5px">' + miolo + '</div>' }) })
+      html: longe
+        ? '<div style="position:absolute;transform:translate(-50%,-50%);cursor:pointer">' + selo + '</div>'
+        /* COM FLUXO O BLOCO SOBE 26 px: o nó do sol fica no MESMO ponto (o
+           centro do conjunto de placas), e texto por cima do sol não se lê
+           nem deixa ver de onde as setas saem. Sobe só quando há fluxo — sem
+           ele o bloco continua no vão entre as mesas, como foi pedido em
+           18/09/2026. */
+        : '<div style="position:absolute;transform:translate(-50%,' + (temFluxo ? 'calc(-50% - 26px)' : '-50%') + ');' +
+          'white-space:nowrap;cursor:pointer;display:flex;align-items:center;gap:5px">' + miolo + '</div>' }) })
       .on('click', aoClicar).addTo(grupo)
       .bindTooltip((lig === true ? 'bomba LIGADA' : lig === false ? 'bomba desligada' : 'bomba: sem leitura') +
                    ' · carga da bateria, geração e consumo', { direction: 'top' });
