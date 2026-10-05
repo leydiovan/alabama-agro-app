@@ -45,8 +45,11 @@
        z 16 → 2,3 m/px  · 21×13 px → só o bloco central
        z 14 → 9,3 m/px  · 5×3 px   → nem o bloco central cabe: vai o selo */
   const Z_DETALHE = 18;   // daqui para cima: módulos, benfeitorias, geração, consumo
-  const Z_BLOCO   = 15;   // daqui para cima: pilha + número grande + ícone da bomba
-                          // abaixo de Z_BLOCO: o selo compacto
+  const Z_BLOCO   = 15;   // daqui para cima a rosca ganha a % escrita embaixo
+  /* O PISO DO FLUXOGRAMA, em escala (não em zoom). Abaixo dele o painel não se
+     desenha e a rosca fica no lugar — ver "A TRAVA DOS 80%". Era 0,55; o dono
+     mandou reduzir pela metade em 05/10/2026 para o painel vir um passo antes. */
+  const PISO_PAINEL = 0.275;
 
   /* linha do cadastro -> anéis em [lat,lon]. `conv(E,N)` é a conversão UTM de
      quem chama (cada página já tem a sua). */
@@ -391,7 +394,7 @@
      carregando, aponta da casa para a bateria; descarregando, da bateria para a
      casa — que é o caso do *"se tiver puxando só da bateria, a seta vem só da
      bateria para a bomba"*. */
-  function painelFluxo(v, kFv, kBat, kCar) {
+  function painelFluxo(v, kFv, kBat, kCar, tipo) {
     const L1 = 264, A = 74;                       // o painel inteiro, em pixels
     const SOL = '#ffd479', VBAT = '#00c896', VCAR = '#5aa9ff';
     const soc = (v && v.soc_pct != null) ? Number(v.soc_pct) : null;
@@ -492,24 +495,36 @@
       '<rect x="' + (mC - 9) + '" y="' + (cy + 17) + '" width="18" height="10" fill="none" stroke="#c3ccd8" stroke-width="1.6"/>' +
       '<path d="M ' + (mC + 1.5) + ' ' + (cy + 18.5) + ' l -4.5 5.5 h3.5 l -2 4.5 l 5.5 -6 h -3.5 z" fill="' + SOL + '"/>';
 
-    /* a BOMBA com a sinaleira do motor — a mesma linguagem do selo de longe */
+    /* A CAIXA DE DESTINO muda com o sítio (05/10/2026):
+         poço  → a BOMBA, com a sinaleira do motor (mesma linguagem da rosca);
+         usina → os PIVÔS, desenhados como se veem no mapa: o círculo que a
+                 torre varre, com o raio e o pivô central.
+       E nos pivôs NÃO VAI SINALEIRA. Não é esquecimento: a view devolve
+       `bomba_ligada` NULO para aquele sítio, e o estado de "ligado" ali seria
+       invenção minha no desenho. O critério mora na view — se um dia ela passar
+       a dizer, a sinaleira aparece sozinha pela regra de baixo. */
+    const ePoco = tipo === 'poco';
     const desBomba =
       caixa(cxP, cwP, lig === true ? VBAT : '#8ba0bd') +
-      '<circle cx="' + (mP - 4) + '" cy="' + (cy + 20) + '" r="8" fill="none" stroke="#c3ccd8" stroke-width="2.2"/>' +
-      '<path d="M ' + (mP - 4) + ' ' + (cy + 11) + ' V ' + (cy + 6) + ' h 10" fill="none" stroke="#c3ccd8" stroke-width="2.2" stroke-linecap="round"/>' +
-      '<circle cx="' + (mP + 13) + '" cy="' + (cy + 24) + '" r="4.6" fill="#0b121b"/>' +
-      (lig === true
-        ? '<circle cx="' + (mP + 13) + '" cy="' + (cy + 24) + '" r="3.4" fill="' + VBAT + '" style="filter:drop-shadow(0 0 3px ' + VBAT + ')"/>'
-        : lig === false
-        ? '<circle cx="' + (mP + 13) + '" cy="' + (cy + 24) + '" r="3.4" fill="' + corL + '" stroke="#59636f" stroke-width="1"/>'
-        : '<circle cx="' + (mP + 13) + '" cy="' + (cy + 24) + '" r="3.4" fill="none" stroke="#ffb300" stroke-width="1.4"/>');
+      (ePoco
+        ? '<circle cx="' + (mP - 4) + '" cy="' + (cy + 20) + '" r="8" fill="none" stroke="#c3ccd8" stroke-width="2.2"/>' +
+          '<path d="M ' + (mP - 4) + ' ' + (cy + 11) + ' V ' + (cy + 6) + ' h 10" fill="none" stroke="#c3ccd8" stroke-width="2.2" stroke-linecap="round"/>'
+        : '<circle cx="' + (mP - 3) + '" cy="' + (cy + 17) + '" r="10.5" fill="none" stroke="#c3ccd8" stroke-width="1.6" stroke-dasharray="3 2.6"/>' +
+          '<line x1="' + (mP - 3) + '" y1="' + (cy + 17) + '" x2="' + (mP + 7.5) + '" y2="' + (cy + 17) + '" stroke="#c3ccd8" stroke-width="2"/>' +
+          '<circle cx="' + (mP - 3) + '" cy="' + (cy + 17) + '" r="2.6" fill="#c3ccd8"/>') +
+      (lig == null ? ''
+        : '<circle cx="' + (mP + 13) + '" cy="' + (cy + 24) + '" r="4.6" fill="#0b121b"/>' +
+          (lig === true
+            ? '<circle cx="' + (mP + 13) + '" cy="' + (cy + 24) + '" r="3.4" fill="' + VBAT + '" style="filter:drop-shadow(0 0 3px ' + VBAT + ')"/>'
+            : '<circle cx="' + (mP + 13) + '" cy="' + (cy + 24) + '" r="3.4" fill="' + corL + '" stroke="#59636f" stroke-width="1"/>'));
 
     return '<svg width="' + L1 + '" height="' + A + '" viewBox="0 0 ' + L1 + ' ' + A + '" ' +
       'style="display:block;overflow:visible;filter:drop-shadow(0 2px 5px #000)">' +
       d + desBateria + desCasa + desBomba +
       '<text x="' + mB + '" y="' + (A - 1) + '" fill="#8ba0bd" font-size="8" font-family="system-ui,sans-serif" text-anchor="middle">bateria</text>' +
       '<text x="' + mC + '" y="' + (A - 1) + '" fill="#8ba0bd" font-size="8" font-family="system-ui,sans-serif" text-anchor="middle">inversor</text>' +
-      '<text x="' + mP + '" y="' + (A - 1) + '" fill="#8ba0bd" font-size="8" font-family="system-ui,sans-serif" text-anchor="middle">bomba</text>' +
+      '<text x="' + mP + '" y="' + (A - 1) + '" fill="#8ba0bd" font-size="8" font-family="system-ui,sans-serif" text-anchor="middle">' +
+      (ePoco ? 'bomba' : 'pivôs') + '</text>' +
       '</svg>';
   }
 
@@ -673,12 +688,38 @@
     });
 
     /* ------------------------------------------ o painel de fluxo de energia */
-    let temFluxo = false;
-    if (perto && c.tipo === 'poco') {
+    /* `temPainel` (e não "temFluxo", como se chamava até 05/10/2026): desde que
+       o painel passou a aparecer SEMPRE, ter painel e ter fluxo deixaram de ser
+       a mesma coisa — ele existe parado, sem seta nenhuma. O nome antigo faria
+       a próxima pessoa achar que a rosca some quando há energia andando, e não
+       é isso: a rosca some quando o PAINEL está na tela. */
+    let temPainel = false;
+    /* VALE TAMBÉM PARA A USINA DOS PIVÔS (dono, 05/10/2026: *"pode fazer na
+       usina do pivô também"*). A conta é a mesma e fecha igual — em 05/10 às
+       07h ela estava com fv 280,8 = bateria 275,6 + carga 5,2. O que muda é o
+       destino: lá a energia não vai para uma bomba, vai para os PIVÔS. Ela
+       também não tem benfeitorias cadastradas, e nem precisa: o painel se
+       ancora na borda das placas, não nelas. */
+    if (perto) {
       const kFv = Number(v && v.p_fv_kw), kBat = Number(v && v.p_bateria_kw),
             kCar = Number(v && v.p_carga_kw);
-      const vale = n => (n != null && !isNaN(n) && Math.abs(n) >= 0.5);
-      if (vale(kFv) || vale(kBat) || vale(kCar)) {
+      /* O PAINEL APARECE SEMPRE — e isto mudou em 05/10/2026, pelo dono:
+         *"percebi que quando não tá gerando o fluxograma some; então tem que
+         aparecer mesmo quando não está gerando"*.
+
+         Eu tinha condicionado o painel a existir alguma potência (as três
+         acima de 0,5 kW). Parecia economia de tinta e era defeito: de noite as
+         três são zero, o painel sumia **justamente na hora em que alguém
+         aproxima para ver se a usina está bem** — e some sem dizer por quê, que
+         é o pior jeito de sumir. "Não está gerando" é uma informação, não é
+         ausência de informação.
+
+         O que depende de haver fluxo são as SETAS, não as caixas: sem energia
+         andando, ficam as três caixas com o que elas sabem (carga da bateria,
+         estado da bomba) e nenhuma seta — o desenho diz "parado", que é a
+         verdade. Mesmo espírito da regra do projeto: resposta vazia não é dado
+         bom, e tela que apaga é pior que tela que mostra zero. */
+      {
         /* ================= A TRAVA DOS 80% (dono, 04/10/2026) =================
            *"quando dá zoom ele trava quando atingir 80% da largura das placas"*.
 
@@ -690,27 +731,35 @@
            Então ele passa a ACOMPANHAR o zoom, limitado a 80% da largura das
            placas, e TRAVA quando chega ao tamanho natural:
 
-               escala = min( 1 , 0,8 × largura das placas em px ÷ 264 )
+               escala = 0,8 × largura das placas em px ÷ 264
 
-           Zoom baixo, o painel encolhe para caber nos 80%. Zoom alto, ele bate
-           no tamanho natural e para de crescer — o "trava" do pedido.
+           ⚠️ SEM TETO, e isto foi um erro meu corrigido pelo dono em 05/10/2026.
+           Eu tinha posto `min(1, …)`, travando no tamanho NATURAL do desenho —
+           e ele viu o efeito na hora: *"ele aparece com 80 porém ele não trava
+           com o zoom: você dá zoom, a placa cresce e o fluxograma não cresce
+           junto"*. "Travar em 80% das placas" é **ficar preso nos 80%**, não
+           parar de crescer. O painel acompanha as placas para sempre, como se
+           fosse pintado no chão junto com elas.
 
-           E UM PISO, que o pedido não cobre mas a aritmética cobra: em escala
-           0,26 (o que daria no zoom 18) o texto de 9,5 px vira 2,5 px — não é um
-           painel pequeno, é um borrão. Abaixo de 0,55 ele não se desenha e a
-           ROSCA fica no lugar; aproximar um passo o traz. Assim o painel só
-           aparece quando dá para ler, e aparece MAIS CEDO em usina grande — que
-           é o certo: quem manda é o tamanho na tela, não o número do zoom. */
+           E UM PISO, que o pedido não cobre mas a aritmética cobra: abaixo de
+           certa escala o texto de 9,5 px vira um borrão. Abaixo dele o painel
+           não se desenha e a ROSCA fica no lugar; aproximar um passo o traz.
+           O valor caiu de 0,55 para 0,275 em 05/10/2026 a pedido do dono —
+           *"o zoom quando sai do ícone + % para o fluxograma pode reduzir pela
+           metade o ponto de troca, ou seja, mais rápido"* —, o que antecipa o
+           painel em um passo de zoom (com as placas de 80 m, do 19 para o 18).
+           Efeito colateral bom: ele aparece MAIS CEDO em usina grande, porque
+           quem manda é o tamanho na tela e não o número do zoom. */
         const bb = L.polygon(c.anel).getBounds();
         const mapa = grupo._map;
         let escala = 1;
         if (mapa && mapa.latLngToLayerPoint) {
           const pO = mapa.latLngToLayerPoint(L.latLng(bb.getSouth(), bb.getWest()));
           const pL = mapa.latLngToLayerPoint(L.latLng(bb.getSouth(), bb.getEast()));
-          escala = Math.min(1, 0.8 * Math.abs(pL.x - pO.x) / 264);
+          escala = 0.8 * Math.abs(pL.x - pO.x) / 264;
         }
-        if (escala >= 0.55) {
-          temFluxo = true;
+        if (escala >= PISO_PAINEL) {
+          temPainel = true;
           estiloFluxo();
           /* ANCORADO NA BORDA DE BAIXO DAS PLACAS, centrado — *"usa o desenho das
              placas e na parte inferior dela, embaixo"*. O ponto é geográfico (anda
@@ -722,7 +771,7 @@
             iconSize: [0, 0], iconAnchor: [0, 0],
             html: '<div style="position:absolute;transform-origin:top center;' +
                   'transform:translate(-50%,6px) scale(' + escala.toFixed(3) + ');cursor:pointer">' +
-                  painelFluxo(v, kFv, kBat, kCar) + '</div>' }) })
+                  painelFluxo(v, kFv, kBat, kCar, c.tipo) + '</div>' }) })
             .on('click', () => aoClicar('geral')).addTo(grupo)
             .bindTooltip('fluxo de energia ao vivo — clique abre a usina', { direction: 'top' });
         }
@@ -824,7 +873,7 @@
           : '') +
       '</svg>';
 
-    if (!temFluxo) {
+    if (!temPainel) {
       L.marker(centro, { keyboard: false, zIndexOffset: 400, icon: L.divIcon({ className: '',
         iconSize: [0, 0], iconAnchor: [0, 0],
         /* o -40% (e não -50%) sobe a rosca um pouco: com o número embaixo, o
