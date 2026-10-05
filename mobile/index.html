@@ -4035,8 +4035,9 @@ function crqDesenhaColheita(g){
     L.polygon(r,{color:sel?'#fff':'#0b1221',weight:sel?3:1.2,fillColor:tem?corDe(c.dia):'#6b7a90',fillOpacity:.78,bubblingMouseEvents:false})
       .on('click',()=>{ CRQSEL=a.codigo; desenhaCroqui(); }).addTo(g);
     safReg(L.marker(safCentroArea(r),{icon:L.divIcon({className:'',html:'',iconSize:[0,0]}),interactive:false})
-      .bindTooltip(tem?safLbl('~'+safDM(c.dia),safBR(a.area,1)+' ha · '+c.ciclo+' d')
-                 :c?safLbl('aguarda emergência',safBR(a.area,1)+' ha · '+c.ciclo+' d')
+      /* previsão é DATA; os dias são o ciclo (dono, 05/10/2026) — o rótulo não mostra mais "· 115 d" */
+      .bindTooltip(tem?safLbl('~'+safDM(c.dia),safBR(a.area,1)+' ha')
+                 :c?safLbl('aguarda emergência',safBR(a.area,1)+' ha')
                  :safLbl('sem ciclo',safBR(a.area,1)+' ha'),
         {permanent:true,direction:'center',className:'crqplaca'}),r,a.lote_nome,'banda').addTo(g);
   });
@@ -4062,7 +4063,7 @@ function crqCartaoVariedades(){
     ${(()=>{ const c=safColheita(a);
       if(!c) return lin('Colheita prevista','<span class="fraco">sem ciclo cadastrado</span>');
       if(c.aguarda) return lin('Evolução do ciclo','0% <span class="fraco" style="font-size:11px">aguardando emergência</span>')
-           + lin('Colheita prevista','<span class="fraco">'+c.ciclo+' dias após a emergência</span>')
+           + lin('Colheita prevista','<span class="fraco">sem data — aguardando emergência</span>')
            + lin('Ciclo', c.ciclo+' dias <span class="fraco" style="font-size:11px">da emergência</span>');
       const falta=Math.ceil((c.dia-D)/864e5), e=safEvol(a);
       return lin('Evolução do ciclo', safBR(e.pct,0)+'% <span class="fraco" style="font-size:11px">dia '+e.dias+' de '+e.ciclo+'</span>')
