@@ -223,6 +223,8 @@ svg{display:block}
 .sfcampo{margin:6px 0 8px;padding:7px 9px;border-left:3px solid #2ecc71;background:rgba(46,204,113,.08);border-radius:0 8px 8px 0;font-size:12px;line-height:1.4}
 .sfcampo b{display:block;font-size:11px;letter-spacing:.04em;text-transform:uppercase;color:var(--muted);margin-bottom:3px}
 .sfcampo div{margin-top:4px}
+.sfcampo.tem{cursor:pointer}
+.sfcampo b i{float:right;font-style:normal;font-weight:600;text-transform:none;letter-spacing:0;color:#2ecc71}
 .sfcampo em{font-style:normal;font-weight:700;color:#2ecc71}
 /* pílula do resumo dos croquis (% do plantio e % do ciclo): fica logo abaixo do
    chip do croqui, é um botão que abre a tabela por cultura e regime */
@@ -3657,7 +3659,7 @@ async function carregarSafra(){
      vínculo com comanda (dono, 06/10/2026). Mesma regra: falha não apaga a lista anterior. */
   try{
     const {data,error}=await SB.from('safra_campo_info').select('*').eq('safra',safraAtual()).order('data',{ascending:false}).range(0,999);
-    if(!error && data && (data.length || SAFRA_OK)) SAFCAMPO=data.map(r=>({lote:r.lote_nome,banda:r.banda||'',dia:safDia(r.data),texto:r.texto||'',estadio:r.estadio||''}));
+    if(!error && data && (data.length || SAFRA_OK)) SAFCAMPO=data.map(r=>({id:r.id,lote:r.lote_nome,banda:r.banda||'',dia:safDia(r.data),texto:r.texto||'',estadio:r.estadio||''}));
   }catch(e){ console.warn('safra campo',e); }
 }
 /* cultura sem acento e minúscula: `comandas.cultura` vem 'soja'/'algodao' e
@@ -3666,6 +3668,7 @@ const safCult=s=>String(s||'').normalize('NFD').replace(/[̀-ͯ]/g,'').toLowerCa
 const SAFCULTNOME={soja:'Soja',algodao:'Algodão',feijao:'Feijão',milho:'Milho'};
 let SAFPLAN=[];
 let SAFCAMPO=[];
+let SAFCAMPOAB=false, SAFCAMPOLOTE=null;   // bloco de informação de campo aberto? (por lote)
 let _safRol=0;   // rolagem do cartão a devolver depois do redesenho
 /* ÍCONE DA CULTURA nos rótulos do mapa (pedido do dono, 03/10/2026: a vagem de soja
    e o capulho de algodão "que usei no relatório da safra passada", junto da % e do
@@ -3817,8 +3820,11 @@ function cartaoSafra(){
   const linhasPl=pl.map(a=>{ const v=a.plantio&&a.plantio.variedade, sm=a.plantio&&a.plantio.sementes_m;
     return `<div class="cl"><span>🌱 ${safDM(a.dia)} · ${safBR(a.area,1)} ha${v?' · '+safEsc(v.replace(/\s*-\s*(CERTIFICADA|SALVA)$/i,'')):''}${sm?' · '+safEsc(sm)+' sem/m':''}${safAprovar(a)?' <span style="color:var(--gold)">(a aprovar)</span>':''}</span>
       <b>${safDap(a,D)} DAP${(e=>e?` · <span style="color:${safCorEvol(e.pct)}">${safBR(e.pct,0)}%</span>`:'')(safEvol(a,D))}${(s=>s?` · <span style="color:var(--gold)">${safEsc(s.e)}</span>`:'')(safEstadio(a.plantio||{},D))}</b></div>`; }).join('');
-  const campo=SAFCAMPO.filter(x=>x.lote===SAFSEL&&x.dia!=null&&x.dia<=D).sort((a,b)=>b.dia-a.dia);
-  const linhasCampo=campo.length?`<div class="sfcampo"><b>Informação de campo</b>`+campo.map(x=>
+  /* só a ÚLTIMA informação fica à vista; tocar no bloco abre as anteriores (dono, 06/10/2026) */
+  const campo=SAFCAMPO.filter(x=>x.lote===SAFSEL&&x.dia!=null&&x.dia<=D).sort((a,b)=>(b.dia-a.dia)||((b.id||0)-(a.id||0)));
+  if(SAFCAMPOLOTE!==SAFSEL){ SAFCAMPOLOTE=SAFSEL; SAFCAMPOAB=false; }
+  const linhasCampo=campo.length?`<div class="sfcampo${campo.length>1?' tem':''}" ${campo.length>1?'data-sfcampo="1"':''}><b>Informação de campo${campo.length>1?`<i>${SAFCAMPOAB?'recolher ▴':'+'+(campo.length-1)+' anterior'+(campo.length>2?'es':'')+' ▾'}</i>`:''}</b>`+
+    (SAFCAMPOAB?campo:campo.slice(0,1)).map(x=>
     `<div><em>${safDM(x.dia)}${x.banda?' · banda '+safEsc(x.banda):''}${x.estadio?' · '+safEsc(x.estadio):''}</em> ${safEsc(x.texto)}</div>`).join('')+`</div>`:'';
   const lis=ops.map(a=>{
     const pl=a.plantio||{}, on=SAFCOM===a.codigo;
@@ -3842,6 +3848,9 @@ function cartaoSafra(){
      estava e o redesenho devolve; só neste caso (abrir outro lote começa do topo). */
   if(_safRol){ const sc=c.querySelector('.sfcorpo'); if(sc) sc.scrollTop=_safRol; _safRol=0; }
   const b=el('cfecha'); if(b) b.onclick=()=>{ SAFSEL=null; SAFCOM=null; desenhaSafra(); };
+  c.querySelectorAll('[data-sfcampo]').forEach(x=>x.onclick=()=>{
+    const sc=c.querySelector('.sfcorpo'); _safRol=sc?sc.scrollTop:0;
+    SAFCAMPOAB=!SAFCAMPOAB; cartaoSafra(); });
   c.querySelectorAll('[data-sfop]').forEach(x=>x.onclick=()=>{
     const sc=c.querySelector('.sfcorpo'); _safRol=sc?sc.scrollTop:0;
     SAFCOM=SAFCOM===x.dataset.sfop?null:x.dataset.sfop; desenhaSafra(); });
