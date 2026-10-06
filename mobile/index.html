@@ -219,6 +219,7 @@ svg{display:block}
 .sfop em{font-style:normal;color:var(--muted);font-size:12px;float:right;margin-left:8px}
 .sfop small{display:block;font-size:11.5px;color:var(--muted);margin-top:2px;line-height:1.35}
 .sfop .sfobs{color:var(--warn)}
+.sfop .sfnota{display:block;opacity:.85}
 /* pílula do resumo dos croquis (% do plantio e % do ciclo): fica logo abaixo do
    chip do croqui, é um botão que abre a tabela por cultura e regime */
 .crqres{position:absolute;z-index:26;left:12px;top:calc(env(safe-area-inset-top) + 102px);
@@ -3813,7 +3814,7 @@ function cartaoSafra(){
       <span class="sfd" style="background:${safCor(a.tipo_ativ)}"></span>
       <span class="sft"><em>${safSit(a)}</em><b>${safIco(a.tipo_ativ)} ${safEsc(a.tipo_ativ)}</b>
         <small>${safBR(a.area,2)} ha${a.poli?' · parte do lote':''}${det?' · '+det:''}</small>
-        ${on&&a.obs?`<small class="sfobs">⚠ ${safEsc(a.obs)}</small>`:''}</span></button>`; }).join('');
+        ${on&&a.obs?`<small class="sfobs">⚠ ${safEsc(a.obs)}</small>`:''}${on&&a.nota?`<small class="sfnota">✎ ${safEsc(a.nota)}</small>`:''}</span></button>`; }).join('');
   c.style.display='';
   c.innerHTML=`<div class="ch"><span class="dot" style="background:${pl.length?'#2ecc71':'var(--muted2)'}"></span>
       <b>${safEsc(SAFSEL)}</b>${area?`<span class="fraco" style="font-size:12px">${safBR(+area,1)} ha</span>`:''}
@@ -4080,6 +4081,7 @@ function crqCartaoVariedades(){
     ${!safTipoSem(pl.variedade)&&safSemKg(a)?lin('Semente', safSemKg(a)):''}
     ${lin('Comanda', safEsc(a.codigo))}
     ${a.obs?`<div class="muted" style="font-size:12px;padding:6px 0 2px;color:var(--warn)">⚠ ${safEsc(a.obs)}</div>`:''}
+    ${/* nota interna: observação pessoal do dono (migração 143) — aparece aqui, nunca na ficha impressa */''}${a.nota?`<div class="muted" style="font-size:12px;padding:4px 0 2px">✎ ${safEsc(a.nota)}</div>`:''}
     </div>`;
 }
 const CROQUIS=[
