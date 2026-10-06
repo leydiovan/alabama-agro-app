@@ -3666,6 +3666,7 @@ const safCult=s=>String(s||'').normalize('NFD').replace(/[̀-ͯ]/g,'').toLowerCa
 const SAFCULTNOME={soja:'Soja',algodao:'Algodão',feijao:'Feijão',milho:'Milho'};
 let SAFPLAN=[];
 let SAFCAMPO=[];
+let _safRol=0;   // rolagem do cartão a devolver depois do redesenho
 /* ÍCONE DA CULTURA nos rótulos do mapa (pedido do dono, 03/10/2026: a vagem de soja
    e o capulho de algodão "que usei no relatório da safra passada", junto da % e do
    estádio). ORIGEM: `IMAGENS/icons8-soja-1500.png`, `icons8-algodão-1500.png` e
@@ -3836,8 +3837,13 @@ function cartaoSafra(){
       <button id="cfecha" aria-label="fechar">${IC.fechar}</button></div>
     <div class="sfcorpo">${linhasPl}${linhasCampo}${ops.length?lis
       :`<div class="muted" style="padding:10px 0;font-size:13px">Nada lançado neste lote até ${safDM(D)}.</div>`}</div>`;
+  /* ROLAGEM (06/10/2026): tocar numa atividade redesenha o cartão inteiro, e a lista voltava
+     para o topo — "a tela volta lá em cima, isso incomoda". O toque guarda onde a lista
+     estava e o redesenho devolve; só neste caso (abrir outro lote começa do topo). */
+  if(_safRol){ const sc=c.querySelector('.sfcorpo'); if(sc) sc.scrollTop=_safRol; _safRol=0; }
   const b=el('cfecha'); if(b) b.onclick=()=>{ SAFSEL=null; SAFCOM=null; desenhaSafra(); };
   c.querySelectorAll('[data-sfop]').forEach(x=>x.onclick=()=>{
+    const sc=c.querySelector('.sfcorpo'); _safRol=sc?sc.scrollTop:0;
     SAFCOM=SAFCOM===x.dataset.sfop?null:x.dataset.sfop; desenhaSafra(); });
 }
 /* linha do tempo: índice em DIAS desde o 1º dia da safra; o último = hoje */
