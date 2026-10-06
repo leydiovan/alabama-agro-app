@@ -220,6 +220,10 @@ svg{display:block}
 .sfop small{display:block;font-size:11.5px;color:var(--muted);margin-top:2px;line-height:1.35}
 .sfop .sfobs{color:var(--warn)}
 .sfop .sfnota{display:block;opacity:.85}
+.sfcampo{margin:6px 0 8px;padding:7px 9px;border-left:3px solid #2ecc71;background:rgba(46,204,113,.08);border-radius:0 8px 8px 0;font-size:12px;line-height:1.4}
+.sfcampo b{display:block;font-size:11px;letter-spacing:.04em;text-transform:uppercase;color:var(--muted);margin-bottom:3px}
+.sfcampo div{margin-top:4px}
+.sfcampo em{font-style:normal;font-weight:700;color:#2ecc71}
 /* pílula do resumo dos croquis (% do plantio e % do ciclo): fica logo abaixo do
    chip do croqui, é um botão que abre a tabela por cultura e regime */
 .crqres{position:absolute;z-index:26;left:12px;top:calc(env(safe-area-inset-top) + 102px);
@@ -3648,12 +3652,20 @@ async function carregarSafra(){
     const {data,error}=await SB.from('safra_plantio_planejado').select('*').eq('safra',safraAtual()).range(0,999);
     if(!error && data && (data.length || SAFRA_OK)) SAFPLAN=data.map(r=>({lote:r.lote_nome,cultura:safCult(r.cultura),ciclo:r.ciclo,area:safN(r.area_ha)||0,irr:!!r.irrigado}));
   }catch(e){ console.warn('safra planejado',e); }
+  /* INFORMAÇÃO DE CAMPO (view `safra_campo_info`, migração 144): o que se observou na
+     lavoura — emergência, estande, o que funcionou — por lote/banda e data. Não tem
+     vínculo com comanda (dono, 06/10/2026). Mesma regra: falha não apaga a lista anterior. */
+  try{
+    const {data,error}=await SB.from('safra_campo_info').select('*').eq('safra',safraAtual()).order('data',{ascending:false}).range(0,999);
+    if(!error && data && (data.length || SAFRA_OK)) SAFCAMPO=data.map(r=>({lote:r.lote_nome,banda:r.banda||'',dia:safDia(r.data),texto:r.texto||'',estadio:r.estadio||''}));
+  }catch(e){ console.warn('safra campo',e); }
 }
 /* cultura sem acento e minúscula: `comandas.cultura` vem 'soja'/'algodao' e
    `planejamento.cultura` vem 'Soja'/'Algodão' — sem isto os dois lados não casam */
 const safCult=s=>String(s||'').normalize('NFD').replace(/[̀-ͯ]/g,'').toLowerCase().trim();
 const SAFCULTNOME={soja:'Soja',algodao:'Algodão',feijao:'Feijão',milho:'Milho'};
 let SAFPLAN=[];
+let SAFCAMPO=[];
 /* ÍCONE DA CULTURA nos rótulos do mapa (pedido do dono, 03/10/2026: a vagem de soja
    e o capulho de algodão "que usei no relatório da safra passada", junto da % e do
    estádio). ORIGEM: `IMAGENS/icons8-soja-1500.png`, `icons8-algodão-1500.png` e
@@ -3804,6 +3816,9 @@ function cartaoSafra(){
   const linhasPl=pl.map(a=>{ const v=a.plantio&&a.plantio.variedade, sm=a.plantio&&a.plantio.sementes_m;
     return `<div class="cl"><span>🌱 ${safDM(a.dia)} · ${safBR(a.area,1)} ha${v?' · '+safEsc(v.replace(/\s*-\s*(CERTIFICADA|SALVA)$/i,'')):''}${sm?' · '+safEsc(sm)+' sem/m':''}${safAprovar(a)?' <span style="color:var(--gold)">(a aprovar)</span>':''}</span>
       <b>${safDap(a,D)} DAP${(e=>e?` · <span style="color:${safCorEvol(e.pct)}">${safBR(e.pct,0)}%</span>`:'')(safEvol(a,D))}${(s=>s?` · <span style="color:var(--gold)">${safEsc(s.e)}</span>`:'')(safEstadio(a.plantio||{},D))}</b></div>`; }).join('');
+  const campo=SAFCAMPO.filter(x=>x.lote===SAFSEL&&x.dia!=null&&x.dia<=D).sort((a,b)=>b.dia-a.dia);
+  const linhasCampo=campo.length?`<div class="sfcampo"><b>Informação de campo</b>`+campo.map(x=>
+    `<div><em>${safDM(x.dia)}${x.banda?' · banda '+safEsc(x.banda):''}${x.estadio?' · '+safEsc(x.estadio):''}</em> ${safEsc(x.texto)}</div>`).join('')+`</div>`:'';
   const lis=ops.map(a=>{
     const pl=a.plantio||{}, on=SAFCOM===a.codigo;
     const det=a.tipo_ativ==='Plantio'
@@ -3819,7 +3834,7 @@ function cartaoSafra(){
   c.innerHTML=`<div class="ch"><span class="dot" style="background:${pl.length?'#2ecc71':'var(--muted2)'}"></span>
       <b>${safEsc(SAFSEL)}</b>${area?`<span class="fraco" style="font-size:12px">${safBR(+area,1)} ha</span>`:''}
       <button id="cfecha" aria-label="fechar">${IC.fechar}</button></div>
-    <div class="sfcorpo">${linhasPl}${ops.length?lis
+    <div class="sfcorpo">${linhasPl}${linhasCampo}${ops.length?lis
       :`<div class="muted" style="padding:10px 0;font-size:13px">Nada lançado neste lote até ${safDM(D)}.</div>`}</div>`;
   const b=el('cfecha'); if(b) b.onclick=()=>{ SAFSEL=null; SAFCOM=null; desenhaSafra(); };
   c.querySelectorAll('[data-sfop]').forEach(x=>x.onclick=()=>{
