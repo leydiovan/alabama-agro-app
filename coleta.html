@@ -120,9 +120,15 @@ function renderData(){
   $('ir').onclick=async()=>{ DATA=$('dt').value||DATA; FERIADO=$('fer').checked; const b=$('ir'); b.disabled=true; b.textContent='Carregando…'; await iniciar(); };
   $('sair').onclick=async()=>{ await SB.auth.signOut(); location.reload(); };
 }
+/* "JÁ LANÇADO" = o PONTO DO DIA foi lançado (horário, falta ou folga) — NÃO "existe linha no ponto".
+   O pagamento por hectare também mora no `ponto` (ha × valor_ha), e o dia pode ganhar a linha só com
+   os ha, sem horário nenhum. Em 05/10/2026 isso travou o card do João: os ha entraram antes da
+   diária e a coleta mostrava "JÁ LANÇADO". Linha só de ha não trava; a aprovação no módulo faz
+   upsert só das colunas do ponto, então os ha da linha são preservados. */
+function _temPonto(p){ return !!(p && (p.falta || p.folga || (p.marcacoes||[]).some(x=>x&&(x.ent||x.sai)))); }
 async function iniciar(){
   JA={};
-  try{ const {data}=await SB.from('ponto').select('funcionario_id,marcacoes,falta,folga,feriado').eq('data',DATA); (data||[]).forEach(p=>{p._st='lançado';JA[p.funcionario_id]=p;}); }catch(e){}
+  try{ const {data}=await SB.from('ponto').select('funcionario_id,marcacoes,falta,folga,feriado').eq('data',DATA); (data||[]).filter(_temPonto).forEach(p=>{p._st='lançado';JA[p.funcionario_id]=p;}); }catch(e){}
   try{ const {data}=await SB.from('ponto_pendente').select('funcionario_id,marcacoes,falta,folga,feriado').eq('data',DATA); (data||[]).forEach(p=>{ if(!JA[p.funcionario_id]){p._st='enviado';JA[p.funcionario_id]=p;} }); }catch(e){}
   E={};
   // cards começam VAZIOS (sem padrão automático); já-lançados ficam travados
@@ -183,7 +189,7 @@ async function enviar(){
   const intended=FUNCS.filter(f=>{ const e=E[f.id]; return e && (e.falta||e.folga||(e.m||[]).some(x=>x.ent||x.sai)); });
   // releitura anti-corrida: se alguém passou a ter registro (ponto/fila) depois que a tela abriu, não sobrescreve
   try{
-    const a=await SB.from('ponto').select('funcionario_id').eq('data',DATA); (a.data||[]).forEach(p=>{ JA[p.funcionario_id]=JA[p.funcionario_id]||{_st:'lançado'}; });
+    const a=await SB.from('ponto').select('funcionario_id,marcacoes,falta,folga').eq('data',DATA); (a.data||[]).filter(_temPonto).forEach(p=>{ JA[p.funcionario_id]=JA[p.funcionario_id]||{_st:'lançado'}; });
     const b=await SB.from('ponto_pendente').select('funcionario_id').eq('data',DATA); (b.data||[]).forEach(p=>{ JA[p.funcionario_id]=JA[p.funcionario_id]||{_st:'enviado'}; });
   }catch(e){}
   const blocked=intended.filter(f=>JA[f.id]);
