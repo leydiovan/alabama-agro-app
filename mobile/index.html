@@ -3659,7 +3659,8 @@ async function carregarSafra(){
      vínculo com comanda (dono, 06/10/2026). Mesma regra: falha não apaga a lista anterior. */
   try{
     const {data,error}=await SB.from('safra_campo_info').select('*').eq('safra',safraAtual()).order('data',{ascending:false}).range(0,999);
-    if(!error && data && (data.length || SAFRA_OK)) SAFCAMPO=data.map(r=>({id:r.id,lote:r.lote_nome,banda:r.banda||'',dia:safDia(r.data),texto:r.texto||'',estadio:r.estadio||''}));
+    if(!error && data && (data.length || SAFRA_OK)) SAFCAMPO=data.map(r=>({id:r.id,lote:r.lote_nome,banda:r.banda||'',dia:safDia(r.data),texto:r.texto||'',estadio:r.estadio||'',
+      estM:r.estande_pl_m!=null?+r.estande_pl_m:null,estHa:r.estande_pl_ha!=null?+r.estande_pl_ha:null,estCv:r.estande_cv!=null?+r.estande_cv:null}));
   }catch(e){ console.warn('safra campo',e); }
 }
 /* cultura sem acento e minúscula: `comandas.cultura` vem 'soja'/'algodao' e
@@ -3668,6 +3669,20 @@ const safCult=s=>String(s||'').normalize('NFD').replace(/[̀-ͯ]/g,'').toLowerCa
 const SAFCULTNOME={soja:'Soja',algodao:'Algodão',feijao:'Feijão',milho:'Milho'};
 let SAFPLAN=[];
 let SAFCAMPO=[];
+/* ESTANDE (migração 145, 07/10/2026 — "o estande pode aparecer no safra também"): a
+   informação de campo guarda a banda como o dono fala (norte/sul/leste/oeste) e não tem
+   vínculo com comanda. Para pôr o estande ao lado do plantio certo, a banda do plantio sai
+   da POSIÇÃO do polígono plantado dentro do lote. Plantio do lote inteiro aceita qualquer banda. */
+function safBanda(a){
+  if(!a||!a.poli) return ''; const l=LOTES.find(x=>x.nome===a.lote_nome); if(!l||!l.ring) return '';
+  const c=safCentro(a.poli), o=safCentro(l.ring), dy=c[0]-o[0], dx=(c[1]-o[1])*Math.cos(o[0]*Math.PI/180);
+  return Math.abs(dy)>=Math.abs(dx)?(dy>0?'norte':'sul'):(dx>0?'leste':'oeste');
+}
+function safEstande(a,D){
+  const b=safBanda(a);
+  return SAFCAMPO.filter(x=>x.lote===a.lote_nome&&x.estM!=null&&x.dia!=null&&(D==null||x.dia<=D)&&(!b||!x.banda||x.banda.toLowerCase().trim()===b))
+                 .sort((p,q)=>(q.dia-p.dia)||((q.id||0)-(p.id||0)))[0]||null;
+}
 let SAFCAMPOAB=false, SAFCAMPOLOTE=null;   // bloco de informação de campo aberto? (por lote)
 let _safRol=0;   // rolagem do cartão a devolver depois do redesenho
 /* ÍCONE DA CULTURA nos rótulos do mapa (pedido do dono, 03/10/2026: a vagem de soja
@@ -3818,7 +3833,7 @@ function cartaoSafra(){
   const area=(SAFRA.find(a=>a.lote_nome===SAFSEL&&a.area_lote!=null)||{}).area_lote;
   const pl=ops.filter(a=>a.tipo_ativ==='Plantio'&&safFeita(a,D));
   const linhasPl=pl.map(a=>{ const v=a.plantio&&a.plantio.variedade, sm=a.plantio&&a.plantio.sementes_m;
-    return `<div class="cl"><span>🌱 ${safDM(a.dia)} · ${safBR(a.area,1)} ha${v?' · '+safEsc(v.replace(/\s*-\s*(CERTIFICADA|SALVA)$/i,'')):''}${sm?' · '+safEsc(sm)+' sem/m':''}${safAprovar(a)?' <span style="color:var(--gold)">(a aprovar)</span>':''}</span>
+    return `<div class="cl"><span>🌱 ${safDM(a.dia)} · ${safBR(a.area,1)} ha${v?' · '+safEsc(v.replace(/\s*-\s*(CERTIFICADA|SALVA)$/i,'')):''}${sm?' · '+safEsc(sm)+' sem/m':''}${(e=>e?' · <i style="font-style:normal;color:#2ecc71">estande '+safBR(e.estM,1)+' pl/m</i>':'')(safEstande(a,D))}${safAprovar(a)?' <span style="color:var(--gold)">(a aprovar)</span>':''}</span>
       <b>${safDap(a,D)} DAP${(e=>e?` · <span style="color:${safCorEvol(e.pct)}">${safBR(e.pct,0)}%</span>`:'')(safEvol(a,D))}${(s=>s?` · <span style="color:var(--gold)">${safEsc(s.e)}</span>`:'')(safEstadio(a.plantio||{},D))}</b></div>`; }).join('');
   /* só a ÚLTIMA informação fica à vista; tocar no bloco abre as anteriores (dono, 06/10/2026) */
   const campo=SAFCAMPO.filter(x=>x.lote===SAFSEL&&x.dia!=null&&x.dia<=D).sort((a,b)=>(b.dia-a.dia)||((b.id||0)-(a.id||0)));
@@ -4089,6 +4104,10 @@ function crqCartaoVariedades(){
     ${safTipoSem(pl.variedade)?lin('Semente', safTipoSem(pl.variedade)+(safSemKg(a)?' · '+safSemKg(a):'')):''}
     ${lin('Plantio', safDM(a.dia)+(safAprovar(a)?' <span style="color:var(--gold);font-size:11px">a aprovar</span>':''))}
     ${lin('Emergência', safEmerg(pl))}
+    ${(e=>e?lin('Estande', safBR(e.estM,1)+' pl/m'+(e.estHa?' · '+safBR(e.estHa/1000,0)+' mil/ha':''))
+        +lin('<span class="fraco" style="font-size:11px">contagem de '+safDM(e.dia)+'</span>','<span class="fraco" style="font-size:11px;font-weight:400">'
+          +[(n=>n>0?safBR(e.estM/n*100,0)+'% do plantado':'')(parseFloat(String(pl.sementes_m||'').replace(',','.'))),
+            e.estCv!=null?'CV '+safBR(e.estCv,0)+'%':''].filter(Boolean).join(' · ')+'</span>'):'')(safEstande(a,D))}
     ${(e=>e?lin('Estádio', '<span style="color:var(--gold)">'+safEsc(e.e)+'</span> <span class="fraco" style="font-size:11px">em '+safDM(e.dia)+(e.obs?' · '+safEsc(e.obs):'')+'</span>'):'')(safEstadio(pl))}
     ${lin('Dias após o plantio', safDap(a,D)+' DAP')}
     ${(()=>{ const c=safColheita(a);
