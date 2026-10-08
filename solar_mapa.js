@@ -895,6 +895,213 @@
     }
   }
 
+  /* ======================= A ABA DO OBJETIVO: 10 h/dia ======================
+     Pedido do dono (08/10/2026): *"uma aba apenas focada no objetivo de
+     funcionar 10h por dia na solar; então tem o gráfico do dia, ela ligada, ela
+     desligada, quantas horas no total"* — mais as ideias que ele pediu que eu
+     acrescentasse.
+
+     A DESCOBERTA QUE DESENHOU A ABA. Ao montar a view horária apareceu que ao
+     MEIO-DIA o céu oferece 124 kW e a bomba só puxa 79: aquele excedente NÃO
+     vira hora de bomba, porque a bomba já está no talo — só pode ir para a
+     bateria. **As horas que faltam para os 10 não estão no meio do dia, estão
+     nas BORDAS** (6–8 h e 16–18 h). Por isso a aba separa o desperdício em dois:
+     o que daria para bombear e o que não daria. Um painel que cobra o
+     impossível ensina a ignorar painel.
+
+     TUDO É HORA EQUIVALENTE (energia ÷ kW da bomba), como na migração 122: o
+     Modbus do SmartLogger não entrega o contato da bomba, entrega potência.
+     Meia hora a meia carga conta 0,25 h, que é o que de fato bombeou. */
+  const META_H = 10;
+
+  function abaObjetivo(v, f) {
+    const horas = (f.horas || []).slice().sort((a, b) => (a.dia + '').localeCompare(b.dia + '') || a.hora - b.hora);
+    const dias  = (f.dias  || []).slice().sort((a, b) => (a.dia + '').localeCompare(b.dia + ''));
+    if (!horas.length && !dias.length)
+      return '<div style="color:#9aa3b0">sem série ainda para este sítio — a aba precisa das views <code>solar_poco_hora</code> e <code>solar_poco_dia</code></div>';
+
+    const hojeISO = (horas.length ? horas[horas.length - 1].dia : (dias.length ? dias[dias.length - 1].dia : '')) + '';
+    const hoje = horas.filter(h => (h.dia + '') === hojeISO);
+    const dHoje = dias.find(d => (d.dia + '') === hojeISO) || {};
+    const n = x => (x == null || isNaN(x)) ? 0 : Number(x);
+
+    const feitas = n(dHoje.horas_bomba), teto = n(dHoje.horas_possiveis);
+    /* DIA ABERTO NÃO SE JULGA. Pego no primeiro teste (08/10/2026, 11 h da
+       manhã): a aba dizia "o céu não deu, o potencial foi 6,3 h" — e eram 6,3 h
+       porque o dia tinha 11 horas, não porque o céu falhou. Dashboard que dá
+       veredito sobre dia pela metade ensina a não acreditar nele. O corte é
+       18 h: depois disso o sol daqui já não acrescenta hora de bomba. */
+    const agora = new Date();
+    const hojeLocal = new Date(agora.getTime() - agora.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
+    const parcial = (hojeISO === hojeLocal) && agora.getHours() < 18;
+    const bombaKw = n(hoje.length ? hoje[0].bomba_kw : 0) || 1;
+
+    /* ---------- 1 · O PLACAR ---------- */
+    /* DIA ABERTO NÃO LEVA COR DE JULGAMENTO. Às 11 h o placar marcava 4,7 h em
+       VERMELHO — acusando um dia que ainda tinha seis horas de sol pela frente.
+       Enquanto parcial, azul neutro: informa sem condenar. */
+    const corMeta = parcial ? '#5aa9ff'
+                  : feitas >= META_H ? '#00c896' : feitas >= META_H * 0.8 ? '#ffb300' : '#ff4444';
+    const larg = p => Math.max(0, Math.min(100, p)) + '%';
+    const placar =
+      '<div style="display:flex;align-items:baseline;gap:10px;margin:2px 0 6px">' +
+        '<span style="font:800 30px/1 system-ui,sans-serif;color:' + corMeta + '">' + br(feitas, 1) + '</span>' +
+        '<span style="color:#9aa3b0;font-size:12px">h de bomba ' + (parcial ? 'até agora' : 'hoje') + '</span>' +
+        '<span style="margin-left:auto;color:#9aa3b0;font-size:12px">meta <b style="color:#e8edf5">' + META_H + ' h</b>' +
+        ' · céu deu <b style="color:#ffd479">' + br(teto, 1) + ' h</b></span>' +
+      '</div>' +
+      /* a barra mostra as TRÊS coisas de uma vez: feito, meta e teto do céu */
+      '<div style="position:relative;height:12px;border-radius:6px;background:#1b2430;overflow:hidden;margin-bottom:3px">' +
+        '<div style="position:absolute;inset:0 auto 0 0;width:' + larg(teto / META_H * 100) + ';background:#3a3420"></div>' +
+        '<div style="position:absolute;inset:0 auto 0 0;width:' + larg(feitas / META_H * 100) + ';background:' + corMeta + '"></div>' +
+        '<div style="position:absolute;top:0;bottom:0;left:100%;width:2px;background:#e8edf5"></div>' +
+      '</div>' +
+      '<div style="color:#6b7683;font-size:10px;margin-bottom:10px">a risca branca é a meta de ' + META_H + ' h · a faixa escura é o que o céu permitiria</div>';
+
+    /* ---------- 2 · A BARRA DE 24 HORAS ---------- */
+    /* Verde = bombeando. Âmbar = sobrou sol E a bomba tinha folga (hora
+       recuperável). Cinza-escuro = sobrou sol mas a bomba já estava cheia
+       (NÃO vira hora, e dizer que vira seria mentir). */
+    let recup = 0, excedente = 0;
+    const colunas = [];
+    for (let h = 0; h < 24; h++) {
+      const r = hoje.find(x => x.hora === h);
+      const fb = r ? n(r.frac_bomba) : 0, ft = r ? n(r.frac_teto) : 0;
+      /* QUEM CORTA É O DESENHO, não o dado (ver o comentário da view 146): a
+         coluna tem altura 1, mas `ft` pode valer 1,58 numa hora de meio-dia —
+         é essa sobra que vira a tarja escura de "sol além da bomba". */
+      const folga = Math.max(0, Math.min(1 - fb, ft - fb));   // o que ainda caberia na bomba
+      const sobra = Math.max(0, (ft - fb) - folga);           // o que não cabe de jeito nenhum
+      const sobraDes = Math.min(sobra, 1 - fb - folga + 0.25); // só para a barra não estourar
+      recup += folga; excedente += sobra;
+      const H = 46;
+      colunas.push('<div title="' + h + 'h · bomba ' + br(fb * 60, 0) + ' min equiv' +
+        (folga > 0.02 ? ' · dava +' + br(folga * 60, 0) + ' min' : '') + '" ' +
+        'style="flex:1;display:flex;flex-direction:column;justify-content:flex-end;height:' + H + 'px;gap:1px">' +
+        (sobra > 0.02 ? '<div style="height:' + (Math.max(0, sobraDes) * H).toFixed(1) + 'px;background:#2b3744"></div>' : '') +
+        (folga > 0.02 ? '<div style="height:' + (folga * H).toFixed(1) + 'px;background:#ffb300"></div>' : '') +
+        (fb > 0.01 ? '<div style="height:' + (fb * H).toFixed(1) + 'px;background:#00c896"></div>' : '') +
+        '</div>');
+    }
+    const grafDia =
+      '<div style="font:700 12px/1 system-ui,sans-serif;color:#dbe9f7;margin:4px 0 5px">hoje, hora a hora</div>' +
+      '<div style="display:flex;gap:1px;align-items:flex-end">' + colunas.join('') + '</div>' +
+      '<div style="display:flex;justify-content:space-between;color:#6b7683;font-size:9px;margin-top:2px">' +
+        '<span>0h</span><span>6h</span><span>12h</span><span>18h</span><span>23h</span></div>' +
+      '<div style="display:flex;gap:10px;flex-wrap:wrap;color:#9aa3b0;font-size:10px;margin:5px 0 10px">' +
+        '<span><i style="display:inline-block;width:8px;height:8px;background:#00c896;border-radius:2px"></i> bombeando</span>' +
+        '<span><i style="display:inline-block;width:8px;height:8px;background:#ffb300;border-radius:2px"></i> dava para bombear</span>' +
+        '<span><i style="display:inline-block;width:8px;height:8px;background:#2b3744;border-radius:2px"></i> sol além da bomba</span>' +
+      '</div>';
+
+    /* ---------- 5 · A FRASE DO PORQUÊ ---------- */
+    const comBomba = hoje.filter(x => n(x.frac_bomba) > 0.05);
+    const comTeto  = hoje.filter(x => n(x.frac_teto)  > 0.05);
+    const primeira = comBomba.length ? comBomba[0].hora : null;
+    const ultima   = comBomba.length ? comBomba[comBomba.length - 1].hora : null;
+    const tetoAte  = comTeto.length ? comTeto[comTeto.length - 1].hora : null;
+    const tetoDe   = comTeto.length ? comTeto[0].hora : null;
+    const socMin   = n(dHoje.soc_min_pct);
+    let porque;
+    if (parcial)
+      porque = '⏳ <b>dia em andamento</b> — ' + br(feitas, 1) + ' h até agora, de ' + br(teto, 1) +
+               ' h que o céu já ofereceu' + (comTeto.length ? ' (sol desde ' + tetoDe + 'h)' : '') + '.';
+    else if (feitas >= META_H) porque = '✅ meta batida.';
+    else if (teto < META_H)
+      porque = '☁️ <b>o céu não deu</b>: o potencial do dia foi ' + br(teto, 1) + ' h, abaixo da meta. Não havia ' + META_H + ' h para fazer.';
+    else if (socMin > 0 && socMin <= 22)
+      porque = '🔋 <b>a bateria chegou ao piso</b> (' + br(socMin, 0) + '%). Faltou reserva para seguir bombeando quando o sol caiu.';
+    else if (ultima != null && tetoAte != null && tetoAte > ultima)
+      porque = '⏱ <b>parou cedo</b>: a bomba desligou às ' + ultima + 'h e ainda havia sol até ' + tetoAte + 'h — ' + br(recup, 1) + ' h de bomba ficaram no céu.';
+    else if (primeira != null && tetoDe != null && primeira > tetoDe)
+      porque = '⏱ <b>começou tarde</b>: havia sol desde ' + tetoDe + 'h e a bomba só entrou às ' + primeira + 'h.';
+    else porque = 'o dia rendeu ' + br(feitas, 1) + ' h de ' + br(teto, 1) + ' h possíveis.';
+
+    /* ---------- 6, 7, 10 · os números do dia ---------- */
+    const m3 = feitas * 204;          // 204 m³/h por poço, medido em 08/10/2026 (doc 17)
+    const cartao = (rot, val, cor2, nota) =>
+      '<div style="flex:1;min-width:92px;background:#151f2b;border:1px solid #223044;border-radius:7px;padding:6px 8px">' +
+      '<div style="color:#8ba0bd;font-size:10px">' + rot + '</div>' +
+      '<div style="font:800 15px/1.3 system-ui,sans-serif;color:' + (cor2 || '#e8edf5') + '">' + val + '</div>' +
+      (nota ? '<div style="color:#6b7683;font-size:9px">' + nota + '</div>' : '') + '</div>';
+
+    const numeros =
+      '<div style="background:#101a26;border:1px solid #223044;border-radius:8px;padding:8px;margin-bottom:10px;font-size:12px;color:#dbe9f7">' +
+        porque + '</div>' +
+      '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px">' +
+        /* APROVEITAMENTO é o número que a cor das barras já mostra — e cor
+           sozinha é vaga. Ele responde a pergunta certa: "dei conta do que o
+           céu ofereceu?", que é o que está no controle de quem opera. A meta
+           de 10 h depende do tempo; esta não. */
+        cartao('aproveitamento', teto > 0.5 ? br(feitas / teto * 100, 0) + ' %' : '—',
+               teto > 0.5 ? (feitas / teto >= 0.92 ? '#00c896' : feitas / teto >= 0.80 ? '#ffb300' : '#ff4444') : '#9aa3b0',
+               'do que o céu deu' + (parcial ? ' até agora' : '')) +
+        cartao('água bombeada', br(m3, 0) + ' m³', '#5aa9ff', br(feitas, 1) + ' h × 204 m³/h') +
+        cartao('dava para bombear', '+' + br(recup, 1) + ' h', recup > 0.5 ? '#ffb300' : '#9aa3b0', 'sol que cabia na bomba') +
+        cartao('sol além da bomba', br(excedente, 1) + ' h', '#6b7683', 'não vira hora: bomba cheia') +
+        cartao('bateria no fim', br(n(dHoje.soc_fim_pct), 0) + ' %', n(dHoje.soc_fim_pct) >= 50 ? '#00c896' : '#ffb300',
+               'menor do dia: ' + br(socMin, 0) + ' %') +
+        cartao('inversor limitado', br(n(dHoje.min_limitado), 0) + ' min', n(dHoje.min_limitado) > 180 ? '#ffb300' : '#9aa3b0',
+               'sobrando energia') +
+        (primeira != null ? cartao('janela da bomba', primeira + 'h → ' + ultima + 'h', '#e8edf5',
+               tetoDe != null ? 'sol de ' + tetoDe + 'h a ' + tetoAte + 'h' : '') : '') +
+      '</div>';
+
+    /* ---------- 3 e 4 · O HISTÓRICO E O MÊS ---------- */
+    const ult = dias.slice(-30);
+    const maxH = Math.max(META_H, ...ult.map(d => n(d.horas_possiveis)), 1);
+    const barras = ult.map(d => {
+      const hb = n(d.horas_bomba), hp = n(d.horas_possiveis), H = 42;
+      /* A COR MEDE APROVEITAMENTO (feito ÷ possível), NÃO a meta fixa — e isto
+         é decisão de projeto, não de estética. Um dia em que o céu deu 6,3 h e
+         a bomba fez 6,2 é um dia ÓTIMO; pintá-lo de vermelho porque não chegou
+         a 10 culpa o operador pelo tempo que fez. A meta continua na tela,
+         como a linha branca: ela diz onde se quer chegar, a cor diz se o que
+         havia foi aproveitado. */
+      const aprov = hp > 0.5 ? hb / hp : null;
+      const c = aprov == null ? '#6b7683'
+              : aprov >= 0.92 ? '#00c896' : aprov >= 0.80 ? '#ffb300' : '#ff4444';
+      return '<div title="' + (d.dia + '').slice(5) + ' · ' + br(hb, 1) + ' h de ' + br(hp, 1) + ' h possíveis" ' +
+        'style="flex:1;min-width:4px;display:flex;flex-direction:column;justify-content:flex-end;height:' + H + 'px">' +
+        '<div style="height:' + ((hp - hb) / maxH * H).toFixed(1) + 'px;background:#2b3744"></div>' +
+        '<div style="height:' + (hb / maxH * H).toFixed(1) + 'px;background:' + c + '"></div></div>';
+    }).join('');
+    const mesAtual = hojeISO.slice(0, 7);
+    const doMes = dias.filter(d => (d.dia + '').slice(0, 7) === mesAtual);
+    const somaMes = doMes.reduce((s, d) => s + n(d.horas_bomba), 0);
+    const mediaMes = doMes.length ? somaMes / doMes.length : 0;
+    const diasNoMes = new Date(+mesAtual.slice(0, 4), +mesAtual.slice(5, 7), 0).getDate();
+    const faltaMes = Math.max(0, META_H * diasNoMes - somaMes);
+    const diasRestam = Math.max(0, diasNoMes - doMes.length);
+    const precisaDia = diasRestam > 0 ? faltaMes / diasRestam : 0;
+    /* o teto TÍPICO é a mediana dos dias fechados, não a média: uma semana
+       nublada puxaria a média e faria a tela dizer que a meta é alcançável
+       quando não é. */
+    const tetos = ult.filter(d => n(d.horas_possiveis) > 1).map(d => n(d.horas_possiveis)).sort((a, b) => a - b);
+    const tetoTipico = tetos.length ? tetos[Math.floor(tetos.length / 2)] : META_H;
+    const historico =
+      '<div style="font:700 12px/1 system-ui,sans-serif;color:#dbe9f7;margin:2px 0 5px">últimos ' + ult.length + ' dias</div>' +
+      '<div style="position:relative;display:flex;gap:1px;align-items:flex-end">' + barras +
+        '<div style="position:absolute;left:0;right:0;bottom:' + (META_H / maxH * 42).toFixed(1) + 'px;height:1px;background:#e8edf5;opacity:.65"></div>' +
+      '</div>' +
+      '<div style="color:#6b7683;font-size:9px;margin-top:3px">a linha branca é a meta de ' + META_H + ' h · a parte escura é o que o céu ainda permitia</div>' +
+      '<div style="margin-top:7px;font-size:12px;color:#dbe9f7">' +
+        'no mês: <b>' + br(somaMes, 0) + ' h</b> em ' + doMes.length + ' dias · média <b style="color:' +
+        (mediaMes >= META_H ? '#00c896' : '#ffb300') + '">' + br(mediaMes, 1) + ' h</b>' +
+        /* "faltam 243 h" não decide nada; "10,6 h/dia nos 23 que sobram" decide.
+           E quando o necessário passa do que o céu costuma dar, a tela diz —
+           em vez de cobrar um número que o sol não entrega. */
+        (faltaMes > 0 && diasRestam > 0
+          ? ' · faltam <b>' + br(faltaMes, 0) + ' h</b> em ' + diasRestam + ' dias = <b style="color:' +
+            (precisaDia > tetoTipico ? '#ff4444' : '#ffb300') + '">' + br(precisaDia, 1) + ' h/dia</b>' +
+            (precisaDia > tetoTipico ? ' <span style="color:#9aa3b0">(acima das ' + br(tetoTipico, 1) +
+             ' h que o céu costuma dar)</span>' : '')
+          : faltaMes > 0 ? ' · faltam ' + br(faltaMes, 0) + ' h' : ' · meta do mês batida') +
+      '</div>';
+
+    return placar + grafDia + numeros + historico;
+  }
+
   /* ---------------------------------------------------------------- janela */
   let abertaId = null, fonteAtual = null, ultimoHTML = '', abaAtual = 'geral';
 
@@ -931,7 +1138,12 @@
     const aba = (k, r) => '<button onclick="SOLAR_ABA(\'' + k + '\')" style="background:' +
       (abaAtual === k || (k === 'string' && abaAtual.startsWith('string')) ? '#2d4a63' : '#22303f') +
       ';color:#e6e6e6;border:1px solid #33475c;border-radius:6px;padding:3px 8px;margin-right:4px;cursor:pointer;font-size:12px">' + r + '</button>';
-    const abas = '<div style="margin:8px 0 6px">' + aba('geral', 'usina') + aba('inversores', 'inversores') +
+    /* A aba do OBJETIVO só existe em POÇO: a meta de 10 h/dia é da bomba, e a
+       usina dos pivôs não tem bomba (nem `solar_poco_dia`, que filtra por
+       tipo='poco'). Mostrar uma aba que abriria vazia é pior que não mostrar. */
+    const ePoco = v.tipo === 'poco';
+    const abas = '<div style="margin:8px 0 6px">' + aba('geral', 'usina') +
+      (ePoco ? aba('objetivo', '10 h/dia') : '') + aba('inversores', 'inversores') +
       aba('bateria', 'bateria') + (strings.length ? aba('string', 'strings') : '') + '</div>';
     const corS = { 'OK': '#00c896', 'FRACA': '#ffb300', 'SEM CORRENTE': '#ff4444', 'SEM SOL': '#6b7683', 'SEM LEITURA': '#8b949e' };
     /* O INVERSOR APARECE PELO NOME, não pelo endereço (dono, 18/09/2026). O
@@ -969,6 +1181,7 @@
       '</table>') : '';
 
     const miolo =
+      abaAtual === 'objetivo' ? abaObjetivo(v, f) :
       abaAtual === 'inversores' ? tabela :
       abaAtual === 'bateria' ? (
         linha('Carga (SOC)', br(v.soc_pct, 1) + ' %') +
