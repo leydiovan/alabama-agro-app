@@ -1100,8 +1100,17 @@
     /* "hoje" só quando for hoje DE VERDADE (pelo relógio), não quando for
        apenas o dia mais recente que chegou: com o espelho atrasado, o último
        dia da série pode ser ontem, e chamar aquilo de hoje esconde a falha. */
-    const titulo = (hojeISO === hojeLocal) ? 'hoje, hora a hora'
-                 : dd(hojeISO) + ', hora a hora';
+    /* AVISA QUANDO PULA. Em 08/10/2026 a busca vinha truncada em 1.000 linhas e
+       a seta saltava de 07/10 para 28/09 — sem dizer nada, parecendo que os
+       dias do meio simplesmente não existiam. Corrigida a busca, o aviso FICA:
+       falta de dado é uma informação, e navegação que pula em silêncio é a
+       mesma classe de defeito do vigia que dizia OK sobre um nó em laço. */
+    const diasEntre = (a, b) => Math.round((Date.parse(b) - Date.parse(a)) / 864e5);
+    const pulo = temAntes ? diasEntre(diasComHora[iAtual - 1], hojeISO) - 1 : 0;
+    const titulo = ((hojeISO === hojeLocal) ? 'hoje, hora a hora'
+                 : dd(hojeISO) + ', hora a hora') +
+      (pulo > 0 ? '<span style="color:#ff8a5c;font-weight:400;font-size:10px"> · ◀ pula ' +
+                  pulo + ' dia' + (pulo > 1 ? 's' : '') + ' sem dado</span>' : '');
 
     /* ---------- A FAIXA DE LIGA/DESLIGA (migração 152, 08/10/2026) ----------
        *"o que não dá de ver no gráfico é quando a bomba tá ligada e desligada"*.

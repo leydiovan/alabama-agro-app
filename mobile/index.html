@@ -324,8 +324,8 @@ th:first-child,td:first-child{text-align:left}
      por curl) e o celular seguia desenhando a água acima do cano com o arquivo velho.
      Sem a versão na URL o jeito era esperar e torcer. QUEM MEXER NESTES DOIS ARQUIVOS
      SOBE A DATA AQUI — é o equivalente, para o mobile, do `alabama-campo-vNN` do sw.js. -->
-<script src="../reservatorio_corte.js?v=20261008f"></script>
-<script src="../solar_mapa.js?v=20261008f"></script>
+<script src="../reservatorio_corte.js?v=20261008g"></script>
+<script src="../solar_mapa.js?v=20261008g"></script>
 <script>
 const SB_URL='https://ngdidjtfgmtkdkvqwfjf.supabase.co';
 const SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5nZGlkanRmZ210a2RrdnF3ZmpmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NTU5MDYsImV4cCI6MjA5NjUzMTkwNn0.OW9hGEFTvSYx_THv3DR9pt8xIVC0B9Pw2bTDGD6TBLk';
@@ -432,6 +432,30 @@ let VIGIA=[], ULTIMA_OK=0;
 let RESV=[], RESVCAD={}, RESVH=[];
 /* USINAS (18/09/2026): situação da view solar_vigia + contorno de solar_sitio.
    Desenho e janela no solar_mapa.js — arquivo ÚNICO com o módulo. */
+
+/* BUSCA PAGINADA — o `.range()` NÃO vence o corte do servidor.
+   Armadilha de 08/10/2026, relatada pelo dono: *"quando navega as setas para
+   voltar a data do 7/10 já volta lá para 28/09; ele pula datas"*. A série
+   horária de 21 dias tem 1.920 linhas e o PostgREST corta em 1.000 — o
+   `.range(0,9999)` que eu tinha posto pede mais, mas o teto é configuração do
+   servidor e ele devolve 1.000 assim mesmo, SEM ERRO.
+   E o pior não é faltar dado: é faltar SEM ORDEM. Sem `order`, as 1.000 que
+   voltam são um conjunto arbitrário, então alguns dias vêm inteiros, outros
+   pela metade e outros não vêm — e a navegação pula.
+   Daí as duas coisas juntas: ORDEM determinística (senão a paginação repete e
+   perde linha entre páginas) e laço até a página vir incompleta. */
+async function buscarPaginado(montar, passo){
+  passo = passo || 1000;
+  let de = 0, tudo = [];
+  for(;;){
+    const r = await montar().range(de, de + passo - 1);
+    if(r.error || !r.data || !r.data.length) break;
+    tudo = tudo.concat(r.data);
+    if(r.data.length < passo) break;
+    de += passo;
+  }
+  return { data: tudo, error: null };
+}
 let SOLAR=[], SOLARCAD={}, SOLARINV=[], SOLARSTR=[], SOLARHORA=[], SOLARDIA=[], SOLARSUG=[], SOLARPER=[];
 /* FILTRO DO RASTRO (pedido do dono, 08/08): com/sem rastro, quantos dias e
    quais máquinas. `TRPER='off'` desliga o rastro — e desligar não é enfeite:
@@ -2689,8 +2713,9 @@ async function carregarTelemetria(){
       /* 21 dias na 1a vez, 2 depois. O Supabase trunca em 1000 linhas sem
          avisar (21×24×5 = 2.520), daí o `.range`; e o passado não muda, então
          não se repuxa a cada 30 s. */
-      SB.from('solar_poco_hora').select('*')
-        .gte('dia', diaLocalMob(SOLARHORA.length ? -1 : -21)).range(0, 9999),
+      buscarPaginado(() => SB.from('solar_poco_hora').select('*')
+        .gte('dia', diaLocalMob(SOLARHORA.length ? -1 : -21))
+        .order('dia').order('sitio_id').order('hora')),
       SB.from('solar_poco_dia').select('*').gte('dia', diaLocalMob(-30)),
       SB.from('solar_poco_sugestao').select('*'),
       SB.from('solar_bomba_periodo').select('*').gte('dia', diaLocalMob(-21))
