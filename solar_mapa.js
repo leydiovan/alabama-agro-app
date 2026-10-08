@@ -35,6 +35,10 @@
   const COR = { 'OK': '#00c896', 'ALARME': '#ffb300', 'BATERIA BAIXA': '#ffb300',
                 'FALHA': '#ff4444', 'MUDO': '#ff4444', 'LEITURA SUSPEITA': '#c9a227' };
   const br = (n, d) => (n == null || isNaN(n)) ? '—' : Number(n).toFixed(d).replace('.', ',');
+  /* hora decimal -> "7:14". Usado pela faixa de liga/desliga e pela sugestão. */
+  const fmtHora = v => { if (v == null || isNaN(v)) return '—';
+    const h = Math.floor(v), m = Math.round((v - h) * 60);
+    return m === 60 ? (h + 1) + ':00' : h + ':' + String(m).padStart(2, '0'); };
 
   /* AS TRÊS FAIXAS DE ZOOM (a terceira entrou em 04/10/2026 — ver "O SELO").
      Ficam aqui como constantes com nome porque são número de ajuste: quem
@@ -1099,6 +1103,41 @@
     const titulo = (hojeISO === hojeLocal) ? 'hoje, hora a hora'
                  : dd(hojeISO) + ', hora a hora';
 
+    /* ---------- A FAIXA DE LIGA/DESLIGA (migração 152, 08/10/2026) ----------
+       *"o que não dá de ver no gráfico é quando a bomba tá ligada e desligada"*.
+
+       Vai POR BAIXO da barra de rendimento, e não no lugar dela: as duas dizem
+       coisas diferentes e as duas importam. A faixa diz **se estava ligada**; a
+       barra diz **se estava rendendo**. Ao meio-dia, com o inversor
+       estrangulado, a bomba está ligada e rende menos — e só as duas juntas
+       contam isso.
+
+       A fonte é outra: a barra vem da potência horária (hora equivalente), a
+       faixa vem das transições extraídas do CSV de MINUTO do Pi. Por isso ela
+       tem minuto de verdade e a barra não. */
+    const periodos = (f.periodos || []).filter(x => (x.dia + '') === hojeISO);
+    const horaDe = iso => { const d = new Date(iso); return d.getHours() + d.getMinutes() / 60; };
+    const faixa = periodos.length
+      ? '<div style="position:relative;height:11px;border-radius:3px;background:#1b2430;overflow:hidden;margin-top:3px">' +
+        periodos.map(pz => {
+          const a = Math.max(0, horaDe(pz.inicio));
+          /* PERÍODO EM ABERTO PARA AGORA, não à meia-noite. A view fecha o
+             período no fim do dia por não ter o desliga; se a tela desenhasse
+             isso, às 9 h da manhã a faixa já mostraria a bomba rodando até
+             23 h — afirmando um futuro que ninguém sabe. */
+          const fimAgora = agora.getHours() + agora.getMinutes() / 60;
+          const b = Math.min(24, pz.em_aberto ? fimAgora : (horaDe(pz.fim) || 24));
+          if (!(b > a)) return '';
+          return '<div title="ligada ' + fmtHora(a) + ' → ' + fmtHora(b) + '" style="position:absolute;top:0;bottom:0;left:' +
+                 (a / 24 * 100).toFixed(2) + '%;width:' + ((b - a) / 24 * 100).toFixed(2) + '%;background:#00c896"></div>';
+        }).join('') + '</div>' +
+        '<div style="color:#9aa3b0;font-size:10px;margin-top:3px">bomba ligada ' +
+        periodos.map(pz => '<b style="color:#dbe9f7">' + fmtHora(horaDe(pz.inicio)) + '</b> → <b style="color:#dbe9f7">' +
+          (pz.em_aberto ? 'agora' : fmtHora(horaDe(pz.fim))) + '</b>').join(' · ') + '</div>'
+      /* sem dado é DIFERENTE de bomba parada, e a tela tem de dizer qual dos
+         dois: o extrator só tem CSV a partir de 18/09/2026. */
+      : '<div style="color:#6b7683;font-size:10px;margin-top:3px">sem registro de liga/desliga neste dia</div>';
+
     const grafDia =
       '<div style="display:flex;align-items:center;gap:8px;margin:4px 0 5px">' +
         seta(temAntes ? diasComHora[iAtual - 1] : '', '◀', temAntes) +
@@ -1108,6 +1147,7 @@
       '<div style="display:flex;gap:1px;align-items:flex-end">' + colunas.join('') + '</div>' +
       '<div style="display:flex;justify-content:space-between;color:#6b7683;font-size:9px;margin-top:2px">' +
         '<span>0h</span><span>6h</span><span>12h</span><span>18h</span><span>23h</span></div>' +
+      faixa +
       '<div style="display:flex;gap:10px;flex-wrap:wrap;color:#9aa3b0;font-size:10px;margin:5px 0 10px">' +
         '<span><i style="display:inline-block;width:8px;height:8px;background:#00c896;border-radius:2px"></i> bombeando</span>' +
         '<span><i style="display:inline-block;width:8px;height:8px;background:#ffb300;border-radius:2px"></i> dava para bombear</span>' +

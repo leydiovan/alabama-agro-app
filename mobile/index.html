@@ -324,8 +324,8 @@ th:first-child,td:first-child{text-align:left}
      por curl) e o celular seguia desenhando a água acima do cano com o arquivo velho.
      Sem a versão na URL o jeito era esperar e torcer. QUEM MEXER NESTES DOIS ARQUIVOS
      SOBE A DATA AQUI — é o equivalente, para o mobile, do `alabama-campo-vNN` do sw.js. -->
-<script src="../reservatorio_corte.js?v=20261008e"></script>
-<script src="../solar_mapa.js?v=20261008e"></script>
+<script src="../reservatorio_corte.js?v=20261008f"></script>
+<script src="../solar_mapa.js?v=20261008f"></script>
 <script>
 const SB_URL='https://ngdidjtfgmtkdkvqwfjf.supabase.co';
 const SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5nZGlkanRmZ210a2RrdnF3ZmpmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NTU5MDYsImV4cCI6MjA5NjUzMTkwNn0.OW9hGEFTvSYx_THv3DR9pt8xIVC0B9Pw2bTDGD6TBLk';
@@ -432,7 +432,7 @@ let VIGIA=[], ULTIMA_OK=0;
 let RESV=[], RESVCAD={}, RESVH=[];
 /* USINAS (18/09/2026): situação da view solar_vigia + contorno de solar_sitio.
    Desenho e janela no solar_mapa.js — arquivo ÚNICO com o módulo. */
-let SOLAR=[], SOLARCAD={}, SOLARINV=[], SOLARSTR=[], SOLARHORA=[], SOLARDIA=[], SOLARSUG=[];
+let SOLAR=[], SOLARCAD={}, SOLARINV=[], SOLARSTR=[], SOLARHORA=[], SOLARDIA=[], SOLARSUG=[], SOLARPER=[];
 /* FILTRO DO RASTRO (pedido do dono, 08/08): com/sem rastro, quantos dias e
    quais máquinas. `TRPER='off'` desliga o rastro — e desligar não é enfeite:
    é o modo mais leve da tela, porque nem busca o trajeto. `TMAQS` vazio = todas.
@@ -2678,7 +2678,7 @@ async function carregarTelemetria(){
     if(rc&&rc.data&&window.RESV_UI) rc.data.forEach(r=>{ RESVCAD[r.id]=RESV_UI.prepararCadastro(r, utm2ll); });
     if(rh&&!rh.error) RESVH=rh.data||[];
     /* usinas: mesma regra — cadastro (contorno) uma vez, situação a cada ciclo */
-    const [sv,sc,si,st,sph,spd,sug]=await Promise.all([
+    const [sv,sc,si,st,sph,spd,sug,per]=await Promise.all([
       SB.from('solar_vigia').select('*'),
       Object.keys(SOLARCAD).length ? Promise.resolve({data:null})
         : SB.from('solar_sitio').select('id,nome,tipo,geom'),
@@ -2692,7 +2692,8 @@ async function carregarTelemetria(){
       SB.from('solar_poco_hora').select('*')
         .gte('dia', diaLocalMob(SOLARHORA.length ? -1 : -21)).range(0, 9999),
       SB.from('solar_poco_dia').select('*').gte('dia', diaLocalMob(-30)),
-      SB.from('solar_poco_sugestao').select('*')
+      SB.from('solar_poco_sugestao').select('*'),
+      SB.from('solar_bomba_periodo').select('*').gte('dia', diaLocalMob(-21))
     ]);
     if(sv&&!sv.error&&sv.data&&sv.data.length) SOLAR=sv.data;
     if(si&&!si.error&&si.data&&si.data.length) SOLARINV=si.data;
@@ -2704,6 +2705,7 @@ async function carregarTelemetria(){
     }
     if(spd&&!spd.error&&spd.data&&spd.data.length) SOLARDIA=spd.data;
     if(sug&&!sug.error&&sug.data&&sug.data.length) SOLARSUG=sug.data;
+    if(per&&!per.error&&per.data&&per.data.length) SOLARPER=per.data;
     if(sc&&sc.data&&window.SOLAR_UI) sc.data.forEach(s=>{ SOLARCAD[s.id]=SOLAR_UI.prepararCadastro(s, utm2ll); });
     if(SECAO==='tel' && SUB==='mapa') await carregarRastro();
   }catch(e){ console.warn('[telemetria]',e.message||e); }
@@ -2969,7 +2971,8 @@ const fonteResv=id=>({ r:RESV.find(x=>x.id===id), c:RESVCAD[id],
 const fonteSolar=id=>({ v:SOLAR.find(x=>x.id===id), inversores:SOLARINV.filter(x=>x.sitio_id===id),
   strings:SOLARSTR.filter(x=>x.sitio_id===id),
   horas:SOLARHORA.filter(x=>x.sitio_id===id), dias:SOLARDIA.filter(x=>x.sitio_id===id),
-  sugestao:SOLARSUG.find(x=>x.sitio_id===id) });
+  sugestao:SOLARSUG.find(x=>x.sitio_id===id),
+  periodos:SOLARPER.filter(x=>x.sitio_id===id) });
 /* POSIÇÃO VELHA (18/09/2026). A TECU do Steiger tira a posição do BARRAMENTO: com a
    máquina desligada ela segue viva e mandando, só que sem coordenada. Antes da
    migração 107 esse vazio apagava a última posição boa e o ícone SUMIA do mapa (o
