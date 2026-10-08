@@ -913,6 +913,11 @@
      Modbus do SmartLogger não entrega o contato da bomba, entrega potência.
      Meia hora a meia carga conta 0,25 h, que é o que de fato bombeou. */
   const META_H = 10;
+  /* UM SÓ LUGAR decide o que é "tela estreita" — a janela e a aba precisam
+     concordar, senão o cabeçalho vira de tela cheia e os cartões continuam no
+     formato de desktop dentro dele. 640 px é o corte usual entre celular em
+     pé e o resto. */
+  const telaEstreita = () => (typeof window !== 'undefined' ? (window.innerWidth || 1024) : 1024) <= 640;
 
   function abaObjetivo(v, f) {
     const horas = (f.horas || []).slice().sort((a, b) => (a.dia + '').localeCompare(b.dia + '') || a.hora - b.hora);
@@ -1019,8 +1024,14 @@
 
     /* ---------- 6, 7, 10 · os números do dia ---------- */
     const m3 = feitas * 204;          // 204 m³/h por poço, medido em 08/10/2026 (doc 17)
+    /* DOIS POR LINHA no celular (min-width 150) e três no desktop (92). Com 92
+       no celular cabiam três, e aí "do que o céu deu até agora" quebrava em
+       três linhas dentro de um cartão de 92 px — legível no papel, ilegível no
+       polegar. */
+    const estreito = telaEstreita();
     const cartao = (rot, val, cor2, nota) =>
-      '<div style="flex:1;min-width:92px;background:#151f2b;border:1px solid #223044;border-radius:7px;padding:6px 8px">' +
+      '<div style="flex:1;min-width:' + (estreito ? 150 : 92) + 'px;background:#151f2b;border:1px solid #223044;border-radius:7px;padding:' +
+      (estreito ? '8px 10px' : '6px 8px') + '">' +
       '<div style="color:#8ba0bd;font-size:10px">' + rot + '</div>' +
       '<div style="font:800 15px/1.3 system-ui,sans-serif;color:' + (cor2 || '#e8edf5') + '">' + val + '</div>' +
       (nota ? '<div style="color:#6b7683;font-size:9px">' + nota + '</div>' : '') + '</div>';
@@ -1135,15 +1146,32 @@
 
     const est = { '0x200': 'gerando', '0x201': 'limitado', '0x202': 'limitado', '0xa000': 'sem sol' };
     const strings = f.strings || [];
-    const aba = (k, r) => '<button onclick="SOLAR_ABA(\'' + k + '\')" style="background:' +
-      (abaAtual === k || (k === 'string' && abaAtual.startsWith('string')) ? '#2d4a63' : '#22303f') +
-      ';color:#e6e6e6;border:1px solid #33475c;border-radius:6px;padding:3px 8px;margin-right:4px;cursor:pointer;font-size:12px">' + r + '</button>';
+    /* TELA ESTREITA = TELA CHEIA (dono, 08/10/2026: *"no mobile fica ruim aquela
+       janelinha; quando clicar tem que abrir tela inteira, abas bem definidas
+       para trocar, um botão de voltar para a tela da telemetria"*).
+       Medido a cada repintura, e não só ao criar: se não, girar o celular
+       deixava a janela no formato errado até o próximo clique. */
+    const estreito = telaEstreita();
+    const sel = k => abaAtual === k || (k === 'string' && String(abaAtual).startsWith('string'));
+    /* ALVO DE TOQUE: 38 px de altura no celular. Os 3 px de antes davam um
+       botão de ~20 px — abaixo de qualquer recomendação de toque, e o dono
+       errava a aba. No desktop fica compacto como era. */
+    const aba = (k, r) => '<button onclick="SOLAR_ABA(\'' + k + '\')" style="' +
+      'background:' + (sel(k) ? '#2d6a9f' : '#1b2634') + ';' +
+      'color:' + (sel(k) ? '#fff' : '#9fb4c9') + ';' +
+      'border:1px solid ' + (sel(k) ? '#4a8fc7' : '#2a3b4d') + ';border-radius:8px;' +
+      (estreito ? 'padding:9px 14px;font-size:13px;font-weight:700;' : 'padding:3px 9px;font-size:12px;') +
+      'margin-right:5px;cursor:pointer;white-space:nowrap;flex:none">' + r + '</button>';
     /* A aba do OBJETIVO só existe em POÇO: a meta de 10 h/dia é da bomba, e a
        usina dos pivôs não tem bomba (nem `solar_poco_dia`, que filtra por
        tipo='poco'). Mostrar uma aba que abriria vazia é pior que não mostrar. */
     const ePoco = v.tipo === 'poco';
-    const abas = '<div style="margin:8px 0 6px">' + aba('geral', 'usina') +
-      (ePoco ? aba('objetivo', '10 h/dia') : '') + aba('inversores', 'inversores') +
+    /* `overflow-x:auto` em vez de quebrar linha: com 5 abas num celular estreito,
+       quebrar empurrava o conteúdo para baixo da dobra. Rolar de lado é o que
+       o dedo já espera. */
+    const abas = '<div style="display:flex;gap:0;overflow-x:auto;margin:' +
+      (estreito ? '10px 0 4px' : '8px 0 6px') + ';padding-bottom:2px;-webkit-overflow-scrolling:touch">' +
+      aba('geral', 'usina') + (ePoco ? aba('objetivo', '10 h/dia') : '') + aba('inversores', 'inversores') +
       aba('bateria', 'bateria') + (strings.length ? aba('string', 'strings') : '') + '</div>';
     const corS = { 'OK': '#00c896', 'FRACA': '#ffb300', 'SEM CORRENTE': '#ff4444', 'SEM SOL': '#6b7683', 'SEM LEITURA': '#8b949e' };
     /* O INVERSOR APARECE PELO NOME, não pelo endereço (dono, 18/09/2026). O
@@ -1195,27 +1223,50 @@
        (v.bomba_ligada == null ? '' : linha('Bomba (' + (v.bomba_fonte || 'inferida') + ')',
          (v.bomba_ligada ? 'LIGADA' : 'desligada') + ' · ' + br(v.p_carga_kw, 1) + ' kW')) +
        linha('Leitura', v.idade_s != null ? ('há ' + Math.round(v.idade_s / 60) + ' min') : '—'));
-    const html =
-      '<div style="display:flex;justify-content:space-between;align-items:center;gap:10px">' +
-        '<b style="font-size:15px">' + (v.nome || abertaId) + '</b>' +
-        '<span style="color:' + cor + ';font-weight:700">' + v.situacao + '</span></div>' +
-      '<div style="color:#9aa3b0;font-size:12px;margin:2px 0 8px">' + (v.mensagem || '') + '</div>' +
-      abas + miolo +
-      '<div style="margin-top:8px;color:#6b7683;font-size:11px">Contorno aproximado (Sentinel-2, ~10 m).</div>' +
-      '<div style="text-align:right;margin-top:8px"><button onclick="SOLAR_UI.fecharJanela()" ' +
-        'style="background:#22303f;color:#e6e6e6;border:1px solid #33475c;border-radius:6px;padding:5px 10px;cursor:pointer">fechar</button></div>';
+    /* CABEÇALHO GRUDADO NO TOPO em tela cheia: com a aba "10 h/dia" rolando
+       bastante, o botão de voltar sumia lá em cima e o dono ficava preso na
+       tela. Sticky resolve sem precisar de um segundo botão no fim. */
+    const voltar = '<button onclick="SOLAR_UI.fecharJanela()" style="' +
+      'background:#22303f;color:#cfe4f7;border:1px solid #33475c;border-radius:8px;' +
+      (estreito ? 'padding:9px 13px;font-size:14px;' : 'padding:4px 9px;font-size:12px;') +
+      'cursor:pointer;font-weight:700;flex:none">← telemetria</button>';
+
+    const cabeca =
+      '<div style="position:sticky;top:0;z-index:2;background:#161a21;' +
+      (estreito ? 'padding:10px 14px 0;margin:-12px -14px 0;' : '') + '">' +
+        '<div style="display:flex;align-items:center;gap:10px">' +
+          (estreito ? voltar : '') +
+          '<b style="font-size:' + (estreito ? '16px' : '15px') + ';flex:1;min-width:0;' +
+          'overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + (v.nome || abertaId) + '</b>' +
+          '<span style="color:' + cor + ';font-weight:700;flex:none">' + v.situacao + '</span>' +
+        '</div>' +
+        (v.mensagem ? '<div style="color:#9aa3b0;font-size:12px;margin:3px 0 0">' + v.mensagem + '</div>' : '') +
+        abas +
+        '<div style="height:1px;background:#2a3b4d;margin-bottom:' + (estreito ? '10px' : '6px') + '"></div>' +
+      '</div>';
+
+    const html = cabeca + miolo +
+      '<div style="margin-top:10px;color:#6b7683;font-size:11px">Contorno aproximado (Sentinel-2, ~10 m).</div>' +
+      /* no celular quem fecha é o "← telemetria" do topo; um segundo botão no
+         rodapé só ocupa polegar e confunde sobre qual é o caminho de volta */
+      (estreito ? '<div style="height:10px"></div>'
+                : '<div style="text-align:right;margin-top:8px"><button onclick="SOLAR_UI.fecharJanela()" ' +
+                  'style="background:#22303f;color:#e6e6e6;border:1px solid #33475c;border-radius:6px;padding:5px 10px;cursor:pointer">fechar</button></div>');
 
     if (html === ultimoHTML) return;      // não repinta igual: evita piscar a cada ciclo
     ultimoHTML = html;
     let e = document.getElementById('solarJanela');
-    if (!e) {
-      e = document.createElement('div');
-      e.id = 'solarJanela';
-      e.style.cssText = 'position:fixed;z-index:3000;right:14px;bottom:14px;width:min(360px,92vw);max-height:70vh;overflow:auto;' +
+    if (!e) { e = document.createElement('div'); e.id = 'solarJanela'; document.body.appendChild(e); }
+    /* O ESTILO É REAPLICADO A CADA REPINTURA, não só na criação: assim girar o
+       celular (ou redimensionar a janela no desktop) troca de formato sozinho,
+       em vez de ficar no formato de quando foi aberta. */
+    e.style.cssText = estreito
+      ? 'position:fixed;z-index:3000;inset:0;overflow:auto;-webkit-overflow-scrolling:touch;' +
+        'background:#161a21;padding:12px 14px calc(14px + env(safe-area-inset-bottom));color:#e6e6e6;' +
+        'font:13px/1.45 system-ui,sans-serif'
+      : 'position:fixed;z-index:3000;right:14px;bottom:14px;width:min(360px,92vw);max-height:70vh;overflow:auto;' +
         'background:#161a21;border:1px solid #2a2f3a;border-radius:10px;padding:12px 14px;color:#e6e6e6;' +
         'font:13px/1.45 system-ui,sans-serif;box-shadow:0 8px 30px rgba(0,0,0,.5)';
-      document.body.appendChild(e);
-    }
     e.innerHTML = html;
   }
 
