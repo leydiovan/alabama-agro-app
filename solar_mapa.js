@@ -934,42 +934,63 @@
       const h = Math.floor(v), m = Math.round((v - h) * 60);
       return (m === 60 ? (h + 1) + ':00' : h + ':' + String(m).padStart(2, '0')); };
 
-    const sobra = n(sg.minutos_sobrando) || 0;
-    const desl = n(sg.desliga_hoje), ligaH = n(sg.liga_hoje), ligaS = n(sg.liga_sugerido);
+    const ganho = n(sg.minutos_sobrando) || 0;
+    const ligaH = n(sg.liga_hoje), deslH = n(sg.desliga_hoje);
+    const cm = n(sg.custo_manha_kw), ct = n(sg.custo_tarde_kw);
+    const jog = n(sg.horas_jogadas_fora) || 0;
     const conf = sg.confianca || '—';
     const corConf = conf === 'FIRME' ? '#00c896' : conf === 'RAZOÁVEL' ? '#ffb300' : '#ff8a5c';
+    const vale = ganho >= 8;
 
-    /* TOLERÂNCIA DE 15 MIN na manhã: a sugestão de ligar vem em HORA CHEIA (a
-       primeira em que o céu típico já carrega metade da bomba), então comparar
-       com o minuto exato inventaria diferenças de 10 min que não são decisão
-       nenhuma. Só fala quando a diferença é grande o bastante para mexer. */
-    const difManha = (ligaH != null && ligaS != null) ? (ligaH - ligaS) * 60 : 0;
-    const mexeManha = difManha > 15;
-
-    const linha = (rot, agora, sug, nota, cor2) =>
-      '<div style="display:flex;align-items:baseline;gap:8px;padding:5px 0;border-top:1px solid #1e2a38">' +
-        '<span style="color:#8ba0bd;font-size:11px;width:52px;flex:none">' + rot + '</span>' +
-        '<b style="font-size:' + (estreito ? '15px' : '14px') + '">' + agora + '</b>' +
-        (sug ? '<span style="color:#6b7683">→</span><b style="font-size:' + (estreito ? '15px' : '14px') +
-               ';color:' + (cor2 || '#00c896') + '">' + sug + '</b>' : '') +
-        (nota ? '<span style="color:#8ba0bd;font-size:10px;margin-left:auto;text-align:right">' + nota + '</span>' : '') +
+    const linha = (rot, agora, sug, nota) =>
+      '<div style="display:flex;align-items:baseline;gap:8px;padding:6px 0;border-top:1px solid #1e2a38">' +
+        '<span style="color:#8ba0bd;font-size:11px;width:54px;flex:none">' + rot + '</span>' +
+        '<b style="font-size:' + (estreito ? '16px' : '14px') + '">' + agora + '</b>' +
+        (sug ? '<span style="color:#6b7683">→</span><b style="font-size:' + (estreito ? '16px' : '14px') +
+               ';color:#00c896">' + sug + '</b>' : '') +
+        (nota ? '<span style="color:#8ba0bd;font-size:10px;margin-left:auto;text-align:right;max-width:46%">' + nota + '</span>' : '') +
       '</div>';
 
-    return '<div style="background:#101a26;border:1px solid #223044;border-radius:8px;padding:9px 11px;margin:10px 0">' +
-      '<div style="display:flex;align-items:baseline;gap:8px;margin-bottom:4px">' +
-        '<b style="font-size:12px;color:#dbe9f7">⏱ horário sugerido</b>' +
+    return '<div style="background:#101a26;border:1px solid #2d4a63;border-radius:8px;padding:10px 12px;margin:14px 0 4px">' +
+      '<div style="display:flex;align-items:baseline;gap:8px;margin-bottom:5px">' +
+        '<b style="font-size:13px;color:#dbe9f7">⏱ horário sugerido</b>' +
         '<span style="margin-left:auto;font-size:10px;color:' + corConf + ';font-weight:700">' + conf + '</span>' +
       '</div>' +
-      linha('ligar', hm(ligaH), mexeManha ? hm(ligaS) : null,
-            mexeManha ? br(difManha, 0) + ' min de sol perdidos' : 'já está no ponto', '#00c896') +
-      linha('desligar', hm(desl),
-            Math.abs(sobra) >= 10 ? hm(desl + sobra / 60) : null,
-            Math.abs(sobra) >= 10
-              ? (sobra > 0 ? '+' + sobra + ' min que a bateria aguenta' : sobra + ' min: está apertado')
-              : 'no ponto', sobra > 0 ? '#00c896' : '#ff8a5c') +
-      '<div style="color:#6b7683;font-size:10px;margin-top:6px;border-top:1px solid #1e2a38;padding-top:5px">' +
-        'de ' + (sg.dias_na_janela || '?') + ' dias fechados · SOC no fim ficou em <b>' + br(n(sg.soc_fim_tipico), 0) +
-        '%</b> (piso ' + br(n(sg.soc_piso_pct), 0) + '%, reserva de 10)' +
+
+      linha('ligar', hm(ligaH), vale ? hm(ligaH - ganho / 60) : null,
+            vale ? '<b style="color:#00c896">+' + br(ganho, 0) + ' min</b> que a bateria paga' : 'no ponto') +
+      linha('desligar', hm(deslH), null,
+            (cm != null && ct != null)
+              ? 'manter: a tarde custa <b>' + br(ct, 0) + ' kW</b>/min contra <b>' + br(cm, 0) + '</b> da manhã'
+              : '') +
+
+      /* OS DOIS PORQUÊS, e o segundo é o maior. Sem eles a sugestão é uma ordem
+         sem argumento — e ordem sem argumento ninguém segue, com razão. */
+      '<div style="margin-top:8px;border-top:1px solid #1e2a38;padding-top:7px;font-size:11px;color:#9aa3b0;line-height:1.5">' +
+        '<b style="color:#dbe9f7">por quê a manhã, e por que não mexe na noite</b><br>' +
+        '1 · <b>ao amanhecer o céu já ajuda</b>: a bateria paga <b style="color:#00c896">' + br(cm, 0) +
+        ' kW</b> por minuto, contra <b style="color:#ff8a5c">' + br(ct, 0) + ' kW</b> no fim da tarde — ' +
+        'o mesmo pedaço de bateria rende bem mais minuto de bomba de manhã.' +
+        (jog > 0.1
+          ? '<br>2 · <b>e quem paga é o sol que hoje se perde</b>: perto do meio-dia a bateria enche e o ' +
+            'inversor é estrangulado, jogando fora <b style="color:#ff8a5c">' + br(jog, 2) + ' h/dia</b> de bomba. ' +
+            'Ligar mais cedo gasta <b>' + br(n(sg.kwh_sobrando), 0) + ' kWh</b> ao amanhecer e abre esse tanto de ' +
+            'espaço — o meio-dia repõe, e <b>a bateria vai dormir tão cheia quanto hoje</b>.'
+          : '') +
+        (n(sg.soc_fundo_manha) != null
+          ? '<br>3 · <b>e não fura o piso</b>: no fundo da manhã a bateria chega a <b style="color:' +
+            (n(sg.soc_fundo_manha) > n(sg.soc_piso_pct) + 5 ? '#00c896' : '#ffb300') + '">' +
+            br(n(sg.soc_fundo_manha), 0) + '%</b>, contra o piso de ' + br(n(sg.soc_piso_pct), 0) + '%. ' +
+            'É esse fundo que limita o quanto dá para antecipar — não a noite.'
+          : '') +
+        '<br><span style="color:#6b7683">Em dia nublado não há sol estrangulado para repor; nesses dias ' +
+        'a bateria termina mais baixa. A conta é do dia típico.</span>' +
+      '</div>' +
+
+      '<div style="color:#6b7683;font-size:10px;margin-top:7px;border-top:1px solid #1e2a38;padding-top:5px">' +
+        'de ' + (sg.dias_na_janela || '?') + ' dias fechados · sobrou <b>' + br(n(sg.kwh_sobrando), 0) +
+        ' kWh</b> de bateria (SOC fim ' + br(n(sg.soc_fim_tipico), 0) + '%, piso ' +
+        br(n(sg.soc_piso_pct), 0) + '%, reserva de 10)' +
         (conf === 'INSTÁVEL'
           ? ' · <span style="color:#ff8a5c">os dias discordam muito entre si (desvio ' + br(n(sg.soc_fim_desvio), 0) +
             '); confira mais alguns antes de mexer no temporizador</span>'
@@ -1097,7 +1118,6 @@
     const numeros =
       '<div style="background:#101a26;border:1px solid #223044;border-radius:8px;padding:8px;margin-bottom:10px;font-size:12px;color:#dbe9f7">' +
         porque + '</div>' +
-      blocoSugestao(f.sugestao, estreito) +
       '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px">' +
         /* APROVEITAMENTO é o número que a cor das barras já mostra — e cor
            sozinha é vaga. Ele responde a pergunta certa: "dei conta do que o
@@ -1169,7 +1189,10 @@
           : faltaMes > 0 ? ' · faltam ' + br(faltaMes, 0) + ' h' : ' · meta do mês batida') +
       '</div>';
 
-    return placar + grafDia + numeros + historico;
+    /* A SUGESTÃO VAI NO FIM (dono, 08/10/2026: *"a indicação pode colocar bem no
+       final"*). Faz sentido: primeiro se vê o que aconteceu, depois o que fazer
+       a respeito — recomendação antes do diagnóstico é palpite. */
+    return placar + grafDia + numeros + historico + blocoSugestao(f.sugestao, estreito);
   }
 
   /* ---------------------------------------------------------------- janela */
