@@ -919,6 +919,64 @@
      pé e o resto. */
   const telaEstreita = () => (typeof window !== 'undefined' ? (window.innerWidth || 1024) : 1024) <= 640;
 
+  /* ============ A SUGESTÃO DE HORÁRIO (migração 149, 08/10/2026) ============
+     *"uma avaliação constante e a indicação de ligar e desligar a bomba para
+     melhor aproveitamento; ela vai alterando com o passar dos dias"*.
+
+     Aqui só se PINTA — o critério inteiro mora na view, inclusive a confiança.
+     Isso importa mais que de costume: uma sugestão de horário é algo que o dono
+     vai executar no temporizador, então a conta precisa estar num lugar só,
+     auditável, e não espalhada entre o banco e o JavaScript da tela. */
+  function blocoSugestao(sg, estreito) {
+    if (!sg) return '';
+    const n = x => (x == null || isNaN(x)) ? null : Number(x);
+    const hm = x => { const v = n(x); if (v == null) return '—';
+      const h = Math.floor(v), m = Math.round((v - h) * 60);
+      return (m === 60 ? (h + 1) + ':00' : h + ':' + String(m).padStart(2, '0')); };
+
+    const sobra = n(sg.minutos_sobrando) || 0;
+    const desl = n(sg.desliga_hoje), ligaH = n(sg.liga_hoje), ligaS = n(sg.liga_sugerido);
+    const conf = sg.confianca || '—';
+    const corConf = conf === 'FIRME' ? '#00c896' : conf === 'RAZOÁVEL' ? '#ffb300' : '#ff8a5c';
+
+    /* TOLERÂNCIA DE 15 MIN na manhã: a sugestão de ligar vem em HORA CHEIA (a
+       primeira em que o céu típico já carrega metade da bomba), então comparar
+       com o minuto exato inventaria diferenças de 10 min que não são decisão
+       nenhuma. Só fala quando a diferença é grande o bastante para mexer. */
+    const difManha = (ligaH != null && ligaS != null) ? (ligaH - ligaS) * 60 : 0;
+    const mexeManha = difManha > 15;
+
+    const linha = (rot, agora, sug, nota, cor2) =>
+      '<div style="display:flex;align-items:baseline;gap:8px;padding:5px 0;border-top:1px solid #1e2a38">' +
+        '<span style="color:#8ba0bd;font-size:11px;width:52px;flex:none">' + rot + '</span>' +
+        '<b style="font-size:' + (estreito ? '15px' : '14px') + '">' + agora + '</b>' +
+        (sug ? '<span style="color:#6b7683">→</span><b style="font-size:' + (estreito ? '15px' : '14px') +
+               ';color:' + (cor2 || '#00c896') + '">' + sug + '</b>' : '') +
+        (nota ? '<span style="color:#8ba0bd;font-size:10px;margin-left:auto;text-align:right">' + nota + '</span>' : '') +
+      '</div>';
+
+    return '<div style="background:#101a26;border:1px solid #223044;border-radius:8px;padding:9px 11px;margin:10px 0">' +
+      '<div style="display:flex;align-items:baseline;gap:8px;margin-bottom:4px">' +
+        '<b style="font-size:12px;color:#dbe9f7">⏱ horário sugerido</b>' +
+        '<span style="margin-left:auto;font-size:10px;color:' + corConf + ';font-weight:700">' + conf + '</span>' +
+      '</div>' +
+      linha('ligar', hm(ligaH), mexeManha ? hm(ligaS) : null,
+            mexeManha ? br(difManha, 0) + ' min de sol perdidos' : 'já está no ponto', '#00c896') +
+      linha('desligar', hm(desl),
+            Math.abs(sobra) >= 10 ? hm(desl + sobra / 60) : null,
+            Math.abs(sobra) >= 10
+              ? (sobra > 0 ? '+' + sobra + ' min que a bateria aguenta' : sobra + ' min: está apertado')
+              : 'no ponto', sobra > 0 ? '#00c896' : '#ff8a5c') +
+      '<div style="color:#6b7683;font-size:10px;margin-top:6px;border-top:1px solid #1e2a38;padding-top:5px">' +
+        'de ' + (sg.dias_na_janela || '?') + ' dias fechados · SOC no fim ficou em <b>' + br(n(sg.soc_fim_tipico), 0) +
+        '%</b> (piso ' + br(n(sg.soc_piso_pct), 0) + '%, reserva de 10)' +
+        (conf === 'INSTÁVEL'
+          ? ' · <span style="color:#ff8a5c">os dias discordam muito entre si (desvio ' + br(n(sg.soc_fim_desvio), 0) +
+            '); confira mais alguns antes de mexer no temporizador</span>'
+          : conf === 'POUCO DADO' ? ' · <span style="color:#ff8a5c">poucos dias na janela</span>' : '') +
+      '</div></div>';
+  }
+
   function abaObjetivo(v, f) {
     const horas = (f.horas || []).slice().sort((a, b) => (a.dia + '').localeCompare(b.dia + '') || a.hora - b.hora);
     const dias  = (f.dias  || []).slice().sort((a, b) => (a.dia + '').localeCompare(b.dia + ''));
@@ -1039,6 +1097,7 @@
     const numeros =
       '<div style="background:#101a26;border:1px solid #223044;border-radius:8px;padding:8px;margin-bottom:10px;font-size:12px;color:#dbe9f7">' +
         porque + '</div>' +
+      blocoSugestao(f.sugestao, estreito) +
       '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px">' +
         /* APROVEITAMENTO é o número que a cor das barras já mostra — e cor
            sozinha é vaga. Ele responde a pergunta certa: "dei conta do que o
