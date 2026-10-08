@@ -967,7 +967,7 @@
     for (let h = 0; h < 24; h++) {
       const r = hoje.find(x => x.hora === h);
       const fb = r ? n(r.frac_bomba) : 0, ft = r ? n(r.frac_teto) : 0;
-      /* QUEM CORTA É O DESENHO, não o dado (ver o comentário da view 146): a
+      /* QUEM CORTA É O DESENHO, não o dado (ver o comentário da view 147): a
          coluna tem altura 1, mas `ft` pode valer 1,58 numa hora de meio-dia —
          é essa sobra que vira a tarja escura de "sol além da bomba". */
       const folga = Math.max(0, Math.min(1 - fb, ft - fb));   // o que ainda caberia na bomba

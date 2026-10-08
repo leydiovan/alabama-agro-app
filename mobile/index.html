@@ -2685,7 +2685,7 @@ async function carregarTelemetria(){
       SB.from('solar_inversor_atual').select('sitio_id,endereco,nome,estado,falha,p_ativa_kw,temp_c,e_hoje_kwh'),
         SB.from('solar_string_vigia').select('sitio_id,endereco,string_n,tensao_v,corrente_a,potencia_w,situacao,mensagem'),
       /* ABA DO OBJETIVO (08/10/2026): hora a hora de hoje + o diário de 30 dias.
-         A conta mora nas views (solar_poco_dia da 122, solar_poco_hora da 146). */
+         A conta mora nas views (solar_poco_dia da 122, solar_poco_hora da 147). */
       SB.from('solar_poco_hora').select('*').gte('dia', diaLocalMob(-1)),
       SB.from('solar_poco_dia').select('*').gte('dia', diaLocalMob(-30))
     ]);
