@@ -324,8 +324,8 @@ th:first-child,td:first-child{text-align:left}
      por curl) e o celular seguia desenhando a água acima do cano com o arquivo velho.
      Sem a versão na URL o jeito era esperar e torcer. QUEM MEXER NESTES DOIS ARQUIVOS
      SOBE A DATA AQUI — é o equivalente, para o mobile, do `alabama-campo-vNN` do sw.js. -->
-<script src="../reservatorio_corte.js?v=20261008d"></script>
-<script src="../solar_mapa.js?v=20261008d"></script>
+<script src="../reservatorio_corte.js?v=20261008e"></script>
+<script src="../solar_mapa.js?v=20261008e"></script>
 <script>
 const SB_URL='https://ngdidjtfgmtkdkvqwfjf.supabase.co';
 const SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5nZGlkanRmZ210a2RrdnF3ZmpmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NTU5MDYsImV4cCI6MjA5NjUzMTkwNn0.OW9hGEFTvSYx_THv3DR9pt8xIVC0B9Pw2bTDGD6TBLk';
@@ -2686,7 +2686,11 @@ async function carregarTelemetria(){
         SB.from('solar_string_vigia').select('sitio_id,endereco,string_n,tensao_v,corrente_a,potencia_w,situacao,mensagem'),
       /* ABA DO OBJETIVO (08/10/2026): hora a hora de hoje + o diário de 30 dias.
          A conta mora nas views (solar_poco_dia da 122, solar_poco_hora da 147). */
-      SB.from('solar_poco_hora').select('*').gte('dia', diaLocalMob(-1)),
+      /* 21 dias na 1a vez, 2 depois. O Supabase trunca em 1000 linhas sem
+         avisar (21×24×5 = 2.520), daí o `.range`; e o passado não muda, então
+         não se repuxa a cada 30 s. */
+      SB.from('solar_poco_hora').select('*')
+        .gte('dia', diaLocalMob(SOLARHORA.length ? -1 : -21)).range(0, 9999),
       SB.from('solar_poco_dia').select('*').gte('dia', diaLocalMob(-30)),
       SB.from('solar_poco_sugestao').select('*')
     ]);
@@ -2694,7 +2698,10 @@ async function carregarTelemetria(){
     if(si&&!si.error&&si.data&&si.data.length) SOLARINV=si.data;
     if(st&&!st.error&&st.data&&st.data.length) SOLARSTR=st.data;
     /* lista vazia NÃO apaga o que já está na tela (regra do offline-first) */
-    if(sph&&!sph.error&&sph.data&&sph.data.length) SOLARHORA=sph.data;
+    if(sph&&!sph.error&&sph.data&&sph.data.length){
+      const novos=new Set(sph.data.map(x=>x.sitio_id+'|'+x.dia));
+      SOLARHORA=SOLARHORA.filter(x=>!novos.has(x.sitio_id+'|'+x.dia)).concat(sph.data);
+    }
     if(spd&&!spd.error&&spd.data&&spd.data.length) SOLARDIA=spd.data;
     if(sug&&!sug.error&&sug.data&&sug.data.length) SOLARSUG=sug.data;
     if(sc&&sc.data&&window.SOLAR_UI) sc.data.forEach(s=>{ SOLARCAD[s.id]=SOLAR_UI.prepararCadastro(s, utm2ll); });

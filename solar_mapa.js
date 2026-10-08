@@ -999,12 +999,26 @@
   }
 
   function abaObjetivo(v, f) {
+    /* NO TOPO, e não no meio junto dos cartões: as setas de data (mais acima)
+       também usam, e `const` tem zona morta — usar antes da linha que declara
+       dá ReferenceError e derruba a aba inteira, não `undefined`. É a segunda
+       vez que isso me pega neste arquivo (a primeira foi o `sombra`), então
+       vale a regra: o que mais de um trecho usa nasce no começo. */
+    const estreito = telaEstreita();
     const horas = (f.horas || []).slice().sort((a, b) => (a.dia + '').localeCompare(b.dia + '') || a.hora - b.hora);
     const dias  = (f.dias  || []).slice().sort((a, b) => (a.dia + '').localeCompare(b.dia + ''));
     if (!horas.length && !dias.length)
       return '<div style="color:#9aa3b0">sem série ainda para este sítio — a aba precisa das views <code>solar_poco_hora</code> e <code>solar_poco_dia</code></div>';
 
-    const hojeISO = (horas.length ? horas[horas.length - 1].dia : (dias.length ? dias[dias.length - 1].dia : '')) + '';
+    /* OS DIAS QUE EXISTEM, para as setas saberem até onde ir. Sai da própria
+       série horária: se o dado não chegou, a seta não aparece — em vez de
+       aparecer e levar a uma tela vazia. */
+    const diasComHora = [...new Set(horas.map(h => (h.dia + '') ))].sort();
+    const ultimoISO = diasComHora.length ? diasComHora[diasComHora.length - 1]
+                    : (dias.length ? (dias[dias.length - 1].dia + '') : '');
+    const hojeISO = (diaAba && diasComHora.includes(diaAba)) ? diaAba : ultimoISO;
+    const iAtual = diasComHora.indexOf(hojeISO);
+    const temAntes = iAtual > 0, temDepois = iAtual >= 0 && iAtual < diasComHora.length - 1;
     const hoje = horas.filter(h => (h.dia + '') === hojeISO);
     const dHoje = dias.find(d => (d.dia + '') === hojeISO) || {};
     const n = x => (x == null || isNaN(x)) ? 0 : Number(x);
@@ -1017,6 +1031,8 @@
        18 h: depois disso o sol daqui já não acrescenta hora de bomba. */
     const agora = new Date();
     const hojeLocal = new Date(agora.getTime() - agora.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
+    /* só o dia CORRENTE pode estar pela metade; dia do passado está fechado,
+       mesmo que a hora do relógio seja cedo. */
     const parcial = (hojeISO === hojeLocal) && agora.getHours() < 18;
     const bombaKw = n(hoje.length ? hoje[0].bomba_kw : 0) || 1;
 
@@ -1067,8 +1083,28 @@
         (fb > 0.01 ? '<div style="height:' + (fb * H).toFixed(1) + 'px;background:#00c896"></div>' : '') +
         '</div>');
     }
+    /* AS SETAS, uma de cada lado do título do gráfico. Desabilitada (cinza, sem
+       clique) quando não há dia para aquele lado — seta que não leva a lugar
+       nenhum é pior que seta ausente. */
+    const seta = (iso, sinal, pode) =>
+      '<button ' + (pode ? 'onclick="SOLAR_DIA(\'' + iso + '\')"' : 'disabled') + ' style="' +
+      'background:' + (pode ? '#1b2634' : 'transparent') + ';color:' + (pode ? '#9fb4c9' : '#2a3b4d') + ';' +
+      'border:1px solid ' + (pode ? '#2a3b4d' : 'transparent') + ';border-radius:7px;' +
+      (estreito ? 'padding:6px 12px;font-size:15px;' : 'padding:2px 8px;font-size:13px;') +
+      'cursor:' + (pode ? 'pointer' : 'default') + ';flex:none;line-height:1">' + sinal + '</button>';
+    const dd = s2 => s2.slice(8, 10) + '/' + s2.slice(5, 7);
+    /* "hoje" só quando for hoje DE VERDADE (pelo relógio), não quando for
+       apenas o dia mais recente que chegou: com o espelho atrasado, o último
+       dia da série pode ser ontem, e chamar aquilo de hoje esconde a falha. */
+    const titulo = (hojeISO === hojeLocal) ? 'hoje, hora a hora'
+                 : dd(hojeISO) + ', hora a hora';
+
     const grafDia =
-      '<div style="font:700 12px/1 system-ui,sans-serif;color:#dbe9f7;margin:4px 0 5px">hoje, hora a hora</div>' +
+      '<div style="display:flex;align-items:center;gap:8px;margin:4px 0 5px">' +
+        seta(temAntes ? diasComHora[iAtual - 1] : '', '◀', temAntes) +
+        '<b style="font:700 12px/1 system-ui,sans-serif;color:#dbe9f7;flex:1;text-align:center">' + titulo + '</b>' +
+        seta(temDepois ? diasComHora[iAtual + 1] : '', '▶', temDepois) +
+      '</div>' +
       '<div style="display:flex;gap:1px;align-items:flex-end">' + colunas.join('') + '</div>' +
       '<div style="display:flex;justify-content:space-between;color:#6b7683;font-size:9px;margin-top:2px">' +
         '<span>0h</span><span>6h</span><span>12h</span><span>18h</span><span>23h</span></div>' +
@@ -1107,7 +1143,6 @@
        no celular cabiam três, e aí "do que o céu deu até agora" quebrava em
        três linhas dentro de um cartão de 92 px — legível no papel, ilegível no
        polegar. */
-    const estreito = telaEstreita();
     const cartao = (rot, val, cor2, nota) =>
       '<div style="flex:1;min-width:' + (estreito ? 150 : 92) + 'px;background:#151f2b;border:1px solid #223044;border-radius:7px;padding:' +
       (estreito ? '8px 10px' : '6px 8px') + '">' +
@@ -1197,6 +1232,13 @@
 
   /* ---------------------------------------------------------------- janela */
   let abertaId = null, fonteAtual = null, ultimoHTML = '', abaAtual = 'geral';
+  /* QUAL DIA a aba do objetivo está mostrando (dono, 08/10/2026: *"duas setas,
+     uma do lado direito do gráfico do dia e outra do lado esquerdo, para voltar
+     e passar a data; aí consigo ver o histórico"*). `null` = o dia mais recente
+     que houver — e volta a `null` toda vez que a janela abre, para o padrão ser
+     sempre "hoje" e ninguém encontrar a tela parada num dia de duas semanas
+     atrás sem saber por quê. */
+  let diaAba = null;
 
   function fecharJanela() { abertaId = null; const e = document.getElementById('solarJanela'); if (e) e.remove(); }
   /* ABAS: cada parte do desenho abre a sua (pedido do dono, 18/09/2026):
@@ -1210,11 +1252,14 @@
      `abaAtual.startsWith(...)`: a janela não abria e não dizia por quê.
      Guarda de TIPO, não de presença. */
   function abrirJanela(id, fonte, aba) {
-    abertaId = id; fonteAtual = fonte;
+    abertaId = id; fonteAtual = fonte; diaAba = null;
     abaAtual = (typeof aba === 'string' && aba) ? aba : 'geral';
     ultimoHTML = ''; atualizarJanela();
   }
-  window.SOLAR_ABA = a => { abaAtual = a; ultimoHTML = ''; atualizarJanela(); };
+  window.SOLAR_ABA = a => { abaAtual = a; diaAba = null; ultimoHTML = ''; atualizarJanela(); };
+  /* passo de um dia. O limite não vem daqui: quem sabe até onde há dado é a aba,
+     que simplesmente não desenha a seta quando não há para onde ir. */
+  window.SOLAR_DIA = iso => { diaAba = iso || null; ultimoHTML = ''; atualizarJanela(); };
 
   /* Redesenha do dado ATUAL a cada ciclo da página — sem guardar cópia, para a
      janela aberta não congelar num retrato velho (UI = reflexo do banco). */
