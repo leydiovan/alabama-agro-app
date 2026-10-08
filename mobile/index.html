@@ -3039,6 +3039,23 @@ function gaugeRPM(rpm, max){
       (v==null?'—':Math.round(v))+'</text>'+
     '<text x="70" y="110" text-anchor="middle" fill="#8ba0bd" font-size="10">RPM</text></svg>';
 }
+/* ESTADO DA MÁQUINA (08/10/2026, firmware S1.14): decidido NA CAIXA e mandado na hora de cada
+   troca (migração 148). A tela só traduz o número e soma o tempo: `estado_seg` é há quanto
+   tempo ela estava no estado quando a amostra saiu; some-se a idade da amostra. */
+const EST_NOMES = {1:'Desligada', 2:'Chave ligada', 3:'Parada (motor ligado)', 4:'Ociosa',
+                   5:'Deslocando', 6:'Trabalhando', 7:'MOVENDO SEM CHAVE'};
+const EST_CORES = {1:'#8b949e', 2:'#ffc107', 3:'#ffb300', 4:'#ff7a45', 5:'#38bdf8', 6:'#00c896', 7:'#ef4444'};
+function estadoTxt(m){
+  if(!m || m.estado==null || !EST_NOMES[m.estado]) return '—';
+  const quando = m.medido_em || m.recebido_em;
+  const idade = quando ? Math.max(0, (Date.now()-new Date(quando))/1000) : 0;
+  const seg = (+m.estado_seg||0) + idade;
+  const dur = (+m.estado_seg>=65535) ? 'mais de 18 h'
+            : seg<90 ? Math.round(seg)+' s'
+            : seg<7200 ? Math.round(seg/60)+' min'
+            : (seg/3600).toFixed(1).replace('.',',')+' h';
+  return '<span style="color:'+EST_CORES[m.estado]+'">'+EST_NOMES[m.estado]+'</span> · há '+dur;
+}
 function desenharPainel(){
   if(!_painelDev) return;
   const t = TELE.find(x=>x.device_id===_painelDev); if(!t){ fecharPainel(); return; }
@@ -3081,6 +3098,12 @@ function desenharPainel(){
          '<div style="font-size:11px;color:#8ba0bd;letter-spacing:.06em">KM/H</div>'+
          '<div style="font-size:12px;color:'+corChave+';margin-top:6px">chave '+chave+'</div>'+
        '</div>'+
+     '</div>'+
+
+     /* 08/10/2026: estado decidido na caixa (S1.14), mandado na hora de cada troca */
+     '<div style="background:#132033;border:1px solid #26364d;border-radius:12px;padding:10px 12px;margin-top:10px">'+
+       '<div style="font-size:10px;color:#8ba0bd;text-transform:uppercase;letter-spacing:.06em">Estado</div>'+
+       '<div style="font-size:18px;font-weight:700;margin-top:2px">'+estadoTxt(m)+'</div>'+
      '</div>'+
 
      '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px">'+
