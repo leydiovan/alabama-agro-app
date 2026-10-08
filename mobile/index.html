@@ -3082,17 +3082,27 @@ function desenharPainel(){
        card('Horímetro', horas==null?'—':num(horas,1,' h'))+
        /* 30/09/2026 (dono): combustível total e piloto já vinham no pacote e passaram a
           ser gravados; os seis de baixo chegam a partir do firmware S1.9 */
+       /* 08/10/2026 (dono: "pode colocar todos"): os 8 sinais mapeados no TRA-001 por captura +
+          fotos do painel; chegam a partir do firmware S1.13 */
+       card('Tanque de combustível', num(m.nivel_comb_l,0,' L'))+
        card('Combustível total', m.comb_total_l==null?'—':Math.round(+m.comb_total_l).toLocaleString('pt-BR')+' L')+
        card('Piloto automático', m.piloto==null?'—':(m.piloto?'<span style="color:#00c896">engatado</span>':'desligado'))+
      '</div>'+
 
      '<div style="font-size:10px;color:#8ba0bd;text-transform:uppercase;letter-spacing:.06em;margin:12px 0 6px">motor e transmissão</div>'+
      '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">'+
-       card('Pressão do óleo', num(m.pressao_oleo_kpa,0,' kPa'), m.pressao_oleo_kpa==null?'':num(m.pressao_oleo_kpa/100,1,' bar'))+
-       card('Bateria', num(m.bateria_v,1,' V'))+
+       /* o barramento da a pressao ABSOLUTA; o painel do trator desconta 1 bar (17 fotos) */
+       card('Pressão do óleo do motor', m.pressao_oleo_kpa==null?'—':num((m.pressao_oleo_kpa-100)/100,1,' bar'))+
+       card('Sistema 12 V', num(m.tensao_12v!=null?m.tensao_12v:m.bateria_v,1,' V'))+
+       card('Sistema 24 V', num(m.tensao_24v,1,' V'))+
+       card('TDP traseira', num(m.tdp_rpm,0,' rpm'))+
        card('Temp. combustível', num(m.temp_comb_c,0,' °C'))+
        card('Temp. admissão', num(m.temp_admissao_c,0,' °C'))+
        card('Óleo da transmissão', num(m.oleo_transm_c,0,' °C'))+
+       card('Pressão da transmissão', m.pressao_transm_kpa==null?'—':num(m.pressao_transm_kpa/100,0,' bar'))+
+       card('Pressão de lubrificação', m.pressao_lub_kpa==null?'—':num(m.pressao_lub_kpa/100,1,' bar'))+
+       card('Óleo hidráulico', num(m.temp_hidraulico_c,0,' °C'))+
+       card('Temp. do Arla', num(m.temp_def_c,0,' °C'))+
        card('Pressão atmosférica', num(m.baro_kpa,1,' kPa'))+
      '</div>'+
 

@@ -555,7 +555,7 @@
     const longe = z < Z_BLOCO;
 
     L.polygon(c.anel, { color: cor, weight: 2, opacity: .95, fillColor: '#1b2430', fillOpacity: .35,
-                        bubblingMouseEvents: false }).addTo(grupo).on('click', aoClicar);
+                        bubblingMouseEvents: false }).addTo(grupo).on('click', () => aoClicar('geral'));
 
     /* AS FILEIRAS sempre; OS MÓDULOS um a um só de perto. São ~140 por usina:
        de longe viram um borrão que custa desenho à toa, e no celular isso pesa.
@@ -881,7 +881,15 @@
            disco, não o conjunto. */
         html: '<div style="position:absolute;transform:translate(-50%,' + (comPct ? '-40%' : '-50%') + ');' +
               'cursor:pointer">' + rosca + '</div>' }) })
-        .on('click', aoClicar).addTo(grupo)
+        /* `() => aoClicar('geral')` e NAO `aoClicar` direto (corrigido 08/10/2026,
+           relatado pelo dono: *"quando clica no icone dos poços a bolinha hoje
+           não faz nada"*). Passando a função direto, quem chega no 1º argumento
+           é o EVENTO do Leaflet — e `abrirJanela(id, fonte, aba)` fazia
+           `abaAtual = aba || 'geral'`, então a aba virava o objeto do evento,
+           que é verdadeiro mas não é aba nenhuma: a janela abria vazia.
+           Defeito silencioso clássico de callback com assinatura diferente da
+           esperada — o `|| 'geral'` só protege contra nulo, não contra lixo. */
+        .on('click', () => aoClicar('geral')).addTo(grupo)
         .bindTooltip((lig === true ? 'bomba LIGADA' : lig === false ? 'bomba desligada' : 'bomba: sem leitura') +
                      ' · carga da bateria ' + pctTxt, { direction: 'top' });
     }
@@ -895,7 +903,17 @@
      o meio da usina abre o GERAL, a casa abre os INVERSORES, a bateria abre a
      BATERIA, e cada string abre a dela. A janela é a mesma — muda o que ela
      mostra —, para não virar quatro janelas concorrendo na tela. */
-  function abrirJanela(id, fonte, aba) { abertaId = id; fonteAtual = fonte; abaAtual = aba || 'geral'; ultimoHTML = ''; atualizarJanela(); }
+  /* `typeof aba === 'string'` e não `aba || 'geral'` (08/10/2026). O `||` só
+     protege contra nulo; qualquer objeto passa por verdadeiro. Foi assim que um
+     `.on('click', aoClicar)` — que entrega o EVENTO do Leaflet no 1º argumento —
+     fez `abaAtual` virar um MouseEvent, e a renderização quebrar em
+     `abaAtual.startsWith(...)`: a janela não abria e não dizia por quê.
+     Guarda de TIPO, não de presença. */
+  function abrirJanela(id, fonte, aba) {
+    abertaId = id; fonteAtual = fonte;
+    abaAtual = (typeof aba === 'string' && aba) ? aba : 'geral';
+    ultimoHTML = ''; atualizarJanela();
+  }
   window.SOLAR_ABA = a => { abaAtual = a; ultimoHTML = ''; atualizarJanela(); };
 
   /* Redesenha do dado ATUAL a cada ciclo da página — sem guardar cópia, para a
