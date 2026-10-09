@@ -1865,7 +1865,7 @@ function svgSteiger(cor, impl, desligada){
 const IMPL_PROVISORIO={
   /* 30/09/2026, pedido do dono ("consegue colocar no tra-007?"): o TRA-007 passa da Horsch 36.50 SW
      (IMP-003) para a Case IH Fast Riser 6161 (IMP-004, 55 x 50 cm = 27,5 m), desenho aprovado no mesmo dia. */
-  3:{id_frota:'IMP-004', nome:'Case IH Fast Riser 6161', desenho:'fastriser', linhas:55, espM:0.5, origem:'provisório'}
+  3:{id_frota:'IMP-004', nome:'Case IH Fast Riser 6161', desenho:'fastriser', linhas:55, espM:0.5, origem:'provisório'},
   /* 30/09/2026, pedido do dono ("pode deixar uma horsch nele tambem"): 2 = TRA-001, o outro
      Steiger 470, com a OUTRA Horsch do cadastro (IMP-002, Maestro Evolution 2024, 36 x 50 cm).
      Desenho: o MESMO da SW, DEFINITIVO — o dono confirmou em 30/09/2026 que a Evolution e a SW sao
@@ -1874,6 +1874,12 @@ const IMPL_PROVISORIO={
      correntão ("dá de desvincular a plantadeira que tava fixa com ele"). A entrada abaixo saiu daqui
      e a linha dele saiu de `maquina_implemento` no banco no mesmo dia. Para voltar, é repor:
      2:{id_frota:'IMP-002', nome:'Horsch Maestro Evolution', desenho:'maestro', linhas:36, espM:0.5, origem:'provisório'} */
+  /* 09/10/2026 — CORRENTÃO no TRA-001 (IMP-061). São DOIS tratores a 60 m um do outro puxando a
+     corrente; o piloto desloca 20 m por passada, então cada faixa é varrida ~3 vezes (dono: "vai
+     sempre repassando em cima de onde já passou"). A largura que vale para a ÁREA é o avanço por
+     passada: 20 m (aqui 20 "linhas" × 1 m, só para a conta). Sem desenho: o segundo trator não tem
+     caixa e não há desenho do correntão — a placa mostra o implemento e o rastro sai com 20 m. */
+  2:{id_frota:'IMP-061', nome:'Correntão', desenho:'', linhas:20, espM:1, origem:'provisório'}
 };
 function implementoDe(maqId){
   const i=IMPL_PROVISORIO[maqId]; if(!i) return null;
