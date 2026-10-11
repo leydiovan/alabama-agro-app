@@ -1124,7 +1124,11 @@
     estiloFluxo();
     const n = x => (x == null || isNaN(x)) ? null : Number(x);
     const SOL = '#ffd479', VBAT = '#00c896', VCAR = '#5aa9ff', TRAC = '#3a4b5e';
-    const est = { '0x200': 'gerando', '0x201': 'limitado', '0x202': 'limitado', '0xa000': 'sem sol' };
+    /* '0x0' e '0x2' aparecem TODA NOITE (desliga e religa) e caíam no `else`,
+       que mostra o código cru — era "● 0x0" na tela, nas duas abas. */
+    const est = { '0x0': 'desligado', '0x1': 'ligando', '0x2': 'desligando',
+                  '0x200': 'gerando', '0x201': 'limitado', '0x202': 'limitado',
+                  '0xa000': 'sem sol' };
     const W = 440, H = 730;
 
     const fv = n(v.p_fv_kw) || 0, bat = n(v.p_bateria_kw) || 0;
@@ -1156,7 +1160,22 @@
        número inventado — e foi inventar número que custou o dia de hoje. */
     const casa = bombaOn ? null : carga;
     const soc = n(v.soc_pct);
-    const vale = x => x != null && Math.abs(x) >= 0.4;
+    /* UM LIMIAR SÓ, E FINO (0,05 kW). Era 0,4, e isso ESCONDIA a bateria à
+       noite: o dono viu a casa consumindo com a bateria "em repouso" — o que
+       é impossível sem sol — e conferiu no FusionSolar, que mostrava a
+       descarga (11/10/2026).
+
+       O número que decide: nas 24 horas de histórico dos quatro poços,
+       **1.102 horas** de bateria caem entre 0,10 e 0,40 kW. Isso não é ruído,
+       é a casa sendo alimentada a noite inteira. Abaixo de 0,05 existem só 41
+       horas, das quais 10 são zero exato — esse sim é o piso de ruído.
+
+       O 0,4 nasceu pensando na BOMBA, que é de 70 a 79 kW; aplicado à bateria
+       e ao sol, apagava fluxo real. E ficou gritante quando a caixa da casa
+       passou a acender em 0,05: uma carga aparecia consumindo sem nada
+       alimentando ela. Para a bomba o limiar nem pesa mais — quem decide se
+       ela toca é `bomba_ligada`, do banco. */
+    const vale = x => x != null && Math.abs(x) >= 0.05;
 
     /* ---- strings: quantas de fato estão entregando ---- */
     const ativas = strings.filter(x => n(x.potencia_w) > 100);
@@ -1460,7 +1479,11 @@
       if (kk > 1) return;
       const k = kk + 1;                               // 0 é do inv. de frequência
       const e = est[String(i.estado).toLowerCase()] || i.estado || '—';
-      const cor = i.falha ? '#ff4444' : /limit/.test(e) ? '#ffb300' : VBAT;
+      /* VERDE SÓ QUANDO ESTÁ GERANDO. Antes, qualquer estado que não fosse
+         falha nem limitado saía verde — e à noite a caixa mostrava o LED
+         verde ao lado da palavra "desligado". */
+      const cor = i.falha ? '#ff4444' : /limit/.test(e) ? '#ffb300'
+                : /gerando/.test(e) ? VBAT : '#5d7f9c';
       const X = ux(k), UW = LARG[k];
       d += '<rect x="' + (X + 6) + '" y="' + (uy - 5) + '" width="' + (UW - 12) + '" height="5" fill="#3a4b5e"/>';
       d += '<rect x="' + X + '" y="' + uy + '" width="' + UW + '" height="' + uh +
@@ -1634,7 +1657,7 @@
            BESS: o rótulo centrado no BESS escapava pela direita da imagem. */
         '<text x="' + MEIOCB + '" y="' + (ENTB + 30) + '" fill="' + VBAT + '" font-size="22" ' +
         'font-weight="800" font-family="system-ui,sans-serif" text-anchor="middle" ' +
-        'stroke="#0d1520" stroke-width="4" paint-order="stroke">' + br(Math.abs(bat), 1) +
+        'stroke="#0d1520" stroke-width="4" paint-order="stroke">' + br(Math.abs(bat), Math.abs(bat) < 1 ? 2 : 1) +
         '<tspan font-size="10" font-weight="400" dx="2">kW</tspan></text>'
       : '<path d="' + cam(viaBess) + '" fill="none" stroke="#2b3744" stroke-width="2" ' +
         'stroke-dasharray="3 4"/>';
@@ -1763,9 +1786,12 @@
       '<div style="background:#101a26;border:1px solid #223044;border-radius:8px;padding:8px 10px;' +
       'margin-top:6px;font-size:11.5px;color:#9aa3b0;line-height:1.6">' +
         '<b style="color:#dbe9f7">a conta do nó</b> · ' +
-        '<span style="color:' + SOL + '">' + br(fv, 1) + '</span> de sol ' +
-        (bat <= 0 ? '<span style="color:' + VBAT + '">+ ' + br(-bat, 1) + '</span> da bateria '
-                  : '<span style="color:' + VBAT + '">− ' + br(bat, 1) + '</span> para a bateria ') +
+        /* MESMA PRECISÃO DO RESTO DO DESENHO. Com uma casa só, a conta dizia
+           "+ 0,2 da bateria = 0,17 na casa" — parecia não fechar, e era só
+           arredondamento. Abaixo de 1 kW, duas casas. */
+        '<span style="color:' + SOL + '">' + br(fv, fv < 1 ? 2 : 1) + '</span> de sol ' +
+        (bat <= 0 ? '<span style="color:' + VBAT + '">+ ' + br(-bat, -bat < 1 ? 2 : 1) + '</span> da bateria '
+                  : '<span style="color:' + VBAT + '">− ' + br(bat, bat < 1 ? 2 : 1) + '</span> para a bateria ') +
         '= <span style="color:' + VCAR + '">' + br(bomba, 1) + ' kW</span> na bomba' +
         (temCasa ? ' + <span style="color:' + VCAR + '">' + br(casa, 2) + ' kW</span> na ' +
                    (temBomba ? 'casa' : 'carga') : '') +
@@ -2462,7 +2488,11 @@
     const linha = (r, val) => '<div style="display:flex;justify-content:space-between;gap:12px"><span style="color:#9aa3b0">' + r + '</span><b>' + val + '</b></div>';
     const cor = COR[v.situacao] || '#8b949e';
 
-    const est = { '0x200': 'gerando', '0x201': 'limitado', '0x202': 'limitado', '0xa000': 'sem sol' };
+    /* '0x0' e '0x2' aparecem TODA NOITE (desliga e religa) e caíam no `else`,
+       que mostra o código cru — era "● 0x0" na tela, nas duas abas. */
+    const est = { '0x0': 'desligado', '0x1': 'ligando', '0x2': 'desligando',
+                  '0x200': 'gerando', '0x201': 'limitado', '0x202': 'limitado',
+                  '0xa000': 'sem sol' };
     const strings = f.strings || [];
     /* TELA ESTREITA = TELA CHEIA (dono, 08/10/2026: *"no mobile fica ruim aquela
        janelinha; quando clicar tem que abrir tela inteira, abas bem definidas
