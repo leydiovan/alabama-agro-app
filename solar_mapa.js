@@ -591,7 +591,15 @@
          vermelho na string errada mandaria alguém procurar defeito no lugar
          errado — e o desenho perderia a confiança de quem usa. */
       if (z >= 18 && c.strings && c.strings.length) {
-        const corS = { 'OK': '#00c896', 'FRACA': '#ffb300', 'SEM CORRENTE': '#ff4444' };
+        /* OS NOMES MUDARAM na migração 166 e este dicionário ficou para trás —
+           'SEM CORRENTE' deixou de ser emitido. Corda sem cor aqui não
+           aparece como erro: aparece como corda normal, que é o pior tipo de
+           defeito de tela. CORDA MORTA é vermelho (há painel ligado e não
+           entrega nada); SEM CORDA é cinza, porque entrada vazia de fábrica
+           não é avaria. */
+        const corS = { 'OK': '#00c896', 'FRACA': '#ffb300',
+                       'CORDA MORTA': '#ff4444', 'SEM CORRENTE': '#ff4444',
+                       'SEM CORDA': '#5d7f9c' };
         const leit = (v && v.strings) || [];
         c.strings.forEach(s => {
           /* Só pinta a situação quando a string sabe QUAL inversor do Modbus é
