@@ -948,7 +948,7 @@
 
     const linha = (rot, agora, sug, nota) =>
       '<div style="display:flex;align-items:baseline;gap:8px;padding:6px 0;border-top:1px solid #1e2a38">' +
-        '<span style="color:#8ba0bd;font-size:11px;width:54px;flex:none">' + rot + '</span>' +
+        '<span style="color:#8ba0bd;font-size:11px;width:72px;flex:none">' + rot + '</span>' +
         '<b style="font-size:' + (estreito ? '16px' : '14px') + '">' + agora + '</b>' +
         (sug ? '<span style="color:#6b7683">→</span><b style="font-size:' + (estreito ? '16px' : '14px') +
                ';color:#00c896">' + sug + '</b>' : '') +
@@ -961,9 +961,23 @@
         '<span style="margin-left:auto;font-size:10px;color:' + corConf + ';font-weight:700">' + conf + '</span>' +
       '</div>' +
 
-      linha('ligar', hm(ligaH), vale ? hm(ligaH - ganho / 60) : null,
+      /* DOIS RELÓGIOS NA MESMA TELA PRECISAM SE APRESENTAR. A faixa verde lá
+         em cima é o MINUTO DO DIA escolhido; estes números são a MEDIANA dos
+         dias fechados. Sem esta linha os dois pareciam a mesma medida e a
+         diferença parecia defeito — foi o que o dono reportou em 11/10/2026. */
+      '<div style="font-size:10px;color:#8ba0bd;line-height:1.5;margin-bottom:6px">' +
+        'mediana dos <b style="color:#dbe9f7">' + (sg.dias_na_janela || '?') + ' dias fechados</b> — ' +
+        'o que ela <b>vem fazendo</b>, não o relógio do dia que está no gráfico ' +
+        '(esse é a faixa verde, com minuto exato).' +
+      '</div>' +
+
+      /* "VEM LIGANDO", e não "ligar": o número da esquerda é a MEDIANA dos dias
+         fechados, não uma ordem nem o relógio de hoje. Com o rótulo "ligar" o
+         dono leu os dois como a mesma medida e estranhou, com razão, que a
+         faixa verde do dia mostrasse 17:01 e aqui estivesse 16:43 (11/10/2026). */
+      linha('vem ligando', hm(ligaH), vale ? hm(ligaH - ganho / 60) : null,
             vale ? '<b style="color:#00c896">+' + br(ganho, 0) + ' min</b> que a bateria paga' : 'no ponto') +
-      linha('desligar', hm(deslH), null,
+      linha('vem parando', hm(deslH), null,
             (cm != null && ct != null)
               ? 'manter: a tarde custa <b>' + br(ct, 0) + ' kW</b>/min contra <b>' + br(cm, 0) + '</b> da manhã'
               : '') +
@@ -999,6 +1013,17 @@
           ? ' · <span style="color:#ff8a5c">os dias discordam muito entre si (desvio ' + br(n(sg.soc_fim_desvio), 0) +
             '); confira mais alguns antes de mexer no temporizador</span>'
           : conf === 'POUCO DADO' ? ' · <span style="color:#ff8a5c">poucos dias na janela</span>' : '') +
+      '</div>' +
+
+      /* DE QUANTO EM QUANTO TEMPO ELE AVALIA (pergunta do dono, 11/10/2026).
+         Vale estar escrito na tela: uma sugestão que o dono vai pendurar num
+         temporizador precisa dizer de quando ela é, senão ele não sabe se
+         deve esperar o número mudar amanhã ou daqui a uma semana. */
+      '<div style="color:#6b7683;font-size:10px;margin-top:5px;border-top:1px solid #1e2a38;padding-top:5px">' +
+        '⚙ <b style="color:#8ba0bd">automático</b>: a conta é refeita a cada vez que esta tela abre, ' +
+        'sobre os ' + (sg.dias_na_janela || '?') + ' últimos dias <b>fechados</b> — o dia de hoje só entra ' +
+        'depois que o Pi fecha e extrai as transições, de madrugada. Por isso o horário muda de um ' +
+        'dia para o outro, nunca durante o dia.' +
       '</div></div>';
   }
 
@@ -1170,6 +1195,44 @@
     const ultima   = comBomba.length ? comBomba[comBomba.length - 1].hora : null;
     const tetoAte  = comTeto.length ? comTeto[comTeto.length - 1].hora : null;
     const tetoDe   = comTeto.length ? comTeto[0].hora : null;
+
+    /* O MINUTO MANDA, NÃO O BALDE HORÁRIO (defeito que o dono viu em
+       11/10/2026: *"tem dias que a janela da bomba acaba 17h e la na mensagem
+       embaixo fala que parou as 16h e podia ter ficado mais, nao ta tendo
+       coerencia"*).
+
+       A causa: `comBomba` exige frac_bomba > 0,05 — 3 minutos. Em 08/10 o
+       Poço 04 desligou às 17:01, deixando 2 min na hora das 17 (frac 0,026),
+       e a hora SUMIA do filtro: `ultima` virava 16 e a tela acusava "parou às
+       16h" num dia que foi até 17:01. Pior: acusava de ter parado cedo.
+
+       Duas frases na mesma tela não podem ter relógios diferentes: agora a
+       hora vem das transições (migração 152), a MESMA fonte da faixa verde
+       logo acima. O balde fica só de reserva, para os dias anteriores a
+       18/09/2026, que não têm CSV de minuto no Pi. */
+    const ligouAs = periodos.length ? horaDe(periodos[0].inicio)
+                  : (primeira != null ? primeira : null);
+    const ultPer  = periodos.length ? periodos[periodos.length - 1] : null;
+    /* DIA EM ANDAMENTO NÃO TEM HORA DE PARADA. Sem o registro do Pi (que só
+       fecha o dia de madrugada), o balde diria "parou às 10h" de uma bomba que
+       está rodando agora — exatamente a classe de erro que esta correção veio
+       consertar, só que no outro sentido. Null, e o cartão escreve "agora". */
+    const parouAs = ultPer ? (ultPer.em_aberto ? null : horaDe(ultPer.fim))
+                  : (parcial || ultima == null) ? null : ultima + 1;
+
+    /* QUANTO SOL FICOU NA MESA, e não "até que hora havia sol". A hora das 17
+       podia ter frac_teto 0,07 — quatro minutos. Dizer "havia sol até 18h"
+       por causa disso cobra uma hora que nunca existiu. Soma-se o que o céu
+       ofereceu depois do minuto da parada, descontando a fatia já usada da
+       hora em que ela parou. */
+    const somaTeto = (hLim, depois) => hLim == null ? 0 : comTeto.reduce((s2, x) => {
+      const t = Math.min(n(x.frac_teto) || 0, 1), hz = Math.floor(hLim);
+      if (depois ? x.hora < hz : x.hora > hz) return s2;
+      if (x.hora !== hz) return s2 + t;
+      return s2 + (depois ? Math.max(0, t - (hLim - hz)) : Math.max(0, Math.min(t, hLim - hz)));
+    }, 0);
+    const deixouTarde = somaTeto(parouAs, true);
+    const deixouManha = somaTeto(ligouAs, false);
     const socMin   = n(dHoje.soc_min_pct);
     let porque;
     if (parcial)
@@ -1180,10 +1243,16 @@
       porque = '☁️ <b>o céu não deu</b>: o potencial do dia foi ' + br(teto, 1) + ' h, abaixo da meta. Não havia ' + META_H + ' h para fazer.';
     else if (socMin > 0 && socMin <= 22)
       porque = '🔋 <b>a bateria chegou ao piso</b> (' + br(socMin, 0) + '%). Faltou reserva para seguir bombeando quando o sol caiu.';
-    else if (ultima != null && tetoAte != null && tetoAte > ultima)
-      porque = '⏱ <b>parou cedo</b>: a bomba desligou às ' + ultima + 'h e ainda havia sol até ' + tetoAte + 'h — ' + br(recup, 1) + ' h de bomba ficaram no céu.';
-    else if (primeira != null && tetoDe != null && primeira > tetoDe)
-      porque = '⏱ <b>começou tarde</b>: havia sol desde ' + tetoDe + 'h e a bomba só entrou às ' + primeira + 'h.';
+    /* O LIMIAR DE 0,3 h (18 min) existe para a tela não acusar "parou cedo"
+       por causa de três minutos de sol fraco no fim da tarde — que foi
+       exatamente o que acontecia com o desliga às 17:01. Antes da correção
+       a frase acusava "parou cedo" nos QUATRO dias conferidos, todos falsos. */
+    else if (parouAs != null && deixouTarde > 0.3)
+      porque = '⏱ <b>parou cedo</b>: a bomba desligou às <b>' + fmtHora(parouAs) +
+               '</b> e o céu ainda ofereceu <b>' + br(deixouTarde, 1) + ' h</b> de bomba depois disso.';
+    else if (ligouAs != null && deixouManha > 0.3)
+      porque = '⏱ <b>começou tarde</b>: a bomba entrou às <b>' + fmtHora(ligouAs) +
+               '</b> e o céu já oferecia <b>' + br(deixouManha, 1) + ' h</b> de bomba antes disso.';
     else porque = 'o dia rendeu ' + br(feitas, 1) + ' h de ' + br(teto, 1) + ' h possíveis.';
 
     /* ---------- 6, 7, 10 · os números do dia ---------- */
@@ -1217,8 +1286,11 @@
                'menor do dia: ' + br(socMin, 0) + ' %') +
         cartao('inversor limitado', br(n(dHoje.min_limitado), 0) + ' min', n(dHoje.min_limitado) > 180 ? '#ffb300' : '#9aa3b0',
                'sobrando energia') +
-        (primeira != null ? cartao('janela da bomba', primeira + 'h → ' + ultima + 'h', '#e8edf5',
-               tetoDe != null ? 'sol de ' + tetoDe + 'h a ' + tetoAte + 'h' : '') : '') +
+        /* MESMO RELÓGIO DA FAIXA VERDE: este cartão mostrava o balde horário
+           ("7h → 16h") logo abaixo de uma faixa que dizia 7:26 → 17:01. */
+        (ligouAs != null ? cartao('janela da bomba',
+               fmtHora(ligouAs) + ' → ' + (parouAs != null ? fmtHora(parouAs) : 'agora'), '#e8edf5',
+               periodos.length ? 'minuto exato do registro' : 'estimado pela hora') : '') +
       '</div>';
 
     /* ---------- 3 e 4 · O HISTÓRICO E O MÊS ---------- */
@@ -1235,11 +1307,31 @@
       const aprov = hp > 0.5 ? hb / hp : null;
       const c = aprov == null ? '#6b7683'
               : aprov >= 0.92 ? '#00c896' : aprov >= 0.80 ? '#ffb300' : '#ff4444';
-      return '<div title="' + (d.dia + '').slice(5) + ' · ' + br(hb, 1) + ' h de ' + br(hp, 1) + ' h possíveis" ' +
+      return '<div title="' + (d.dia + '').slice(5) + ' · ' + br(hb, 1) + ' h de ' + br(hp, 1) +
+        ' h possíveis · aproveitamento ' + (aprov == null ? '—' : br(aprov * 100, 0) + '%') +
+        (hb >= META_H ? ' · bateu a meta' : '') + '" ' +
         'style="flex:1;min-width:4px;display:flex;flex-direction:column;justify-content:flex-end;height:' + H + 'px">' +
         '<div style="height:' + ((hp - hb) / maxH * H).toFixed(1) + 'px;background:#2b3744"></div>' +
         '<div style="height:' + (hb / maxH * H).toFixed(1) + 'px;background:' + c + '"></div></div>';
     }).join('');
+
+    /* ===== OS DIAS QUE BATERAM AS 10 h, EM TRILHA PROPRIA =====
+       Dono, 11/10/2026: *"nao sei como funciona as cores mas consegui bater
+       10 h em alguns dias, era bom ficar ver quando batesse 10h"*.
+
+       Em trilha separada, e NÃO virando uma quarta cor na barra: a barra já
+       codifica aproveitamento (feito ÷ possível) e o dono acabou de dizer que
+       não entende as cores — somar mais um significado na mesma tinta piora.
+       Variável nova, canal novo. A geometria é a mesma (flex:1, gap 1px), por
+       isso cada ponto cai debaixo da sua barra. */
+    const metas = ult.map(d => {
+      const bateu = n(d.horas_bomba) >= META_H;
+      return '<div title="' + (d.dia + '').slice(5) + (bateu ? ' · bateu ' + META_H + ' h' : '') + '" ' +
+        'style="flex:1;min-width:4px;height:7px;display:flex;align-items:center;justify-content:center">' +
+        (bateu ? '<div style="width:5px;height:5px;border-radius:50%;background:#00e5a0;' +
+                 'box-shadow:0 0 4px #00e5a0"></div>' : '') + '</div>';
+    }).join('');
+    const quantosBateram = ult.filter(d => n(d.horas_bomba) >= META_H).length;
     const mesAtual = hojeISO.slice(0, 7);
     const doMes = dias.filter(d => (d.dia + '').slice(0, 7) === mesAtual);
     const somaMes = doMes.reduce((s, d) => s + n(d.horas_bomba), 0);
@@ -1258,7 +1350,22 @@
       '<div style="position:relative;display:flex;gap:1px;align-items:flex-end">' + barras +
         '<div style="position:absolute;left:0;right:0;bottom:' + (META_H / maxH * 42).toFixed(1) + 'px;height:1px;background:#e8edf5;opacity:.65"></div>' +
       '</div>' +
-      '<div style="color:#6b7683;font-size:9px;margin-top:3px">a linha branca é a meta de ' + META_H + ' h · a parte escura é o que o céu ainda permitia</div>' +
+      '<div style="display:flex;gap:1px;margin-top:2px">' + metas + '</div>' +
+      /* A LEGENDA EXPLÍCITA, porque cor sem legenda é adivinhação — e o dono
+         disse exatamente isso em 11/10/2026. A cor responde "aproveitei o que
+         o céu deu?"; o ponto verde responde "bati as 10 h?". São perguntas
+         diferentes e um dia pode acertar uma e errar a outra: céu de 6 h
+         totalmente aproveitado fica VERDE e SEM ponto. */
+      '<div style="margin-top:5px;font-size:9px;color:#8ba0bd;line-height:1.6">' +
+        '<div style="margin-bottom:2px"><b style="color:#dbe9f7">a cor</b> = quanto do sol do dia foi aproveitado:' +
+          ' <i style="display:inline-block;width:7px;height:7px;background:#00c896;border-radius:2px"></i> 92% ou mais' +
+          ' · <i style="display:inline-block;width:7px;height:7px;background:#ffb300;border-radius:2px"></i> 80 a 92%' +
+          ' · <i style="display:inline-block;width:7px;height:7px;background:#ff4444;border-radius:2px"></i> abaixo de 80%</div>' +
+        '<div><i style="display:inline-block;width:5px;height:5px;background:#00e5a0;border-radius:50%;box-shadow:0 0 4px #00e5a0"></i>' +
+          ' <b style="color:#dbe9f7">o ponto</b> = bateu as ' + META_H + ' h — <b style="color:#00e5a0">' +
+          quantosBateram + ' de ' + ult.length + ' dias</b>' +
+          ' · a risca branca é a meta · a parte escura é o que o céu ainda permitia</div>' +
+      '</div>' +
       '<div style="margin-top:7px;font-size:12px;color:#dbe9f7">' +
         'no mês: <b>' + br(somaMes, 0) + ' h</b> em ' + doMes.length + ' dias · média <b style="color:' +
         (mediaMes >= META_H ? '#00c896' : '#ffb300') + '">' + br(mediaMes, 1) + ' h</b>' +
@@ -1446,5 +1553,8 @@
     e.innerHTML = html;
   }
 
-  window.SOLAR_UI = { COR, prepararCadastro, desenhar, abrirJanela, atualizarJanela, fecharJanela };
+  /* `abaObjetivo` sai junto para a ferramenta de prévia poder RENDERIZAR a aba
+     fora do navegador, pelo mesmo motivo que o `desenhar` sai: maquete feita à
+     mão mostra o que eu achei que o código faz, não o que ele faz. */
+  window.SOLAR_UI = { COR, prepararCadastro, desenhar, abrirJanela, atualizarJanela, fecharJanela, abaObjetivo };
 })();
