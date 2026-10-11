@@ -1087,6 +1087,204 @@
       '</div></div>';
   }
 
+  /* ====================== ABA "POR DENTRO" (11/10/2026) ======================
+     Dono: *"quero uma aba com um fluxo bem mais detalhado: mostra a placa, a
+     casinha, dentro os inversores solares e inversor de frequência, a bomba...
+     hoje tem a bomba, porém o fluxo que fica na casinha não mostra, é como se
+     não tivesse consumo"*.
+
+     O painel do MAPA (ao dar zoom) fica como está — ele é um selo, e selo não
+     comporta isto. Aqui há espaço para abrir a casinha e mostrar a cadeia
+     inteira, com o dado que o logger de fato entrega:
+
+       strings -> 2 inversores solares -> barramento CA -> bateria
+                                                        -> inversor de
+                                                           frequência -> bomba
+
+     O QUE NÃO TEM LEITURA APARECE DIZENDO QUE NÃO TEM. O inversor de
+     frequência não é lido pelo Modbus: sabe-se a potência que ENTRA nele
+     (`p_carga_kw`, que é o consumo medido), não o que acontece dentro. Desenhar
+     um número ali seria inventar — e foi inventar número que custou o dia de
+     hoje. */
+  function abaFluxo(v, inv, strings, estreito, f) {
+    const n = x => (x == null || isNaN(x)) ? null : Number(x);
+    const SOL = '#ffd479', VBAT = '#00c896', VCAR = '#5aa9ff', TRAC = '#3a4b5e';
+    const est = { '0x200': 'gerando', '0x201': 'limitado', '0x202': 'limitado', '0xa000': 'sem sol' };
+    const W = 360, H = 566;
+
+    const fv = n(v.p_fv_kw) || 0, bat = n(v.p_bateria_kw) || 0, bomba = n(v.p_carga_kw) || 0;
+    const soc = n(v.soc_pct);
+    const vale = x => x != null && Math.abs(x) >= 0.4;
+
+    /* ---- strings: quantas de fato estão entregando ---- */
+    const ativas = strings.filter(x => n(x.potencia_w) > 100);
+    const somaW  = strings.reduce((a, x) => a + (n(x.potencia_w) || 0), 0);
+    const medV   = ativas.length ? ativas.reduce((a, x) => a + (n(x.tensao_v) || 0), 0) / ativas.length : null;
+    const medA   = ativas.length ? ativas.reduce((a, x) => a + (n(x.corrente_a) || 0), 0) / ativas.length : null;
+
+    /* ---- os dois inversores, na mesma ordem da aba "inversores" ---- */
+    const ordem = i => { const m = /(\d+)/.exec(i.nome || ''); return m ? +m[1] : 1000 + (+i.endereco || 0); };
+    const invs = inv.slice().sort((a, b) => ordem(a) - ordem(b)).slice(0, 2);
+
+    /* ------------------------------------------------- desenho */
+    const seta = (x1, y1, x2, y2, cor, grosso) => {
+      const dx = x2 - x1, dy = y2 - y1, c = Math.hypot(dx, dy);
+      if (!(c > 1)) return '';
+      const ux = dx / c, uy = dy / c, P = 7;
+      const ax = x2 - ux * P, ay = y2 - uy * P, nx = -uy, ny = ux;
+      const cam = 'M ' + x1 + ' ' + y1 + ' L ' + ax.toFixed(1) + ' ' + ay.toFixed(1);
+      const tr = (c / 3).toFixed(1), vao = (c / 3 * 1.4).toFixed(1);
+      return '<path d="' + cam + '" fill="none" stroke="' + cor + '" stroke-width="1" opacity=".28"/>' +
+        '<path class="solFluxo" d="' + cam + '" fill="none" stroke="' + cor + '" stroke-width="' +
+          (grosso || 3) + '" opacity=".95" style="stroke-dasharray:' + tr + ' ' + vao + '"/>' +
+        '<polygon points="' + x2 + ',' + y2 + ' ' +
+          (ax + nx * 4.5).toFixed(1) + ',' + (ay + ny * 4.5).toFixed(1) + ' ' +
+          (ax - nx * 4.5).toFixed(1) + ',' + (ay - ny * 4.5).toFixed(1) + '" fill="' + cor + '"/>';
+    };
+    const cx = (x, y, w, h, borda, fundo) =>
+      '<rect x="' + x + '" y="' + y + '" width="' + w + '" height="' + h + '" rx="7" fill="' +
+      (fundo || 'rgba(16,26,38,.92)') + '" stroke="' + borda + '" stroke-width="1.4"/>';
+    const tx = (x, y, t, cor, tam, peso, meio) =>
+      '<text x="' + x + '" y="' + y + '" fill="' + cor + '" font-size="' + (tam || 11) +
+      '" font-weight="' + (peso || 400) + '" font-family="system-ui,sans-serif" text-anchor="' +
+      (meio ? 'middle' : 'start') + '">' + t + '</text>';
+    const rot = (x, y, t, cor, meio) =>
+      '<text x="' + x + '" y="' + y + '" fill="' + cor + '" font-size="11" font-weight="700" ' +
+      'font-family="system-ui,sans-serif" text-anchor="' + (meio ? 'middle' : 'start') + '" ' +
+      'stroke="#0d1520" stroke-width="3" paint-order="stroke">' + t + '</text>';
+
+    let d = '';
+
+    /* 1 · AS PLACAS */
+    d += cx(12, 8, 336, 64, '#6b5a2a', 'rgba(42,34,14,.75)');
+    d += tx(26, 30, '☀ placas', SOL, 13, 700);
+    d += tx(26, 50, ativas.length + ' de ' + strings.length + ' strings entregando', '#cbb27a', 11);
+    d += tx(26, 65, (medV != null ? br(medV, 0) + ' V · ' + br(medA, 1) + ' A por string' : 'sem leitura de string'), '#8e7f5d', 10);
+    d += '<text x="334" y="36" fill="' + SOL + '" font-size="19" font-weight="800" ' +
+         'font-family="system-ui,sans-serif" text-anchor="end">' + br(somaW / 1000, 1) + '</text>';
+    d += '<text x="334" y="52" fill="#8e7f5d" font-size="10" font-family="system-ui,sans-serif" ' +
+         'text-anchor="end">kW no CC</text>';
+
+    /* 2 · DESCIDA PARA A CASINHA */
+    if (vale(fv)) { d += seta(180, 72, 180, 104, SOL, 3.4); d += rot(190, 93, br(fv, 1) + ' kW', SOL); }
+    else d += tx(190, 93, 'sem geração', '#6b7683', 10);
+
+    /* 3 · A CASINHA */
+    d += '<rect x="12" y="106" width="336" height="334" rx="10" fill="rgba(13,21,32,.55)" ' +
+         'stroke="' + TRAC + '" stroke-width="1.4" stroke-dasharray="7 5"/>';
+    d += tx(24, 124, '🏠 casinha', '#8ba0bd', 11, 700);
+
+    /* 3a · os dois inversores solares */
+    const bx = [26, 190], bw = 144;
+    invs.forEach((i, k) => {
+      const e = est[String(i.estado).toLowerCase()] || i.estado || '—';
+      const lim = /limit/.test(e);
+      const cor = i.falha ? '#ff4444' : lim ? '#ffb300' : VBAT;
+      d += cx(bx[k], 134, bw, 92, cor === VBAT ? '#2a4a3c' : cor, 'rgba(16,26,38,.95)');
+      d += tx(bx[k] + 12, 154, (i.nome || ('end. ' + i.endereco)).slice(0, 16), '#dbe9f7', 11, 700);
+      d += tx(bx[k] + 12, 171, br(n(i.p_cc_kw), 1) + ' cc → ' + br(n(i.p_ativa_kw), 1) + ' ca', '#9fb4c9', 10.5);
+      d += tx(bx[k] + 12, 187, br(n(i.e_hoje_kwh), 0) + ' kWh hoje', '#6b7683', 10);
+      d += '<circle cx="' + (bx[k] + 16) + '" cy="203" r="4" fill="' + cor + '"/>';
+      d += tx(bx[k] + 26, 207, e, cor, 10.5, 700);
+      d += '<text x="' + (bx[k] + bw - 12) + '" y="207" fill="' +
+           (n(i.temp_c) > 65 ? '#ff8a5c' : '#6b7683') + '" font-size="10" ' +
+           'font-family="system-ui,sans-serif" text-anchor="end">' + br(n(i.temp_c), 0) + ' °C</text>';
+      if (vale(fv)) d += seta(bx[k] + bw / 2, 226, bx[k] + bw / 2, 248, SOL, 2.6);
+    });
+    if (!invs.length) d += tx(26, 180, 'sem leitura dos inversores', '#6b7683', 11);
+
+    /* 3b · o barramento */
+    d += '<line x1="60" y1="252" x2="300" y2="252" stroke="#8ba0bd" stroke-width="3" stroke-linecap="round"/>';
+    d += tx(180, 268, 'barramento ' + (n(v.v_ab) ? br(n(v.v_ab), 0) + ' V' : 'CA'), '#8ba0bd', 10, 400, true);
+
+    /* 3c · bateria, com o sentido vindo do sinal */
+    const corB = soc == null ? '#8b949e' : soc >= 50 ? VBAT : soc >= 20 ? '#ffb300' : '#ff4444';
+    d += cx(26, 288, 132, 92, '#2a4a3c');
+    d += tx(38, 310, '🔋 bateria', '#dbe9f7', 11, 700);
+    d += '<text x="38" y="338" fill="' + corB + '" font-size="22" font-weight="800" ' +
+         'font-family="system-ui,sans-serif">' + (soc != null ? br(soc, 0) + '%' : '—') + '</text>';
+    /* a barrinha de SOC: o número sozinho não dá a sensação de "quanto falta" */
+    d += '<rect x="38" y="348" width="108" height="7" rx="3.5" fill="#1b2430"/>';
+    if (soc != null) d += '<rect x="38" y="348" width="' + (108 * Math.max(0, Math.min(100, soc)) / 100).toFixed(1) +
+         '" height="7" rx="3.5" fill="' + corB + '"/>';
+    d += tx(38, 372, vale(bat) ? (bat > 0 ? 'carregando ' : 'descarregando ') + br(Math.abs(bat), 1) + ' kW'
+                                : 'em repouso', vale(bat) ? corB : '#6b7683', 10.5, 700);
+    if (vale(bat)) {
+      /* O SENTIDO É O CAMINHO, não a cor: carregando desce do barramento para a
+         bateria, descarregando sobe. Mesma regra do painel do mapa. */
+      if (bat > 0) d += seta(92, 254, 92, 286, VBAT, 3);
+      else         d += seta(92, 286, 92, 254, VBAT, 3);
+      d += rot(100, 275, br(Math.abs(bat), 1) + ' kW', VBAT);
+    } else {
+      /* BATERIA PARADA AINDA ESTÁ LIGADA. Sem nenhum traço ela ficava órfã no
+         desenho, como se estivesse fora do circuito — e o desenho é justamente
+         para mostrar a topologia, que não muda quando o fluxo é zero. */
+      d += '<line x1="92" y1="254" x2="92" y2="286" stroke="#2b3744" stroke-width="2" ' +
+           'stroke-dasharray="3 4"/>';
+    }
+
+    /* 3d · o inversor de frequência — e a honestidade de dizer que não é lido */
+    d += cx(202, 288, 132, 76, '#2a3b4d');
+    d += tx(214, 310, '⚙ inv. de', '#dbe9f7', 11, 700);
+    d += tx(214, 325, 'frequência', '#dbe9f7', 11, 700);
+    d += tx(214, 346, 'sem leitura própria', '#6b7683', 9.5);
+    d += tx(214, 358, 'no Modbus', '#6b7683', 9.5);
+    if (vale(bomba)) { d += seta(268, 254, 268, 286, VCAR, 3.2); d += rot(276, 275, br(bomba, 1) + ' kW', VCAR); }
+
+    /* 4 · SAI DA CASINHA PARA A BOMBA */
+    if (vale(bomba)) d += seta(268, 366, 268, 462, VCAR, 3.4);
+    else d += '<line x1="268" y1="366" x2="268" y2="462" stroke="#2b3744" stroke-width="2" stroke-dasharray="4 5"/>';
+
+    /* 5 · A BOMBA */
+    const lig = v.bomba_ligada === true;
+    /* A potência NOMINAL da bomba não está no vigia; vem da série horária,
+       mesma fonte que a aba do objetivo usa. Sem ela, não se mostra o "% da
+       potência" — melhor faltar o número do que inventá-lo. */
+    const hs = ((f && f.horas) || []).filter(x => x.sitio_id === v.id);
+    const nom = hs.length ? (n(hs[0].bomba_kw) || null) : null;
+    d += cx(190, 466, 158, 84, lig ? '#2a4a5c' : '#2b3744');
+    d += tx(204, 490, '💧 bomba', '#dbe9f7', 12, 700);
+    d += '<text x="204" y="520" fill="' + (lig ? VCAR : '#6b7683') + '" font-size="22" font-weight="800" ' +
+         'font-family="system-ui,sans-serif">' + (vale(bomba) ? br(bomba, 1) : '0') + '</text>';
+    d += '<text x="' + (vale(bomba) ? 262 : 224) + '" y="520" fill="#8ba0bd" font-size="11" ' +
+         'font-family="system-ui,sans-serif">kW</text>';
+    d += tx(204, 540, lig ? (nom ? br(bomba / nom * 100, 0) + '% da potência dela' : 'ligada') : 'desligada',
+            lig ? '#8ba0bd' : '#6b7683', 10);
+
+    const svg = '<svg viewBox="0 0 ' + W + ' ' + H + '" width="100%" style="max-width:' +
+      (estreito ? '100%' : '400px') + ';display:block;margin:4px auto" ' +
+      'xmlns="http://www.w3.org/2000/svg">' + d + '</svg>';
+
+    /* A CONFERÊNCIA DO NÓ, embaixo do desenho. Sol = bateria + bomba é a lei
+       que o desenho ilustra; mostrá-la fechando (ou não) diz num relance se a
+       leitura está coerente. Poço 03 em 11/10/2026, com nuvem: 26 de sol, 52
+       saindo da bateria, 78 na bomba. */
+    const soma = fv + (-bat) ;
+    const erro = Math.abs(soma - bomba);
+    const conf =
+      '<div style="background:#101a26;border:1px solid #223044;border-radius:8px;padding:8px 10px;' +
+      'margin-top:6px;font-size:11.5px;color:#9aa3b0;line-height:1.6">' +
+        '<b style="color:#dbe9f7">a conta do nó</b> · ' +
+        '<span style="color:' + SOL + '">' + br(fv, 1) + '</span> de sol ' +
+        (bat <= 0 ? '<span style="color:' + VBAT + '">+ ' + br(-bat, 1) + '</span> da bateria '
+                  : '<span style="color:' + VBAT + '">− ' + br(bat, 1) + '</span> para a bateria ') +
+        '= <span style="color:' + VCAR + '">' + br(bomba, 1) + ' kW</span> na bomba' +
+        (erro > Math.max(2, bomba * 0.05)
+          ? '<br><span style="color:#ff8a5c">fecha com ' + br(erro, 1) + ' kW de diferença — ' +
+            'leituras de instantes diferentes, ou falta carga que o logger não vê</span>'
+          : '<br><span style="color:#6b7683">fecha (diferença de ' + br(erro, 1) + ' kW)</span>') +
+      '</div>';
+
+    const rodape =
+      '<div style="color:#6b7683;font-size:10px;margin-top:6px;line-height:1.5">' +
+        'O <b>inversor de frequência</b> aparece no caminho mas não tem leitura no Modbus: ' +
+        'o que se mede é a potência que ENTRA nele. As perdas dele estão dentro do número da bomba.' +
+        (v.idade_s != null ? ' · leitura de há ' + Math.round(n(v.idade_s) / 60) + ' min' : '') +
+      '</div>';
+
+    return svg + conf + rodape;
+  }
+
   function abaObjetivo(v, f) {
     /* NO TOPO, e não no meio junto dos cartões: as setas de data (mais acima)
        também usam, e `const` tem zona morta — usar antes da linha que declara
@@ -1633,7 +1831,8 @@
        o dedo já espera. */
     const abas = '<div style="display:flex;gap:0;overflow-x:auto;margin:' +
       (estreito ? '10px 0 4px' : '8px 0 6px') + ';padding-bottom:2px;-webkit-overflow-scrolling:touch">' +
-      aba('geral', 'usina') + (ePoco ? aba('objetivo', '10 h/dia') : '') + aba('inversores', 'inversores') +
+      aba('geral', 'usina') + (ePoco ? aba('objetivo', '10 h/dia') : '') +
+      (ePoco ? aba('fluxo', 'por dentro') : '') + aba('inversores', 'inversores') +
       aba('bateria', 'bateria') + (strings.length ? aba('string', 'strings') : '') + '</div>';
     const corS = { 'OK': '#00c896', 'FRACA': '#ffb300', 'SEM CORRENTE': '#ff4444', 'SEM SOL': '#6b7683', 'SEM LEITURA': '#8b949e' };
     /* O INVERSOR APARECE PELO NOME, não pelo endereço (dono, 18/09/2026). O
@@ -1672,6 +1871,7 @@
 
     const miolo =
       abaAtual === 'objetivo' ? abaObjetivo(v, f) :
+      abaAtual === 'fluxo' ? abaFluxo(v, inv, strings, estreito, f) :
       abaAtual === 'inversores' ? tabela :
       abaAtual === 'bateria' ? (
         linha('Carga (SOC)', br(v.soc_pct, 1) + ' %') +
@@ -1735,5 +1935,5 @@
   /* `abaObjetivo` sai junto para a ferramenta de prévia poder RENDERIZAR a aba
      fora do navegador, pelo mesmo motivo que o `desenhar` sai: maquete feita à
      mão mostra o que eu achei que o código faz, não o que ele faz. */
-  window.SOLAR_UI = { COR, prepararCadastro, desenhar, abrirJanela, atualizarJanela, fecharJanela, abaObjetivo };
+  window.SOLAR_UI = { COR, prepararCadastro, desenhar, abrirJanela, atualizarJanela, fecharJanela, abaObjetivo, abaFluxo };
 })();
