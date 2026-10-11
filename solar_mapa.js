@@ -1077,7 +1077,7 @@
         '<span style="font:800 30px/1 system-ui,sans-serif;color:' + corMeta + '">' + br(feitas, 1) + '</span>' +
         '<span style="color:#9aa3b0;font-size:12px">h de bomba ' + (parcial ? 'até agora' : 'hoje') + '</span>' +
         '<span style="margin-left:auto;color:#9aa3b0;font-size:12px">meta <b style="color:#e8edf5">' + META_H + ' h</b>' +
-        ' · placas <b style="color:#ffd479">' + br(teto, 1) + ' h</b></span>' +
+        ' · sol direto <b style="color:#ffd479">' + br(teto, 1) + ' h</b></span>' +
       '</div>' +
       /* a barra mostra as TRÊS coisas de uma vez: feito, meta e teto do céu */
       '<div style="position:relative;height:12px;border-radius:6px;background:#1b2430;overflow:hidden;margin-bottom:3px">' +
@@ -1086,7 +1086,14 @@
         '<div style="position:absolute;top:0;bottom:0;left:100%;width:2px;background:#e8edf5"></div>' +
       '</div>' +
       '<div style="color:#6b7683;font-size:10px;margin-bottom:10px">a risca branca é a meta de ' + META_H +
-        ' h · a faixa escura é a energia que as placas fizeram, em hora de bomba' +
+        ' h · a faixa escura é o que o <b>sol sozinho</b> consegue tocar na bomba' +
+        /* PASSAR DO SOL DIRETO NÃO É ERRO DE CONTA — é a bateria trabalhando,
+           e é a única forma de chegar nas 10 h. Dizer isso explicitamente
+           evita que o número pareça defeito (o dono já pegou um defeito real
+           hoje; a tela tem de distinguir um do outro). */
+        (feitas > teto + 0.1
+          ? ' · <b style="color:#00c896">a bateria esticou +' + br(feitas - teto, 1) + ' h</b> além disso'
+          : '') +
         /* O RECORDE RESPONDE A PERGUNTA QUE ELE FEZ (11/10/2026): *"não tem esse
            sol para tocar 11h"*. Tem razão, e agora a tela diz — com um dia que
            de fato aconteceu, não com a soma dos melhores de cada hora. */
@@ -1103,17 +1110,25 @@
     for (let h = 0; h < 24; h++) {
       const r = hoje.find(x => x.hora === h);
       const fb = r ? n(r.frac_bomba) : 0, ft = r ? n(r.frac_teto) : 0;
-      /* QUEM CORTA É O DESENHO, não o dado (ver o comentário da view 147): a
-         coluna tem altura 1, mas `ft` pode valer 1,58 numa hora de meio-dia —
-         é essa sobra que vira a tarja escura de "sol além da bomba". */
-      const folga = Math.max(0, Math.min(1 - fb, ft - fb));   // o que ainda caberia na bomba
-      const sobra = Math.max(0, (ft - fb) - folga);           // o que não cabe de jeito nenhum
-      const sobraDes = Math.min(sobra, 1 - fb - folga + 0.25); // só para a barra não estourar
+      /* DESDE A MIGRAÇÃO 154 o dado já vem separado: `frac_teto` é o sol que
+         CABE na bomba (teto 1) e `frac_excedente` é o que passa dela. Antes
+         os dois vinham somados num `ft` que chegava a 1,58 e o desenho tinha
+         de separar — e foi somar as duas coisas num número só que produziu a
+         leitura errada que o dono pegou em 11/10/2026. */
+      const folga = Math.max(0, ft - fb);                     // o que ainda caberia na bomba
+      const sobra = r ? n(r.frac_excedente) : 0;              // o que não cabe de jeito nenhum
+      /* A SOBRA PRECISA CABER NA TELA E APARECER. A trava antiga cortava em
+         0,25 de coluna, o que fazia sentido quando a sobra era pequena; com o
+         teto da 154 ela chega a 1,0 (ao meio-dia o sol dobra a bomba) e a
+         trava escondia justamente o maior número da aba. Agora a coluna tem
+         60% de céu acima da altura cheia da bomba, na MESMA escala — sobra de
+         meia bomba desenha meia altura. */
+      const sobraDes = Math.min(sobra, 0.6);
       recup += folga; excedente += sobra;
-      const H = 46;
+      const H = 44, HT = Math.round(H * 1.6);
       colunas.push('<div title="' + h + 'h · bomba ' + br(fb * 60, 0) + ' min equiv' +
         (folga > 0.02 ? ' · dava +' + br(folga * 60, 0) + ' min' : '') + '" ' +
-        'style="flex:1;display:flex;flex-direction:column;justify-content:flex-end;height:' + H + 'px;gap:1px">' +
+        'style="flex:1;display:flex;flex-direction:column;justify-content:flex-end;height:' + HT + 'px;gap:1px">' +
         (sobra > 0.02 ? '<div style="height:' + (Math.max(0, sobraDes) * H).toFixed(1) + 'px;background:#2b3744"></div>' : '') +
         (folga > 0.02 ? '<div style="height:' + (folga * H).toFixed(1) + 'px;background:#ffb300"></div>' : '') +
         (fb > 0.01 ? '<div style="height:' + (fb * H).toFixed(1) + 'px;background:#00c896"></div>' : '') +
@@ -1192,7 +1207,7 @@
       '<div style="display:flex;gap:10px;flex-wrap:wrap;color:#9aa3b0;font-size:10px;margin:5px 0 10px">' +
         '<span><i style="display:inline-block;width:8px;height:8px;background:#00c896;border-radius:2px"></i> bombeando</span>' +
         '<span><i style="display:inline-block;width:8px;height:8px;background:#ffb300;border-radius:2px"></i> dava para bombear</span>' +
-        '<span><i style="display:inline-block;width:8px;height:8px;background:#2b3744;border-radius:2px"></i> sol além da bomba</span>' +
+        '<span><i style="display:inline-block;width:8px;height:8px;background:#2b3744;border-radius:2px"></i> sobra: não cabe na bomba</span>' +
       '</div>';
 
     /* ---------- 5 · A FRASE DO PORQUÊ ---------- */
@@ -1246,8 +1261,20 @@
       porque = '⏳ <b>dia em andamento</b> — ' + br(feitas, 1) + ' h até agora, de ' + br(teto, 1) +
                ' h que o céu já ofereceu' + (comTeto.length ? ' (sol desde ' + tetoDe + 'h)' : '') + '.';
     else if (feitas >= META_H) porque = '✅ meta batida.';
-    else if (teto < META_H)
-      porque = '☁️ <b>o céu não deu</b>: o potencial do dia foi ' + br(teto, 1) + ' h, abaixo da meta. Não havia ' + META_H + ' h para fazer.';
+    /* A FRASE DO "CÉU NÃO DEU" FOI REESCRITA NA 154. Com o teto velho ela
+       comparava a meta contra um dia-Frankenstein; com o teto novo (o sol que
+       cabe na bomba, 9,1 a 9,7 h) ela dispararia TODO DIA, porque o sol
+       sozinho nunca chega às 10 h nesta usina. E não chegar é o normal: as
+       10 h se fazem com o sol direto MAIS a bateria nas pontas. Então o que
+       a tela precisa dizer é de quanto foi a ajuda da bateria, não que o céu
+       falhou. */
+    else if (feitas > teto + 0.1)
+      porque = '🔋 <b>passou do sol direto</b>: o sol sozinho tocava ' + br(teto, 1) +
+               ' h e a bateria esticou mais ' + br(feitas - teto, 1) + ' h. Faltaram ' +
+               br(META_H - feitas, 1) + ' h para a meta.';
+    else if (teto < META_H - 0.3 && feitas >= teto - 0.2)
+      porque = '☀️ <b>o sol direto deu ' + br(teto, 1) + ' h e foi todo usado</b>. As ' + META_H +
+               ' h só saem esticando com a bateria nas pontas — é o que a indicação lá embaixo persegue.';
     else if (socMin > 0 && socMin <= 22)
       porque = '🔋 <b>a bateria chegou ao piso</b> (' + br(socMin, 0) + '%). Faltou reserva para seguir bombeando quando o sol caiu.';
     /* O LIMIAR DE 0,3 h (18 min) existe para a tela não acusar "parou cedo"
@@ -1285,10 +1312,9 @@
            de 10 h depende do tempo; esta não. */
         cartao('aproveitamento', teto > 0.5 ? br(Math.min(100, feitas / teto * 100), 0) + ' %' : '—',
                teto > 0.5 ? (feitas / teto >= 0.96 ? '#00c896' : feitas / teto >= 0.90 ? '#ffb300' : '#ff4444') : '#9aa3b0',
-               'do que as placas fizeram' + (parcial ? ' até agora' : '')) +
+               'do sol que cabe na bomba' + (parcial ? ' até agora' : '')) +
         cartao('água bombeada', br(m3, 0) + ' m³', '#5aa9ff', br(feitas, 1) + ' h × 204 m³/h') +
         cartao('dava para bombear', '+' + br(recup, 1) + ' h', recup > 0.5 ? '#ffb300' : '#9aa3b0', 'sol que cabia na bomba') +
-        cartao('sol além da bomba', br(excedente, 1) + ' h', '#6b7683', 'não vira hora: bomba cheia') +
         cartao('bateria no fim', br(n(dHoje.soc_fim_pct), 0) + ' %', n(dHoje.soc_fim_pct) >= 50 ? '#00c896' : '#ffb300',
                'menor do dia: ' + br(socMin, 0) + ' %') +
         /* O QUE O INVERSOR RECUSOU, em hora de bomba (migração 153). Antes este
@@ -1299,9 +1325,13 @@
            Fica FORA do aproveitamento de propósito: energia que o inversor não
            deixou entrar não é energia que a bomba deixou de usar. Misturar as
            duas foi o erro que o dono pegou em 11/10/2026. */
-        cartao('inversor recusou', '+' + br(n(dHoje.kwh_recusado) / bombaKw, 1) + ' h',
-               n(dHoje.kwh_recusado) / bombaKw > 0.5 ? '#ffb300' : '#9aa3b0',
-               br(n(dHoje.min_limitado), 0) + ' min estrangulado') +
+        /* O EXCEDENTE DO MEIO-DIA (migração 154). Não é "perda do operador": é
+           energia que as placas fazem e a bomba NÃO pode absorver, por ser
+           carga de potência fixa. Só vira hora de bomba passando pela bateria,
+           nas pontas do dia. São 4 a 6 h por dia — o maior número da tela, e
+           o que de fato diz onde está o ganho que falta. */
+        cartao('sobra das placas', br(n(dHoje.horas_excedente), 1) + ' h', '#ffb300',
+               'não cabe na bomba · ' + br(n(dHoje.min_limitado), 0) + ' min estrangulado') +
         /* MESMO RELÓGIO DA FAIXA VERDE: este cartão mostrava o balde horário
            ("7h → 16h") logo abaixo de uma faixa que dizia 7:26 → 17:01. */
         (ligouAs != null ? cartao('janela da bomba',
@@ -1391,7 +1421,7 @@
          diferentes e um dia pode acertar uma e errar a outra: céu de 6 h
          totalmente aproveitado fica VERDE e SEM ponto. */
       '<div style="margin-top:5px;font-size:9px;color:#8ba0bd;line-height:1.6">' +
-        '<div style="margin-bottom:2px"><b style="color:#dbe9f7">a cor</b> = quanto do que as placas fizeram chegou na bomba:' +
+        '<div style="margin-bottom:2px"><b style="color:#dbe9f7">a cor</b> = quanto do sol que cabe na bomba foi usado:' +
           ' <i style="display:inline-block;width:7px;height:7px;background:#00c896;border-radius:2px"></i> 96% ou mais' +
           ' · <i style="display:inline-block;width:7px;height:7px;background:#ffb300;border-radius:2px"></i> 90 a 96%' +
           ' · <i style="display:inline-block;width:7px;height:7px;background:#ff4444;border-radius:2px"></i> abaixo de 90%</div>' +
