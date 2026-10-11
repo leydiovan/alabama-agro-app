@@ -971,19 +971,22 @@
         '(esse é a faixa verde, com minuto exato).' +
       '</div>' +
 
-      /* O BANCO ESTÁ ESCORREGANDO? Achado de 11/10/2026: o sol da tarde caiu
-         ~10% em cinco dias, o dia passou a terminar mais baixo e o amanhecer
-         junto (Poço 01: 67 -> 55% em quatro dias). Como o meio-dia sempre
-         enche até 90%, quem manda no amanhecer é a TARDE — e adiantar a manhã
-         não conserta isso, só come a margem que sobrou. Sem este aviso a tela
-         recomendaria adiantar bem no dia em que não se deve. */
+      /* O BANCO VEM CAINDO? O aviso DESCREVE, não explica — e isso é correção
+         do mesmo dia. Eu tinha escrito aqui que "o sol da tarde enfraqueceu",
+         ajustando uma reta a cinco pontos. O teste certo era comparar com a
+         usina dos pivôs, que vê o mesmo céu: ela caiu junto em UM dia (10/10,
+         -12%) e só nele. Nos poços o sol da tarde estava plano nos quatro dias
+         anteriores (108, 103, 106, 103 kWh) e caiu num (95). O que puxou o
+         banco foi bombear mais — intencional — mais um dia nublado.
+         Não é tendência; a queda é fato, a causa não era a que eu disse. */
       (n(sg.tendencia_pts_dia) < -0.8
         ? '<div style="background:#2a2014;border:1px solid #6b4a1a;border-radius:6px;padding:6px 8px;' +
           'margin-bottom:7px;font-size:11px;color:#ffd9a0;line-height:1.45">' +
-          '⚠️ <b>o banco vem caindo ' + br(Math.abs(n(sg.tendencia_pts_dia)), 1) + ' pontos por dia</b> — ' +
-          'o sol da tarde enfraqueceu e o dia termina mais baixo, então amanhã o amanhecer será ' +
-          'menor que hoje. O relógio acima já parte do banco de hoje, mas <b>confira o fundo da ' +
-          'manhã antes de adiantar mais</b>: enquanto a tarde não firmar, a margem encolhe sozinha.' +
+          '⚠️ <b>o banco vem caindo ' + br(Math.abs(n(sg.tendencia_pts_dia)), 1) + ' pontos por dia</b> ' +
+          'nos últimos dias — pode ser o dia rendendo mais bomba (intencional), pode ser tarde ' +
+          'nublada, e a tela não separa os dois. O relógio acima já parte do banco de HOJE, mas ' +
+          '<b>confira o fundo da manhã antes de adiantar mais</b>: enquanto o banco não firmar, ' +
+          'a margem encolhe sozinha.' +
           '</div>'
         : '') +
 
