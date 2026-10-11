@@ -1433,57 +1433,44 @@
       for (let a2 = 0; a2 < 4; a2++)
         d += '<line x1="' + (X + 8 + a2 * 13) + '" y1="' + (uy + 7) + '" x2="' + (X + 8 + a2 * 13) +
              '" y2="' + (uy + 26) + '" stroke="#2e4157" stroke-width="3" stroke-linecap="round"/>';
-      /* A TEMPERATURA SAI DE TRÁS DO ESTADO (dono: *"temperatura tá embolada
-         com o status; o status tá bom, tira a temperatura de trás dele"*) e
-         vai para o canto de cima, sobre as aletas — que é, aliás, onde ela
-         fisicamente importa. */
+      /* ===== UMA LINHA POR DADO =====
+         Dono, 11/10/2026: *"nos inversores tem dados sobrepondo, falta
+         organizar"*. Eu vinha empilhando dois valores por linha (cc com
+         rendimento, kWh com temperatura) para caber numa caixa de 66 px, e
+         a 7,5 px eles se encostavam. A caixa tem 108 px de ALTURA e sobrava
+         espaço: o problema era espremer na largura o que cabia na vertical.
 
-      /* O VISOR: a geração CA é o número que importa, então ela cresce e a
-         unidade vira um sufixo discreto, meia altura e apagada (dono: *"a
-         geração de cada inversor aumenta a fonte e acha um jeito de colocar a
-         unidade de forma discreta"*). O lado CC fica de apoio, pequeno. */
-      d += '<rect x="' + (X + 5) + '" y="' + (uy + 30) + '" width="' + (UW - 10) + '" height="38" rx="3" ' +
-           'fill="#0c141e" stroke="#2e4157"/>';
-      d += '<text x="' + (X + UW / 2 + 5) + '" y="' + (uy + 52) + '" fill="#bfe4ff" font-size="17" ' +
-           'font-weight="800" font-family="system-ui,sans-serif" text-anchor="middle">' +
-           br(n(i.p_ativa_kw), 1) + '<tspan font-size="8" font-weight="400" fill="#5d7f9c" dx="2">kW</tspan></text>';
-      /* linha dividida: cc à esquerda, rendimento à direita. Centrados, os
-         dois se escreviam um por cima do outro. */
-      d += tx(X + 10, uy + 63, br(n(i.p_cc_kw), 1) + ' cc', '#4a6a85', 7.5);
-      /* A LINHA DE BAIXO DIVIDE-SE: energia do dia à esquerda, temperatura à
-         direita. Ela estava no topo, mas o nome do aparelho a expulsou de lá;
-         e não volta para trás do estado, que foi de onde o dono mandou tirar. */
-      d += tx(X + 6, uy + 82, br(n(i.e_hoje_kwh), 0) + ' kWh', '#5d7f9c', 8.5);
-      d += '<text x="' + (X + UW - 6) + '" y="' + (uy + 82) + '" fill="' +
-           (n(i.temp_c) > 65 ? '#ff8a5c' : '#4a5f78') + '" font-size="8.5" ' +
-           'font-family="system-ui,sans-serif" text-anchor="end">' + br(n(i.temp_c), 0) + '°</text>';
-      /* A EFICIÊNCIA (migração 162) entra no visor, embaixo do cc: é a terceira
-         coisa que se quer saber de um inversor, depois de quanto faz e de que
-         temperatura está. Só aparece quando existe — a usina dos pivôs e
-         leituras velhas podem não ter. */
-      if (n(i.eficiencia_pct) != null)
-        d += '<text x="' + (X + UW - 10) + '" y="' + (uy + 63) + '" fill="' +
-             (n(i.eficiencia_pct) >= 98 ? '#4a7f6a' : '#ffb300') + '" font-size="7.5" ' +
-             'font-family="system-ui,sans-serif" text-anchor="end">' +
-             br(n(i.eficiencia_pct), 1) + '%</text>';
-      d += '<circle cx="' + (X + 13) + '" cy="' + (uy + 96) + '" r="3.4" fill="' + cor + '"/>';
-      d += tx(X + 21, uy + 99, e, cor, 9, 700);
-      /* NOME CURTO SEM CORTAR NO MEIO. O logger chama uns de "Inversor 1" e
-         outros de "Inverter(COM1-11)"; um `slice(0,10)` cego virava
-         "Inverter(C", que não é nome de nada. Tira-se o prefixo e fica o que
-         distingue — "1" ou "COM1-11". O nome inteiro continua na aba
-         "inversores", que é onde se vai procurar o aparelho pela prancha. */
+         De cima para baixo: nome · temperatura · aletas · potência CA (o
+         número que importa) · entrada CC · rendimento · energia do dia ·
+         estado. */
       const cru = i.nome || ('end ' + i.endereco);
       const mcurto = /^inver\w*\s*\(?([^)]+)\)?\s*$/i.exec(cru);
-      /* O NOME ENTRA NA CAIXA. Fora dela, no topo, ele ficava bem embaixo do
-         cabo que desce das placas e simplesmente não aparecia. Agora divide a
-         primeira linha com a temperatura: nome à esquerda, °C à direita. */
-      d += '<text x="' + (X + 6) + '" y="' + (uy + 18) + '" fill="#8ba0bd" font-size="8.5" ' +
+      d += '<text x="' + (X + 6) + '" y="' + (uy + 13) + '" fill="#8ba0bd" font-size="8.5" ' +
            'font-weight="700" font-family="system-ui,sans-serif" stroke="#1a2634" ' +
            'stroke-width="2.5" paint-order="stroke">' + (() => {
              const r = (mcurto ? mcurto[1] : cru).trim();
-             return (r.length <= 3 ? 'inv ' + r : r).slice(0, 10);
+             return (r.length <= 3 ? 'inv ' + r : r).slice(0, 9);
            })() + '</text>';
+      d += '<text x="' + (X + UW - 6) + '" y="' + (uy + 13) + '" fill="' +
+           (n(i.temp_c) > 65 ? '#ff8a5c' : '#4a5f78') + '" font-size="8.5" ' +
+           'font-family="system-ui,sans-serif" text-anchor="end" stroke="#1a2634" ' +
+           'stroke-width="2.5" paint-order="stroke">' + br(n(i.temp_c), 0) + '°</text>';
+      for (let a2 = 0; a2 < 4; a2++)
+        d += '<line x1="' + (X + 9 + a2 * 13) + '" y1="' + (uy + 19) + '" x2="' + (X + 9 + a2 * 13) +
+             '" y2="' + (uy + 30) + '" stroke="#2e4157" stroke-width="3" stroke-linecap="round"/>';
+      /* o visor, com TRÊS linhas e cada uma só sua */
+      d += '<rect x="' + (X + 5) + '" y="' + (uy + 35) + '" width="' + (UW - 10) + '" height="44" rx="3" ' +
+           'fill="#0c141e" stroke="#2e4157"/>';
+      d += '<text x="' + (X + UW / 2 + 5) + '" y="' + (uy + 53) + '" fill="#bfe4ff" font-size="17" ' +
+           'font-weight="800" font-family="system-ui,sans-serif" text-anchor="middle">' +
+           br(n(i.p_ativa_kw), 1) + '<tspan font-size="8" font-weight="400" fill="#5d7f9c" dx="2">kW</tspan></text>';
+      d += tx(X + UW / 2, uy + 64, 'entra ' + br(n(i.p_cc_kw), 1), '#4a6a85', 8, 400, 'middle');
+      if (n(i.eficiencia_pct) != null)
+        d += tx(X + UW / 2, uy + 74, 'rende ' + br(n(i.eficiencia_pct), 1) + '%',
+                n(i.eficiencia_pct) >= 98 ? '#4a7f6a' : '#ffb300', 8, 400, 'middle');
+      d += tx(X + UW / 2, uy + 92, br(n(i.e_hoje_kwh), 0) + ' kWh hoje', '#5d7f9c', 8.5, 400, 'middle');
+      d += '<circle cx="' + (X + 13) + '" cy="' + (uy + 102) + '" r="3.4" fill="' + cor + '"/>';
+      d += tx(X + 21, uy + 105, e, cor, 9, 700);
       if (vale(n(i.p_ativa_kw))) d += fio([[X + UW / 2, uy + uh], [X + UW / 2, BY - 6]], SOL, 2.6, true);
     });
     if (!invs.length) d += tx(ux(1), uy + 40, 'sem inversores', '#6b7683', 10);
