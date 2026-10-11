@@ -977,42 +977,63 @@
          faixa verde do dia mostrasse 17:01 e aqui estivesse 16:43 (11/10/2026). */
       linha('vem ligando', hm(ligaH), vale ? hm(ligaH - ganho / 60) : null,
             vale ? '<b style="color:#00c896">+' + br(ganho, 0) + ' min</b> que a bateria paga' : 'no ponto') +
+      /* O NÚMERO CRU DA ARITMÉTICA, quando a trava das 6h corta. O dono pediu
+         que a sugestão faça as contas e a decisão seja dele (11/10/2026), e
+         esconder o quanto foi cortado seria decidir por ele. Mas o recomendado
+         continua sendo o travado: antes de o sol dar 20% da bomba o minuto
+         custa 69 kW de bateria contra 16 kW às 7h. */
+      (n(sg.minutos_pela_conta) > ganho + 2
+        ? '<div style="font-size:10px;color:#8ba0bd;padding:2px 0 0 62px">a conta pura daria <b>+' +
+          br(n(sg.minutos_pela_conta), 0) + ' min</b> (' + hm(ligaH - n(sg.minutos_pela_conta) / 60) +
+          '), mas antes das ' + br(n(sg.hora_sol_ajuda), 0) + 'h não há sol: seria bateria pura, ' +
+          'a água mais cara do dia, e o banco no piso antes de amanhecer.</div>'
+        : '') +
       linha('vem parando', hm(deslH), null,
             (cm != null && ct != null)
-              ? 'manter: a tarde custa <b>' + br(ct, 0) + ' kW</b>/min contra <b>' + br(cm, 0) + '</b> da manhã'
+              ? 'manter: sai do banco que tem de atravessar a noite'
               : '') +
 
       /* OS DOIS PORQUÊS, e o segundo é o maior. Sem eles a sugestão é uma ordem
          sem argumento — e ordem sem argumento ninguém segue, com razão. */
       '<div style="margin-top:8px;border-top:1px solid #1e2a38;padding-top:7px;font-size:11px;color:#9aa3b0;line-height:1.5">' +
-        '<b style="color:#dbe9f7">por quê a manhã, e por que não mexe na noite</b><br>' +
-        '1 · <b>ao amanhecer o céu já ajuda</b>: a bateria paga <b style="color:#00c896">' + br(cm, 0) +
-        ' kW</b> por minuto, contra <b style="color:#ff8a5c">' + br(ct, 0) + ' kW</b> no fim da tarde — ' +
-        'o mesmo pedaço de bateria rende bem mais minuto de bomba de manhã.' +
-        (jog > 0.1
-          ? '<br>2 · <b>e quem paga é o sol que hoje se perde</b>: perto do meio-dia a bateria enche e o ' +
-            'inversor é estrangulado, jogando fora <b style="color:#ff8a5c">' + br(jog, 2) + ' h/dia</b> de bomba. ' +
-            'Ligar mais cedo gasta <b>' + br(n(sg.kwh_sobrando), 0) + ' kWh</b> ao amanhecer e abre esse tanto de ' +
-            'espaço — o meio-dia repõe, e <b>a bateria vai dormir tão cheia quanto hoje</b>.'
+        '<b style="color:#dbe9f7">por quê a manhã, e não a tarde</b><br>' +
+        /* ATENÇÃO AO ARGUMENTO, que mudou em 11/10/2026 e por um bom motivo.
+           Eu justificava a manhã pelo custo BRUTO do minuto (kW de bateria por
+           minuto de bomba), que era menor de manhã. Conforme o dono foi
+           adiantando a partida, esse número INVERTEU: em três dos quatro poços
+           a tarde passou a custar menos (34 contra 53 no Poço 02) — os minutos
+           baratos da manhã já tinham sido tomados. A tela chegou a se
+           contradizer, dizendo "a tarde custa menos" e logo abaixo "a manhã
+           rende mais".
+
+           O custo bruto nunca foi o critério certo: ele ignora a DEVOLUÇÃO. O
+           que se gasta de manhã abre espaço na bateria para o meio-dia
+           estrangulado repor no MESMO dia; o que se gasta à tarde sai do banco
+           que ainda tem de atravessar a noite. Medido nos quatro poços: a
+           partida foi ~30 min mais cedo e o SOC do fim do dia SUBIU 12 a 21
+           pontos. Gasto que volta não é gasto. */
+        '1 · <b>a manhã é devolvida no mesmo dia</b>: o que a bateria adianta ao ' +
+        'amanhecer abre espaço para o meio-dia repor — e o meio-dia tem ' +
+        (jog > 0.1 ? '<b style="color:#ff8a5c">' + br(jog, 1) + ' h/dia</b> de sol' : 'sol') +
+        ' sendo recusado por falta de onde pôr. Já o minuto da tarde sai do banco ' +
+        'que precisa atravessar a noite, e só volta no meio-dia seguinte.' +
+        '<br>2 · <b>e está medido, não suposto</b>: a partida foi ~30 min mais cedo ' +
+        'nos últimos dias e a bateria passou a <b style="color:#00c896">terminar o dia ' +
+        'mais cheia</b>, não mais vazia. Adiantar não custou carga — rendeu.' +
+        (cm != null && ct != null
+          ? '<br>3 · <b>o minuto bruto já não decide</b>: hoje ele custa <b>' + br(cm, 0) +
+            ' kW</b> de manhã contra <b>' + br(ct, 0) + ' kW</b> à tarde' +
+            (ct < cm ? ' — a tarde ficou mais barata, sinal de que os minutos fáceis da manhã já foram tomados. Ainda assim a manhã ganha, porque volta.'
+                     : ' — e a manhã ainda é a mais barata das duas.')
           : '') +
         (n(sg.soc_fundo_manha) != null
-          ? '<br>3 · <b>e não fura o piso</b>: no fundo da manhã a bateria chega a <b style="color:' +
-            (n(sg.soc_fundo_manha) > n(sg.soc_piso_pct) + 5 ? '#00c896' : '#ffb300') + '">' +
-            br(n(sg.soc_fundo_manha), 0) + '%</b>, contra o piso de ' + br(n(sg.soc_piso_pct), 0) + '%. ' +
-            'É esse fundo que limita o quanto dá para antecipar — não a noite.'
+          ? '<br>4 · <b>e não fura o piso</b>: no fundo da manhã a bateria chega a <b style="color:' +
+            (n(sg.soc_fundo_manha) > 18 ? '#00c896' : '#ffb300') + '">' +
+            br(n(sg.soc_fundo_manha), 0) + '%</b>, com a proteção do BESS em 10%. ' +
+            'É esse fundo que limita o quanto dá para antecipar.'
           : '') +
-        '<br><span style="color:#6b7683">Em dia nublado não há sol estrangulado para repor; nesses dias ' +
-        'a bateria termina mais baixa. A conta é do dia típico.</span>' +
-      '</div>' +
-
-      '<div style="color:#6b7683;font-size:10px;margin-top:7px;border-top:1px solid #1e2a38;padding-top:5px">' +
-        'de ' + (sg.dias_na_janela || '?') + ' dias fechados · sobrou <b>' + br(n(sg.kwh_sobrando), 0) +
-        ' kWh</b> de bateria (SOC fim ' + br(n(sg.soc_fim_tipico), 0) + '%, piso ' +
-        br(n(sg.soc_piso_pct), 0) + '%, reserva de 10)' +
-        (conf === 'INSTÁVEL'
-          ? ' · <span style="color:#ff8a5c">os dias discordam muito entre si (desvio ' + br(n(sg.soc_fim_desvio), 0) +
-            '); confira mais alguns antes de mexer no temporizador</span>'
-          : conf === 'POUCO DADO' ? ' · <span style="color:#ff8a5c">poucos dias na janela</span>' : '') +
+        '<br><span style="color:#6b7683">Em dia nublado não há sol estrangulado para repor; ' +
+        'nesses dias a bateria termina mais baixa. A conta é do dia típico.</span>' +
       '</div>' +
 
       /* DE QUANTO EM QUANTO TEMPO ELE AVALIA (pergunta do dono, 11/10/2026).
