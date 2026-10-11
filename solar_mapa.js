@@ -1107,6 +1107,13 @@
      um número ali seria inventar — e foi inventar número que custou o dia de
      hoje. */
   function abaFluxo(v, inv, strings, estreito, f) {
+    /* O CSS DO FLUXO ENTRA AQUI TAMBÉM. Ele era injetado APENAS quando o mapa
+       chegava no zoom em que o selo ganha painel (`escala >= PISO_PAINEL`) —
+       então, abrindo a janela com o mapa afastado, a regra `.solFluxo` não
+       existia na página e NADA animava. Defeito achado pelo dono em
+       11/10/2026 (*"a animação não funciona"*), e invisível na prévia, que
+       rasteriza imagem parada. A função é idempotente. */
+    estiloFluxo();
     const n = x => (x == null || isNaN(x)) ? null : Number(x);
     const SOL = '#ffd479', VBAT = '#00c896', VCAR = '#5aa9ff', TRAC = '#3a4b5e';
     const est = { '0x200': 'gerando', '0x201': 'limitado', '0x202': 'limitado', '0xa000': 'sem sol' };
@@ -1160,15 +1167,15 @@
       const ax = x2 - ux * P, ay = y2 - uy * P, nx = -uy, ny = ux;
       const cam = 'M ' + x1 + ' ' + y1 + ' L ' + ax.toFixed(1) + ' ' + ay.toFixed(1);
       const g = grosso || 3;
-      /* o tracejado é proporcional ao trecho: padrão fixo some num cabo curto
-         e vira pontilhado num cabo longo */
-      const tr = Math.max(4, c / 5).toFixed(1), vao = Math.max(6, c / 5 * 1.5).toFixed(1);
+      /* MESMO PERÍODO DE 24 dos outros cabos: proporcional ao trecho, cada
+         cabo fechava num ponto diferente do ciclo e o desenho PULAVA de volta
+         a cada volta da animação — era isto que parecia "não animar". */
       return '<path d="' + cam + '" fill="none" stroke="#0a1018" stroke-width="' + (g + 4.5).toFixed(1) +
           '" stroke-linecap="round"/>' +
         '<path d="' + cam + '" fill="none" stroke="' + cor + '" stroke-width="' + (g + 1.5).toFixed(1) +
           '" stroke-linecap="round" opacity=".3"/>' +
         '<path class="solFluxo" d="' + cam + '" fill="none" stroke="' + cor + '" stroke-width="' +
-          (g - 0.6).toFixed(1) + '" style="stroke-dasharray:' + tr + ' ' + vao + '"/>' +
+          (g - 0.6).toFixed(1) + '" style="stroke-dasharray:' + TRACO_FIO + '"/>' +
         '<polygon points="' + x2 + ',' + y2 + ' ' +
           (ax + nx * 5).toFixed(1) + ',' + (ay + ny * 5).toFixed(1) + ' ' +
           (ax - nx * 5).toFixed(1) + ',' + (ay - ny * 5).toFixed(1) + '" fill="' + cor + '"/>';
@@ -1189,10 +1196,16 @@
     const cam = pts => 'M ' + pts.map(q => q[0].toFixed(1) + ' ' + q[1].toFixed(1)).join(' L ');
     const comp = pts => { let c = 0; for (let i = 1; i < pts.length; i++)
       c += Math.hypot(pts[i][0] - pts[i-1][0], pts[i][1] - pts[i-1][1]); return c; };
-    const tracos = (c, k) => {
-      const t = Math.max(4, c / (k || 6));
-      return t.toFixed(1) + ' ' + (t * 1.5).toFixed(1);
-    };
+    /* O PERÍODO DO TRACEJADO TEM DE FECHAR COM O PASSO DA ANIMAÇÃO.
+       O `@keyframes` anda `stroke-dashoffset` de 0 a -24; se o período do
+       padrão não divide 24, o desenho avança um pedaço e PULA de volta a cada
+       ciclo — que é o que parecia "não animar". Eu vinha calculando o traço
+       proporcional ao comprimento do cabo, e aí cada cabo tinha um período
+       diferente e nenhum fechava.
+       Agora o período é fixo em 24 (traço + vão), que é exatamente um ciclo:
+       o laço fica contínuo em todos eles. 9/15 no fio e 10/14 no cano — mesmo
+       período, aparências diferentes. */
+    const TRACO_FIO = '9 15', TRACO_CANO = '10 14';
     const ponta = (pts, cor, tam) => {
       const b2 = pts[pts.length - 1], a2 = pts[pts.length - 2];
       const dx = b2[0] - a2[0], dy = b2[1] - a2[1], c = Math.hypot(dx, dy) || 1;
@@ -1204,20 +1217,20 @@
     };
     /* FIO: capa escura, isolação na cor do circuito, e a corrente clara andando */
     const fio = (pts, cor, g, anda, comPonta) => {
-      const c = cam(pts), L = comp(pts);
+      const c = cam(pts);
       return '<path d="' + c + '" fill="none" stroke="#0a1018" stroke-width="' + (g + 4.5).toFixed(1) +
           '" stroke-linecap="round" stroke-linejoin="round"/>' +
         '<path d="' + c + '" fill="none" stroke="' + cor + '" stroke-width="' + (g + 1.6).toFixed(1) +
           '" stroke-linecap="round" stroke-linejoin="round" opacity=".32"/>' +
         (anda ? '<path class="solFluxo" d="' + c + '" fill="none" stroke="' + cor + '" stroke-width="' +
           g.toFixed(1) + '" stroke-linecap="round" stroke-linejoin="round" style="stroke-dasharray:' +
-          tracos(L, 7) + '"/>' : '') +
+          TRACO_FIO + '"/>' : '') +
         (comPonta ? ponta(pts, cor, 7) : '');
     };
     /* CANO: bem mais grosso, com parede de metal, e a água só corre quando a
        bomba está ligada — parado ele fica cheio e quieto, que é a verdade. */
     const cano = (pts, fluindo) => {
-      const c = cam(pts), L = comp(pts);
+      const c = cam(pts);
       return '<path d="' + c + '" fill="none" stroke="#0a1018" stroke-width="15" ' +
           'stroke-linecap="round" stroke-linejoin="round"/>' +
         '<path d="' + c + '" fill="none" stroke="#6b7d91" stroke-width="12.5" ' +
@@ -1226,7 +1239,7 @@
           'stroke-linecap="round" stroke-linejoin="round"/>' +
         (fluindo
           ? '<path class="solFluxo" d="' + c + '" fill="none" stroke="#2fe0d0" stroke-width="6.5" ' +
-            'stroke-linecap="round" stroke-linejoin="round" style="stroke-dasharray:' + tracos(L, 9) + '"/>'
+            'stroke-linecap="round" stroke-linejoin="round" style="stroke-dasharray:' + TRACO_CANO + '"/>'
           : '');
     };
     const tx = (x, y, t, cor, tam, peso, anc) =>
