@@ -971,12 +971,41 @@
         '(esse é a faixa verde, com minuto exato).' +
       '</div>' +
 
+      /* O BANCO ESTÁ ESCORREGANDO? Achado de 11/10/2026: o sol da tarde caiu
+         ~10% em cinco dias, o dia passou a terminar mais baixo e o amanhecer
+         junto (Poço 01: 67 -> 55% em quatro dias). Como o meio-dia sempre
+         enche até 90%, quem manda no amanhecer é a TARDE — e adiantar a manhã
+         não conserta isso, só come a margem que sobrou. Sem este aviso a tela
+         recomendaria adiantar bem no dia em que não se deve. */
+      (n(sg.tendencia_pts_dia) < -0.8
+        ? '<div style="background:#2a2014;border:1px solid #6b4a1a;border-radius:6px;padding:6px 8px;' +
+          'margin-bottom:7px;font-size:11px;color:#ffd9a0;line-height:1.45">' +
+          '⚠️ <b>o banco vem caindo ' + br(Math.abs(n(sg.tendencia_pts_dia)), 1) + ' pontos por dia</b> — ' +
+          'o sol da tarde enfraqueceu e o dia termina mais baixo, então amanhã o amanhecer será ' +
+          'menor que hoje. O relógio acima já parte do banco de hoje, mas <b>confira o fundo da ' +
+          'manhã antes de adiantar mais</b>: enquanto a tarde não firmar, a margem encolhe sozinha.' +
+          '</div>'
+        : '') +
+
       /* "VEM LIGANDO", e não "ligar": o número da esquerda é a MEDIANA dos dias
          fechados, não uma ordem nem o relógio de hoje. Com o rótulo "ligar" o
          dono leu os dois como a mesma medida e estranhou, com razão, que a
          faixa verde do dia mostrasse 17:01 e aqui estivesse 16:43 (11/10/2026). */
-      linha('vem ligando', hm(ligaH), vale ? hm(ligaH - ganho / 60) : null,
-            vale ? '<b style="color:#00c896">+' + br(ganho, 0) + ' min</b> que a bateria paga' : 'no ponto') +
+      /* O RELÓGIO NA FRENTE, O DESCONTO ATRÁS (migração 161). O "adianta X
+         min" é a distância até uma MEDIANA de dias fechados, que defasa um
+         dia — somá-lo ao horário real de hoje leva para antes do que o banco
+         aguenta. O número que se pendura no temporizador é o absoluto. */
+      '<div style="display:flex;align-items:baseline;gap:8px;padding:6px 0;border-top:1px solid #1e2a38">' +
+        '<span style="color:#8ba0bd;font-size:11px;width:72px;flex:none">pode ligar</span>' +
+        '<b style="font-size:' + (estreito ? '20px' : '17px') + ';color:#00c896">' +
+          (n(sg.liga_ideal) != null ? hm(n(sg.liga_ideal)) : hm(ligaH)) + '</b>' +
+        '<span style="color:#8ba0bd;font-size:10px;margin-left:auto;text-align:right;max-width:52%">' +
+          'o banco do amanhecer (' + br(n(sg.soc_amanhecer), 0) + '%) chega aos 15% quando o sol assume' +
+        '</span>' +
+      '</div>' +
+      linha('vem ligando', hm(ligaH), null,
+            vale ? 'mediana de ' + (sg.dias_na_janela || '?') + ' dias — <b style="color:#00c896">' +
+                   br(ganho, 0) + ' min</b> atrás do relógio acima' : 'no ponto') +
       /* O NÚMERO CRU DA ARITMÉTICA, quando a trava das 6h corta. O dono pediu
          que a sugestão faça as contas e a decisão seja dele (11/10/2026), e
          esconder o quanto foi cortado seria decidir por ele. Mas o recomendado
@@ -1017,9 +1046,16 @@
         (jog > 0.1 ? '<b style="color:#ff8a5c">' + br(jog, 1) + ' h/dia</b> de sol' : 'sol') +
         ' sendo recusado por falta de onde pôr. Já o minuto da tarde sai do banco ' +
         'que precisa atravessar a noite, e só volta no meio-dia seguinte.' +
-        '<br>2 · <b>e está medido, não suposto</b>: a partida foi ~30 min mais cedo ' +
-        'nos últimos dias e a bateria passou a <b style="color:#00c896">terminar o dia ' +
-        'mais cheia</b>, não mais vazia. Adiantar não custou carga — rendeu.' +
+        /* ESTA FRASE JÁ FOI MAIS FORTE E ESTAVA ERRADA. Eu dizia "a bateria
+           passou a terminar o dia mais cheia", comparando com o período
+           antigo. No período RECENTE ela vinha caindo — mas pelo outro lado
+           do dia: o pico do meio-dia se manteve em 89-91% TODO dia, enquanto
+           o fim da tarde caiu de 70 para 58%, porque o sol depois das 14h
+           enfraqueceu. O que a frase pode afirmar com segurança é o pico. */
+        '<br>2 · <b>e está medido no pico</b>: o meio-dia devolve o que a manhã ' +
+        'gastou — o banco encosta em <b style="color:#00c896">90%</b> todo dia, mesmo nos ' +
+        'dias em que a partida foi bem mais cedo. Quem manda no quanto sobra à noite é a ' +
+        '<b>tarde</b>, não a manhã.' +
         (cm != null && ct != null
           ? '<br>3 · <b>o minuto bruto já não decide</b>: hoje ele custa <b>' + br(cm, 0) +
             ' kW</b> de manhã contra <b>' + br(ct, 0) + ' kW</b> à tarde' +
