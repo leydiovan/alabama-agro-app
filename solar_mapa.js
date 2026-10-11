@@ -1811,6 +1811,24 @@
     return svg + conf + rodape;
   }
 
+  /* O MOTIVO CERTO, não um número que confunde. São dois critérios (migração
+     167) e dizer sempre a cobertura engana: em 29/09 o Poço 03 tem 97% de
+     cobertura — que soa completo — e foi reprovado pelos 36 minutos sem
+     leitura COM A BOMBA RODANDO, que é a incerteza que de fato pesa. */
+  function porqueIncompleto(d) {
+    const n2 = x => (x == null || isNaN(x)) ? null : Number(x);
+    const perd = n2(d.min_perdidos_bombeando), cob = n2(d.cobertura_pct);
+    /* A COBERTURA VEM PRIMEIRO QUANDO É BAIXA. Em 18/09 falta METADE do dia
+       (43,8%), e os 29 minutos perdidos bombeando são efeito colateral: dizer
+       "29 min" faria o leitor subestimar o tamanho do buraco. Já em 29/09 a
+       cobertura é 97% — dizer isso soaria COMPLETO — e o que reprova são os
+       36 minutos sem leitura com a bomba rodando. Cada caso, o seu motivo. */
+    if (cob != null && cob < 90) return 'só ' + br(cob, 0) + '% do dia foi medido';
+    if (perd != null && perd > 10)
+      return br(perd, 0) + ' min sem leitura com a bomba rodando';
+    return br(cob, 0) + '% do dia medido';
+  }
+
   function abaObjetivo(v, f) {
     /* NO TOPO, e não no meio junto dos cartões: as setas de data (mais acima)
        também usam, e `const` tem zona morta — usar antes da linha que declara
@@ -2129,7 +2147,13 @@
                dHoje.desarmou === true ? '#c060ff'
                : n(dHoje.nota_pct) >= 95 ? '#00c896'
                : n(dHoje.nota_pct) >= 85 ? '#ffb300' : '#ff4444',
-               dHoje.desarmou === true
+               /* DIA INCOMPLETO DIZ QUE ESTÁ INCOMPLETO (migração 167). Sem
+                  isto o cartão mostrava só "—", que é outro tipo de silêncio:
+                  o dono não saberia se o poço foi mal ou se a telemetria
+                  falhou. A nota some justamente para não confundir as duas. */
+               dHoje.completo === false
+                 ? 'dia incompleto — ' + porqueIncompleto(dHoje)
+               : dHoje.desarmou === true
                  ? 'passou do seguro, não é perfeição'
                  : 'de ' + br(n(dHoje.teto_total_h), 1) + ' h possíveis' + (parcial ? ' até agora' : '')) +
         /* O FUNDO DA MANHÃ é o diagnóstico do próprio dono: ficou muito acima
@@ -2203,7 +2227,9 @@
               : aprov >= 0.95 ? '#00c896' : aprov >= 0.85 ? '#ffb300' : '#ff4444';
       return '<div title="' + (d.dia + '').slice(5) + ' · ' + br(hb, 1) + ' h de ' +
         br(n(d.teto_total_h) || hp, 1) + ' h possíveis · nota ' +
-        (aprov == null ? '—' : br(aprov * 100, 0) + '%') +
+        (aprov == null
+          ? (d.completo === false ? 'dia incompleto — ' + porqueIncompleto(d) : '—')
+          : br(aprov * 100, 0) + '%') +
         (d.desarmou === true ? ' · ⚠ raspou a proteção' : '') +
         (d.fim_arriscado === true ? ' · ⚠ terminou abaixo de 20%' : '') +
         (hb >= META_H ? ' · bateu a meta' : '') + '" ' +
