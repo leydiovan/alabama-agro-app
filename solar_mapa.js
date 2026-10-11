@@ -1276,6 +1276,7 @@
     const QX = ux(0), QW = LARG[0];                   // o inv. de frequência
     const BX0 = ux(1), BX1 = ux(2) + LARG[2];              // o barramento: SÓ sob os dois solares
     const ENTB = SOLOY + 34;                          // profundidade do cabo do BESS
+    const MEIOCB = (ux(2) + LARG[2] - 6 + EX + EW / 2) / 2;   // meio do trecho do cabo do BESS
 
     let d = '<defs>' +
       '<linearGradient id="sfPlaca" x1="0" y1="0" x2="1" y2="1">' +
@@ -1500,7 +1501,10 @@
          'fill="#b07d3a" stroke="#d9a05a" stroke-width="1"/>';
     [BX0 + 10, BX1 - 10].forEach(x => {
       d += '<rect x="' + (x - 4) + '" y="' + (BY + 4) + '" width="8" height="9" rx="2" fill="#39495c"/>'; });
-    d += rot((BX0 + BX1) / 2, BY + 20, 'barramento', '#d9a05a', 'middle');
+    /* EM DUAS LINHAS, com o CA centrado embaixo (dono, 11/10/2026). Numa
+       linha só, "barramento CA" era mais largo que a própria barra. */
+    d += rot((BX0 + BX1) / 2, BY + 19, 'BARRAMENTO', '#d9a05a', 'middle');
+    d += rot((BX0 + BX1) / 2, BY + 30, 'CA', '#d9a05a', 'middle');
 
     /* 3d · O BESS, bem afastado da casa para o cabo aparecer */
     const EY = GY + 6, EH = GH - 6;
@@ -1531,8 +1535,11 @@
     d += tx(EX + EW / 2, EY - 18, '🔋 BESS', '#dbe9f7', 10, 700, 'middle');
     /* O ESTADO VAI PARA BAIXO DO CABO, onde sobra espaço: em cima ele caía
        atrás do próprio cabo do BESS. */
-    d += tx(EX + EW / 2, ENTB + 32, vale(bat) ? (bat > 0 ? 'carregando' : 'descarregando') : 'em repouso',
-            vale(bat) ? corB : '#6b7683', 9.5, 700, 'middle');
+    /* O ESTADO VAI CENTRADO ABAIXO DO NÚMERO, e não sobre o BESS: lá ele
+       ficava colado na borda direita e "descarregando" saía da imagem. */
+    d += tx(MEIOCB, vale(bat) ? ENTB + 46 : ENTB + 30,
+            vale(bat) ? (bat > 0 ? 'carregando' : 'descarregando') : 'em repouso',
+            vale(bat) ? corB : '#6b7683', 11, 700, 'middle');
     /* o kW NÃO se repete aqui: quem já diz é o rótulo do próprio cabo, logo
        ao lado. Dois números iguais a 10 px um do outro só poluem. */
 
@@ -1542,7 +1549,14 @@
     const viaBess = [[BX1 - 6, BY + 2], [BX1 - 6, ENTB], [EX + EW / 2, ENTB], [EX + EW / 2, SOLOY - 2]];
     const ligBess = vale(bat)
       ? fio(bat > 0 ? viaBess : viaBess.slice().reverse(), VBAT, 2.8, true, true) +
-        rot((GX + GW + EX) / 2, ENTB + 13, br(Math.abs(bat), 1) + ' kW', VBAT, 'middle')
+        /* O NÚMERO DO BESS, EM DOBRO E DESCOLADO DO CABO (dono, 11/10/2026:
+           *"pode aumentar a fonte o dobro, tá pequeno, descola do cabo"*).
+           Centrado no MEIO DO TRECHO do cabo, não no meio do vão entre casa e
+           BESS: o rótulo centrado no BESS escapava pela direita da imagem. */
+        '<text x="' + MEIOCB + '" y="' + (ENTB + 30) + '" fill="' + VBAT + '" font-size="22" ' +
+        'font-weight="800" font-family="system-ui,sans-serif" text-anchor="middle" ' +
+        'stroke="#0d1520" stroke-width="4" paint-order="stroke">' + br(Math.abs(bat), 1) +
+        '<tspan font-size="10" font-weight="400" dx="2">kW</tspan></text>'
       : '<path d="' + cam(viaBess) + '" fill="none" stroke="#2b3744" stroke-width="2" ' +
         'stroke-dasharray="3 4"/>';
 
