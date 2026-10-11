@@ -1110,7 +1110,7 @@
     const n = x => (x == null || isNaN(x)) ? null : Number(x);
     const SOL = '#ffd479', VBAT = '#00c896', VCAR = '#5aa9ff', TRAC = '#3a4b5e';
     const est = { '0x200': 'gerando', '0x201': 'limitado', '0x202': 'limitado', '0xa000': 'sem sol' };
-    const W = 380, H = 700;
+    const W = 380, H = 712;
 
     const fv = n(v.p_fv_kw) || 0, bat = n(v.p_bateria_kw) || 0, bomba = n(v.p_carga_kw) || 0;
     const soc = n(v.soc_pct);
@@ -1172,6 +1172,62 @@
         '<polygon points="' + x2 + ',' + y2 + ' ' +
           (ax + nx * 5).toFixed(1) + ',' + (ay + ny * 5).toFixed(1) + ' ' +
           (ax - nx * 5).toFixed(1) + ',' + (ay - ny * 5).toFixed(1) + '" fill="' + cor + '"/>';
+    };
+    /* ===== FIO E CANO, os dois com o que corre POR DENTRO =====
+       Dono, 11/10/2026: *"a corrente que passa dentro tem que ser animada no
+       sentido que está indo; o cano quando desligado fica sem fluxo, bem mais
+       grosso que o fio, e quando ligado a água passa dentro fazendo o fluxo"*.
+
+       O SENTIDO É A ORDEM DOS PONTOS, não a cor: a animação puxa o tracejado
+       para a frente do caminho (`stroke-dashoffset` negativo), então inverter
+       um fluxo é inverter o array — é assim que a bateria carregando e
+       descarregando usam o mesmo código.
+
+       E a PONTA continua existindo onde há destino: em imagem parada (print,
+       PDF, a prévia) e para quem liga "reduzir movimento" o tracejado congela,
+       e sem a ponta os dois sentidos ficariam idênticos. */
+    const cam = pts => 'M ' + pts.map(q => q[0].toFixed(1) + ' ' + q[1].toFixed(1)).join(' L ');
+    const comp = pts => { let c = 0; for (let i = 1; i < pts.length; i++)
+      c += Math.hypot(pts[i][0] - pts[i-1][0], pts[i][1] - pts[i-1][1]); return c; };
+    const tracos = (c, k) => {
+      const t = Math.max(4, c / (k || 6));
+      return t.toFixed(1) + ' ' + (t * 1.5).toFixed(1);
+    };
+    const ponta = (pts, cor, tam) => {
+      const b2 = pts[pts.length - 1], a2 = pts[pts.length - 2];
+      const dx = b2[0] - a2[0], dy = b2[1] - a2[1], c = Math.hypot(dx, dy) || 1;
+      const ux = dx / c, uy = dy / c, nx = -uy, ny = ux, P = tam || 8;
+      const qx = b2[0] - ux * P, qy = b2[1] - uy * P;
+      return '<polygon points="' + b2[0].toFixed(1) + ',' + b2[1].toFixed(1) + ' ' +
+        (qx + nx * (P * .6)).toFixed(1) + ',' + (qy + ny * (P * .6)).toFixed(1) + ' ' +
+        (qx - nx * (P * .6)).toFixed(1) + ',' + (qy - ny * (P * .6)).toFixed(1) + '" fill="' + cor + '"/>';
+    };
+    /* FIO: capa escura, isolação na cor do circuito, e a corrente clara andando */
+    const fio = (pts, cor, g, anda, comPonta) => {
+      const c = cam(pts), L = comp(pts);
+      return '<path d="' + c + '" fill="none" stroke="#0a1018" stroke-width="' + (g + 4.5).toFixed(1) +
+          '" stroke-linecap="round" stroke-linejoin="round"/>' +
+        '<path d="' + c + '" fill="none" stroke="' + cor + '" stroke-width="' + (g + 1.6).toFixed(1) +
+          '" stroke-linecap="round" stroke-linejoin="round" opacity=".32"/>' +
+        (anda ? '<path class="solFluxo" d="' + c + '" fill="none" stroke="' + cor + '" stroke-width="' +
+          g.toFixed(1) + '" stroke-linecap="round" stroke-linejoin="round" style="stroke-dasharray:' +
+          tracos(L, 7) + '"/>' : '') +
+        (comPonta ? ponta(pts, cor, 7) : '');
+    };
+    /* CANO: bem mais grosso, com parede de metal, e a água só corre quando a
+       bomba está ligada — parado ele fica cheio e quieto, que é a verdade. */
+    const cano = (pts, fluindo) => {
+      const c = cam(pts), L = comp(pts);
+      return '<path d="' + c + '" fill="none" stroke="#0a1018" stroke-width="15" ' +
+          'stroke-linecap="round" stroke-linejoin="round"/>' +
+        '<path d="' + c + '" fill="none" stroke="#6b7d91" stroke-width="12.5" ' +
+          'stroke-linecap="round" stroke-linejoin="round"/>' +
+        '<path d="' + c + '" fill="none" stroke="#17384d" stroke-width="8" ' +
+          'stroke-linecap="round" stroke-linejoin="round"/>' +
+        (fluindo
+          ? '<path class="solFluxo" d="' + c + '" fill="none" stroke="#2fe0d0" stroke-width="6.5" ' +
+            'stroke-linecap="round" stroke-linejoin="round" style="stroke-dasharray:' + tracos(L, 9) + '"/>'
+          : '');
     };
     const tx = (x, y, t, cor, tam, peso, anc) =>
       '<text x="' + x + '" y="' + y + '" fill="' + cor + '" font-size="' + (tam || 11) +
@@ -1253,124 +1309,126 @@
       ? seta(126, 158, 126, 238, SOL, 3.4) + rot(136, 214, br(fv, 1) + ' kW', SOL)
       : tx(136, 214, 'sem geração', '#6b7683', 10);
 
-    /* ======================= 3 · O GALPÃO E O BESS =======================
-       TOPOLOGIA CORRIGIDA EM 11/10/2026. Eu tinha posto o BESS DENTRO do
-       galpão; o dono: *"a bateria é um BESS que fica ao lado da casa,
-       praticamente a mesma altura"*. O cadastro confirma e dá as medidas —
-       casa 5,0 x 2,5 m e bateria 2,5 x 1,5 m, com 1,1 m de vão entre elas,
-       ambas com o poço mais à direita.
+    /* ================= 3 · POÇO | CASA | BESS =================
+       ARRANJO PEDIDO PELO DONO em 11/10/2026: *"a casa coloca ela mais larga,
+       e os equipamentos um do lado do outro; o poço pode colocar do lado
+       oposto do BESS, ao lado da casa"*. Antes eu tinha o BESS dentro da casa
+       (errado) e depois o poço embaixo dela (errado também) — o cadastro
+       (`geom.benfeitorias`) tem casa 5,0 x 2,5 m, BESS 2,5 x 1,5 m e o poço
+       mais afastado. A ordem do desenho é a que ele pediu, que é a que cabe
+       na tela: POÇO · CASA · BESS.
 
-       NÃO É ESCALA, e é decisão consciente: a 38 px/m um inversor de 0,6 m
-       sairia com 23 px e não caberia aleta nenhuma — o desenho perderia
-       justamente o detalhe que o dono pediu. Quem tem escala é o mapa. Aqui
-       as PROPORÇÕES são livres e o que tem de estar certo é o ARRANJO: casa,
-       BESS ao lado e quase da mesma altura, poço à direita. */
-    const GX = 16, GY = 206, GW = 222, GH = 268;      // o galpão
-    const SOLOY = GY + GH;                            // o chão passa na base dos dois
-    /* O BARRAMENTO nasce aqui com as outras medidas (zona morta de `const`:
-       as setas dos inversores, acima, já precisam dele). */
-    const BY = GY + 182;
+       NÃO É ESCALA, e é escolha: a 38 px/m um inversor de 0,6 m teria 23 px e
+       não caberia aleta nenhuma — morreria o detalhe que ele pediu. Quem tem
+       escala é o mapa; aqui o que precisa estar certo é o ARRANJO. */
+    const GX = 76, GY = 206, GW = 224, GH = 250;      // a casa
+    const SOLOY = GY + GH;
+    const BY = GY + 182;                              // barramento (vem antes: zona morta)
+    const PX = 10, PW = 52, PCX = PX + PW / 2;        // o poço, à esquerda
+    const EX = 312, EW = 60;                          // o BESS, à direita
 
-    /* 3a · telhado de UMA ÁGUA, como o cadastro diz ("aguas":1, caimento s) */
-    d += '<path d="M ' + (GX - 10) + ' ' + (GY - 26) + ' L ' + (GX + GW + 10) + ' ' + (GY - 4) +
-         ' L ' + (GX + GW + 10) + ' ' + (GY + 6) + ' L ' + (GX - 10) + ' ' + (GY - 16) +
+    /* 3a · telhado de UMA água, como o cadastro diz */
+    d += '<path d="M ' + (GX - 12) + ' ' + (GY - 26) + ' L ' + (GX + GW + 12) + ' ' + (GY - 4) +
+         ' L ' + (GX + GW + 12) + ' ' + (GY + 6) + ' L ' + (GX - 12) + ' ' + (GY - 16) +
          ' Z" fill="url(#sfTelha)" stroke="#5c6e82" stroke-width="1.2"/>';
-    d += '<rect x="' + GX + '" y="' + (GY - 14) + '" width="12" height="' + (GH + 14) + '" fill="#2c3947" stroke="#4a5b6e"/>';
-    d += '<rect x="' + (GX + GW - 12) + '" y="' + (GY - 6) + '" width="12" height="' + (GH + 6) + '" fill="#2c3947" stroke="#4a5b6e"/>';
-    d += '<rect x="' + (GX + 12) + '" y="' + (GY - 10) + '" width="' + (GW - 24) + '" height="' + (GH + 10) +
+    d += '<rect x="' + GX + '" y="' + (GY - 14) + '" width="11" height="' + (GH + 14) + '" fill="#2c3947" stroke="#4a5b6e"/>';
+    d += '<rect x="' + (GX + GW - 11) + '" y="' + (GY - 6) + '" width="11" height="' + (GH + 6) + '" fill="#2c3947" stroke="#4a5b6e"/>';
+    d += '<rect x="' + (GX + 11) + '" y="' + (GY - 10) + '" width="' + (GW - 22) + '" height="' + (GH + 10) +
          '" fill="rgba(10,16,24,.55)"/>';
-    d += '<rect x="' + (GX + GW - 11) + '" y="' + (GY + 150) + '" width="9" height="' + (GH - 150) +
+    d += '<rect x="' + (GX + GW - 10) + '" y="' + (GY + 160) + '" width="8" height="' + (GH - 160) +
          '" fill="#1d2733" stroke="#4a5b6e" stroke-width=".8"/>';
-    d += '<circle cx="' + (GX + GW - 8) + '" cy="' + (GY + 214) + '" r="1.8" fill="#8ba0bd"/>';
-    d += tx(GX, GY - 34, 'casa de aparelhos', '#8ba0bd', 10.5, 700);
-
+    d += tx(GX + GW, GY - 30, 'casa de aparelhos', '#8ba0bd', 10.5, 700, 'end');
     d += cabo;
 
-    /* 3b · OS DOIS INVERSORES, na parede */
-    const bx = [GX + 18, GX + 114], bw = 90, by = GY + 42, bh = 100;
+    /* 3b · OS TRÊS APARELHOS LADO A LADO */
+    const UW = 64, UG = 4, U0 = GX + 12, uy = GY + 40, uh = 108;
+    const ux = k => U0 + k * (UW + UG);
+    const aparelho = (k, titulo, corTopo) => {
+      const X = ux(k);
+      d += '<rect x="' + (X + 7) + '" y="' + (uy - 5) + '" width="' + (UW - 14) + '" height="5" fill="#3a4b5e"/>';
+      d += '<rect x="' + X + '" y="' + uy + '" width="' + UW + '" height="' + uh +
+           '" rx="5" fill="#1a2634" stroke="' + corTopo + '" stroke-width="1.3"/>';
+      d += tx(X + UW / 2, uy - 9, titulo, '#dbe9f7', 9, 700, 'middle');
+      return X;
+    };
     invs.forEach((i, k) => {
+      if (k > 1) return;
       const e = est[String(i.estado).toLowerCase()] || i.estado || '—';
       const cor = i.falha ? '#ff4444' : /limit/.test(e) ? '#ffb300' : VBAT;
-      const X = bx[k];
-      d += '<rect x="' + (X + 8) + '" y="' + (by - 5) + '" width="' + (bw - 16) + '" height="5" fill="#3a4b5e"/>';
-      d += '<rect x="' + X + '" y="' + by + '" width="' + bw + '" height="' + bh +
-           '" rx="6" fill="#1a2634" stroke="#46607d" stroke-width="1.3"/>';
-      for (let a2 = 0; a2 < 7; a2++)
-        d += '<line x1="' + (X + 9 + a2 * 12) + '" y1="' + (by + 7) + '" x2="' + (X + 9 + a2 * 12) +
-             '" y2="' + (by + 27) + '" stroke="#2e4157" stroke-width="3" stroke-linecap="round"/>';
-      d += '<rect x="' + (X + 7) + '" y="' + (by + 33) + '" width="' + (bw - 14) + '" height="34" rx="3" ' +
+      const X = aparelho(k, (i.nome || ('end ' + i.endereco)).slice(0, 11), '#46607d');
+      for (let a2 = 0; a2 < 5; a2++)
+        d += '<line x1="' + (X + 8 + a2 * 12) + '" y1="' + (uy + 7) + '" x2="' + (X + 8 + a2 * 12) +
+             '" y2="' + (uy + 26) + '" stroke="#2e4157" stroke-width="3" stroke-linecap="round"/>';
+      d += '<rect x="' + (X + 6) + '" y="' + (uy + 32) + '" width="' + (UW - 12) + '" height="34" rx="3" ' +
            'fill="#0c141e" stroke="#2e4157"/>';
-      d += tx(X + 12, by + 46, br(n(i.p_cc_kw), 1) + ' cc', '#9fd4ff', 9.5);
-      d += tx(X + 12, by + 57, '→ ' + br(n(i.p_ativa_kw), 1) + ' ca', '#9fd4ff', 9.5);
-      d += tx(X + 12, by + 80, br(n(i.e_hoje_kwh), 0) + ' kWh', '#5d7f9c', 9);
-      d += '<circle cx="' + (X + 13) + '" cy="' + (by + 92) + '" r="3.6" fill="' + cor + '"/>';
-      d += '<circle cx="' + (X + 13) + '" cy="' + (by + 92) + '" r="6.5" fill="' + cor + '" opacity=".22"/>';
-      d += tx(X + 22, by + 95, e, cor, 9.5, 700);
-      d += tx(X + bw - 7, by + 95, br(n(i.temp_c), 0) + '°', n(i.temp_c) > 65 ? '#ff8a5c' : '#5d7f9c', 9, 400, 'end');
-      d += tx(X, by - 9, (i.nome || ('end. ' + i.endereco)).slice(0, 13), '#dbe9f7', 9.5, 700);
-      if (vale(fv)) d += seta(X + bw / 2, by + bh, X + bw / 2, BY - 6, SOL, 2.4);
+      d += tx(X + UW / 2, uy + 45, br(n(i.p_cc_kw), 1) + ' cc', '#9fd4ff', 9, 400, 'middle');
+      d += tx(X + UW / 2, uy + 58, '↓ ' + br(n(i.p_ativa_kw), 1) + ' ca', '#9fd4ff', 9, 400, 'middle');
+      d += tx(X + UW / 2, uy + 80, br(n(i.e_hoje_kwh), 0) + ' kWh', '#5d7f9c', 8.5, 400, 'middle');
+      d += '<circle cx="' + (X + 12) + '" cy="' + (uy + 95) + '" r="3.4" fill="' + cor + '"/>';
+      d += '<circle cx="' + (X + 12) + '" cy="' + (uy + 95) + '" r="6" fill="' + cor + '" opacity=".22"/>';
+      d += tx(X + 19, uy + 98, e, cor, 8.5, 700);
+      d += tx(X + UW - 5, uy + 98, br(n(i.temp_c), 0) + '°', n(i.temp_c) > 65 ? '#ff8a5c' : '#5d7f9c', 8.5, 400, 'end');
     });
-    if (!invs.length) d += tx(GX + 20, by + 40, 'sem leitura dos inversores', '#6b7683', 10);
+    /* o terceiro da fila é o inversor de FREQUÊNCIA */
+    const FX = aparelho(2, 'inv. frequência', '#46607d'), FW = UW;
+    d += '<line x1="' + (FX + FW / 2) + '" y1="' + (uy + 4) + '" x2="' + (FX + FW / 2) + '" y2="' +
+         (uy + uh - 4) + '" stroke="#2e4157" stroke-width="1"/>';
+    d += '<rect x="' + (FX + 6) + '" y="' + (uy + 10) + '" width="' + (FW - 12) + '" height="26" rx="3" ' +
+         'fill="#0c141e" stroke="#2e4157"/>';
+    d += tx(FX + FW / 2, uy + 27, vale(bomba) ? br(bomba, 1) : 'parado', vale(bomba) ? VCAR : '#5d7f9c',
+            vale(bomba) ? 12 : 9.5, 700, 'middle');
+    if (vale(bomba)) d += tx(FX + FW / 2, uy + 40, 'kW', '#5d7f9c', 8.5, 400, 'middle');
+    for (let a2 = 0; a2 < 5; a2++)
+      d += '<line x1="' + (FX + 8) + '" y1="' + (uy + 52 + a2 * 7) + '" x2="' + (FX + FW - 8) +
+           '" y2="' + (uy + 52 + a2 * 7) + '" stroke="#243343" stroke-width="2.2" stroke-linecap="round"/>';
+    d += tx(FX + FW / 2, uy + 100, 'sem leitura', '#5d7f9c', 8.5, 400, 'middle');
 
-    /* 3c · barramento de cobre */
+    /* 3c · barramento de cobre, por baixo dos três */
     d += '<rect x="' + (GX + 16) + '" y="' + (BY - 4) + '" width="' + (GW - 32) + '" height="8" rx="2" ' +
          'fill="#b07d3a" stroke="#d9a05a" stroke-width="1"/>';
     [GX + 30, GX + GW / 2, GX + GW - 30].forEach(x => {
       d += '<rect x="' + (x - 4) + '" y="' + (BY + 4) + '" width="8" height="9" rx="2" fill="#39495c"/>'; });
-    d += rot(GX + GW / 2, BY - 13, 'barramento CA', '#d9a05a', 'middle');
+    d += rot(GX + GW / 2, BY + 26, 'barramento CA', '#d9a05a', 'middle');
 
-    /* 3d · O INVERSOR DE FREQUÊNCIA, dentro da casa */
-    const FX = GX + 22, FY = BY + 36, FW = GW - 44, FH = 70;
-    d += '<rect x="' + FX + '" y="' + FY + '" width="' + FW + '" height="' + FH +
-         '" rx="6" fill="#18222e" stroke="#46607d" stroke-width="1.3"/>';
-    d += '<line x1="' + (FX + FW / 2) + '" y1="' + (FY + 4) + '" x2="' + (FX + FW / 2) + '" y2="' +
-         (FY + FH - 4) + '" stroke="#2e4157" stroke-width="1"/>';
-    for (let a2 = 0; a2 < 4; a2++)
-      d += '<line x1="' + (FX + 10) + '" y1="' + (FY + 42 + a2 * 6) + '" x2="' + (FX + FW - 10) +
-           '" y2="' + (FY + 42 + a2 * 6) + '" stroke="#243343" stroke-width="2.2" stroke-linecap="round"/>';
-    d += '<rect x="' + (FX + 10) + '" y="' + (FY + 8) + '" width="' + (FW - 20) + '" height="24" rx="3" ' +
-         'fill="#0c141e" stroke="#2e4157"/>';
-    d += tx(FX + FW / 2, FY + 24, vale(bomba) ? br(bomba, 1) + ' kW' : 'parado',
-            vale(bomba) ? VCAR : '#5d7f9c', 11, 700, 'middle');
-    d += tx(FX, FY - 7, '⚙ inv. de frequência · sem leitura', '#8ba0bd', 9, 700);
-    if (vale(bomba)) { d += seta(GX + GW / 2, BY + 6, GX + GW / 2, FY - 2, VCAR, 2.8); }
+    /* 3d · as ligações internas, todas com corrente andando */
+    invs.forEach((i, k) => { if (k < 2 && vale(n(i.p_ativa_kw)))
+      d += fio([[ux(k) + UW / 2, uy + uh], [ux(k) + UW / 2, BY - 6]], SOL, 2.6, true); });
+    /* o inversor de frequência PUXA do barramento: a corrente sobe */
+    if (vale(bomba)) d += fio([[FX + 18, BY - 6], [FX + 18, uy + uh]], VCAR, 2.6, true);
 
-    /* 3e · O BESS, FORA — ao lado da casa e quase da mesma altura */
-    const EX = 266, EW = 98, EY = GY + 8, EH = GH - 8;
+    /* 3e · O BESS, fora, ao lado da casa e quase da mesma altura */
+    const EY = GY + 6, EH = GH - 6;
     const corB = soc == null ? '#8b949e' : soc >= 50 ? VBAT : soc >= 20 ? '#ffb300' : '#ff4444';
-    d += '<rect x="' + (EX - 5) + '" y="' + (EY - 10) + '" width="' + (EW + 10) + '" height="12" rx="3" ' +
-         'fill="#3a4b5e" stroke="#5c6e82"/>';                      // chapéu do armário
+    d += '<rect x="' + (EX - 5) + '" y="' + (EY - 10) + '" width="' + (EW + 10) + '" height="11" rx="3" ' +
+         'fill="#3a4b5e" stroke="#5c6e82"/>';
     d += '<rect x="' + EX + '" y="' + EY + '" width="' + EW + '" height="' + EH +
          '" rx="5" fill="#141f2b" stroke="#46607d" stroke-width="1.4"/>';
-    /* os módulos empilhados, com a carga pintada por dentro de baixo para cima */
-    const MOD = 4, mg = 8, mh = (EH - 34 - (MOD - 1) * 4) / MOD;
+    const MOD = 4, mg = 7, mh = (EH - 36 - (MOD - 1) * 4) / MOD;
     for (let m = 0; m < MOD; m++) {
       const yy = EY + EH - 22 - (m + 1) * mh - m * 4;
-      const ini2 = m / MOD * 100, fim2 = (m + 1) / MOD * 100;
-      const ch2 = soc == null ? 0 : Math.max(0, Math.min(1, (soc - ini2) / (fim2 - ini2)));
+      const i0 = m / MOD * 100, i1 = (m + 1) / MOD * 100;
+      const ch2 = soc == null ? 0 : Math.max(0, Math.min(1, (soc - i0) / (i1 - i0)));
       d += '<rect x="' + (EX + mg) + '" y="' + yy.toFixed(1) + '" width="' + (EW - mg * 2) + '" height="' +
            mh.toFixed(1) + '" rx="3" fill="#0f1925" stroke="#3a5a74" stroke-width="1.1"/>';
       if (ch2 > 0.02)
         d += '<rect x="' + (EX + mg + 2) + '" y="' + (yy + (mh - 4) * (1 - ch2) + 2).toFixed(1) + '" width="' +
              (EW - mg * 2 - 4) + '" height="' + ((mh - 4) * ch2).toFixed(1) + '" rx="2" fill="' + corB + '" opacity=".42"/>';
-      d += '<rect x="' + (EX + EW - mg - 14) + '" y="' + (yy + 6).toFixed(1) + '" width="10" height="3.5" rx="1" fill="#3a5a74"/>';
     }
     d += '<rect x="' + (EX + mg) + '" y="' + (EY + EH - 20) + '" width="' + (EW - mg * 2) +
-         '" height="14" rx="2" fill="#1d2b3a" stroke="#3a5a74"/>';   // base / inversor do BESS
-    d += '<text x="' + (EX + EW / 2) + '" y="' + (EY + 30) + '" fill="' + corB + '" font-size="21" ' +
+         '" height="14" rx="2" fill="#1d2b3a" stroke="#3a5a74"/>';
+    d += '<text x="' + (EX + EW / 2) + '" y="' + (EY + 28) + '" fill="' + corB + '" font-size="18" ' +
          'font-weight="800" font-family="system-ui,sans-serif" text-anchor="middle" ' +
          'stroke="#0d1520" stroke-width="3.5" paint-order="stroke">' + (soc != null ? br(soc, 0) + '%' : '—') + '</text>';
-    d += tx(EX + EW / 2, EY - 18, '🔋 BESS', '#dbe9f7', 10.5, 700, 'middle');
+    d += tx(EX + EW / 2, EY - 18, '🔋 BESS', '#dbe9f7', 10, 700, 'middle');
     d += tx(EX + EW / 2, SOLOY + 16, vale(bat) ? (bat > 0 ? 'carregando' : 'descarregando') : 'em repouso',
-            vale(bat) ? corB : '#6b7683', 9.5, 700, 'middle');
-    if (vale(bat)) d += tx(EX + EW / 2, SOLOY + 27, br(Math.abs(bat), 1) + ' kW', corB, 9.5, 700, 'middle');
+            vale(bat) ? corB : '#6b7683', 9, 700, 'middle');
+    if (vale(bat)) d += tx(EX + EW / 2, SOLOY + 27, br(Math.abs(bat), 1) + ' kW', corB, 9, 700, 'middle');
 
-    /* 3f · O ELO ENTRE A CASA E O BESS — é o que o desenho antigo escondia */
+    /* 3f · o elo casa <-> BESS; o sentido É o caminho */
     const ELO = BY + 2;
     if (vale(bat)) {
-      if (bat > 0) d += seta(GX + GW + 2, ELO, EX - 2, ELO, VBAT, 3);
-      else         d += seta(EX - 2, ELO, GX + GW + 2, ELO, VBAT, 3);
-      d += rot((GX + GW + EX) / 2, ELO - 8, br(Math.abs(bat), 1) + ' kW', VBAT, 'middle');
+      d += fio(bat > 0 ? [[GX + GW + 2, ELO], [EX - 2, ELO]] : [[EX - 2, ELO], [GX + GW + 2, ELO]], VBAT, 2.8, true);
+      d += rot((GX + GW + EX) / 2, ELO - 9, br(Math.abs(bat), 1), VBAT, 'middle');
     } else {
       d += '<line x1="' + (GX + GW + 2) + '" y1="' + ELO + '" x2="' + (EX - 2) + '" y2="' + ELO +
            '" stroke="#2b3744" stroke-width="2" stroke-dasharray="3 4"/>';
@@ -1384,59 +1442,55 @@
            (SOLOY + 10) + '" stroke="#6b5636" stroke-width="1" opacity=".45"/>';
 
     /* ======================= 5 · O POÇO E A BOMBA ======================= */
-    /* O POÇO FICA À DIREITA, como o cadastro: casa (dx -7,5) · BESS (dx -3,9)
-       · poço (dx +3,85). Eu o tinha desenhado embaixo da casa — segundo erro
-       de arranjo no mesmo desenho, e o cadastro estava ali o tempo todo. */
-    const PX = 282, PW = 54, PY1 = H - 14;
-    d += '<rect x="' + (PX - 7) + '" y="' + SOLOY + '" width="' + (PW + 14) + '" height="' + (PY1 - SOLOY) +
+    const PY1 = H - 14, BPY = PY1 - 58, BPX = PCX - 15;
+    d += '<rect x="' + (PX - 6) + '" y="' + SOLOY + '" width="' + (PW + 12) + '" height="' + (PY1 - SOLOY) +
          '" fill="#15202c" stroke="#4a5b6e" stroke-width="1.2"/>';
     d += '<rect x="' + PX + '" y="' + (SOLOY + 6) + '" width="' + PW + '" height="' + (PY1 - SOLOY - 6) +
-         '" fill="url(#sfAgua)" opacity=".55"/>';
-    d += '<rect x="' + (PX + PW / 2 - 7) + '" y="' + (SOLOY - 4) + '" width="14" height="' + (PY1 - SOLOY - 46) +
-         '" fill="#1d2b3a" stroke="#3f5f7d" stroke-width="1"/>';
-    const BPX = PX + PW / 2 - 15, BPY = PY1 - 62;
-    d += '<rect x="' + BPX + '" y="' + BPY + '" width="30" height="40" rx="4" fill="#243648" stroke="#5a86ab" stroke-width="1.3"/>';
+         '" fill="url(#sfAgua)" opacity=".5"/>';
+    /* a bomba submersa */
+    d += '<rect x="' + BPX + '" y="' + BPY + '" width="30" height="38" rx="4" fill="#243648" stroke="#5a86ab" stroke-width="1.3"/>';
     for (let a2 = 0; a2 < 4; a2++)
-      d += '<line x1="' + (BPX + 3) + '" y1="' + (BPY + 7 + a2 * 9) + '" x2="' + (BPX + 27) + '" y2="' +
-           (BPY + 7 + a2 * 9) + '" stroke="#5a86ab" stroke-width="1.6" opacity=".8"/>';
-    d += '<rect x="' + (BPX + 7) + '" y="' + (BPY + 40) + '" width="16" height="16" rx="3" fill="#1b2a38" stroke="#5a86ab"/>';
-    /* O CABO ENTERRADO FAZ O CAMINHO QUE FARIA NA OBRA: desce da casa, corre
-       raso no solo e só então entra no poço. Em diagonal ele cruzava a imagem
-       inteira e passava por cima do rótulo da bomba — além de não ser como se
-       instala. Só o último trecho leva PONTA, senão ficam três setas numa
-       linha só. */
-    const CABY = SOLOY + 26;                     // a profundidade do cabo no solo
-    const semPonta = (x1, y1, x2, y2, cor, g) => {
-      const cam = 'M ' + x1 + ' ' + y1 + ' L ' + x2 + ' ' + y2;
-      const c = Math.hypot(x2 - x1, y2 - y1);
-      const tr = Math.max(4, c / 5).toFixed(1), vao = Math.max(6, c / 5 * 1.5).toFixed(1);
-      return '<path d="' + cam + '" fill="none" stroke="#0a1018" stroke-width="' + (g + 4.5).toFixed(1) +
-          '" stroke-linecap="round"/>' +
-        '<path d="' + cam + '" fill="none" stroke="' + cor + '" stroke-width="' + (g + 1.5).toFixed(1) +
-          '" stroke-linecap="round" opacity=".3"/>' +
-        '<path class="solFluxo" d="' + cam + '" fill="none" stroke="' + cor + '" stroke-width="' +
-          (g - 0.6).toFixed(1) + '" style="stroke-dasharray:' + tr + ' ' + vao + '"/>';
-    };
-    if (vale(bomba)) {
-      d += semPonta(FX + FW / 2, FY + FH, FX + FW / 2, CABY, VCAR, 3);
-      d += semPonta(FX + FW / 2, CABY, PX + PW / 2, CABY, VCAR, 3);
-      d += seta(PX + PW / 2, CABY, PX + PW / 2, BPY - 6, VCAR, 3);
-      /* a água subindo pela coluna, na lateral do tubo para não tapar o cabo */
-      d += seta(PX + PW / 2 + 20, BPY - 12, PX + PW / 2 + 20, SOLOY + 10, '#4fb3e8', 2.6);
-      d += rot(PX + PW + 4, SOLOY + 24, 'água', '#4fb3e8');
-    } else {
-      d += '<path d="M ' + (FX + FW / 2) + ' ' + (FY + FH) + ' L ' + (FX + FW / 2) + ' ' + CABY +
-           ' L ' + (PX + PW / 2) + ' ' + CABY + ' L ' + (PX + PW / 2) + ' ' + (BPY - 6) +
-           '" fill="none" stroke="#2b3744" stroke-width="2" stroke-dasharray="4 5"/>';
-    }
+      d += '<line x1="' + (BPX + 3) + '" y1="' + (BPY + 7 + a2 * 8) + '" x2="' + (BPX + 27) + '" y2="' +
+           (BPY + 7 + a2 * 8) + '" stroke="#5a86ab" stroke-width="1.6" opacity=".8"/>';
+    d += '<rect x="' + (BPX + 7) + '" y="' + (BPY + 38) + '" width="16" height="15" rx="3" fill="#1b2a38" stroke="#5a86ab"/>';
+
+    /* 5a · O CANO: sobe da bomba, PASSA DO NÍVEL DO SOLO, faz a curva, cruza o
+       hidrômetro e volta a entrar no solo (dono, 11/10/2026). Bem mais grosso
+       que o fio, e só com água correndo por dentro quando a bomba está ligada. */
+    /* O TRECHO HORIZONTAL FICA ENTRE O POÇO E A CASA, e não por cima dela:
+       na primeira versão o cano atravessava o galpão por dentro, passando em
+       cima do barramento. Sobe, dobra, cruza o hidrômetro e volta ao solo
+       ANTES da parede. */
+    const HY = SOLOY - 30, HID = PX + PW - 4, HFIM = GX - 12;
+    d += cano([[PCX, BPY - 4], [PCX, HY], [HFIM, HY], [HFIM, SOLOY + 26]], vale(bomba));
+    /* o hidrômetro, montado no trecho horizontal */
+    d += '<rect x="' + (HID - 12) + '" y="' + (HY - 12) + '" width="24" height="24" rx="4" ' +
+         'fill="#2a3645" stroke="#7d8fa3" stroke-width="1.3"/>';
+    d += '<circle cx="' + HID + '" cy="' + HY + '" r="6.5" fill="#0c141e" stroke="#7d8fa3"/>';
+    d += '<circle cx="' + HID + '" cy="' + HY + '" r="2" fill="' + (vale(bomba) ? '#2fe0d0' : '#4a5b6e') + '"/>';
+    d += rot(HID + 2, HY - 18, 'hidrômetro', '#7d8fa3', 'middle');
+
+    /* 5b · O FIO DA BOMBA: entra no nível do solo e desce (pedido do dono) */
+    /* O FIO CORRE MAIS FUNDO QUE O PÉ DO CANO (44 contra 26): os dois têm de
+       se cruzar em algum ponto — o cano sobe à esquerda e o fio vem da casa,
+       à direita — e em profundidades iguais aquilo virava um nó. Assim lê
+       como o que é: um passando por baixo do outro. */
+    const FIOY = SOLOY + 44;
+    const caminhoFio = [[FX + FW - 18, uy + uh], [FX + FW - 18, FIOY], [PCX + 20, FIOY],
+                        [PCX + 20, BPY + 14]];
+    if (vale(bomba)) d += fio(caminhoFio, VCAR, 2.6, true, true);
+    else d += '<path d="' + cam(caminhoFio) + '" fill="none" stroke="#2b3744" stroke-width="2" ' +
+              'stroke-dasharray="4 5"/>';
+
     const lig = v.bomba_ligada === true;
-    d += tx(20, SOLOY + 38, '💧 bomba', '#dbe9f7', 12, 700);
-    d += '<text x="20" y="' + (SOLOY + 70) + '" fill="' + (lig ? VCAR : '#6b7683') + '" font-size="24" ' +
-         'font-weight="800" font-family="system-ui,sans-serif">' + (vale(bomba) ? br(bomba, 1) : '0') + '</text>';
-    d += tx(vale(bomba) ? 82 : 40, SOLOY + 70, 'kW', '#8ba0bd', 11);
-    d += tx(20, SOLOY + 90, lig ? (nom ? br(bomba / nom * 100, 0) + '% da potência' : 'ligada') : 'desligada',
-            lig ? '#8ba0bd' : '#6b7683', 10);
-    d += tx(20, SOLOY + 104, 'submersa no poço', '#5d7f9c', 9.5);
+    d += tx(PX + PW + 16, SOLOY + 72, '💧 bomba', '#dbe9f7', 11, 700);
+    d += '<text x="' + (PX + PW + 16) + '" y="' + (SOLOY + 100) + '" fill="' + (lig ? VCAR : '#6b7683') +
+         '" font-size="22" font-weight="800" font-family="system-ui,sans-serif">' +
+         (vale(bomba) ? br(bomba, 1) : '0') + '</text>';
+    d += tx(PX + PW + (vale(bomba) ? 74 : 34), SOLOY + 100, 'kW', '#8ba0bd', 10);
+    d += tx(PX + PW + 16, SOLOY + 118, lig ? (nom ? br(bomba / nom * 100, 0) + '% da potência' : 'ligada') : 'desligada',
+            lig ? '#8ba0bd' : '#6b7683', 9.5);
+    d += tx(PX + PW + 16, SOLOY + 131, 'submersa no poço', '#5d7f9c', 9);
 
     const svg = '<svg viewBox="0 0 ' + W + ' ' + H + '" width="100%" style="max-width:' +
       (estreito ? '100%' : '400px') + ';display:block;margin:4px auto" ' +
@@ -1960,7 +2014,10 @@
      atrás sem saber por quê. */
   let diaAba = null;
 
-  function fecharJanela() { abertaId = null; const e = document.getElementById('solarJanela'); if (e) e.remove(); }
+  function fecharJanela() {
+    abertaId = null; mexerViewport(false);
+    const e = document.getElementById('solarJanela'); if (e) e.remove();
+  }
   /* ABAS: cada parte do desenho abre a sua (pedido do dono, 18/09/2026):
      o meio da usina abre o GERAL, a casa abre os INVERSORES, a bateria abre a
      BATERIA, e cada string abre a dela. A janela é a mesma — muda o que ela
@@ -1971,9 +2028,35 @@
      fez `abaAtual` virar um MouseEvent, e a renderização quebrar em
      `abaAtual.startsWith(...)`: a janela não abria e não dizia por quê.
      Guarda de TIPO, não de presença. */
+  /* ===== PINÇA LIBERADA SÓ ENQUANTO A JANELA ESTÁ ABERTA =====
+     Dono, 11/10/2026: *"trava a seleção de aba e o resto usa o zoom normal de
+     dedo, pinça e etc"*. A barra de abas já vive no cabeçalho `sticky`, então
+     ela não sai do lugar. O que faltava era a pinça: o `mobile/index.html`
+     declara `maximum-scale=1,user-scalable=no`, e isso mata o zoom nativo da
+     página inteira.
+
+     Tirar de lá resolveria o desenho e estragaria o MAPA, que tem o pinça
+     dele (Leaflet) e ficaria brigando com o do navegador. Então o `meta` é
+     afrouxado na abertura e restaurado no fechamento — escopo exato do
+     problema. Quem não tem a trava (o módulo de telemetria) não sente nada,
+     porque o valor antigo é guardado e devolvido como estava. */
+  let viewportAntes = null;
+  const mexerViewport = (liberar) => {
+    const m = document.querySelector('meta[name="viewport"]');
+    if (!m) return;
+    if (liberar) {
+      if (viewportAntes == null) viewportAntes = m.getAttribute('content') || '';
+      if (/user-scalable\s*=\s*no|maximum-scale/.test(viewportAntes))
+        m.setAttribute('content', 'width=device-width,initial-scale=1,viewport-fit=cover,maximum-scale=5');
+    } else if (viewportAntes != null) {
+      m.setAttribute('content', viewportAntes); viewportAntes = null;
+    }
+  };
+
   function abrirJanela(id, fonte, aba) {
     abertaId = id; fonteAtual = fonte; diaAba = null;
     abaAtual = (typeof aba === 'string' && aba) ? aba : 'geral';
+    mexerViewport(true);
     ultimoHTML = ''; atualizarJanela();
   }
   window.SOLAR_ABA = a => { abaAtual = a; diaAba = null; ultimoHTML = ''; atualizarJanela(); };
@@ -2019,7 +2102,7 @@
     const abas = '<div style="display:flex;gap:0;overflow-x:auto;margin:' +
       (estreito ? '10px 0 4px' : '8px 0 6px') + ';padding-bottom:2px;-webkit-overflow-scrolling:touch">' +
       aba('geral', 'usina') + (ePoco ? aba('objetivo', '10 h/dia') : '') +
-      (ePoco ? aba('fluxo', 'por dentro') : '') + aba('inversores', 'inversores') +
+      aba('inversores', 'inversores') +
       aba('bateria', 'bateria') + (strings.length ? aba('string', 'strings') : '') + '</div>';
     const corS = { 'OK': '#00c896', 'FRACA': '#ffb300', 'SEM CORRENTE': '#ff4444', 'SEM SOL': '#6b7683', 'SEM LEITURA': '#8b949e' };
     /* O INVERSOR APARECE PELO NOME, não pelo endereço (dono, 18/09/2026). O
@@ -2058,14 +2141,21 @@
 
     const miolo =
       abaAtual === 'objetivo' ? abaObjetivo(v, f) :
-      abaAtual === 'fluxo' ? abaFluxo(v, inv, strings, estreito, f) :
       abaAtual === 'inversores' ? tabela :
       abaAtual === 'bateria' ? (
         linha('Carga (SOC)', br(v.soc_pct, 1) + ' %') +
         linha('Potência', br(v.p_bateria_kw, 1) + ' kW' + (v.p_bateria_kw > 0 ? ' (carregando)' : v.p_bateria_kw < 0 ? ' (descarregando)' : '')) +
         '<div style="margin-top:6px;color:#6b7683;font-size:11px">A bateria aparece SOMADA: o Modbus do logger não separa cada LUNA2000B.</div>') :
       abaAtual.startsWith('string') ? tabelaStrings() :
-      (linha('Bateria', br(v.soc_pct, 1) + ' %') +
+      /* A ABA "usina" É O DESENHO, e é a que abre (dono, 11/10/2026: *"coloca
+         essa aba como default quando abre; segundo, coloca ela no lugar da
+         usina, com o nome usina"*). `abaAtual` já nasce em 'geral' e o clique
+         no mapa manda 'geral', então trocar o conteúdo basta — não há estado
+         novo para sincronizar.
+         A usina dos PIVÔS fica com a lista de antes: ela não tem bomba, nem
+         poço, nem este arranjo, e desenhá-la assim seria mentira bonita. */
+      (ePoco ? abaFluxo(v, inv, strings, estreito, f) :
+       linha('Bateria', br(v.soc_pct, 1) + ' %') +
        linha('Gerando agora', br(v.p_fv_kw, 1) + ' kW') +
        linha('Bateria carrega/descarrega', br(v.p_bateria_kw, 1) + ' kW') +
        linha('Energia hoje', br(v.e_hoje_kwh, 0) + ' kWh') +
