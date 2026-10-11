@@ -1358,6 +1358,21 @@
         rot(GX + 6, 176, br(fv, 1) + ' kW', SOL, 'end')
       : tx(100, 176, 'sem geração', '#6b7683', 10);
 
+    /* ===== O CHÃO VEM ANTES DE TUDO QUE É ENTERRADO =====
+       Ordem de pintura, e foi defeito real: o chão e o poço eram desenhados
+       DEPOIS dos cabos, então tapavam o trecho enterrado. O dono viu os dois
+       sintomas — *"o do BESS... você cortou e não dá de ver, só dentro da
+       casa"* e *"não tô vendo indo até a bomba"*. Em SVG não há camada: o que
+       vem depois pinta por cima. Então o chão sobe para cá e os CABOS vão
+       todos para o fim, por cima de tudo, que é o certo num esquema. */
+    /* ======================= 4 · O CHÃO ======================= */
+    d += '<rect x="0" y="' + SOLOY + '" width="' + W + '" height="' + (H - SOLOY) + '" fill="url(#sfSolo)"/>';
+    d += '<line x1="0" y1="' + SOLOY + '" x2="' + W + '" y2="' + SOLOY + '" stroke="#6b5636" stroke-width="2"/>';
+    for (let a2 = 0; a2 * 15 < W; a2++)
+      d += '<line x1="' + (a2 * 15) + '" y1="' + (SOLOY + 2) + '" x2="' + (a2 * 15 - 7) + '" y2="' +
+           (SOLOY + 10) + '" stroke="#6b5636" stroke-width="1" opacity=".45"/>';
+
+
     /* ========= 3 · CANO | POÇO | INV.FREQ | CASA | BESS =========
        Arranjo de 11/10/2026, terceira rodada com o dono:
          · *"espaça mais a casa e o BESS, quase não vê o fluxo do cabo"*
@@ -1442,7 +1457,7 @@
        barramento. Agora o cabo sai da ponta esquerda da barra, desce pelo vão
        livre e sobe por baixo dele. */
     if (vale(bomba))
-      d += fio([[BX0, BY + 2], [BX0, BY + 34], [QX + 16, BY + 34], [QX + 16, uy + uh]],
+      d += fio([[BX0, BY + 2], [BX0, BY + 34], [QX + QW - 16, BY + 34], [QX + QW - 16, uy + uh]],
                VCAR, 2.6, true, true);
 
     /* 3c · barramento de cobre */
@@ -1482,41 +1497,32 @@
     d += tx(EX + EW / 2, EY - 18, '🔋 BESS', '#dbe9f7', 10, 700, 'middle');
     d += tx(EX + EW / 2, SOLOY + 16, vale(bat) ? (bat > 0 ? 'carrega' : 'descarrega') : 'repouso',
             vale(bat) ? corB : '#6b7683', 8.5, 700, 'middle');
-    if (vale(bat)) d += tx(EX + EW / 2, SOLOY + 27, br(Math.abs(bat), 1) + ' kW', corB, 8.5, 700, 'middle');
+    /* o kW NÃO se repete aqui: quem já diz é o rótulo do próprio cabo, logo
+       ao lado. Dois números iguais a 10 px um do outro só poluem. */
 
-    /* 3e · o elo casa <-> BESS, agora com vão de sobra para o fluxo aparecer */
-    /* O CABO DO BESS SAI DO BARRAMENTO, VAI PARA O CHÃO E ENTRA POR BAIXO DELE
-       (dono, 11/10/2026). Antes atravessava o ar na altura do barramento, que
-       não é como se liga um armário de bateria. O sentido é a ordem dos
-       pontos: carregando vai da barra para o BESS, descarregando volta. */
+    /* 3e · O ELO CASA <-> BESS. Guardado em variável e emitido LÁ NO FIM: ele
+       corre enterrado, e o chão (pintado antes) tapava o trecho de fora. Em
+       SVG não há camada — o que vem depois fica por cima. */
     const ENTB = SOLOY + 34;
     const viaBess = [[BX1 - 6, BY + 2], [BX1 - 6, ENTB], [EX + EW / 2, ENTB], [EX + EW / 2, SOLOY - 2]];
-    if (vale(bat)) {
-      d += fio(bat > 0 ? viaBess : viaBess.slice().reverse(), VBAT, 2.8, true, true);
-      d += rot((GX + GW + EX) / 2, ENTB - 8, br(Math.abs(bat), 1) + ' kW', VBAT, 'middle');
-    } else {
-      d += '<path d="' + cam(viaBess) + '" fill="none" stroke="#2b3744" stroke-width="2" ' +
-           'stroke-dasharray="3 4"/>';
-    }
+    const ligBess = vale(bat)
+      ? fio(bat > 0 ? viaBess : viaBess.slice().reverse(), VBAT, 2.8, true, true) +
+        rot((GX + GW + EX) / 2, ENTB - 8, br(Math.abs(bat), 1) + ' kW', VBAT, 'middle')
+      : '<path d="' + cam(viaBess) + '" fill="none" stroke="#2b3744" stroke-width="2" ' +
+        'stroke-dasharray="3 4"/>';
 
-    /* ======================= 4 · O CHÃO ======================= */
-    d += '<rect x="0" y="' + SOLOY + '" width="' + W + '" height="' + (H - SOLOY) + '" fill="url(#sfSolo)"/>';
-    d += '<line x1="0" y1="' + SOLOY + '" x2="' + W + '" y2="' + SOLOY + '" stroke="#6b5636" stroke-width="2"/>';
-    for (let a2 = 0; a2 * 15 < W; a2++)
-      d += '<line x1="' + (a2 * 15) + '" y1="' + (SOLOY + 2) + '" x2="' + (a2 * 15 - 7) + '" y2="' +
-           (SOLOY + 10) + '" stroke="#6b5636" stroke-width="1" opacity=".45"/>';
-
-    /* 5 · O FIO DA BOMBA: sai do inv. de frequência (que está no lado do poço),
-       entra no nível do solo e desce até ela, como o dono descreveu. Corre mais
-       fundo que o pé do cano para o cruzamento ler como cruzamento. */
+    /* 5 · O FIO DA BOMBA, também guardado para o fim: ele desce no poço, e o
+       poço é pintado depois — era por isso que o dono não o via chegar na
+       bomba. E agora SAI PELA ESQUERDA do inversor de frequência, que é o
+       lado do poço: a alimentação entra pela direita (lado do barramento) e
+       a saída desce pela esquerda, então os dois não se cruzam mais, que foi
+       outra coisa que ele apontou. */
     const FIOY = SOLOY + 52;
-    /* sai pela ponta OPOSTA à da entrada, para as duas não se confundirem num
-       ponto só na barriga do aparelho */
-    const caminhoFio = [[QX + QW - 16, uy + uh], [QX + QW - 16, FIOY],
-                        [PCX + 20, FIOY], [PCX + 20, H - 76]];
-    if (vale(bomba)) d += fio(caminhoFio, VCAR, 2.6, true, true);
-    else d += '<path d="' + cam(caminhoFio) + '" fill="none" stroke="#2b3744" stroke-width="2" ' +
-              'stroke-dasharray="4 5"/>';
+    const caminhoFio = [[QX + 16, uy + uh], [QX + 16, FIOY], [PCX + 20, FIOY], [PCX + 20, H - 74]];
+    const ligBomba = vale(bomba)
+      ? fio(caminhoFio, VCAR, 2.6, true, true)
+      : '<path d="' + cam(caminhoFio) + '" fill="none" stroke="#2b3744" stroke-width="2" ' +
+        'stroke-dasharray="4 5"/>';
 
     /* ======================= 6 · O POÇO E A BOMBA ======================= */
     const PY1 = H - 14, BPY = PY1 - 58, BPX = PCX - 15;
@@ -1536,7 +1542,10 @@
        e entra no chão rumo ao piscinão. Desenhado em CORTE: parede de metal
        nas duas faces e a água no meio, que é o que o dono pediu ao dizer
        "desenha ele como um cano mesmo, com visão tipo de corte". */
-    const R = 11, HY = SOLOY - 44, XFIM = 14;        // raio do tubo e altura do trecho suspenso
+    /* O CANO NÃO VOLTA MAIS PARA O CHÃO: ele MORRE no fim do desenho (dono,
+       11/10/2026), seguindo suspenso para o piscinão, que fica fora do quadro.
+       Enterrá-lo ali sugeria que o destino era logo ali do lado, e não é. */
+    const R = 11, HY = SOLOY - 44, XFIM = 0;        // raio do tubo e altura do trecho suspenso
     const corteV = (cx2, y1, y2) => {                 // trecho vertical, em corte
       const a2 = Math.min(y1, y2), b2 = Math.max(y1, y2);
       return '<rect x="' + (cx2 - R) + '" y="' + a2 + '" width="' + (R * 2) + '" height="' + (b2 - a2) +
@@ -1553,16 +1562,15 @@
     };
     d += corteV(PCX, BPY - 6, HY);
     d += corteH(XFIM, PCX + R, HY);
-    d += corteV(XFIM + R, HY, SOLOY + 40);
     /* a água por dentro, só quando a bomba está ligada */
     if (vale(bomba))
-      d += '<path class="solFluxo" d="' + cam([[PCX, BPY - 6], [PCX, HY], [XFIM + R, HY],
-            [XFIM + R, SOLOY + 40]]) + '" fill="none" stroke="#2fe0d0" stroke-width="13" ' +
+      d += '<path class="solFluxo" d="' + cam([[PCX, BPY - 6], [PCX, HY], [XFIM, HY]]) +
+           '" fill="none" stroke="#2fe0d0" stroke-width="13" ' +
            'stroke-linecap="butt" stroke-linejoin="round" style="stroke-dasharray:' + TRACO_CANO + '"/>';
-    d += tx(XFIM + R * 2 + 6, SOLOY + 34, '→ piscinão', '#4fb3e8', 9, 700);
+    d += rot(XFIM + 6, HY + 26, '← p/ o piscinão', '#4fb3e8');
 
     /* 6b · O HIDRÔMETRO, também em corte, no trecho suspenso */
-    const HID = (XFIM + R + PCX) / 2;
+    const HID = (XFIM + PCX) / 2;
     d += '<rect x="' + (HID - 17) + '" y="' + (HY - 17) + '" width="34" height="34" rx="4" ' +
          'fill="#2a3645" stroke="#7d8fa3" stroke-width="1.4"/>';
     d += '<rect x="' + (HID - 17) + '" y="' + (HY - R + 2) + '" width="34" height="' + (R * 2 - 4) +
@@ -1582,6 +1590,12 @@
     d += tx(PX + PW + (vale(bomba) ? 80 : 40), SOLOY + 120, 'kW', '#8ba0bd', 10);
     d += tx(PX + PW + 22, SOLOY + 138, lig ? (nom ? br(bomba / nom * 100, 0) + '% da potência' : 'ligada') : 'desligada',
             lig ? '#8ba0bd' : '#6b7683', 9.5);
+
+    /* ===== OS CABOS ENTERRADOS, POR ÚLTIMO =====
+       Tudo que corre fora da casa é emitido aqui, depois do chão, do poço e
+       do cano. Em SVG o que vem depois pinta por cima; desenhá-los antes era
+       o que fazia o cabo do BESS sumir no chão e o da bomba não chegar nela. */
+    d += ligBess + ligBomba;
 
     /* A MOLDURA DA LUPA. `touch-action:pan-y` deixa um dedo rolar a página e
        entrega o par de dedos para o `ligarZoomFluxo`; `overflow:hidden` faz o
