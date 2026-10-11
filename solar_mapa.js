@@ -1268,10 +1268,14 @@
     const EX = 384, EW = 48;                          // o BESS, afastado para o cabo aparecer
     /* os três aparelhos da parede, e a fila: 0 = inv. de frequência (lado do
        poço), 1 e 2 = os inversores solares */
-    const UW = 60, UG = 3, U0 = GX + 11, uy = GY + 40, uh = 108;
-    const ux = k => U0 + k * (UW + UG);
-    const QX = ux(0), QW = UW;                        // o inv. de frequência
-    const BX0 = ux(1), BX1 = ux(2) + UW;              // o barramento: SÓ sob os dois solares
+    /* LARGURAS DIFERENTES: o inversor de frequência mostra um número só, os
+       solares mostram cinco. Com os três iguais, "338 kWh" e "54°" não cabiam
+       na mesma linha nos solares e se encostavam. */
+    const LARG = [48, 66, 66], UG = 3, U0 = GX + 11, uy = GY + 40, uh = 108;
+    const ux = k => U0 + LARG.slice(0, k).reduce((a2, b2) => a2 + b2 + UG, 0);
+    const QX = ux(0), QW = LARG[0];                   // o inv. de frequência
+    const BX0 = ux(1), BX1 = ux(2) + LARG[2];              // o barramento: SÓ sob os dois solares
+    const ENTB = SOLOY + 34;                          // profundidade do cabo do BESS
 
     let d = '<defs>' +
       '<linearGradient id="sfPlaca" x1="0" y1="0" x2="1" y2="1">' +
@@ -1353,7 +1357,7 @@
        um no seu. As medidas saem de `ux()`, que é quem sabe onde eles estão. */
     const cabo = vale(fv)
       ? [1, 2].map(k => fio([[112 + (k - 1) * 14, 158], [112 + (k - 1) * 14, 180 + (k - 1) * 10],
-                             [ux(k) + UW / 2, 180 + (k - 1) * 10], [ux(k) + UW / 2, uy - 6]],
+                             [ux(k) + LARG[k] / 2, 180 + (k - 1) * 10], [ux(k) + LARG[k] / 2, uy - 6]],
                             SOL, 2.6, true, true)).join('') +
         rot(GX + 6, 176, br(fv, 1) + ' kW', SOL, 'end')
       : tx(100, 176, 'sem geração', '#6b7683', 10);
@@ -1408,21 +1412,37 @@
       const k = kk + 1;                               // 0 é do inv. de frequência
       const e = est[String(i.estado).toLowerCase()] || i.estado || '—';
       const cor = i.falha ? '#ff4444' : /limit/.test(e) ? '#ffb300' : VBAT;
-      const X = ux(k);
+      const X = ux(k), UW = LARG[k];
       d += '<rect x="' + (X + 6) + '" y="' + (uy - 5) + '" width="' + (UW - 12) + '" height="5" fill="#3a4b5e"/>';
       d += '<rect x="' + X + '" y="' + uy + '" width="' + UW + '" height="' + uh +
            '" rx="5" fill="#1a2634" stroke="#46607d" stroke-width="1.3"/>';
       for (let a2 = 0; a2 < 4; a2++)
         d += '<line x1="' + (X + 8 + a2 * 13) + '" y1="' + (uy + 7) + '" x2="' + (X + 8 + a2 * 13) +
              '" y2="' + (uy + 26) + '" stroke="#2e4157" stroke-width="3" stroke-linecap="round"/>';
-      d += '<rect x="' + (X + 5) + '" y="' + (uy + 32) + '" width="' + (UW - 10) + '" height="34" rx="3" ' +
+      /* A TEMPERATURA SAI DE TRÁS DO ESTADO (dono: *"temperatura tá embolada
+         com o status; o status tá bom, tira a temperatura de trás dele"*) e
+         vai para o canto de cima, sobre as aletas — que é, aliás, onde ela
+         fisicamente importa. */
+
+      /* O VISOR: a geração CA é o número que importa, então ela cresce e a
+         unidade vira um sufixo discreto, meia altura e apagada (dono: *"a
+         geração de cada inversor aumenta a fonte e acha um jeito de colocar a
+         unidade de forma discreta"*). O lado CC fica de apoio, pequeno. */
+      d += '<rect x="' + (X + 5) + '" y="' + (uy + 30) + '" width="' + (UW - 10) + '" height="38" rx="3" ' +
            'fill="#0c141e" stroke="#2e4157"/>';
-      d += tx(X + UW / 2, uy + 45, br(n(i.p_cc_kw), 1) + ' cc', '#9fd4ff', 9, 400, 'middle');
-      d += tx(X + UW / 2, uy + 58, '↓ ' + br(n(i.p_ativa_kw), 1), '#9fd4ff', 9, 400, 'middle');
-      d += tx(X + UW / 2, uy + 80, br(n(i.e_hoje_kwh), 0) + ' kWh', '#5d7f9c', 8.5, 400, 'middle');
-      d += '<circle cx="' + (X + 11) + '" cy="' + (uy + 95) + '" r="3.2" fill="' + cor + '"/>';
-      d += tx(X + 17, uy + 98, e, cor, 8, 700);
-      d += tx(X + UW - 4, uy + 98, br(n(i.temp_c), 0) + '°', n(i.temp_c) > 65 ? '#ff8a5c' : '#5d7f9c', 8, 400, 'end');
+      d += '<text x="' + (X + UW / 2 + 5) + '" y="' + (uy + 52) + '" fill="#bfe4ff" font-size="17" ' +
+           'font-weight="800" font-family="system-ui,sans-serif" text-anchor="middle">' +
+           br(n(i.p_ativa_kw), 1) + '<tspan font-size="8" font-weight="400" fill="#5d7f9c" dx="2">kW</tspan></text>';
+      d += tx(X + UW / 2, uy + 63, br(n(i.p_cc_kw), 1) + ' cc', '#4a6a85', 8, 400, 'middle');
+      /* A LINHA DE BAIXO DIVIDE-SE: energia do dia à esquerda, temperatura à
+         direita. Ela estava no topo, mas o nome do aparelho a expulsou de lá;
+         e não volta para trás do estado, que foi de onde o dono mandou tirar. */
+      d += tx(X + 6, uy + 82, br(n(i.e_hoje_kwh), 0) + ' kWh', '#5d7f9c', 8.5);
+      d += '<text x="' + (X + UW - 6) + '" y="' + (uy + 82) + '" fill="' +
+           (n(i.temp_c) > 65 ? '#ff8a5c' : '#4a5f78') + '" font-size="8.5" ' +
+           'font-family="system-ui,sans-serif" text-anchor="end">' + br(n(i.temp_c), 0) + '°</text>';
+      d += '<circle cx="' + (X + 13) + '" cy="' + (uy + 96) + '" r="3.4" fill="' + cor + '"/>';
+      d += tx(X + 21, uy + 99, e, cor, 9, 700);
       /* NOME CURTO SEM CORTAR NO MEIO. O logger chama uns de "Inversor 1" e
          outros de "Inverter(COM1-11)"; um `slice(0,10)` cego virava
          "Inverter(C", que não é nome de nada. Tira-se o prefixo e fica o que
@@ -1430,14 +1450,21 @@
          "inversores", que é onde se vai procurar o aparelho pela prancha. */
       const cru = i.nome || ('end ' + i.endereco);
       const mcurto = /^inver\w*\s*\(?([^)]+)\)?\s*$/i.exec(cru);
-      d += tx(X + UW / 2, uy - 9, (mcurto ? mcurto[1] : cru).slice(0, 8),
-              '#dbe9f7', 9, 700, 'middle');
+      /* O NOME ENTRA NA CAIXA. Fora dela, no topo, ele ficava bem embaixo do
+         cabo que desce das placas e simplesmente não aparecia. Agora divide a
+         primeira linha com a temperatura: nome à esquerda, °C à direita. */
+      d += '<text x="' + (X + 6) + '" y="' + (uy + 18) + '" fill="#8ba0bd" font-size="8.5" ' +
+           'font-weight="700" font-family="system-ui,sans-serif" stroke="#1a2634" ' +
+           'stroke-width="2.5" paint-order="stroke">' + (() => {
+             const r = (mcurto ? mcurto[1] : cru).trim();
+             return (r.length <= 3 ? 'inv ' + r : r).slice(0, 10);
+           })() + '</text>';
       if (vale(n(i.p_ativa_kw))) d += fio([[X + UW / 2, uy + uh], [X + UW / 2, BY - 6]], SOL, 2.6, true);
     });
     if (!invs.length) d += tx(ux(1), uy + 40, 'sem inversores', '#6b7683', 10);
 
     /* 3b2 · o inversor de FREQUÊNCIA, primeiro da fila */
-    d += '<rect x="' + (QX + 6) + '" y="' + (uy - 5) + '" width="' + (UW - 12) + '" height="5" fill="#3a4b5e"/>';
+    d += '<rect x="' + (QX + 6) + '" y="' + (uy - 5) + '" width="' + (QW - 12) + '" height="5" fill="#3a4b5e"/>';
     d += '<rect x="' + QX + '" y="' + uy + '" width="' + QW + '" height="' + uh +
          '" rx="5" fill="#18222e" stroke="#46607d" stroke-width="1.3"/>';
     d += '<line x1="' + (QX + QW / 2) + '" y1="' + (uy + 4) + '" x2="' + (QX + QW / 2) + '" y2="' +
@@ -1450,7 +1477,11 @@
     for (let a2 = 0; a2 < 5; a2++)
       d += '<line x1="' + (QX + 8) + '" y1="' + (uy + 50 + a2 * 7) + '" x2="' + (QX + QW - 8) +
            '" y2="' + (uy + 50 + a2 * 7) + '" stroke="#243343" stroke-width="2.2" stroke-linecap="round"/>';
-    d += tx(QX + QW / 2, uy - 9, 'inv. freq.', '#dbe9f7', 9, 700, 'middle');
+    /* abaixo do visor dele, que ocupa o topo da caixa — em cima o nome caía
+       dentro do próprio número */
+    d += '<text x="' + (QX + QW / 2) + '" y="' + (uy + 46) + '" fill="#8ba0bd" font-size="8.5" ' +
+         'font-weight="700" font-family="system-ui,sans-serif" text-anchor="middle" ' +
+         'stroke="#18222e" stroke-width="2.5" paint-order="stroke">inv. freq.</text>';
     d += tx(QX + QW / 2, uy + 100, 'sem leitura', '#5d7f9c', 8, 400, 'middle');
     /* ELE RECEBE DO BARRAMENTO — não das placas. Estava errado: o cabo dos
        painéis caía nele e a saída ia direto para a bomba, pulando o
@@ -1491,23 +1522,27 @@
     }
     d += '<rect x="' + (EX + mg) + '" y="' + (EY + EH - 20) + '" width="' + (EW - mg * 2) +
          '" height="14" rx="2" fill="#1d2b3a" stroke="#3a5a74"/>';
-    d += '<text x="' + (EX + EW / 2) + '" y="' + (EY + 28) + '" fill="' + corB + '" font-size="16" ' +
+    /* O NÚMERO GRANDE E SEM UNIDADE (dono: *"dá de aumentar o tamanho da fonte
+       do número, a unidade não precisa"*) — com a barra de carga ao lado e o
+       rótulo BESS em cima, "88" não deixa dúvida do que é. */
+    d += '<text x="' + (EX + EW / 2) + '" y="' + (EY + 32) + '" fill="' + corB + '" font-size="24" ' +
          'font-weight="800" font-family="system-ui,sans-serif" text-anchor="middle" ' +
-         'stroke="#0d1520" stroke-width="3.5" paint-order="stroke">' + (soc != null ? br(soc, 0) + '%' : '—') + '</text>';
+         'stroke="#0d1520" stroke-width="4" paint-order="stroke">' + (soc != null ? br(soc, 0) : '—') + '</text>';
     d += tx(EX + EW / 2, EY - 18, '🔋 BESS', '#dbe9f7', 10, 700, 'middle');
-    d += tx(EX + EW / 2, SOLOY + 16, vale(bat) ? (bat > 0 ? 'carrega' : 'descarrega') : 'repouso',
-            vale(bat) ? corB : '#6b7683', 8.5, 700, 'middle');
+    /* O ESTADO VAI PARA BAIXO DO CABO, onde sobra espaço: em cima ele caía
+       atrás do próprio cabo do BESS. */
+    d += tx(EX + EW / 2, ENTB + 32, vale(bat) ? (bat > 0 ? 'carregando' : 'descarregando') : 'em repouso',
+            vale(bat) ? corB : '#6b7683', 9.5, 700, 'middle');
     /* o kW NÃO se repete aqui: quem já diz é o rótulo do próprio cabo, logo
        ao lado. Dois números iguais a 10 px um do outro só poluem. */
 
     /* 3e · O ELO CASA <-> BESS. Guardado em variável e emitido LÁ NO FIM: ele
        corre enterrado, e o chão (pintado antes) tapava o trecho de fora. Em
        SVG não há camada — o que vem depois fica por cima. */
-    const ENTB = SOLOY + 34;
     const viaBess = [[BX1 - 6, BY + 2], [BX1 - 6, ENTB], [EX + EW / 2, ENTB], [EX + EW / 2, SOLOY - 2]];
     const ligBess = vale(bat)
       ? fio(bat > 0 ? viaBess : viaBess.slice().reverse(), VBAT, 2.8, true, true) +
-        rot((GX + GW + EX) / 2, ENTB - 8, br(Math.abs(bat), 1) + ' kW', VBAT, 'middle')
+        rot((GX + GW + EX) / 2, ENTB + 13, br(Math.abs(bat), 1) + ' kW', VBAT, 'middle')
       : '<path d="' + cam(viaBess) + '" fill="none" stroke="#2b3744" stroke-width="2" ' +
         'stroke-dasharray="3 4"/>';
 
@@ -1517,7 +1552,10 @@
        lado do poço: a alimentação entra pela direita (lado do barramento) e
        a saída desce pela esquerda, então os dois não se cruzam mais, que foi
        outra coisa que ele apontou. */
-    const FIOY = SOLOY + 52;
+    /* NA SUPERFÍCIE, não enterrado (dono, 11/10/2026: *"ele vira para a
+       esquerda na superfície do solo e aí desce para a bomba"*). Eu o tinha
+       posto correndo a 52 px de profundidade. */
+    const FIOY = SOLOY - 3;
     const caminhoFio = [[QX + 16, uy + uh], [QX + 16, FIOY], [PCX + 20, FIOY], [PCX + 20, H - 74]];
     const ligBomba = vale(bomba)
       ? fio(caminhoFio, VCAR, 2.6, true, true)
@@ -1617,7 +1655,7 @@
         'padding:5px 9px;font-size:11px;cursor:pointer;font-weight:700">⤢ ajustar</button>' +
       '</div>' +
       '<div style="color:#6b7683;font-size:10px;margin:2px 0 0;text-align:center">' +
-        'dois dedos ampliam e arrastam o desenho · um dedo rola a página</div>';
+        'dois dedos ou dois toques ampliam · um dedo arrasta quando ampliado</div>';
 
     /* A CONFERÊNCIA DO NÓ, embaixo do desenho. Sol = bateria + bomba é a lei
        que o desenho ilustra; mostrá-la fechando (ou não) diz num relance se a
