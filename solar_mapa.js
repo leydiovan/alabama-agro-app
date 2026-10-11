@@ -1077,7 +1077,7 @@
         '<span style="font:800 30px/1 system-ui,sans-serif;color:' + corMeta + '">' + br(feitas, 1) + '</span>' +
         '<span style="color:#9aa3b0;font-size:12px">h de bomba ' + (parcial ? 'até agora' : 'hoje') + '</span>' +
         '<span style="margin-left:auto;color:#9aa3b0;font-size:12px">meta <b style="color:#e8edf5">' + META_H + ' h</b>' +
-        ' · céu deu <b style="color:#ffd479">' + br(teto, 1) + ' h</b></span>' +
+        ' · placas <b style="color:#ffd479">' + br(teto, 1) + ' h</b></span>' +
       '</div>' +
       /* a barra mostra as TRÊS coisas de uma vez: feito, meta e teto do céu */
       '<div style="position:relative;height:12px;border-radius:6px;background:#1b2430;overflow:hidden;margin-bottom:3px">' +
@@ -1085,7 +1085,14 @@
         '<div style="position:absolute;inset:0 auto 0 0;width:' + larg(feitas / META_H * 100) + ';background:' + corMeta + '"></div>' +
         '<div style="position:absolute;top:0;bottom:0;left:100%;width:2px;background:#e8edf5"></div>' +
       '</div>' +
-      '<div style="color:#6b7683;font-size:10px;margin-bottom:10px">a risca branca é a meta de ' + META_H + ' h · a faixa escura é o que o céu permitiria</div>';
+      '<div style="color:#6b7683;font-size:10px;margin-bottom:10px">a risca branca é a meta de ' + META_H +
+        ' h · a faixa escura é a energia que as placas fizeram, em hora de bomba' +
+        /* O RECORDE RESPONDE A PERGUNTA QUE ELE FEZ (11/10/2026): *"não tem esse
+           sol para tocar 11h"*. Tem razão, e agora a tela diz — com um dia que
+           de fato aconteceu, não com a soma dos melhores de cada hora. */
+        (n(dHoje.horas_recorde) > 0
+          ? ' · <b style="color:#9aa3b0">recorde desta usina no mês: ' + br(n(dHoje.horas_recorde), 1) + ' h</b>'
+          : '') + '</div>';
 
     /* ---------- 2 · A BARRA DE 24 HORAS ---------- */
     /* Verde = bombeando. Âmbar = sobrou sol E a bomba tinha folga (hora
@@ -1276,16 +1283,25 @@
            sozinha é vaga. Ele responde a pergunta certa: "dei conta do que o
            céu ofereceu?", que é o que está no controle de quem opera. A meta
            de 10 h depende do tempo; esta não. */
-        cartao('aproveitamento', teto > 0.5 ? br(feitas / teto * 100, 0) + ' %' : '—',
-               teto > 0.5 ? (feitas / teto >= 0.92 ? '#00c896' : feitas / teto >= 0.80 ? '#ffb300' : '#ff4444') : '#9aa3b0',
-               'do que o céu deu' + (parcial ? ' até agora' : '')) +
+        cartao('aproveitamento', teto > 0.5 ? br(Math.min(100, feitas / teto * 100), 0) + ' %' : '—',
+               teto > 0.5 ? (feitas / teto >= 0.96 ? '#00c896' : feitas / teto >= 0.90 ? '#ffb300' : '#ff4444') : '#9aa3b0',
+               'do que as placas fizeram' + (parcial ? ' até agora' : '')) +
         cartao('água bombeada', br(m3, 0) + ' m³', '#5aa9ff', br(feitas, 1) + ' h × 204 m³/h') +
         cartao('dava para bombear', '+' + br(recup, 1) + ' h', recup > 0.5 ? '#ffb300' : '#9aa3b0', 'sol que cabia na bomba') +
         cartao('sol além da bomba', br(excedente, 1) + ' h', '#6b7683', 'não vira hora: bomba cheia') +
         cartao('bateria no fim', br(n(dHoje.soc_fim_pct), 0) + ' %', n(dHoje.soc_fim_pct) >= 50 ? '#00c896' : '#ffb300',
                'menor do dia: ' + br(socMin, 0) + ' %') +
-        cartao('inversor limitado', br(n(dHoje.min_limitado), 0) + ' min', n(dHoje.min_limitado) > 180 ? '#ffb300' : '#9aa3b0',
-               'sobrando energia') +
+        /* O QUE O INVERSOR RECUSOU, em hora de bomba (migração 153). Antes este
+           cartão só dizia "258 min limitado", que não decide nada. A energia
+           recusada é a ÚNICA hora a mais que ainda existe de graça — e só se
+           pega ligando mais cedo, para a bateria ter espaço ao meio-dia. É a
+           conta que sustenta a recomendação lá embaixo.
+           Fica FORA do aproveitamento de propósito: energia que o inversor não
+           deixou entrar não é energia que a bomba deixou de usar. Misturar as
+           duas foi o erro que o dono pegou em 11/10/2026. */
+        cartao('inversor recusou', '+' + br(n(dHoje.kwh_recusado) / bombaKw, 1) + ' h',
+               n(dHoje.kwh_recusado) / bombaKw > 0.5 ? '#ffb300' : '#9aa3b0',
+               br(n(dHoje.min_limitado), 0) + ' min estrangulado') +
         /* MESMO RELÓGIO DA FAIXA VERDE: este cartão mostrava o balde horário
            ("7h → 16h") logo abaixo de uma faixa que dizia 7:26 → 17:01. */
         (ligouAs != null ? cartao('janela da bomba',
@@ -1305,8 +1321,14 @@
          como a linha branca: ela diz onde se quer chegar, a cor diz se o que
          havia foi aproveitado. */
       const aprov = hp > 0.5 ? hb / hp : null;
+      /* CORTES RECALIBRADOS EM 11/10/2026, junto com a migração 153. Contra o
+         teto velho (o dia-Frankenstein) um dia excelente marcava 88% e 92/80
+         fazia sentido. Contra o sol que as placas DE FATO fizeram, dia bom dá
+         97 a 100% e o atraso real de 06/10 (partida 8:32) deu 89 a 91% — com
+         os cortes antigos ele ficaria VERDE. Limiar que não separa nada é
+         enfeite. */
       const c = aprov == null ? '#6b7683'
-              : aprov >= 0.92 ? '#00c896' : aprov >= 0.80 ? '#ffb300' : '#ff4444';
+              : aprov >= 0.96 ? '#00c896' : aprov >= 0.90 ? '#ffb300' : '#ff4444';
       return '<div title="' + (d.dia + '').slice(5) + ' · ' + br(hb, 1) + ' h de ' + br(hp, 1) +
         ' h possíveis · aproveitamento ' + (aprov == null ? '—' : br(aprov * 100, 0) + '%') +
         (hb >= META_H ? ' · bateu a meta' : '') + '" ' +
@@ -1315,23 +1337,35 @@
         '<div style="height:' + (hb / maxH * H).toFixed(1) + 'px;background:' + c + '"></div></div>';
     }).join('');
 
-    /* ===== OS DIAS QUE BATERAM AS 10 h, EM TRILHA PROPRIA =====
-       Dono, 11/10/2026: *"nao sei como funciona as cores mas consegui bater
-       10 h em alguns dias, era bom ficar ver quando batesse 10h"*.
+    /* ===== A FAIXA DAS HORAS FEITAS, DEBAIXO DA BARRA =====
+       Dono, 11/10/2026: *"coloca uma forma de identificar o dia que bateu os
+       10h também, tipo para baixo da barra mostra um quadrado da largura da
+       barra: vermelho abaixo de 5h, amarelo até 9,9 e 10 para cima verde"*.
 
-       Em trilha separada, e NÃO virando uma quarta cor na barra: a barra já
-       codifica aproveitamento (feito ÷ possível) e o dono acabou de dizer que
-       não entende as cores — somar mais um significado na mesma tinta piora.
-       Variável nova, canal novo. A geometria é a mesma (flex:1, gap 1px), por
-       isso cada ponto cai debaixo da sua barra. */
+       São DUAS PERGUNTAS e por isso duas faixas, e não duas cores na mesma:
+         · a BARRA mede aproveitamento — "o que as placas fizeram chegou na
+           bomba?" — e é sobre operar bem, independente do tempo;
+         · esta FAIXA mede hora absoluta — "bati a meta?" — e depende do céu.
+       Um dia nublado bem operado é barra VERDE com faixa AMARELA, e as duas
+       estão certas. Era isso que a tela não sabia dizer.
+
+       Mesma geometria das barras (flex:1, gap 1px) para cada quadrado cair
+       debaixo do seu dia. */
+    const corHoras = hb => hb >= META_H ? '#00c896' : hb >= 5 ? '#ffb300' : '#ff4444';
     const metas = ult.map(d => {
-      const bateu = n(d.horas_bomba) >= META_H;
-      return '<div title="' + (d.dia + '').slice(5) + (bateu ? ' · bateu ' + META_H + ' h' : '') + '" ' +
-        'style="flex:1;min-width:4px;height:7px;display:flex;align-items:center;justify-content:center">' +
-        (bateu ? '<div style="width:5px;height:5px;border-radius:50%;background:#00e5a0;' +
-                 'box-shadow:0 0 4px #00e5a0"></div>' : '') + '</div>';
+      const hb = n(d.horas_bomba);
+      /* DIA EM CURSO NÃO LEVA COR DE JULGAMENTO — a mesma regra do placar. Às
+         10 h da manhã o dia tem 3,3 h feitas e sairia VERMELHO, acusando um dia
+         que ainda tem seis horas de sol pela frente. Cinza: informa sem
+         condenar, e some sozinho quando o dia fecha. */
+      const emCurso = (d.dia + '') === hojeLocal && agora.getHours() < 18;
+      return '<div title="' + (d.dia + '').slice(5) + ' · ' + br(hb, 1) + ' h' +
+        (emCurso ? ' · dia em andamento' : hb >= META_H ? ' · bateu a meta' : '') + '" ' +
+        'style="flex:1;min-width:4px;height:7px;border-radius:1px;background:' +
+        (emCurso ? '#3d4a5a' : corHoras(hb)) + '"></div>';
     }).join('');
     const quantosBateram = ult.filter(d => n(d.horas_bomba) >= META_H).length;
+
     const mesAtual = hojeISO.slice(0, 7);
     const doMes = dias.filter(d => (d.dia + '').slice(0, 7) === mesAtual);
     const somaMes = doMes.reduce((s, d) => s + n(d.horas_bomba), 0);
@@ -1357,14 +1391,15 @@
          diferentes e um dia pode acertar uma e errar a outra: céu de 6 h
          totalmente aproveitado fica VERDE e SEM ponto. */
       '<div style="margin-top:5px;font-size:9px;color:#8ba0bd;line-height:1.6">' +
-        '<div style="margin-bottom:2px"><b style="color:#dbe9f7">a cor</b> = quanto do sol do dia foi aproveitado:' +
-          ' <i style="display:inline-block;width:7px;height:7px;background:#00c896;border-radius:2px"></i> 92% ou mais' +
-          ' · <i style="display:inline-block;width:7px;height:7px;background:#ffb300;border-radius:2px"></i> 80 a 92%' +
-          ' · <i style="display:inline-block;width:7px;height:7px;background:#ff4444;border-radius:2px"></i> abaixo de 80%</div>' +
-        '<div><i style="display:inline-block;width:5px;height:5px;background:#00e5a0;border-radius:50%;box-shadow:0 0 4px #00e5a0"></i>' +
-          ' <b style="color:#dbe9f7">o ponto</b> = bateu as ' + META_H + ' h — <b style="color:#00e5a0">' +
-          quantosBateram + ' de ' + ult.length + ' dias</b>' +
-          ' · a risca branca é a meta · a parte escura é o que o céu ainda permitia</div>' +
+        '<div style="margin-bottom:2px"><b style="color:#dbe9f7">a cor</b> = quanto do que as placas fizeram chegou na bomba:' +
+          ' <i style="display:inline-block;width:7px;height:7px;background:#00c896;border-radius:2px"></i> 96% ou mais' +
+          ' · <i style="display:inline-block;width:7px;height:7px;background:#ffb300;border-radius:2px"></i> 90 a 96%' +
+          ' · <i style="display:inline-block;width:7px;height:7px;background:#ff4444;border-radius:2px"></i> abaixo de 90%</div>' +
+        '<div><b style="color:#dbe9f7">a faixa de baixo</b> = horas feitas no dia:' +
+          ' <i style="display:inline-block;width:7px;height:7px;background:#00c896;border-radius:2px"></i> ' + META_H + ' h ou mais' +
+          ' · <i style="display:inline-block;width:7px;height:7px;background:#ffb300;border-radius:2px"></i> 5 a ' + META_H + ' h' +
+          ' · <i style="display:inline-block;width:7px;height:7px;background:#ff4444;border-radius:2px"></i> abaixo de 5 h' +
+          ' — bateu a meta em <b style="color:#00c896">' + quantosBateram + ' de ' + ult.length + ' dias</b></div>' +
       '</div>' +
       '<div style="margin-top:7px;font-size:12px;color:#dbe9f7">' +
         'no mês: <b>' + br(somaMes, 0) + ' h</b> em ' + doMes.length + ' dias · média <b style="color:' +
