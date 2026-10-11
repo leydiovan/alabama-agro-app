@@ -1117,7 +1117,7 @@
     const n = x => (x == null || isNaN(x)) ? null : Number(x);
     const SOL = '#ffd479', VBAT = '#00c896', VCAR = '#5aa9ff', TRAC = '#3a4b5e';
     const est = { '0x200': 'gerando', '0x201': 'limitado', '0x202': 'limitado', '0xa000': 'sem sol' };
-    const W = 380, H = 712;
+    const W = 440, H = 730;
 
     const fv = n(v.p_fv_kw) || 0, bat = n(v.p_bateria_kw) || 0, bomba = n(v.p_carga_kw) || 0;
     const soc = n(v.soc_pct);
@@ -1251,6 +1251,23 @@
       'font-family="system-ui,sans-serif"' + (anc ? ' text-anchor="' + anc + '"' : '') +
       ' stroke="#0d1520" stroke-width="3" paint-order="stroke">' + t + '</text>';
 
+    /* ===== TODAS AS MEDIDAS DO ARRANJO, NUM LUGAR SÓ =====
+       Isto não é organização: é defesa. `const` tem zona morta, e este arquivo
+       já me pegou QUATRO vezes com ela (o `sombra`, o `estreito`, o `BY` e
+       agora o `GX`, usado pelo cabo das placas que é montado antes do
+       telhado). Toda vez a aba inteira caía com ReferenceError. Enquanto as
+       medidas nasciam espalhadas pelo desenho, mexer na ordem de qualquer
+       peça podia derrubar outra — com tudo aqui em cima, não pode mais.
+
+       Arranjo, da esquerda para a direita:
+         cano p/ piscinão · POÇO · inv. frequência · CASA · (vão) · BESS */
+    const GX = 214, GY = 206, GW = 138, GH = 250;     // a casa
+    const SOLOY = GY + GH;                            // o chão
+    const BY = GY + 180;                              // o barramento, dentro dela
+    const PX = 78, PW = 52, PCX = PX + PW / 2;        // o poço
+    const QX = 140, QW = 60;                          // o inv. de frequência, junto da bomba
+    const EX = 388, EW = 46;                          // o BESS, afastado para o cabo aparecer
+
     let d = '<defs>' +
       '<linearGradient id="sfPlaca" x1="0" y1="0" x2="1" y2="1">' +
         '<stop offset="0" stop-color="#2b4a7a"/><stop offset="1" stop-color="#13233c"/></linearGradient>' +
@@ -1318,27 +1335,28 @@
     /* GUARDADO para depois do telhado: o cabo entra NO galpão, então tem de
        ser desenhado por cima dele — senão some atrás da água do telhado. O
        rótulo desce junto, que lá em cima ele batia na cumeeira. */
+    /* O CABO DAS PLACAS ATÉ A CASA. Ele era uma descida reta em x=126, que
+       funcionava quando a casa estava ali; com a casa deslocada para a
+       direita (arranjo de 11/10/2026) a seta ficou boiando no vazio. Agora
+       desce da mesa, corre e entra pelo telhado — e o caminho é montado com
+       as MEDIDAS da casa, não com um número solto, para não desgrudar de novo
+       na próxima vez que algo se mexer. */
     const cabo = vale(fv)
-      ? seta(126, 158, 126, 238, SOL, 3.4) + rot(136, 214, br(fv, 1) + ' kW', SOL)
-      : tx(136, 214, 'sem geração', '#6b7683', 10);
+      ? fio([[126, 158], [126, 186], [GX + 34, 186], [GX + 34, 240]], SOL, 3, true, true) +
+        rot(GX + 42, 214, br(fv, 1) + ' kW', SOL)
+      : tx(140, 182, 'sem geração', '#6b7683', 10);
 
-    /* ================= 3 · POÇO | CASA | BESS =================
-       ARRANJO PEDIDO PELO DONO em 11/10/2026: *"a casa coloca ela mais larga,
-       e os equipamentos um do lado do outro; o poço pode colocar do lado
-       oposto do BESS, ao lado da casa"*. Antes eu tinha o BESS dentro da casa
-       (errado) e depois o poço embaixo dela (errado também) — o cadastro
-       (`geom.benfeitorias`) tem casa 5,0 x 2,5 m, BESS 2,5 x 1,5 m e o poço
-       mais afastado. A ordem do desenho é a que ele pediu, que é a que cabe
-       na tela: POÇO · CASA · BESS.
+    /* ========= 3 · CANO | POÇO | INV.FREQ | CASA | BESS =========
+       Arranjo de 11/10/2026, terceira rodada com o dono:
+         · *"espaça mais a casa e o BESS, quase não vê o fluxo do cabo"*
+         · *"coloca o inversor de frequência já do lado da bomba"*
+         · *"o cano do poço não vira para o lado da casa, vira para o outro"*
+         · *"ele vira, anda um pedaço e entra no chão para ir para o piscinão;
+            esse intervalo suspenso o hidrômetro fica"*
 
-       NÃO É ESCALA, e é escolha: a 38 px/m um inversor de 0,6 m teria 23 px e
-       não caberia aleta nenhuma — morreria o detalhe que ele pediu. Quem tem
-       escala é o mapa; aqui o que precisa estar certo é o ARRANJO. */
-    const GX = 76, GY = 206, GW = 224, GH = 250;      // a casa
-    const SOLOY = GY + GH;
-    const BY = GY + 182;                              // barramento (vem antes: zona morta)
-    const PX = 10, PW = 52, PCX = PX + PW / 2;        // o poço, à esquerda
-    const EX = 312, EW = 60;                          // o BESS, à direita
+       NÃO É ESCALA (está escrito aqui para ninguém "corrigir" depois): a
+       38 px/m um inversor de 0,6 m teria 23 px e não caberia aleta nenhuma.
+       Quem tem escala é o mapa; aqui o que precisa estar certo é o ARRANJO. */
 
     /* 3a · telhado de UMA água, como o cadastro diz */
     d += '<path d="M ' + (GX - 12) + ' ' + (GY - 26) + ' L ' + (GX + GW + 12) + ' ' + (GY - 4) +
@@ -1353,70 +1371,56 @@
     d += tx(GX + GW, GY - 30, 'casa de aparelhos', '#8ba0bd', 10.5, 700, 'end');
     d += cabo;
 
-    /* 3b · OS TRÊS APARELHOS LADO A LADO */
-    const UW = 64, UG = 4, U0 = GX + 12, uy = GY + 40, uh = 108;
+    /* 3b · OS DOIS INVERSORES SOLARES, lado a lado na parede */
+    const UW = 55, UG = 4, U0 = GX + 12, uy = GY + 40, uh = 108;
     const ux = k => U0 + k * (UW + UG);
-    const aparelho = (k, titulo, corTopo) => {
-      const X = ux(k);
-      d += '<rect x="' + (X + 7) + '" y="' + (uy - 5) + '" width="' + (UW - 14) + '" height="5" fill="#3a4b5e"/>';
-      d += '<rect x="' + X + '" y="' + uy + '" width="' + UW + '" height="' + uh +
-           '" rx="5" fill="#1a2634" stroke="' + corTopo + '" stroke-width="1.3"/>';
-      d += tx(X + UW / 2, uy - 9, titulo, '#dbe9f7', 9, 700, 'middle');
-      return X;
-    };
     invs.forEach((i, k) => {
       if (k > 1) return;
       const e = est[String(i.estado).toLowerCase()] || i.estado || '—';
       const cor = i.falha ? '#ff4444' : /limit/.test(e) ? '#ffb300' : VBAT;
-      const X = aparelho(k, (i.nome || ('end ' + i.endereco)).slice(0, 11), '#46607d');
-      for (let a2 = 0; a2 < 5; a2++)
-        d += '<line x1="' + (X + 8 + a2 * 12) + '" y1="' + (uy + 7) + '" x2="' + (X + 8 + a2 * 12) +
+      const X = ux(k);
+      d += '<rect x="' + (X + 6) + '" y="' + (uy - 5) + '" width="' + (UW - 12) + '" height="5" fill="#3a4b5e"/>';
+      d += '<rect x="' + X + '" y="' + uy + '" width="' + UW + '" height="' + uh +
+           '" rx="5" fill="#1a2634" stroke="#46607d" stroke-width="1.3"/>';
+      for (let a2 = 0; a2 < 4; a2++)
+        d += '<line x1="' + (X + 8 + a2 * 13) + '" y1="' + (uy + 7) + '" x2="' + (X + 8 + a2 * 13) +
              '" y2="' + (uy + 26) + '" stroke="#2e4157" stroke-width="3" stroke-linecap="round"/>';
-      d += '<rect x="' + (X + 6) + '" y="' + (uy + 32) + '" width="' + (UW - 12) + '" height="34" rx="3" ' +
+      d += '<rect x="' + (X + 5) + '" y="' + (uy + 32) + '" width="' + (UW - 10) + '" height="34" rx="3" ' +
            'fill="#0c141e" stroke="#2e4157"/>';
       d += tx(X + UW / 2, uy + 45, br(n(i.p_cc_kw), 1) + ' cc', '#9fd4ff', 9, 400, 'middle');
-      d += tx(X + UW / 2, uy + 58, '↓ ' + br(n(i.p_ativa_kw), 1) + ' ca', '#9fd4ff', 9, 400, 'middle');
+      d += tx(X + UW / 2, uy + 58, '↓ ' + br(n(i.p_ativa_kw), 1), '#9fd4ff', 9, 400, 'middle');
       d += tx(X + UW / 2, uy + 80, br(n(i.e_hoje_kwh), 0) + ' kWh', '#5d7f9c', 8.5, 400, 'middle');
-      d += '<circle cx="' + (X + 12) + '" cy="' + (uy + 95) + '" r="3.4" fill="' + cor + '"/>';
-      d += '<circle cx="' + (X + 12) + '" cy="' + (uy + 95) + '" r="6" fill="' + cor + '" opacity=".22"/>';
-      d += tx(X + 19, uy + 98, e, cor, 8.5, 700);
-      d += tx(X + UW - 5, uy + 98, br(n(i.temp_c), 0) + '°', n(i.temp_c) > 65 ? '#ff8a5c' : '#5d7f9c', 8.5, 400, 'end');
+      d += '<circle cx="' + (X + 11) + '" cy="' + (uy + 95) + '" r="3.2" fill="' + cor + '"/>';
+      d += tx(X + 17, uy + 98, e, cor, 8, 700);
+      d += tx(X + UW - 4, uy + 98, br(n(i.temp_c), 0) + '°', n(i.temp_c) > 65 ? '#ff8a5c' : '#5d7f9c', 8, 400, 'end');
+      /* NOME CURTO SEM CORTAR NO MEIO. O logger chama uns de "Inversor 1" e
+         outros de "Inverter(COM1-11)"; um `slice(0,10)` cego virava
+         "Inverter(C", que não é nome de nada. Tira-se o prefixo e fica o que
+         distingue — "1" ou "COM1-11". O nome inteiro continua na aba
+         "inversores", que é onde se vai procurar o aparelho pela prancha. */
+      const cru = i.nome || ('end ' + i.endereco);
+      const mcurto = /^inver\w*\s*\(?([^)]+)\)?\s*$/i.exec(cru);
+      d += tx(X + UW / 2, uy - 9, 'inv ' + (mcurto ? mcurto[1] : cru).slice(0, 9),
+              '#dbe9f7', 9, 700, 'middle');
+      if (vale(n(i.p_ativa_kw))) d += fio([[X + UW / 2, uy + uh], [X + UW / 2, BY - 6]], SOL, 2.6, true);
     });
-    /* o terceiro da fila é o inversor de FREQUÊNCIA */
-    const FX = aparelho(2, 'inv. frequência', '#46607d'), FW = UW;
-    d += '<line x1="' + (FX + FW / 2) + '" y1="' + (uy + 4) + '" x2="' + (FX + FW / 2) + '" y2="' +
-         (uy + uh - 4) + '" stroke="#2e4157" stroke-width="1"/>';
-    d += '<rect x="' + (FX + 6) + '" y="' + (uy + 10) + '" width="' + (FW - 12) + '" height="26" rx="3" ' +
-         'fill="#0c141e" stroke="#2e4157"/>';
-    d += tx(FX + FW / 2, uy + 27, vale(bomba) ? br(bomba, 1) : 'parado', vale(bomba) ? VCAR : '#5d7f9c',
-            vale(bomba) ? 12 : 9.5, 700, 'middle');
-    if (vale(bomba)) d += tx(FX + FW / 2, uy + 40, 'kW', '#5d7f9c', 8.5, 400, 'middle');
-    for (let a2 = 0; a2 < 5; a2++)
-      d += '<line x1="' + (FX + 8) + '" y1="' + (uy + 52 + a2 * 7) + '" x2="' + (FX + FW - 8) +
-           '" y2="' + (uy + 52 + a2 * 7) + '" stroke="#243343" stroke-width="2.2" stroke-linecap="round"/>';
-    d += tx(FX + FW / 2, uy + 100, 'sem leitura', '#5d7f9c', 8.5, 400, 'middle');
+    if (!invs.length) d += tx(GX + 18, uy + 40, 'sem inversores', '#6b7683', 10);
 
-    /* 3c · barramento de cobre, por baixo dos três */
-    d += '<rect x="' + (GX + 16) + '" y="' + (BY - 4) + '" width="' + (GW - 32) + '" height="8" rx="2" ' +
+    /* 3c · barramento de cobre */
+    d += '<rect x="' + (GX + 14) + '" y="' + (BY - 4) + '" width="' + (GW - 28) + '" height="8" rx="2" ' +
          'fill="#b07d3a" stroke="#d9a05a" stroke-width="1"/>';
-    [GX + 30, GX + GW / 2, GX + GW - 30].forEach(x => {
+    [GX + 26, GX + GW - 26].forEach(x => {
       d += '<rect x="' + (x - 4) + '" y="' + (BY + 4) + '" width="8" height="9" rx="2" fill="#39495c"/>'; });
-    d += rot(GX + GW / 2, BY + 26, 'barramento CA', '#d9a05a', 'middle');
+    d += rot(GX + GW / 2, BY + 26, 'barramento', '#d9a05a', 'middle');
 
-    /* 3d · as ligações internas, todas com corrente andando */
-    invs.forEach((i, k) => { if (k < 2 && vale(n(i.p_ativa_kw)))
-      d += fio([[ux(k) + UW / 2, uy + uh], [ux(k) + UW / 2, BY - 6]], SOL, 2.6, true); });
-    /* o inversor de frequência PUXA do barramento: a corrente sobe */
-    if (vale(bomba)) d += fio([[FX + 18, BY - 6], [FX + 18, uy + uh]], VCAR, 2.6, true);
-
-    /* 3e · O BESS, fora, ao lado da casa e quase da mesma altura */
+    /* 3d · O BESS, bem afastado da casa para o cabo aparecer */
     const EY = GY + 6, EH = GH - 6;
     const corB = soc == null ? '#8b949e' : soc >= 50 ? VBAT : soc >= 20 ? '#ffb300' : '#ff4444';
     d += '<rect x="' + (EX - 5) + '" y="' + (EY - 10) + '" width="' + (EW + 10) + '" height="11" rx="3" ' +
          'fill="#3a4b5e" stroke="#5c6e82"/>';
     d += '<rect x="' + EX + '" y="' + EY + '" width="' + EW + '" height="' + EH +
          '" rx="5" fill="#141f2b" stroke="#46607d" stroke-width="1.4"/>';
-    const MOD = 4, mg = 7, mh = (EH - 36 - (MOD - 1) * 4) / MOD;
+    const MOD = 4, mg = 6, mh = (EH - 36 - (MOD - 1) * 4) / MOD;
     for (let m = 0; m < MOD; m++) {
       const yy = EY + EH - 22 - (m + 1) * mh - m * 4;
       const i0 = m / MOD * 100, i1 = (m + 1) / MOD * 100;
@@ -1429,85 +1433,139 @@
     }
     d += '<rect x="' + (EX + mg) + '" y="' + (EY + EH - 20) + '" width="' + (EW - mg * 2) +
          '" height="14" rx="2" fill="#1d2b3a" stroke="#3a5a74"/>';
-    d += '<text x="' + (EX + EW / 2) + '" y="' + (EY + 28) + '" fill="' + corB + '" font-size="18" ' +
+    d += '<text x="' + (EX + EW / 2) + '" y="' + (EY + 28) + '" fill="' + corB + '" font-size="16" ' +
          'font-weight="800" font-family="system-ui,sans-serif" text-anchor="middle" ' +
          'stroke="#0d1520" stroke-width="3.5" paint-order="stroke">' + (soc != null ? br(soc, 0) + '%' : '—') + '</text>';
     d += tx(EX + EW / 2, EY - 18, '🔋 BESS', '#dbe9f7', 10, 700, 'middle');
-    d += tx(EX + EW / 2, SOLOY + 16, vale(bat) ? (bat > 0 ? 'carregando' : 'descarregando') : 'em repouso',
-            vale(bat) ? corB : '#6b7683', 9, 700, 'middle');
-    if (vale(bat)) d += tx(EX + EW / 2, SOLOY + 27, br(Math.abs(bat), 1) + ' kW', corB, 9, 700, 'middle');
+    d += tx(EX + EW / 2, SOLOY + 16, vale(bat) ? (bat > 0 ? 'carrega' : 'descarrega') : 'repouso',
+            vale(bat) ? corB : '#6b7683', 8.5, 700, 'middle');
+    if (vale(bat)) d += tx(EX + EW / 2, SOLOY + 27, br(Math.abs(bat), 1) + ' kW', corB, 8.5, 700, 'middle');
 
-    /* 3f · o elo casa <-> BESS; o sentido É o caminho */
+    /* 3e · o elo casa <-> BESS, agora com vão de sobra para o fluxo aparecer */
     const ELO = BY + 2;
     if (vale(bat)) {
-      d += fio(bat > 0 ? [[GX + GW + 2, ELO], [EX - 2, ELO]] : [[EX - 2, ELO], [GX + GW + 2, ELO]], VBAT, 2.8, true);
-      d += rot((GX + GW + EX) / 2, ELO - 9, br(Math.abs(bat), 1), VBAT, 'middle');
+      d += fio(bat > 0 ? [[GX + GW + 2, ELO], [EX - 2, ELO]] : [[EX - 2, ELO], [GX + GW + 2, ELO]], VBAT, 2.8, true, true);
+      d += rot((GX + GW + EX) / 2, ELO - 10, br(Math.abs(bat), 1) + ' kW', VBAT, 'middle');
     } else {
       d += '<line x1="' + (GX + GW + 2) + '" y1="' + ELO + '" x2="' + (EX - 2) + '" y2="' + ELO +
            '" stroke="#2b3744" stroke-width="2" stroke-dasharray="3 4"/>';
     }
 
     /* ======================= 4 · O CHÃO ======================= */
-    d += '<rect x="0" y="' + SOLOY + '" width="380" height="' + (H - SOLOY) + '" fill="url(#sfSolo)"/>';
-    d += '<line x1="0" y1="' + SOLOY + '" x2="380" y2="' + SOLOY + '" stroke="#6b5636" stroke-width="2"/>';
-    for (let a2 = 0; a2 < 26; a2++)
+    d += '<rect x="0" y="' + SOLOY + '" width="' + W + '" height="' + (H - SOLOY) + '" fill="url(#sfSolo)"/>';
+    d += '<line x1="0" y1="' + SOLOY + '" x2="' + W + '" y2="' + SOLOY + '" stroke="#6b5636" stroke-width="2"/>';
+    for (let a2 = 0; a2 * 15 < W; a2++)
       d += '<line x1="' + (a2 * 15) + '" y1="' + (SOLOY + 2) + '" x2="' + (a2 * 15 - 7) + '" y2="' +
            (SOLOY + 10) + '" stroke="#6b5636" stroke-width="1" opacity=".45"/>';
 
-    /* ======================= 5 · O POÇO E A BOMBA ======================= */
+    /* ============ 5 · O INVERSOR DE FREQUÊNCIA, JUNTO DA BOMBA ============ */
+    const QH = 76, QY = SOLOY - QH;
+    d += '<rect x="' + (QX - 4) + '" y="' + (QY - 7) + '" width="' + (QW + 8) + '" height="8" rx="2" fill="#3a4b5e"/>';
+    d += '<rect x="' + QX + '" y="' + QY + '" width="' + QW + '" height="' + QH +
+         '" rx="5" fill="#18222e" stroke="#46607d" stroke-width="1.4"/>';
+    d += '<line x1="' + (QX + QW / 2) + '" y1="' + (QY + 4) + '" x2="' + (QX + QW / 2) + '" y2="' +
+         (QY + QH - 4) + '" stroke="#2e4157" stroke-width="1"/>';
+    d += '<rect x="' + (QX + 6) + '" y="' + (QY + 8) + '" width="' + (QW - 12) + '" height="24" rx="3" ' +
+         'fill="#0c141e" stroke="#2e4157"/>';
+    d += tx(QX + QW / 2, QY + 25, vale(bomba) ? br(bomba, 1) : 'parado', vale(bomba) ? VCAR : '#5d7f9c',
+            vale(bomba) ? 12 : 9.5, 700, 'middle');
+    for (let a2 = 0; a2 < 4; a2++)
+      d += '<line x1="' + (QX + 8) + '" y1="' + (QY + 42 + a2 * 7) + '" x2="' + (QX + QW - 8) +
+           '" y2="' + (QY + 42 + a2 * 7) + '" stroke="#243343" stroke-width="2.2" stroke-linecap="round"/>';
+    d += tx(QX + QW / 2, QY - 12, '⚙ inv. frequência', '#dbe9f7', 9.5, 700, 'middle');
+    d += tx(QX + QW / 2, QY + QH - 6, 'sem leitura', '#5d7f9c', 8, 400, 'middle');
+    /* da casa até ele, por baixo do chão */
+    const FIOY = SOLOY + 46;
+    if (vale(bomba)) {
+      d += fio([[GX + 20, BY + 6], [GX + 20, FIOY], [QX + QW / 2, FIOY], [QX + QW / 2, QY + QH]],
+               VCAR, 2.6, true, true);
+      d += fio([[QX + 12, QY + QH], [QX + 12, FIOY + 16], [PCX + 20, FIOY + 16],
+                [PCX + 20, H - 72]], VCAR, 2.6, true, true);
+    }
+
+    /* ======================= 6 · O POÇO E A BOMBA ======================= */
     const PY1 = H - 14, BPY = PY1 - 58, BPX = PCX - 15;
     d += '<rect x="' + (PX - 6) + '" y="' + SOLOY + '" width="' + (PW + 12) + '" height="' + (PY1 - SOLOY) +
          '" fill="#15202c" stroke="#4a5b6e" stroke-width="1.2"/>';
     d += '<rect x="' + PX + '" y="' + (SOLOY + 6) + '" width="' + PW + '" height="' + (PY1 - SOLOY - 6) +
          '" fill="url(#sfAgua)" opacity=".5"/>';
-    /* a bomba submersa */
     d += '<rect x="' + BPX + '" y="' + BPY + '" width="30" height="38" rx="4" fill="#243648" stroke="#5a86ab" stroke-width="1.3"/>';
     for (let a2 = 0; a2 < 4; a2++)
       d += '<line x1="' + (BPX + 3) + '" y1="' + (BPY + 7 + a2 * 8) + '" x2="' + (BPX + 27) + '" y2="' +
            (BPY + 7 + a2 * 8) + '" stroke="#5a86ab" stroke-width="1.6" opacity=".8"/>';
     d += '<rect x="' + (BPX + 7) + '" y="' + (BPY + 38) + '" width="16" height="15" rx="3" fill="#1b2a38" stroke="#5a86ab"/>';
 
-    /* 5a · O CANO: sobe da bomba, PASSA DO NÍVEL DO SOLO, faz a curva, cruza o
-       hidrômetro e volta a entrar no solo (dono, 11/10/2026). Bem mais grosso
-       que o fio, e só com água correndo por dentro quando a bomba está ligada. */
-    /* O TRECHO HORIZONTAL FICA ENTRE O POÇO E A CASA, e não por cima dela:
-       na primeira versão o cano atravessava o galpão por dentro, passando em
-       cima do barramento. Sobe, dobra, cruza o hidrômetro e volta ao solo
-       ANTES da parede. */
-    const HY = SOLOY - 30, HID = PX + PW - 4, HFIM = GX - 12;
-    d += cano([[PCX, BPY - 4], [PCX, HY], [HFIM, HY], [HFIM, SOLOY + 26]], vale(bomba));
-    /* o hidrômetro, montado no trecho horizontal */
-    d += '<rect x="' + (HID - 12) + '" y="' + (HY - 12) + '" width="24" height="24" rx="4" ' +
-         'fill="#2a3645" stroke="#7d8fa3" stroke-width="1.3"/>';
-    d += '<circle cx="' + HID + '" cy="' + HY + '" r="6.5" fill="#0c141e" stroke="#7d8fa3"/>';
-    d += '<circle cx="' + HID + '" cy="' + HY + '" r="2" fill="' + (vale(bomba) ? '#2fe0d0' : '#4a5b6e') + '"/>';
-    d += rot(HID + 2, HY - 18, 'hidrômetro', '#7d8fa3', 'middle');
+    /* ===== 6a · O CANO, EM CORTE, VIRANDO PARA O LADO OPOSTO À CASA =====
+       Sobe da bomba, passa do nível do solo, dobra para a ESQUERDA (o lado
+       contrário ao da casa), corre um trecho SUSPENSO onde fica o hidrômetro,
+       e entra no chão rumo ao piscinão. Desenhado em CORTE: parede de metal
+       nas duas faces e a água no meio, que é o que o dono pediu ao dizer
+       "desenha ele como um cano mesmo, com visão tipo de corte". */
+    const R = 11, HY = SOLOY - 44, XFIM = 14;        // raio do tubo e altura do trecho suspenso
+    const corteV = (cx2, y1, y2) => {                 // trecho vertical, em corte
+      const a2 = Math.min(y1, y2), b2 = Math.max(y1, y2);
+      return '<rect x="' + (cx2 - R) + '" y="' + a2 + '" width="' + (R * 2) + '" height="' + (b2 - a2) +
+             '" fill="#17384d" stroke="none"/>' +
+             '<rect x="' + (cx2 - R) + '" y="' + a2 + '" width="3" height="' + (b2 - a2) + '" fill="#6b7d91"/>' +
+             '<rect x="' + (cx2 + R - 3) + '" y="' + a2 + '" width="3" height="' + (b2 - a2) + '" fill="#4a5b6e"/>';
+    };
+    const corteH = (x1, x2, cy2) => {                 // trecho horizontal, em corte
+      const a2 = Math.min(x1, x2), b2 = Math.max(x1, x2);
+      return '<rect x="' + a2 + '" y="' + (cy2 - R) + '" width="' + (b2 - a2) + '" height="' + (R * 2) +
+             '" fill="#17384d" stroke="none"/>' +
+             '<rect x="' + a2 + '" y="' + (cy2 - R) + '" width="' + (b2 - a2) + '" height="3" fill="#6b7d91"/>' +
+             '<rect x="' + a2 + '" y="' + (cy2 + R - 3) + '" width="' + (b2 - a2) + '" height="3" fill="#4a5b6e"/>';
+    };
+    d += corteV(PCX, BPY - 6, HY);
+    d += corteH(XFIM, PCX + R, HY);
+    d += corteV(XFIM + R, HY, SOLOY + 40);
+    /* a água por dentro, só quando a bomba está ligada */
+    if (vale(bomba))
+      d += '<path class="solFluxo" d="' + cam([[PCX, BPY - 6], [PCX, HY], [XFIM + R, HY],
+            [XFIM + R, SOLOY + 40]]) + '" fill="none" stroke="#2fe0d0" stroke-width="13" ' +
+           'stroke-linecap="butt" stroke-linejoin="round" style="stroke-dasharray:' + TRACO_CANO + '"/>';
+    d += tx(XFIM + R * 2 + 6, SOLOY + 34, '→ piscinão', '#4fb3e8', 9, 700);
 
-    /* 5b · O FIO DA BOMBA: entra no nível do solo e desce (pedido do dono) */
-    /* O FIO CORRE MAIS FUNDO QUE O PÉ DO CANO (44 contra 26): os dois têm de
-       se cruzar em algum ponto — o cano sobe à esquerda e o fio vem da casa,
-       à direita — e em profundidades iguais aquilo virava um nó. Assim lê
-       como o que é: um passando por baixo do outro. */
-    const FIOY = SOLOY + 44;
-    const caminhoFio = [[FX + FW - 18, uy + uh], [FX + FW - 18, FIOY], [PCX + 20, FIOY],
-                        [PCX + 20, BPY + 14]];
-    if (vale(bomba)) d += fio(caminhoFio, VCAR, 2.6, true, true);
-    else d += '<path d="' + cam(caminhoFio) + '" fill="none" stroke="#2b3744" stroke-width="2" ' +
-              'stroke-dasharray="4 5"/>';
+    /* 6b · O HIDRÔMETRO, também em corte, no trecho suspenso */
+    const HID = (XFIM + R + PCX) / 2;
+    d += '<rect x="' + (HID - 17) + '" y="' + (HY - 17) + '" width="34" height="34" rx="4" ' +
+         'fill="#2a3645" stroke="#7d8fa3" stroke-width="1.4"/>';
+    d += '<rect x="' + (HID - 17) + '" y="' + (HY - R + 2) + '" width="34" height="' + (R * 2 - 4) +
+         '" fill="#17384d"/>';
+    if (vale(bomba))
+      d += '<path class="solFluxo" d="M ' + (HID - 17) + ' ' + HY + ' L ' + (HID + 17) + ' ' + HY +
+           '" fill="none" stroke="#2fe0d0" stroke-width="13" style="stroke-dasharray:' + TRACO_CANO + '"/>';
+    d += '<circle cx="' + HID + '" cy="' + (HY - 9) + '" r="7" fill="#0c141e" stroke="#7d8fa3" stroke-width="1.2"/>';
+    d += '<circle cx="' + HID + '" cy="' + (HY - 9) + '" r="2" fill="' + (vale(bomba) ? '#2fe0d0' : '#4a5b6e') + '"/>';
+    d += rot(HID, HY - 24, 'hidrômetro', '#7d8fa3', 'middle');
 
     const lig = v.bomba_ligada === true;
-    d += tx(PX + PW + 16, SOLOY + 72, '💧 bomba', '#dbe9f7', 11, 700);
-    d += '<text x="' + (PX + PW + 16) + '" y="' + (SOLOY + 100) + '" fill="' + (lig ? VCAR : '#6b7683') +
+    d += tx(PX + PW + 22, SOLOY + 92, '💧 bomba', '#dbe9f7', 11, 700);
+    d += '<text x="' + (PX + PW + 22) + '" y="' + (SOLOY + 120) + '" fill="' + (lig ? VCAR : '#6b7683') +
          '" font-size="22" font-weight="800" font-family="system-ui,sans-serif">' +
          (vale(bomba) ? br(bomba, 1) : '0') + '</text>';
-    d += tx(PX + PW + (vale(bomba) ? 74 : 34), SOLOY + 100, 'kW', '#8ba0bd', 10);
-    d += tx(PX + PW + 16, SOLOY + 118, lig ? (nom ? br(bomba / nom * 100, 0) + '% da potência' : 'ligada') : 'desligada',
+    d += tx(PX + PW + (vale(bomba) ? 80 : 40), SOLOY + 120, 'kW', '#8ba0bd', 10);
+    d += tx(PX + PW + 22, SOLOY + 138, lig ? (nom ? br(bomba / nom * 100, 0) + '% da potência' : 'ligada') : 'desligada',
             lig ? '#8ba0bd' : '#6b7683', 9.5);
-    d += tx(PX + PW + 16, SOLOY + 131, 'submersa no poço', '#5d7f9c', 9);
 
-    const svg = '<svg viewBox="0 0 ' + W + ' ' + H + '" width="100%" style="max-width:' +
-      (estreito ? '100%' : '400px') + ';display:block;margin:4px auto" ' +
-      'xmlns="http://www.w3.org/2000/svg">' + d + '</svg>';
+    /* A MOLDURA DA LUPA. `touch-action:pan-y` deixa um dedo rolar a página e
+       entrega o par de dedos para o `ligarZoomFluxo`; `overflow:hidden` faz o
+       desenho ampliado ficar DENTRO do quadro em vez de empurrar o resto da
+       tela. As abas, que moram no cabeçalho, não sentem nada — que é o que o
+       dono pediu ao dizer que elas têm de ficar imóveis. */
+    const svg = '<div id="solFluxoZoom" style="position:relative;overflow:hidden;' +
+      'touch-action:pan-y;border-radius:8px;background:#0b121b;margin:4px auto;max-width:' +
+      (estreito ? '100%' : '420px') + '">' +
+        '<div id="solFluxoAlvo" style="transform-origin:0 0;will-change:transform">' +
+          '<svg viewBox="0 0 ' + W + ' ' + H + '" width="100%" style="display:block" ' +
+          'xmlns="http://www.w3.org/2000/svg">' + d + '</svg>' +
+        '</div>' +
+        '<button onclick="SOLAR_ZOOM_RESET()" style="position:absolute;right:6px;bottom:6px;' +
+        'background:rgba(34,48,63,.92);color:#cfe4f7;border:1px solid #33475c;border-radius:7px;' +
+        'padding:5px 9px;font-size:11px;cursor:pointer;font-weight:700">⤢ ajustar</button>' +
+      '</div>' +
+      '<div style="color:#6b7683;font-size:10px;margin:2px 0 0;text-align:center">' +
+        'dois dedos ampliam e arrastam o desenho · um dedo rola a página</div>';
 
     /* A CONFERÊNCIA DO NÓ, embaixo do desenho. Sol = bateria + bomba é a lei
        que o desenho ilustra; mostrá-la fechando (ou não) diz num relance se a
@@ -2028,7 +2086,7 @@
   let diaAba = null;
 
   function fecharJanela() {
-    abertaId = null; mexerViewport(false);
+    abertaId = null;
     const e = document.getElementById('solarJanela'); if (e) e.remove();
   }
   /* ABAS: cada parte do desenho abre a sua (pedido do dono, 18/09/2026):
@@ -2041,35 +2099,88 @@
      fez `abaAtual` virar um MouseEvent, e a renderização quebrar em
      `abaAtual.startsWith(...)`: a janela não abria e não dizia por quê.
      Guarda de TIPO, não de presença. */
-  /* ===== PINÇA LIBERADA SÓ ENQUANTO A JANELA ESTÁ ABERTA =====
-     Dono, 11/10/2026: *"trava a seleção de aba e o resto usa o zoom normal de
-     dedo, pinça e etc"*. A barra de abas já vive no cabeçalho `sticky`, então
-     ela não sai do lugar. O que faltava era a pinça: o `mobile/index.html`
-     declara `maximum-scale=1,user-scalable=no`, e isso mata o zoom nativo da
-     página inteira.
+  /* ===== ZOOM DENTRO DA MOLDURA, NÃO DA PÁGINA =====
+     Primeira tentativa (11/10/2026): afrouxei o `meta viewport` enquanto a
+     janela estivesse aberta, para liberar a pinça nativa. ERRADO, e o dono
+     viu na hora: *"você não travou as abas; você dá zoom, amplia tudo; as
+     abas têm que ficar imóveis"*. Zoom de página é zoom de TUDO — cabeçalho,
+     abas, botão de voltar. O que ele quer é lupa no desenho.
 
-     Tirar de lá resolveria o desenho e estragaria o MAPA, que tem o pinça
-     dele (Leaflet) e ficaria brigando com o do navegador. Então o `meta` é
-     afrouxado na abertura e restaurado no fechamento — escopo exato do
-     problema. Quem não tem a trava (o módulo de telemetria) não sente nada,
-     porque o valor antigo é guardado e devolvido como estava. */
-  let viewportAntes = null;
-  const mexerViewport = (liberar) => {
-    const m = document.querySelector('meta[name="viewport"]');
-    if (!m) return;
-    if (liberar) {
-      if (viewportAntes == null) viewportAntes = m.getAttribute('content') || '';
-      if (/user-scalable\s*=\s*no|maximum-scale/.test(viewportAntes))
-        m.setAttribute('content', 'width=device-width,initial-scale=1,viewport-fit=cover,maximum-scale=5');
-    } else if (viewportAntes != null) {
-      m.setAttribute('content', viewportAntes); viewportAntes = null;
-    }
-  };
+     Então a pinça é tratada aqui, só no quadro do desenho, e o `meta` da
+     página fica como estava.
+
+     `touch-action: pan-y` de propósito: UM dedo continua rolando a página
+     (senão, num desenho de 700 px de altura, o dedo ficaria preso) e DOIS
+     dedos fazem lupa e arrasto. É o acordo que não tira nada de ninguém. */
+  let zoomFluxo = { k: 1, x: 0, y: 0 };
+  function ligarZoomFluxo() {
+    const cx = document.getElementById('solFluxoZoom');
+    if (!cx) return;
+    const alvo = document.getElementById('solFluxoAlvo');
+    if (!alvo) return;
+    const aplicar = () => {
+      alvo.style.transform = 'translate(' + zoomFluxo.x.toFixed(1) + 'px,' +
+        zoomFluxo.y.toFixed(1) + 'px) scale(' + zoomFluxo.k.toFixed(3) + ')';
+    };
+    aplicar();
+    /* O HTML da janela é REESCRITO a cada ciclo de dado, então os ouvintes
+       morrem junto. Marcar o nó evita pendurar dois no mesmo elemento quando
+       a repintura não acontece. */
+    if (cx.dataset.lig) return;
+    cx.dataset.lig = '1';
+    const pts = new Map();
+    let base = null;
+    const par = () => {
+      const a = [...pts.values()];
+      return { x: (a[0].x + a[1].x) / 2, y: (a[0].y + a[1].y) / 2,
+               d: Math.hypot(a[0].x - a[1].x, a[0].y - a[1].y) || 1 };
+    };
+    cx.addEventListener('pointerdown', e => {
+      pts.set(e.pointerId, { x: e.clientX, y: e.clientY }); base = null;
+      if (pts.size === 2) { try { cx.setPointerCapture(e.pointerId); } catch (_) {} }
+    });
+    cx.addEventListener('pointermove', e => {
+      if (!pts.has(e.pointerId)) return;
+      pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      if (pts.size !== 2) return;                 // 1 dedo = rolagem da página
+      const m = par();
+      if (base) {
+        const nk = Math.max(1, Math.min(6, zoomFluxo.k * (m.d / base.d)));
+        const r = nk / zoomFluxo.k, cr = cx.getBoundingClientRect();
+        const px = m.x - cr.left, py = m.y - cr.top;
+        /* a lupa abre em volta do PONTO ENTRE OS DEDOS, e o arrasto do par
+           vai junto: é o gesto que todo mapa faz, e o dedo já espera */
+        zoomFluxo.x = px - (px - zoomFluxo.x) * r + (m.x - base.x);
+        zoomFluxo.y = py - (py - zoomFluxo.y) * r + (m.y - base.y);
+        zoomFluxo.k = nk;
+        if (zoomFluxo.k <= 1.001) { zoomFluxo.k = 1; zoomFluxo.x = 0; zoomFluxo.y = 0; }
+        aplicar();
+      }
+      base = m; e.preventDefault();
+    }, { passive: false });
+    const soltar = e => { pts.delete(e.pointerId); base = null; };
+    cx.addEventListener('pointerup', soltar);
+    cx.addEventListener('pointercancel', soltar);
+    cx.addEventListener('pointerleave', soltar);
+    /* no desktop a roda com Ctrl, que é o gesto equivalente */
+    cx.addEventListener('wheel', e => {
+      if (!e.ctrlKey) return;
+      e.preventDefault();
+      const nk = Math.max(1, Math.min(6, zoomFluxo.k * (e.deltaY < 0 ? 1.12 : 0.89)));
+      const r = nk / zoomFluxo.k, cr = cx.getBoundingClientRect();
+      const px = e.clientX - cr.left, py = e.clientY - cr.top;
+      zoomFluxo.x = px - (px - zoomFluxo.x) * r;
+      zoomFluxo.y = py - (py - zoomFluxo.y) * r;
+      zoomFluxo.k = nk;
+      if (zoomFluxo.k <= 1.001) { zoomFluxo.k = 1; zoomFluxo.x = 0; zoomFluxo.y = 0; }
+      aplicar();
+    }, { passive: false });
+  }
+  window.SOLAR_ZOOM_RESET = () => { zoomFluxo = { k: 1, x: 0, y: 0 }; ligarZoomFluxo(); };
 
   function abrirJanela(id, fonte, aba) {
     abertaId = id; fonteAtual = fonte; diaAba = null;
     abaAtual = (typeof aba === 'string' && aba) ? aba : 'geral';
-    mexerViewport(true);
     ultimoHTML = ''; atualizarJanela();
   }
   window.SOLAR_ABA = a => { abaAtual = a; diaAba = null; ultimoHTML = ''; atualizarJanela(); };
@@ -2205,7 +2316,7 @@
                 : '<div style="text-align:right;margin-top:8px"><button onclick="SOLAR_UI.fecharJanela()" ' +
                   'style="background:#22303f;color:#e6e6e6;border:1px solid #33475c;border-radius:6px;padding:5px 10px;cursor:pointer">fechar</button></div>');
 
-    if (html === ultimoHTML) return;      // não repinta igual: evita piscar a cada ciclo
+    if (html === ultimoHTML) { ligarZoomFluxo(); return; }   // mesmo sem repintar, garante o gesto
     ultimoHTML = html;
     let e = document.getElementById('solarJanela');
     if (!e) { e = document.createElement('div'); e.id = 'solarJanela'; document.body.appendChild(e); }
@@ -2220,6 +2331,8 @@
         'background:#161a21;border:1px solid #2a2f3a;border-radius:10px;padding:12px 14px;color:#e6e6e6;' +
         'font:13px/1.45 system-ui,sans-serif;box-shadow:0 8px 30px rgba(0,0,0,.5)';
     e.innerHTML = html;
+    /* os ouvintes morrem com o HTML reescrito; religa e reaplica a lupa */
+    ligarZoomFluxo();
   }
 
   /* `abaObjetivo` sai junto para a ferramenta de prévia poder RENDERIZAR a aba
