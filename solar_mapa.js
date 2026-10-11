@@ -1597,13 +1597,16 @@
        o que fazia o cabo do BESS sumir no chão e o da bomba não chegar nela. */
     d += ligBess + ligBomba;
 
-    /* A MOLDURA DA LUPA. `touch-action:pan-y` deixa um dedo rolar a página e
-       entrega o par de dedos para o `ligarZoomFluxo`; `overflow:hidden` faz o
-       desenho ampliado ficar DENTRO do quadro em vez de empurrar o resto da
-       tela. As abas, que moram no cabeçalho, não sentem nada — que é o que o
-       dono pediu ao dizer que elas têm de ficar imóveis. */
+    /* A MOLDURA DA LUPA. O `touch-action` vem do JS (`none`, para o navegador
+       não roubar a pinça no meio) e a rolagem é devolvida na mão lá; aqui fica
+       só o que é aparência. `overflow:hidden` faz o desenho ampliado ficar
+       DENTRO do quadro em vez de empurrar a tela, e as abas, que moram no
+       cabeçalho, não sentem nada — que é o que o dono pediu ao dizer que elas
+       têm de ficar imóveis. `user-select:none` evita o toque longo virar
+       seleção de texto no meio do arrasto. */
     const svg = '<div id="solFluxoZoom" style="position:relative;overflow:hidden;' +
-      'touch-action:pan-y;border-radius:8px;background:#0b121b;margin:4px auto;max-width:' +
+      'border-radius:8px;background:#0b121b;margin:4px auto;user-select:none;' +
+      '-webkit-user-select:none;-webkit-touch-callout:none;max-width:' +
       (estreito ? '100%' : '420px') + '">' +
         '<div id="solFluxoAlvo" style="transform-origin:0 0;will-change:transform">' +
           '<svg viewBox="0 0 ' + W + ' ' + H + '" width="100%" style="display:block" ' +
@@ -2164,54 +2167,106 @@
   let zoomFluxo = { k: 1, x: 0, y: 0 };
   function ligarZoomFluxo() {
     const cx = document.getElementById('solFluxoZoom');
-    if (!cx) return;
-    const alvo = document.getElementById('solFluxoAlvo');
+    const alvo = cx && document.getElementById('solFluxoAlvo');
     if (!alvo) return;
     const aplicar = () => {
       alvo.style.transform = 'translate(' + zoomFluxo.x.toFixed(1) + 'px,' +
         zoomFluxo.y.toFixed(1) + 'px) scale(' + zoomFluxo.k.toFixed(3) + ')';
     };
     aplicar();
-    /* O HTML da janela é REESCRITO a cada ciclo de dado, então os ouvintes
-       morrem junto. Marcar o nó evita pendurar dois no mesmo elemento quando
-       a repintura não acontece. */
-    if (cx.dataset.lig) return;
+    if (cx.dataset.lig) return;                 // o HTML é reescrito a cada ciclo
     cx.dataset.lig = '1';
+
+    /* ===== POR QUE `touch-action:none` E NÃO `pan-y` =====
+       A primeira versão usava `pan-y` para um dedo continuar rolando a
+       página. Só que aí QUEM DECIDE é o navegador: no meio da pinça ele
+       conclui que o gesto é rolagem, dispara `pointercancel` e os dedos
+       somem da minha conta — foi o *"a pinça fica travando no zoom, não pega
+       direito"* do dono em 11/10/2026.
+
+       Com `none` o gesto é meu do começo ao fim, e a rolagem eu devolvo na
+       mão: um dedo com o desenho no tamanho natural ROLA A JANELA (mexendo
+       no `scrollTop` do contêiner), e um dedo com o desenho ampliado ARRASTA
+       o desenho, que é o que o dedo espera depois de dar zoom. */
+    cx.style.touchAction = 'none';
+
     const pts = new Map();
-    let base = null;
+    let base = null, rolar = null;
+    /* O DUPLO-TOQUE PRECISA SABER O QUE FOI O GESTO. Ao soltar uma pinça saem
+       DOIS `pointerup` em poucos milissegundos, e o segundo passava por
+       duplo-toque: o zoom voltava ao tamanho natural assim que a mão saía da
+       tela. Pego no ensaio de 11/10/2026, antes de ir para o ar. Conta como
+       toque só o gesto de UM dedo, sem pinça no meio e praticamente parado. */
+    let houvePinca = false, andou = 0;
+    const painel = () => {                      // quem de fato rola a janela
+      let e = cx.parentNode;
+      while (e && e !== document.body) {
+        const o = getComputedStyle(e).overflowY;
+        if ((o === 'auto' || o === 'scroll') && e.scrollHeight > e.clientHeight + 4) return e;
+        e = e.parentNode;
+      }
+      return null;
+    };
     const par = () => {
       const a = [...pts.values()];
       return { x: (a[0].x + a[1].x) / 2, y: (a[0].y + a[1].y) / 2,
                d: Math.hypot(a[0].x - a[1].x, a[0].y - a[1].y) || 1 };
     };
+    const limpar = e => {
+      pts.delete(e.pointerId); base = null;
+      if (pts.size < 1) rolar = null;
+      try { cx.releasePointerCapture(e.pointerId); } catch (_) {}
+    };
+
     cx.addEventListener('pointerdown', e => {
-      pts.set(e.pointerId, { x: e.clientX, y: e.clientY }); base = null;
-      if (pts.size === 2) { try { cx.setPointerCapture(e.pointerId); } catch (_) {} }
-    });
-    cx.addEventListener('pointermove', e => {
-      if (!pts.has(e.pointerId)) return;
+      if (e.target.closest && e.target.closest('button')) return;   // o "⤢ ajustar"
       pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
-      if (pts.size !== 2) return;                 // 1 dedo = rolagem da página
+      base = null;
+      if (pts.size === 1) { rolar = (zoomFluxo.k <= 1.01) ? painel() : null;
+        houvePinca = false; andou = 0; }
+      if (pts.size >= 2) houvePinca = true;
+      /* CAPTURA EM TODOS OS DEDOS: sem isso, o segundo que sai do elemento
+         (e numa pinça ele sai, porque os dedos se afastam) para de mandar
+         evento e o zoom congela no meio. */
+      try { cx.setPointerCapture(e.pointerId); } catch (_) {}
+    });
+
+    cx.addEventListener('pointermove', e => {
+      const ant = pts.get(e.pointerId);
+      if (!ant) return;
+      const dx = e.clientX - ant.x, dy = e.clientY - ant.y;
+      andou += Math.abs(dx) + Math.abs(dy);
+      pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
+
+      if (pts.size === 1) {
+        if (rolar) { rolar.scrollTop -= dy; }     // tamanho natural: rola a janela
+        else { zoomFluxo.x += dx; zoomFluxo.y += dy; aplicar(); }   // ampliado: arrasta
+        e.preventDefault();
+        return;
+      }
+      if (pts.size < 2) return;
       const m = par();
       if (base) {
         const nk = Math.max(1, Math.min(6, zoomFluxo.k * (m.d / base.d)));
         const r = nk / zoomFluxo.k, cr = cx.getBoundingClientRect();
         const px = m.x - cr.left, py = m.y - cr.top;
-        /* a lupa abre em volta do PONTO ENTRE OS DEDOS, e o arrasto do par
-           vai junto: é o gesto que todo mapa faz, e o dedo já espera */
         zoomFluxo.x = px - (px - zoomFluxo.x) * r + (m.x - base.x);
         zoomFluxo.y = py - (py - zoomFluxo.y) * r + (m.y - base.y);
         zoomFluxo.k = nk;
-        if (zoomFluxo.k <= 1.001) { zoomFluxo.k = 1; zoomFluxo.x = 0; zoomFluxo.y = 0; }
+        if (zoomFluxo.k <= 1.01) { zoomFluxo.k = 1; zoomFluxo.x = 0; zoomFluxo.y = 0; }
         aplicar();
       }
-      base = m; e.preventDefault();
+      base = m; rolar = null;
+      e.preventDefault();
     }, { passive: false });
-    const soltar = e => { pts.delete(e.pointerId); base = null; };
-    cx.addEventListener('pointerup', soltar);
-    cx.addEventListener('pointercancel', soltar);
-    cx.addEventListener('pointerleave', soltar);
-    /* no desktop a roda com Ctrl, que é o gesto equivalente */
+
+    cx.addEventListener('pointerup', limpar);
+    cx.addEventListener('pointercancel', limpar);
+    /* o navegador pode cancelar o toque mesmo com `touch-action:none` (chamada
+       entrando, gesto do sistema): zerar o estado evita ficar com um dedo
+       fantasma na conta, que era o outro jeito de "travar". */
+    cx.addEventListener('lostpointercapture', limpar);
+
     cx.addEventListener('wheel', e => {
       if (!e.ctrlKey) return;
       e.preventDefault();
@@ -2221,9 +2276,22 @@
       zoomFluxo.x = px - (px - zoomFluxo.x) * r;
       zoomFluxo.y = py - (py - zoomFluxo.y) * r;
       zoomFluxo.k = nk;
-      if (zoomFluxo.k <= 1.001) { zoomFluxo.k = 1; zoomFluxo.x = 0; zoomFluxo.y = 0; }
+      if (zoomFluxo.k <= 1.01) { zoomFluxo.k = 1; zoomFluxo.x = 0; zoomFluxo.y = 0; }
       aplicar();
     }, { passive: false });
+    /* dois toques rápidos: entra e sai do zoom sem precisar de pinça */
+    let ultimoToque = 0;
+    cx.addEventListener('pointerup', e => {
+      const t = Date.now();
+      if (houvePinca || andou > 12) { ultimoToque = 0; return; }
+      if (t - ultimoToque < 320 && pts.size === 0) {
+        zoomFluxo = zoomFluxo.k > 1.01 ? { k: 1, x: 0, y: 0 }
+          : (() => { const cr = cx.getBoundingClientRect(), K = 2.4;
+              return { k: K, x: (e.clientX - cr.left) * (1 - K), y: (e.clientY - cr.top) * (1 - K) }; })();
+        aplicar();
+      }
+      ultimoToque = t;
+    });
   }
   window.SOLAR_ZOOM_RESET = () => { zoomFluxo = { k: 1, x: 0, y: 0 }; ligarZoomFluxo(); };
 
@@ -2387,5 +2455,5 @@
   /* `abaObjetivo` sai junto para a ferramenta de prévia poder RENDERIZAR a aba
      fora do navegador, pelo mesmo motivo que o `desenhar` sai: maquete feita à
      mão mostra o que eu achei que o código faz, não o que ele faz. */
-  window.SOLAR_UI = { COR, prepararCadastro, desenhar, abrirJanela, atualizarJanela, fecharJanela, abaObjetivo, abaFluxo };
+  window.SOLAR_UI = { COR, prepararCadastro, desenhar, abrirJanela, atualizarJanela, fecharJanela, abaObjetivo, abaFluxo, ligarZoomFluxo };
 })();
