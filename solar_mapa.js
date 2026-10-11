@@ -1119,7 +1119,34 @@
     const est = { '0x200': 'gerando', '0x201': 'limitado', '0x202': 'limitado', '0xa000': 'sem sol' };
     const W = 440, H = 730;
 
-    const fv = n(v.p_fv_kw) || 0, bat = n(v.p_bateria_kw) || 0, bomba = n(v.p_carga_kw) || 0;
+    const fv = n(v.p_fv_kw) || 0, bat = n(v.p_bateria_kw) || 0;
+    /* O CONSUMO MEDIDO NÃO É TODO DA BOMBA (dono, 11/10/2026: *"a bomba tá
+       desligada, já dá com um consumo bem baixo, e tá como se a bomba
+       tivesse consumindo e mandando água"* · *"o inversor de frequência pode
+       adotar consumo apenas quando é a bomba, o resto é da casa"*).
+
+       O defeito: o desenho acendia a bomba a partir de 0,4 kW (`vale`), e a
+       casa sozinha consome 0,25 a 0,58 kW com a bomba parada — então três dos
+       quatro poços apareciam bombeando água à noite. Pior: o banco já dizia
+       `bomba_ligada = false` ao mesmo tempo. Tela contradizendo o banco é o
+       inverso da regra do projeto.
+
+       QUEM DECIDE É O BANCO. `bomba_ligada` sai do `solar_vigia` comparando o
+       consumo com `solar_sitio.bomba_limiar_kw` (15 kW nestes poços, contra
+       70 a 79 kW de bomba nominal). Não se inventa aqui um segundo critério:
+       dois critérios para a mesma pergunta divergem, e aí a tela volta a
+       contradizer o banco.
+
+       Sítio SEM bomba (a usina dos pivôs) tem `bomba_ligada` nulo — ali o
+       consumo não é "casa", é a carga do lugar, e o rótulo muda. */
+    const carga = n(v.p_carga_kw) || 0;
+    const temBomba = v.bomba_ligada != null;
+    const bombaOn = v.bomba_ligada === true;
+    const bomba = bombaOn ? carga : 0;
+    /* Com a bomba tocando NÃO SE SEPARA a casa: há um medidor só, e a casa
+       some dentro dos 70 kW da bomba. Mostrar uma fatia estimada ali seria
+       número inventado — e foi inventar número que custou o dia de hoje. */
+    const casa = bombaOn ? null : carga;
     const soc = n(v.soc_pct);
     const vale = x => x != null && Math.abs(x) >= 0.4;
 
@@ -1517,6 +1544,28 @@
     d += rot((BX0 + BX1) / 2, BY + 19, 'BARRAMENTO', '#d9a05a', 'middle');
     d += rot((BX0 + BX1) / 2, BY + 30, 'CA', '#d9a05a', 'middle');
 
+    /* 3c-bis · A CARGA DA CASA — o consumo que NÃO é a bomba.
+       Mora na faixa livre entre o cabo do inversor de frequência (que corre em
+       BY+34 rumo à esquerda) e o cabo do BESS (que desce em BX1-6): x de
+       BX0+14 a BX1-16, y de BY+40 a SOLOY. Limiar próprio de 0,05 kW, e não o
+       `vale` de 0,4: a casa roda em 0,12 kW de mediana, então com 0,4 ela
+       nunca apareceria — que é justamente o que fazia esse consumo ser
+       empurrado para a bomba. */
+    /* O CABO DESCE À ESQUERDA DO RÓTULO. Centrado, ele cortava a palavra
+       "BARRAMENTO" (que ocupa x de ~229 a ~302). À esquerda de 229 e à direita
+       do cabo do inversor de frequência — que desce em BX0 e vira para a
+       esquerda em BY+34, portanto não cruza este. */
+    const CSX = BX0 - 17, CSW = 62, CSY = BY + 40, CSH = 26, CSCABO = BX0 + 14;
+    const temCasa = casa != null && casa >= 0.05;
+    d += '<rect x="' + CSX + '" y="' + CSY + '" width="' + CSW + '" height="' + CSH +
+         '" rx="3" fill="#16222f" stroke="' + (temCasa ? '#4a6a85' : '#2e3e4f') + '" stroke-width="1.1"/>';
+    d += tx(CSX + CSW / 2, CSY + 10, temBomba ? 'casa' : 'consumo', '#6d8aa8', 7.5, 400, 'middle');
+    d += tx(CSX + CSW / 2, CSY + 21,
+            temCasa ? br(casa, 2) + ' kW' : (bombaOn ? 'na bomba' : '—'),
+            temCasa ? VCAR : '#5d7f9c', temCasa ? 9.5 : 8, temCasa ? 700 : 400, 'middle');
+    if (temCasa)
+      d += fio([[CSCABO, BY + 2], [CSCABO, CSY], [CSX + CSW / 2, CSY]], VCAR, 2, true, false);
+
     /* 3d · O BESS, bem afastado da casa para o cabo aparecer */
     const EY = GY + 6, EH = GH - 6;
     const corB = soc == null ? '#8b949e' : soc >= 50 ? VBAT : soc >= 20 ? '#ffb300' : '#ff4444';
@@ -1697,8 +1746,11 @@
        que o desenho ilustra; mostrá-la fechando (ou não) diz num relance se a
        leitura está coerente. Poço 03 em 11/10/2026, com nuvem: 26 de sol, 52
        saindo da bateria, 78 na bomba. */
-    const soma = fv + (-bat) ;
-    const erro = Math.abs(soma - bomba);
+    /* A CASA ENTRA NA CONTA. Sem ela, os 0,5 kW que a casa consome apareciam
+       como "diferença" — isto é, como erro de leitura — quando são carga real
+       e agora medida. A lei é sol = bateria + bomba + casa. */
+    const soma = fv + (-bat);
+    const erro = Math.abs(soma - bomba - (casa || 0));
     const conf =
       '<div style="background:#101a26;border:1px solid #223044;border-radius:8px;padding:8px 10px;' +
       'margin-top:6px;font-size:11.5px;color:#9aa3b0;line-height:1.6">' +
@@ -1707,6 +1759,8 @@
         (bat <= 0 ? '<span style="color:' + VBAT + '">+ ' + br(-bat, 1) + '</span> da bateria '
                   : '<span style="color:' + VBAT + '">− ' + br(bat, 1) + '</span> para a bateria ') +
         '= <span style="color:' + VCAR + '">' + br(bomba, 1) + ' kW</span> na bomba' +
+        (temCasa ? ' + <span style="color:' + VCAR + '">' + br(casa, 2) + ' kW</span> na ' +
+                   (temBomba ? 'casa' : 'carga') : '') +
         (erro > Math.max(2, bomba * 0.05)
           ? '<br><span style="color:#ff8a5c">fecha com ' + br(erro, 1) + ' kW de diferença — ' +
             'leituras de instantes diferentes, ou falta carga que o logger não vê</span>'
