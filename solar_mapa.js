@@ -1457,7 +1457,10 @@
     /* o teto TÍPICO é a mediana dos dias fechados, não a média: uma semana
        nublada puxaria a média e faria a tela dizer que a meta é alcançável
        quando não é. */
-    const tetos = ult.filter(d => n(d.horas_possiveis) > 1).map(d => n(d.horas_possiveis)).sort((a, b) => a - b);
+    /* TETO TOTAL, não só o sol direto: esta linha decide se a meta do mês é
+       alcançável, e com o sol direto (9,1 a 9,7 h) ela diria "impossível"
+       todo mês — as 10 h se fazem com o sol MAIS a bateria. */
+    const tetos = ult.filter(d => n(d.teto_total_h) > 1).map(d => n(d.teto_total_h)).sort((a, b) => a - b);
     const tetoTipico = tetos.length ? tetos[Math.floor(tetos.length / 2)] : META_H;
     const historico =
       '<div style="font:700 12px/1 system-ui,sans-serif;color:#dbe9f7;margin:2px 0 5px">últimos ' + ult.length + ' dias</div>' +
