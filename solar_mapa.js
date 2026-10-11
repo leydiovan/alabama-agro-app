@@ -1266,6 +1266,12 @@
     const BY = GY + 180;                              // o barramento, dentro dela
     const PX = 72, PW = 52, PCX = PX + PW / 2;        // o poço
     const EX = 384, EW = 48;                          // o BESS, afastado para o cabo aparecer
+    /* os três aparelhos da parede, e a fila: 0 = inv. de frequência (lado do
+       poço), 1 e 2 = os inversores solares */
+    const UW = 60, UG = 3, U0 = GX + 11, uy = GY + 40, uh = 108;
+    const ux = k => U0 + k * (UW + UG);
+    const QX = ux(0), QW = UW;                        // o inv. de frequência
+    const BX0 = ux(1), BX1 = ux(2) + UW;              // o barramento: SÓ sob os dois solares
 
     let d = '<defs>' +
       '<linearGradient id="sfPlaca" x1="0" y1="0" x2="1" y2="1">' +
@@ -1340,10 +1346,17 @@
        desce da mesa, corre e entra pelo telhado — e o caminho é montado com
        as MEDIDAS da casa, não com um número solto, para não desgrudar de novo
        na próxima vez que algo se mexer. */
+    /* UM CABO PARA CADA INVERSOR SOLAR (dono, 11/10/2026: *"os painéis têm que
+       sair um cabo para cada inversor solar"*). Antes era um cabo só, e ainda
+       por cima caindo em cima do inversor de FREQUÊNCIA, que não recebe nada
+       das placas. Os dois descem da mesa, correm no mesmo nível e entram cada
+       um no seu. As medidas saem de `ux()`, que é quem sabe onde eles estão. */
     const cabo = vale(fv)
-      ? fio([[126, 158], [126, 186], [GX + 34, 186], [GX + 34, 240]], SOL, 3, true, true) +
-        rot(GX + 42, 214, br(fv, 1) + ' kW', SOL)
-      : tx(140, 182, 'sem geração', '#6b7683', 10);
+      ? [1, 2].map(k => fio([[112 + (k - 1) * 14, 158], [112 + (k - 1) * 14, 180 + (k - 1) * 10],
+                             [ux(k) + UW / 2, 180 + (k - 1) * 10], [ux(k) + UW / 2, uy - 6]],
+                            SOL, 2.6, true, true)).join('') +
+        rot(GX + 6, 176, br(fv, 1) + ' kW', SOL, 'end')
+      : tx(100, 176, 'sem geração', '#6b7683', 10);
 
     /* ========= 3 · CANO | POÇO | INV.FREQ | CASA | BESS =========
        Arranjo de 11/10/2026, terceira rodada com o dono:
@@ -1375,8 +1388,6 @@
        sair para fora, de pé ao lado da bomba, e o dono corrigiu: *"aí tu
        colocou o inversor de frequência fora da casa; era só para mudar o
        lado, para ficar perto da bomba"*. Dentro da casa, à esquerda. */
-    const UW = 60, UG = 3, U0 = GX + 11, uy = GY + 40, uh = 108;
-    const ux = k => U0 + k * (UW + UG);
     invs.forEach((i, kk) => {
       if (kk > 1) return;
       const k = kk + 1;                               // 0 é do inv. de frequência
@@ -1404,14 +1415,13 @@
          "inversores", que é onde se vai procurar o aparelho pela prancha. */
       const cru = i.nome || ('end ' + i.endereco);
       const mcurto = /^inver\w*\s*\(?([^)]+)\)?\s*$/i.exec(cru);
-      d += tx(X + UW / 2, uy - 9, 'inv ' + (mcurto ? mcurto[1] : cru).slice(0, 9),
+      d += tx(X + UW / 2, uy - 9, (mcurto ? mcurto[1] : cru).slice(0, 8),
               '#dbe9f7', 9, 700, 'middle');
       if (vale(n(i.p_ativa_kw))) d += fio([[X + UW / 2, uy + uh], [X + UW / 2, BY - 6]], SOL, 2.6, true);
     });
     if (!invs.length) d += tx(ux(1), uy + 40, 'sem inversores', '#6b7683', 10);
 
     /* 3b2 · o inversor de FREQUÊNCIA, primeiro da fila */
-    const QX = ux(0), QW = UW;
     d += '<rect x="' + (QX + 6) + '" y="' + (uy - 5) + '" width="' + (UW - 12) + '" height="5" fill="#3a4b5e"/>';
     d += '<rect x="' + QX + '" y="' + uy + '" width="' + QW + '" height="' + uh +
          '" rx="5" fill="#18222e" stroke="#46607d" stroke-width="1.3"/>';
@@ -1425,17 +1435,26 @@
     for (let a2 = 0; a2 < 5; a2++)
       d += '<line x1="' + (QX + 8) + '" y1="' + (uy + 50 + a2 * 7) + '" x2="' + (QX + QW - 8) +
            '" y2="' + (uy + 50 + a2 * 7) + '" stroke="#243343" stroke-width="2.2" stroke-linecap="round"/>';
-    d += tx(QX + QW / 2, uy - 9, 'inv. frequência', '#dbe9f7', 9, 700, 'middle');
+    d += tx(QX + QW / 2, uy - 9, 'inv. freq.', '#dbe9f7', 9, 700, 'middle');
     d += tx(QX + QW / 2, uy + 100, 'sem leitura', '#5d7f9c', 8, 400, 'middle');
-    /* ele PUXA do barramento: a corrente sobe */
-    if (vale(bomba)) d += fio([[QX + QW / 2, BY - 6], [QX + QW / 2, uy + uh]], VCAR, 2.6, true);
+    /* ELE RECEBE DO BARRAMENTO — não das placas. Estava errado: o cabo dos
+       painéis caía nele e a saída ia direto para a bomba, pulando o
+       barramento. Agora o cabo sai da ponta esquerda da barra, desce pelo vão
+       livre e sobe por baixo dele. */
+    if (vale(bomba))
+      d += fio([[BX0, BY + 2], [BX0, BY + 34], [QX + 16, BY + 34], [QX + 16, uy + uh]],
+               VCAR, 2.6, true, true);
 
     /* 3c · barramento de cobre */
-    d += '<rect x="' + (GX + 14) + '" y="' + (BY - 4) + '" width="' + (GW - 28) + '" height="8" rx="2" ' +
+    /* O BARRAMENTO FICA SÓ SOB OS DOIS SOLARES (dono, 11/10/2026: *"reduz o
+       barramento em baixo dos dois inversores solares; aí, livre em baixo do
+       inversor de frequência, sai o cabo do barramento para ele"*). O vão que
+       sobra à esquerda é por onde o cabo vai buscar o de frequência. */
+    d += '<rect x="' + BX0 + '" y="' + (BY - 4) + '" width="' + (BX1 - BX0) + '" height="8" rx="2" ' +
          'fill="#b07d3a" stroke="#d9a05a" stroke-width="1"/>';
-    [GX + 26, GX + GW - 26].forEach(x => {
+    [BX0 + 10, BX1 - 10].forEach(x => {
       d += '<rect x="' + (x - 4) + '" y="' + (BY + 4) + '" width="8" height="9" rx="2" fill="#39495c"/>'; });
-    d += rot(GX + GW / 2, BY + 26, 'barramento', '#d9a05a', 'middle');
+    d += rot((BX0 + BX1) / 2, BY + 20, 'barramento', '#d9a05a', 'middle');
 
     /* 3d · O BESS, bem afastado da casa para o cabo aparecer */
     const EY = GY + 6, EH = GH - 6;
@@ -1466,13 +1485,18 @@
     if (vale(bat)) d += tx(EX + EW / 2, SOLOY + 27, br(Math.abs(bat), 1) + ' kW', corB, 8.5, 700, 'middle');
 
     /* 3e · o elo casa <-> BESS, agora com vão de sobra para o fluxo aparecer */
-    const ELO = BY + 2;
+    /* O CABO DO BESS SAI DO BARRAMENTO, VAI PARA O CHÃO E ENTRA POR BAIXO DELE
+       (dono, 11/10/2026). Antes atravessava o ar na altura do barramento, que
+       não é como se liga um armário de bateria. O sentido é a ordem dos
+       pontos: carregando vai da barra para o BESS, descarregando volta. */
+    const ENTB = SOLOY + 34;
+    const viaBess = [[BX1 - 6, BY + 2], [BX1 - 6, ENTB], [EX + EW / 2, ENTB], [EX + EW / 2, SOLOY - 2]];
     if (vale(bat)) {
-      d += fio(bat > 0 ? [[GX + GW + 2, ELO], [EX - 2, ELO]] : [[EX - 2, ELO], [GX + GW + 2, ELO]], VBAT, 2.8, true, true);
-      d += rot((GX + GW + EX) / 2, ELO - 10, br(Math.abs(bat), 1) + ' kW', VBAT, 'middle');
+      d += fio(bat > 0 ? viaBess : viaBess.slice().reverse(), VBAT, 2.8, true, true);
+      d += rot((GX + GW + EX) / 2, ENTB - 8, br(Math.abs(bat), 1) + ' kW', VBAT, 'middle');
     } else {
-      d += '<line x1="' + (GX + GW + 2) + '" y1="' + ELO + '" x2="' + (EX - 2) + '" y2="' + ELO +
-           '" stroke="#2b3744" stroke-width="2" stroke-dasharray="3 4"/>';
+      d += '<path d="' + cam(viaBess) + '" fill="none" stroke="#2b3744" stroke-width="2" ' +
+           'stroke-dasharray="3 4"/>';
     }
 
     /* ======================= 4 · O CHÃO ======================= */
@@ -1486,7 +1510,9 @@
        entra no nível do solo e desce até ela, como o dono descreveu. Corre mais
        fundo que o pé do cano para o cruzamento ler como cruzamento. */
     const FIOY = SOLOY + 52;
-    const caminhoFio = [[QX + QW / 2, uy + uh], [QX + QW / 2, SOLOY + 4], [QX + QW / 2, FIOY],
+    /* sai pela ponta OPOSTA à da entrada, para as duas não se confundirem num
+       ponto só na barriga do aparelho */
+    const caminhoFio = [[QX + QW - 16, uy + uh], [QX + QW - 16, FIOY],
                         [PCX + 20, FIOY], [PCX + 20, H - 76]];
     if (vale(bomba)) d += fio(caminhoFio, VCAR, 2.6, true, true);
     else d += '<path d="' + cam(caminhoFio) + '" fill="none" stroke="#2b3744" stroke-width="2" ' +
