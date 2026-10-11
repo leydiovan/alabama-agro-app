@@ -1302,7 +1302,29 @@
       '<div style="font:800 15px/1.3 system-ui,sans-serif;color:' + (cor2 || '#e8edf5') + '">' + val + '</div>' +
       (nota ? '<div style="color:#6b7683;font-size:9px">' + nota + '</div>' : '') + '</div>';
 
-    const numeros =
+    /* AS DUAS FALHAS QUE A NOTA NÃO CONTA, e que são mais graves que nota
+       baixa. Dono, 11/10/2026: *"o grande B.O. é esses 10% chegar no fim do
+       dia: o sistema come durante a noite, não carrega, aí sim entra em
+       proteção, desliga o BESS, tem que fazer um black start, isso sim
+       demora"*. A noite come 4 a 4,5 pontos — por isso o piso do FIM do dia
+       (20%) é mais alto que o da manhã (15%): de manhã o sol vem repor. */
+    const alerta = (dHoje.desarmou === true || dHoje.fim_arriscado === true)
+      ? '<div style="background:#2a1420;border:1px solid #7a2540;border-radius:8px;padding:8px 10px;' +
+        'margin-bottom:8px;font-size:12px;color:#ffc4d2">' +
+        (dHoje.desarmou === true
+          ? '⚠️ <b>raspou a proteção</b>: a bateria chegou a ' + br(n(dHoje.soc_min_pct), 0) +
+            '%, com o corte do BESS em ' + br(n(dHoje.soc_protecao_pct) || 10, 0) + '%. ' +
+            'A bomba desarma e o banco passa a noite no fundo.'
+          : '') +
+        (dHoje.fim_arriscado === true
+          ? (dHoje.desarmou === true ? '<br>' : '') +
+            '⚠️ <b>terminou o dia em ' + br(n(dHoje.soc_fim_pct), 0) + '%</b>, abaixo dos ' +
+            br(n(dHoje.soc_fim_seguro_pct) || 20, 0) + '% seguros. A noite come ~4 pontos: ' +
+            'daqui o sistema pode entrar em proteção de madrugada e exigir <b>black start</b>.'
+          : '') +
+        '</div>' : '';
+
+    const numeros = alerta +
       '<div style="background:#101a26;border:1px solid #223044;border-radius:8px;padding:8px;margin-bottom:10px;font-size:12px;color:#dbe9f7">' +
         porque + '</div>' +
       '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px">' +
@@ -1310,9 +1332,32 @@
            sozinha é vaga. Ele responde a pergunta certa: "dei conta do que o
            céu ofereceu?", que é o que está no controle de quem opera. A meta
            de 10 h depende do tempo; esta não. */
-        cartao('aproveitamento', teto > 0.5 ? br(Math.min(100, feitas / teto * 100), 0) + ' %' : '—',
-               teto > 0.5 ? (feitas / teto >= 0.96 ? '#00c896' : feitas / teto >= 0.90 ? '#ffb300' : '#ff4444') : '#9aa3b0',
-               'do sol que cabe na bomba' + (parcial ? ' até agora' : '')) +
+        /* A NOTA DO DIA (155) no lugar do aproveitamento. O teto inclui o que a
+           bateria podia esticar, por isso 100% é raro — foi o pedido do dono. */
+        /* DIA QUE RASPOU A PROTEÇÃO NÃO É NOTA 100. O teto da nota é o
+           ACHÁVEL COM SEGURANÇA; ultrapassá-lo desarmando o BESS não é
+           mérito, é ter passado do ponto — e cobra a manhã seguinte (em
+           26/09 o Poço 04 amanheceu a 10% e perdeu a hora das 7). Não
+           invento desconto: mantenho o número e marco o que ele é. */
+        cartao('nota do dia',
+               (n(dHoje.nota_pct) > 0 ? br(n(dHoje.nota_pct), 0) + ' %' : '—') +
+               (dHoje.desarmou === true ? '<span style="font-size:11px"> ⚠</span>' : ''),
+               dHoje.desarmou === true ? '#c060ff'
+               : n(dHoje.nota_pct) >= 95 ? '#00c896'
+               : n(dHoje.nota_pct) >= 85 ? '#ffb300' : '#ff4444',
+               dHoje.desarmou === true
+                 ? 'passou do seguro, não é perfeição'
+                 : 'de ' + br(n(dHoje.teto_total_h), 1) + ' h possíveis' + (parcial ? ' até agora' : '')) +
+        /* O FUNDO DA MANHÃ é o diagnóstico do próprio dono: ficou muito acima
+           da proteção => sobrou carga que não virou água, dava para largar
+           mais cedo. Encostou nos 10% => passou do ponto. */
+        (n(dHoje.soc_fundo_manha) > 0
+          ? cartao('fundo da manhã', br(n(dHoje.soc_fundo_manha), 0) + ' %',
+              n(dHoje.soc_fundo_manha) <= 16 ? '#00c896'
+              : n(dHoje.soc_fundo_manha) <= 30 ? '#ffb300' : '#ff4444',
+              n(dHoje.soc_fundo_manha) > 30
+                ? 'sobrou bateria: dava para largar mais cedo'
+                : 'usou a bateria da manhã') : '') +
         cartao('água bombeada', br(m3, 0) + ' m³', '#5aa9ff', br(feitas, 1) + ' h × 204 m³/h') +
         cartao('dava para bombear', '+' + br(recup, 1) + ' h', recup > 0.5 ? '#ffb300' : '#9aa3b0', 'sol que cabia na bomba') +
         cartao('bateria no fim', br(n(dHoje.soc_fim_pct), 0) + ' %', n(dHoje.soc_fim_pct) >= 50 ? '#00c896' : '#ffb300',
@@ -1341,26 +1386,31 @@
 
     /* ---------- 3 e 4 · O HISTÓRICO E O MÊS ---------- */
     const ult = dias.slice(-30);
-    const maxH = Math.max(META_H, ...ult.map(d => n(d.horas_possiveis)), 1);
+    const maxH = Math.max(META_H, ...ult.map(d => n(d.teto_total_h) || n(d.horas_possiveis)), 1);
     const barras = ult.map(d => {
-      const hb = n(d.horas_bomba), hp = n(d.horas_possiveis), H = 42;
+      const hb = n(d.horas_bomba), hp = n(d.teto_total_h) || n(d.horas_possiveis), H = 42;
       /* A COR MEDE APROVEITAMENTO (feito ÷ possível), NÃO a meta fixa — e isto
          é decisão de projeto, não de estética. Um dia em que o céu deu 6,3 h e
          a bomba fez 6,2 é um dia ÓTIMO; pintá-lo de vermelho porque não chegou
          a 10 culpa o operador pelo tempo que fez. A meta continua na tela,
          como a linha branca: ela diz onde se quer chegar, a cor diz se o que
          havia foi aproveitado. */
-      const aprov = hp > 0.5 ? hb / hp : null;
-      /* CORTES RECALIBRADOS EM 11/10/2026, junto com a migração 153. Contra o
-         teto velho (o dia-Frankenstein) um dia excelente marcava 88% e 92/80
-         fazia sentido. Contra o sol que as placas DE FATO fizeram, dia bom dá
-         97 a 100% e o atraso real de 06/10 (partida 8:32) deu 89 a 91% — com
-         os cortes antigos ele ficaria VERDE. Limiar que não separa nada é
-         enfeite. */
+      /* A COR É A NOTA DO DIA (migração 155), não mais o aproveitamento.
+         O aproveitamento media só contra o sol direto — e sol direto é o que
+         a operação já faz todo dia, então marcava 100% em 61 de 88 dias.
+         Dono, 11/10/2026: *"você sabe que 100% é muita coisa, digamos assim
+         tem que ser perfeito"*. A nota inclui o que a bateria PODE esticar,
+         e aí 100% sai em 1 de 88 dias. Mediana 90, pior 70.
+         Cortes: 95 e 85, que é onde a distribuição de fato se parte. */
+      const aprov = n(d.nota_pct) > 0 ? n(d.nota_pct) / 100 : null;
       const c = aprov == null ? '#6b7683'
-              : aprov >= 0.96 ? '#00c896' : aprov >= 0.90 ? '#ffb300' : '#ff4444';
-      return '<div title="' + (d.dia + '').slice(5) + ' · ' + br(hb, 1) + ' h de ' + br(hp, 1) +
-        ' h possíveis · aproveitamento ' + (aprov == null ? '—' : br(aprov * 100, 0) + '%') +
+              : n(d.desarmou) || d.desarmou === true ? '#c060ff'
+              : aprov >= 0.95 ? '#00c896' : aprov >= 0.85 ? '#ffb300' : '#ff4444';
+      return '<div title="' + (d.dia + '').slice(5) + ' · ' + br(hb, 1) + ' h de ' +
+        br(n(d.teto_total_h) || hp, 1) + ' h possíveis · nota ' +
+        (aprov == null ? '—' : br(aprov * 100, 0) + '%') +
+        (d.desarmou === true ? ' · ⚠ raspou a proteção' : '') +
+        (d.fim_arriscado === true ? ' · ⚠ terminou abaixo de 20%' : '') +
         (hb >= META_H ? ' · bateu a meta' : '') + '" ' +
         'style="flex:1;min-width:4px;display:flex;flex-direction:column;justify-content:flex-end;height:' + H + 'px">' +
         '<div style="height:' + ((hp - hb) / maxH * H).toFixed(1) + 'px;background:#2b3744"></div>' +
@@ -1421,10 +1471,11 @@
          diferentes e um dia pode acertar uma e errar a outra: céu de 6 h
          totalmente aproveitado fica VERDE e SEM ponto. */
       '<div style="margin-top:5px;font-size:9px;color:#8ba0bd;line-height:1.6">' +
-        '<div style="margin-bottom:2px"><b style="color:#dbe9f7">a cor</b> = quanto do sol que cabe na bomba foi usado:' +
-          ' <i style="display:inline-block;width:7px;height:7px;background:#00c896;border-radius:2px"></i> 96% ou mais' +
-          ' · <i style="display:inline-block;width:7px;height:7px;background:#ffb300;border-radius:2px"></i> 90 a 96%' +
-          ' · <i style="display:inline-block;width:7px;height:7px;background:#ff4444;border-radius:2px"></i> abaixo de 90%</div>' +
+        '<div style="margin-bottom:2px"><b style="color:#dbe9f7">a cor</b> = a nota do dia (sol que cabe na bomba + o que a bateria podia esticar):' +
+          ' <i style="display:inline-block;width:7px;height:7px;background:#00c896;border-radius:2px"></i> 95% ou mais' +
+          ' · <i style="display:inline-block;width:7px;height:7px;background:#ffb300;border-radius:2px"></i> 85 a 95%' +
+          ' · <i style="display:inline-block;width:7px;height:7px;background:#ff4444;border-radius:2px"></i> abaixo de 85%' +
+          ' · <i style="display:inline-block;width:7px;height:7px;background:#c060ff;border-radius:2px"></i> raspou a proteção</div>' +
         '<div><b style="color:#dbe9f7">a faixa de baixo</b> = horas feitas no dia:' +
           ' <i style="display:inline-block;width:7px;height:7px;background:#00c896;border-radius:2px"></i> ' + META_H + ' h ou mais' +
           ' · <i style="display:inline-block;width:7px;height:7px;background:#ffb300;border-radius:2px"></i> 5 a ' + META_H + ' h' +
