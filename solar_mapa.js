@@ -1447,7 +1447,9 @@
       d += '<text x="' + (X + UW / 2 + 5) + '" y="' + (uy + 52) + '" fill="#bfe4ff" font-size="17" ' +
            'font-weight="800" font-family="system-ui,sans-serif" text-anchor="middle">' +
            br(n(i.p_ativa_kw), 1) + '<tspan font-size="8" font-weight="400" fill="#5d7f9c" dx="2">kW</tspan></text>';
-      d += tx(X + UW / 2, uy + 63, br(n(i.p_cc_kw), 1) + ' cc', '#4a6a85', 8, 400, 'middle');
+      /* linha dividida: cc à esquerda, rendimento à direita. Centrados, os
+         dois se escreviam um por cima do outro. */
+      d += tx(X + 10, uy + 63, br(n(i.p_cc_kw), 1) + ' cc', '#4a6a85', 7.5);
       /* A LINHA DE BAIXO DIVIDE-SE: energia do dia à esquerda, temperatura à
          direita. Ela estava no topo, mas o nome do aparelho a expulsou de lá;
          e não volta para trás do estado, que foi de onde o dono mandou tirar. */
@@ -1455,6 +1457,15 @@
       d += '<text x="' + (X + UW - 6) + '" y="' + (uy + 82) + '" fill="' +
            (n(i.temp_c) > 65 ? '#ff8a5c' : '#4a5f78') + '" font-size="8.5" ' +
            'font-family="system-ui,sans-serif" text-anchor="end">' + br(n(i.temp_c), 0) + '°</text>';
+      /* A EFICIÊNCIA (migração 162) entra no visor, embaixo do cc: é a terceira
+         coisa que se quer saber de um inversor, depois de quanto faz e de que
+         temperatura está. Só aparece quando existe — a usina dos pivôs e
+         leituras velhas podem não ter. */
+      if (n(i.eficiencia_pct) != null)
+        d += '<text x="' + (X + UW - 10) + '" y="' + (uy + 63) + '" fill="' +
+             (n(i.eficiencia_pct) >= 98 ? '#4a7f6a' : '#ffb300') + '" font-size="7.5" ' +
+             'font-family="system-ui,sans-serif" text-anchor="end">' +
+             br(n(i.eficiencia_pct), 1) + '%</text>';
       d += '<circle cx="' + (X + 13) + '" cy="' + (uy + 96) + '" r="3.4" fill="' + cor + '"/>';
       d += tx(X + 21, uy + 99, e, cor, 9, 700);
       /* NOME CURTO SEM CORTAR NO MEIO. O logger chama uns de "Inversor 1" e
@@ -1546,6 +1557,10 @@
          'font-weight="800" font-family="system-ui,sans-serif" text-anchor="middle" ' +
          'stroke="#0d1520" stroke-width="4" paint-order="stroke">' + (soc != null ? br(soc, 0) : '—') + '</text>';
     d += tx(EX + EW / 2, EY - 18, '🔋 BESS', '#dbe9f7', 10, 700, 'middle');
+    /* SOE ao lado do SOC: os dois podem divergir (um olha carga, o outro
+       energia), e quando divergem é sinal de banco desequilibrado. */
+    if (n(v.soe_pct) != null && Math.abs(n(v.soe_pct) - (soc || 0)) >= 1)
+      d += tx(EX + EW / 2, EY + 44, 'SOE ' + br(n(v.soe_pct), 0) + '%', '#5d7f9c', 8.5, 400, 'middle');
     /* O ESTADO VAI PARA BAIXO DO CABO, onde sobra espaço: em cima ele caía
        atrás do próprio cabo do BESS. */
     /* O ESTADO VAI CENTRADO ABAIXO DO NÚMERO, e não sobre o BESS: lá ele
@@ -1553,6 +1568,13 @@
     d += tx(MEIOCB, vale(bat) ? ENTB + 46 : ENTB + 30,
             vale(bat) ? (bat > 0 ? 'carregando' : 'descarregando') : 'em repouso',
             vale(bat) ? corB : '#6b7683', 11, 700, 'middle');
+    /* OS LIMITES DE POTÊNCIA (migração 163), logo abaixo. São dinâmicos, e o
+       de CARGA é o que aperta: é ele que decide quanto do excedente do
+       meio-dia o banco absorve — e portanto quanto do gasto da manhã volta. */
+    if (n(v.bat_max_carga_kw) != null)
+      d += tx(MEIOCB, (vale(bat) ? ENTB + 46 : ENTB + 30) + 15,
+              'aceita até ' + br(n(v.bat_max_carga_kw), 0) + ' · entrega ' +
+              br(n(v.bat_max_descarga_kw), 0) + ' kW', '#5d7f9c', 9, 400, 'middle');
     /* o kW NÃO se repete aqui: quem já diz é o rótulo do próprio cabo, logo
        ao lado. Dois números iguais a 10 px um do outro só poluem. */
 
@@ -2064,6 +2086,17 @@
            o que de fato diz onde está o ganho que falta. */
         cartao('sobra das placas', br(n(dHoje.horas_excedente), 1) + ' h', '#ffb300',
                'não cabe na bomba · ' + br(n(dHoje.min_limitado), 0) + ' min estrangulado') +
+        /* A CONTRAPROVA DO LOGGER (migração 162). Ele conta as horas de
+           GERAÇÃO pelo relógio; nós contamos hora EQUIVALENTE por energia ÷
+           kW da bomba. São coisas diferentes, e é justamente por isso que a
+           razão entre elas informa: diz a que fração da nominal a bomba rodou
+           durante a janela de sol. Medido em 11/10/2026: 80% nos quatro
+           poços. Só aparece no dia de hoje, que é de quando é a leitura. */
+        ((hojeISO === hojeLocal && n(v.horas_geracao) > 0)
+          ? cartao('sol no relógio', br(n(v.horas_geracao), 1) + ' h', '#9fb4c9',
+              'contado pelo logger · a bomba rendeu ' +
+              br(feitas / n(v.horas_geracao) * 100, 0) + '% da nominal nessa janela')
+          : '') +
         /* MESMO RELÓGIO DA FAIXA VERDE: este cartão mostrava o balde horário
            ("7h → 16h") logo abaixo de uma faixa que dizia 7:26 → 17:01. */
         (ligouAs != null ? cartao('janela da bomba',
@@ -2436,22 +2469,73 @@
         '</td><td align="right">' + br(s.corrente_a, 2) + '</td><td align="right">' + br(s.potencia_w, 0) +
         '</td><td style="color:' + (corS[s.situacao] || '#8b949e') + '">' + s.situacao + '</td></tr>').join('') +
       '</table>') : '<div style="color:#9aa3b0">sem leitura de string ainda</div>';
-    const tabela = inv.length ? ('<table style="width:100%;border-collapse:collapse;margin-top:6px;font-size:12px">' +
-      '<tr style="color:#9aa3b0"><td>inversor</td><td align="right">kW</td><td align="right">°C</td><td align="right">hoje</td><td>estado</td></tr>' +
+    /* A TABELA DOS INVERSORES ganhou o que a migração 162 destravou: a
+       potência CC (para ver a conversão), a EFICIÊNCIA — que é o número que
+       separa "sujou a placa" de "o inversor piorou" — a frequência e o fator
+       de potência. Antes mostrava quatro colunas porque era só o que o banco
+       tinha. */
+    const efCor = e => e == null ? '#e6e6e6' : e >= 98 ? '#00c896' : e >= 96 ? '#ffb300' : '#ff4444';
+    const tabela = inv.length ? ('<table style="width:100%;border-collapse:collapse;margin-top:6px;font-size:' +
+      (estreito ? '12px' : '11.5px') + '">' +
+      '<tr style="color:#9aa3b0"><td>inversor</td><td align="right">cc→ca</td>' +
+      '<td align="right">rend.</td><td align="right">°C</td><td align="right">hoje</td>' +
+      '<td align="right">Hz</td><td>estado</td></tr>' +
       inv.slice().sort((a, b) => ordem(a.endereco) - ordem(b.endereco))
-        .map(i => '<tr><td>' + chamar(i.endereco) + '</td><td align="right">' + br(i.p_ativa_kw, 1) +
-        '</td><td align="right">' + br(i.temp_c, 0) + '</td><td align="right">' + br(i.e_hoje_kwh, 0) +
-        '</td><td>' + (est[String(i.estado).toLowerCase()] || i.estado || '—') +
+        .map(i => '<tr style="border-top:1px solid #1e2a38"><td>' + chamar(i.endereco) + '</td>' +
+        '<td align="right">' + br(i.p_cc_kw, 1) + '→' + br(i.p_ativa_kw, 1) + '</td>' +
+        '<td align="right" style="color:' + efCor(i.eficiencia_pct) + '">' +
+          (i.eficiencia_pct == null ? '—' : br(i.eficiencia_pct, 1) + '%') + '</td>' +
+        '<td align="right" style="color:' + (i.temp_c > 65 ? '#ff8a5c' : '#e6e6e6') + '">' +
+          br(i.temp_c, 0) + '</td>' +
+        '<td align="right">' + br(i.e_hoje_kwh, 0) + '</td>' +
+        '<td align="right" style="color:' + (i.freq_hz != null && Math.abs(i.freq_hz - 60) > 0.5 ? '#ff8a5c' : '#8ba0bd') + '">' +
+          (i.freq_hz == null ? '—' : br(i.freq_hz, 2)) + '</td>' +
+        '<td>' + (est[String(i.estado).toLowerCase()] || i.estado || '—') +
         (i.falha ? ' <span style="color:#ff4444">falha ' + i.falha + '</span>' : '') + '</td></tr>').join('') +
-      '</table>') : '';
+      '</table>' +
+      '<div style="color:#6b7683;font-size:10px;margin-top:5px;line-height:1.5">' +
+        '<b>rend.</b> é a eficiência do inversor — cai quando ele esquenta ou envelhece, ' +
+        'e é o que separa "sujou a placa" de "o inversor piorou" · ' +
+        '<b>cc→ca</b> mostra a conversão · <b>Hz</b> fica âmbar se sair de 60±0,5' +
+      '</div>') : '';
 
     const miolo =
       abaAtual === 'objetivo' ? abaObjetivo(v, f) :
       abaAtual === 'inversores' ? tabela :
-      abaAtual === 'bateria' ? (
-        linha('Carga (SOC)', br(v.soc_pct, 1) + ' %') +
-        linha('Potência', br(v.p_bateria_kw, 1) + ' kW' + (v.p_bateria_kw > 0 ? ' (carregando)' : v.p_bateria_kw < 0 ? ' (descarregando)' : '')) +
-        '<div style="margin-top:6px;color:#6b7683;font-size:11px">A bateria aparece SOMADA: o Modbus do logger não separa cada LUNA2000B.</div>') :
+      abaAtual === 'bateria' ? (() => {
+        /* ABA DA BATERIA, agora com o que as migrações 162/163 trouxeram.
+           Antes eram duas linhas (SOC e potência) porque era só isso que
+           chegava — e chegava pouco porque o resto era descartado no
+           coletor, não porque o aparelho não contasse. */
+        const n2 = x => (x == null || isNaN(x)) ? null : Number(x);
+        const pb = n2(v.p_bateria_kw);
+        const sec = t => '<div style="color:#8ba0bd;font-size:11px;font-weight:700;margin:10px 0 3px">' + t + '</div>';
+        const ou = (x, u, d) => x == null ? '—' : br(x, d == null ? 1 : d) + (u ? ' ' + u : '');
+        return sec('agora') +
+          linha('Carga (SOC)', ou(n2(v.soc_pct), '%', 0)) +
+          linha('Energia (SOE)', ou(n2(v.soe_pct), '%', 0)) +
+          linha('Saúde (SOH)', ou(n2(v.soh_pct), '%', 0)) +
+          linha('Potência', ou(pb, 'kW') +
+            (pb > 0.4 ? ' (carregando)' : pb < -0.4 ? ' (descarregando)' : ' (em repouso)')) +
+          sec('o que ainda cabe e o que ainda sai') +
+          linha('Cabe carregar', ou(n2(v.cap_carregavel_kwh), 'kWh')) +
+          linha('Dá para descarregar', ou(n2(v.cap_descarregavel_kwh), 'kWh')) +
+          linha('Capacidade nominal', ou(n2(v.cap_nominal_kwh), 'kWh')) +
+          /* OS LIMITES DE POTÊNCIA (163). O de CARGA é o que importa aqui: é
+             ele que decide quanto do excedente do meio-dia o banco absorve. */
+          sec('limites de potência, agora') +
+          linha('Máxima de carga', ou(n2(v.bat_max_carga_kw), 'kW')) +
+          linha('Máxima de descarga', ou(n2(v.bat_max_descarga_kw), 'kW')) +
+          sec('energia') +
+          linha('Carregado hoje', ou(n2(v.carga_hoje_kwh), 'kWh')) +
+          linha('Descarregado hoje', ou(n2(v.descarga_hoje_kwh), 'kWh')) +
+          linha('Carregado na vida', ou(n2(v.carga_total_kwh), 'kWh', 0)) +
+          linha('Descarregado na vida', ou(n2(v.descarga_total_kwh), 'kWh', 0)) +
+          '<div style="margin-top:10px;color:#6b7683;font-size:11px;line-height:1.5">' +
+            'A bateria aparece <b>somada</b>: o Modbus deste logger não separa os três ' +
+            'pacotes ESM, nem chega às células. O FusionSolar mostra porque busca por ' +
+            'outro caminho — ver <code>03_documentacao/19</code>.</div>';
+      })() :
       abaAtual.startsWith('string') ? tabelaStrings() :
       /* A ABA "usina" É O DESENHO, e é a que abre (dono, 11/10/2026: *"coloca
          essa aba como default quando abre; segundo, coloca ela no lugar da

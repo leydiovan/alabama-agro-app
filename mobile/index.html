@@ -325,7 +325,7 @@ th:first-child,td:first-child{text-align:left}
      Sem a versão na URL o jeito era esperar e torcer. QUEM MEXER NESTES DOIS ARQUIVOS
      SOBE A DATA AQUI — é o equivalente, para o mobile, do `alabama-campo-vNN` do sw.js. -->
 <script src="../reservatorio_corte.js?v=20261008g"></script>
-<script src="../solar_mapa.js?v=20261011w"></script>
+<script src="../solar_mapa.js?v=20261011x"></script>
 <script>
 const SB_URL='https://ngdidjtfgmtkdkvqwfjf.supabase.co';
 const SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5nZGlkanRmZ210a2RrdnF3ZmpmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NTU5MDYsImV4cCI6MjA5NjUzMTkwNn0.OW9hGEFTvSYx_THv3DR9pt8xIVC0B9Pw2bTDGD6TBLk';
@@ -2715,7 +2715,7 @@ async function carregarTelemetria(){
       SB.from('solar_vigia').select('*'),
       Object.keys(SOLARCAD).length ? Promise.resolve({data:null})
         : SB.from('solar_sitio').select('id,nome,tipo,geom'),
-      SB.from('solar_inversor_atual').select('sitio_id,endereco,nome,estado,falha,p_ativa_kw,temp_c,e_hoje_kwh'),
+      SB.from('solar_inversor_atual').select('*'),
         SB.from('solar_string_vigia').select('sitio_id,endereco,string_n,tensao_v,corrente_a,potencia_w,situacao,mensagem'),
       /* ABA DO OBJETIVO (08/10/2026): hora a hora de hoje + o diário de 30 dias.
          A conta mora nas views (solar_poco_dia da 122, solar_poco_hora da 147). */
