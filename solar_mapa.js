@@ -1326,10 +1326,18 @@
            '" y2="' + base + '" stroke="#55657a" stroke-width="3" stroke-linecap="round"/>';
     });
     d += '<line x1="24" y1="157" x2="230" y2="157" stroke="#55657a" stroke-width="2" opacity=".5"/>';
-    d += tx(240, 76, br(somaW / 1000, 1) + ' kW', SOL, 19, 800);
-    d += tx(240, 92, 'chegando no CC', '#8e7f5d', 10);
-    d += tx(240, 112, ativas.length + ' de ' + strings.length + ' strings', '#cbb27a', 10.5);
-    d += tx(240, 126, (medV != null ? br(medV, 0) + ' V · ' + br(medA, 1) + ' A' : 'sem leitura'), '#8e7f5d', 10);
+    /* A INFORMAÇÃO DAS PLACAS CRESCE E DESCE PARA O LADO DOS CABOS (dono,
+       11/10/2026: *"pode aumentar, tá bem pequena; joga um pouquinho à
+       esquerda, ao lado dos cabos"* — e o tamanho do BESS como referência).
+       O número vai de 19 para 30 px e as linhas de apoio de 10 para 12;
+       ancorado à ESQUERDA em 228, fica ao lado do trecho dos cabos em vez de
+       boiar no canto. O "kW" é sufixo discreto, como nos inversores. */
+    d += '<text x="228" y="92" fill="' + SOL + '" font-size="30" font-weight="800" ' +
+         'font-family="system-ui,sans-serif">' + br(somaW / 1000, 1) +
+         '<tspan font-size="13" font-weight="400" dx="3">kW</tspan></text>';
+    d += tx(228, 110, 'chegando no CC', '#8e7f5d', 12);
+    d += tx(228, 132, ativas.length + ' de ' + strings.length + ' strings', '#cbb27a', 12);
+    d += tx(228, 148, (medV != null ? br(medV, 0) + ' V · ' + br(medA, 1) + ' A' : 'sem leitura'), '#8e7f5d', 11);
     /* NUVEM PASSANDO FAZ OS DOIS NÚMEROS BRIGAREM, e sem explicação isso parece
        defeito. A soma das strings e o `p_fv` do barramento vêm de instantes
        diferentes do mesmo minuto; em céu estável batem (medido em 11/10/2026:
@@ -1338,8 +1346,8 @@
        caso em vez de deixar o dono achando que a conta está errada. */
     const somaKw = somaW / 1000;
     if (somaKw > 1 && Math.abs(somaKw - fv) > Math.max(4, somaKw * 0.15))
-      d += tx(240, 140, 'nuvem andando: as duas leituras', '#ff8a5c', 9) +
-           tx(240, 150, 'são de instantes diferentes', '#ff8a5c', 9);
+      d += tx(228, 164, 'nuvem andando: as duas leituras', '#ff8a5c', 10) +
+           tx(228, 176, 'são de instantes diferentes', '#ff8a5c', 10);
 
     /* ======================= 2 · O CABO ATÉ O GALPÃO ======================= */
     /* GUARDADO para depois do telhado: o cabo entra NO galpão, então tem de
@@ -1357,10 +1365,14 @@
        das placas. Os dois descem da mesa, correm no mesmo nível e entram cada
        um no seu. As medidas saem de `ux()`, que é quem sabe onde eles estão. */
     const cabo = vale(fv)
-      ? [1, 2].map(k => fio([[112 + (k - 1) * 14, 158], [112 + (k - 1) * 14, 180 + (k - 1) * 10],
-                             [ux(k) + LARG[k] / 2, 180 + (k - 1) * 10], [ux(k) + LARG[k] / 2, uy - 6]],
-                            SOL, 2.6, true, true)).join('') +
-        rot(GX + 6, 176, br(fv, 1) + ' kW', SOL, 'end')
+      /* OS DOIS NÃO SE CRUZAM MAIS. O truque é a ORDEM DAS ALTURAS: quem vai
+         MAIS LONGE corre MAIS ALTO. Antes o cabo curto corria por cima e, ao
+         descer no seu inversor, atravessava o trecho horizontal do longo.
+         Agora o longo passa acima e o curto desce por baixo dele, livre. */
+      ? [1, 2].map(k => { const yy = 190 - (k - 1) * 10;
+          return fio([[112 + (k - 1) * 14, 158], [112 + (k - 1) * 14, yy],
+                      [ux(k) + LARG[k] / 2, yy], [ux(k) + LARG[k] / 2, uy - 6]],
+                     SOL, 2.6, true, true); }).join('')
       : tx(100, 176, 'sem geração', '#6b7683', 10);
 
     /* ===== O CHÃO VEM ANTES DE TUDO QUE É ENTERRADO =====
@@ -1400,7 +1412,8 @@
          '" fill="rgba(10,16,24,.55)"/>';
     d += '<rect x="' + (GX + GW - 10) + '" y="' + (GY + 160) + '" width="8" height="' + (GH - 160) +
          '" fill="#1d2733" stroke="#4a5b6e" stroke-width=".8"/>';
-    d += tx(GX + GW, GY - 30, 'casa de aparelhos', '#8ba0bd', 10.5, 700, 'end');
+    /* sobe para 42: em 30 encostava no cabo de cima, que corre em 180 */
+    d += tx(GX + GW, GY - 42, 'casa de aparelhos', '#8ba0bd', 10.5, 700, 'end');
     d += cabo;
 
     /* 3b · OS TRÊS APARELHOS NA PAREDE, com o inversor de FREQUÊNCIA
