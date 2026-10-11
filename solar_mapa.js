@@ -1261,12 +1261,11 @@
 
        Arranjo, da esquerda para a direita:
          cano p/ piscinão · POÇO · inv. frequência · CASA · (vão) · BESS */
-    const GX = 214, GY = 206, GW = 138, GH = 250;     // a casa
+    const GX = 138, GY = 206, GW = 208, GH = 250;     // a casa
     const SOLOY = GY + GH;                            // o chão
     const BY = GY + 180;                              // o barramento, dentro dela
-    const PX = 78, PW = 52, PCX = PX + PW / 2;        // o poço
-    const QX = 140, QW = 60;                          // o inv. de frequência, junto da bomba
-    const EX = 388, EW = 46;                          // o BESS, afastado para o cabo aparecer
+    const PX = 72, PW = 52, PCX = PX + PW / 2;        // o poço
+    const EX = 384, EW = 48;                          // o BESS, afastado para o cabo aparecer
 
     let d = '<defs>' +
       '<linearGradient id="sfPlaca" x1="0" y1="0" x2="1" y2="1">' +
@@ -1371,11 +1370,16 @@
     d += tx(GX + GW, GY - 30, 'casa de aparelhos', '#8ba0bd', 10.5, 700, 'end');
     d += cabo;
 
-    /* 3b · OS DOIS INVERSORES SOLARES, lado a lado na parede */
-    const UW = 55, UG = 4, U0 = GX + 12, uy = GY + 40, uh = 108;
+    /* 3b · OS TRÊS APARELHOS NA PAREDE, com o inversor de FREQUÊNCIA
+       primeiro — ou seja, no lado da casa que dá para o poço. Ele chegou a
+       sair para fora, de pé ao lado da bomba, e o dono corrigiu: *"aí tu
+       colocou o inversor de frequência fora da casa; era só para mudar o
+       lado, para ficar perto da bomba"*. Dentro da casa, à esquerda. */
+    const UW = 60, UG = 3, U0 = GX + 11, uy = GY + 40, uh = 108;
     const ux = k => U0 + k * (UW + UG);
-    invs.forEach((i, k) => {
-      if (k > 1) return;
+    invs.forEach((i, kk) => {
+      if (kk > 1) return;
+      const k = kk + 1;                               // 0 é do inv. de frequência
       const e = est[String(i.estado).toLowerCase()] || i.estado || '—';
       const cor = i.falha ? '#ff4444' : /limit/.test(e) ? '#ffb300' : VBAT;
       const X = ux(k);
@@ -1404,7 +1408,27 @@
               '#dbe9f7', 9, 700, 'middle');
       if (vale(n(i.p_ativa_kw))) d += fio([[X + UW / 2, uy + uh], [X + UW / 2, BY - 6]], SOL, 2.6, true);
     });
-    if (!invs.length) d += tx(GX + 18, uy + 40, 'sem inversores', '#6b7683', 10);
+    if (!invs.length) d += tx(ux(1), uy + 40, 'sem inversores', '#6b7683', 10);
+
+    /* 3b2 · o inversor de FREQUÊNCIA, primeiro da fila */
+    const QX = ux(0), QW = UW;
+    d += '<rect x="' + (QX + 6) + '" y="' + (uy - 5) + '" width="' + (UW - 12) + '" height="5" fill="#3a4b5e"/>';
+    d += '<rect x="' + QX + '" y="' + uy + '" width="' + QW + '" height="' + uh +
+         '" rx="5" fill="#18222e" stroke="#46607d" stroke-width="1.3"/>';
+    d += '<line x1="' + (QX + QW / 2) + '" y1="' + (uy + 4) + '" x2="' + (QX + QW / 2) + '" y2="' +
+         (uy + uh - 4) + '" stroke="#2e4157" stroke-width="1"/>';
+    d += '<rect x="' + (QX + 5) + '" y="' + (uy + 8) + '" width="' + (QW - 10) + '" height="26" rx="3" ' +
+         'fill="#0c141e" stroke="#2e4157"/>';
+    d += tx(QX + QW / 2, uy + 26, vale(bomba) ? br(bomba, 1) : 'parado', vale(bomba) ? VCAR : '#5d7f9c',
+            vale(bomba) ? 12 : 9.5, 700, 'middle');
+    if (vale(bomba)) d += tx(QX + QW / 2, uy + 38, 'kW', '#5d7f9c', 8, 400, 'middle');
+    for (let a2 = 0; a2 < 5; a2++)
+      d += '<line x1="' + (QX + 8) + '" y1="' + (uy + 50 + a2 * 7) + '" x2="' + (QX + QW - 8) +
+           '" y2="' + (uy + 50 + a2 * 7) + '" stroke="#243343" stroke-width="2.2" stroke-linecap="round"/>';
+    d += tx(QX + QW / 2, uy - 9, 'inv. frequência', '#dbe9f7', 9, 700, 'middle');
+    d += tx(QX + QW / 2, uy + 100, 'sem leitura', '#5d7f9c', 8, 400, 'middle');
+    /* ele PUXA do barramento: a corrente sobe */
+    if (vale(bomba)) d += fio([[QX + QW / 2, BY - 6], [QX + QW / 2, uy + uh]], VCAR, 2.6, true);
 
     /* 3c · barramento de cobre */
     d += '<rect x="' + (GX + 14) + '" y="' + (BY - 4) + '" width="' + (GW - 28) + '" height="8" rx="2" ' +
@@ -1458,30 +1482,15 @@
       d += '<line x1="' + (a2 * 15) + '" y1="' + (SOLOY + 2) + '" x2="' + (a2 * 15 - 7) + '" y2="' +
            (SOLOY + 10) + '" stroke="#6b5636" stroke-width="1" opacity=".45"/>';
 
-    /* ============ 5 · O INVERSOR DE FREQUÊNCIA, JUNTO DA BOMBA ============ */
-    const QH = 76, QY = SOLOY - QH;
-    d += '<rect x="' + (QX - 4) + '" y="' + (QY - 7) + '" width="' + (QW + 8) + '" height="8" rx="2" fill="#3a4b5e"/>';
-    d += '<rect x="' + QX + '" y="' + QY + '" width="' + QW + '" height="' + QH +
-         '" rx="5" fill="#18222e" stroke="#46607d" stroke-width="1.4"/>';
-    d += '<line x1="' + (QX + QW / 2) + '" y1="' + (QY + 4) + '" x2="' + (QX + QW / 2) + '" y2="' +
-         (QY + QH - 4) + '" stroke="#2e4157" stroke-width="1"/>';
-    d += '<rect x="' + (QX + 6) + '" y="' + (QY + 8) + '" width="' + (QW - 12) + '" height="24" rx="3" ' +
-         'fill="#0c141e" stroke="#2e4157"/>';
-    d += tx(QX + QW / 2, QY + 25, vale(bomba) ? br(bomba, 1) : 'parado', vale(bomba) ? VCAR : '#5d7f9c',
-            vale(bomba) ? 12 : 9.5, 700, 'middle');
-    for (let a2 = 0; a2 < 4; a2++)
-      d += '<line x1="' + (QX + 8) + '" y1="' + (QY + 42 + a2 * 7) + '" x2="' + (QX + QW - 8) +
-           '" y2="' + (QY + 42 + a2 * 7) + '" stroke="#243343" stroke-width="2.2" stroke-linecap="round"/>';
-    d += tx(QX + QW / 2, QY - 12, '⚙ inv. frequência', '#dbe9f7', 9.5, 700, 'middle');
-    d += tx(QX + QW / 2, QY + QH - 6, 'sem leitura', '#5d7f9c', 8, 400, 'middle');
-    /* da casa até ele, por baixo do chão */
-    const FIOY = SOLOY + 46;
-    if (vale(bomba)) {
-      d += fio([[GX + 20, BY + 6], [GX + 20, FIOY], [QX + QW / 2, FIOY], [QX + QW / 2, QY + QH]],
-               VCAR, 2.6, true, true);
-      d += fio([[QX + 12, QY + QH], [QX + 12, FIOY + 16], [PCX + 20, FIOY + 16],
-                [PCX + 20, H - 72]], VCAR, 2.6, true, true);
-    }
+    /* 5 · O FIO DA BOMBA: sai do inv. de frequência (que está no lado do poço),
+       entra no nível do solo e desce até ela, como o dono descreveu. Corre mais
+       fundo que o pé do cano para o cruzamento ler como cruzamento. */
+    const FIOY = SOLOY + 52;
+    const caminhoFio = [[QX + QW / 2, uy + uh], [QX + QW / 2, SOLOY + 4], [QX + QW / 2, FIOY],
+                        [PCX + 20, FIOY], [PCX + 20, H - 76]];
+    if (vale(bomba)) d += fio(caminhoFio, VCAR, 2.6, true, true);
+    else d += '<path d="' + cam(caminhoFio) + '" fill="none" stroke="#2b3744" stroke-width="2" ' +
+              'stroke-dasharray="4 5"/>';
 
     /* ======================= 6 · O POÇO E A BOMBA ======================= */
     const PY1 = H - 14, BPY = PY1 - 58, BPX = PCX - 15;
