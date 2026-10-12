@@ -1975,6 +1975,33 @@
        tem minuto de verdade e a barra não. */
     const periodos = (f.periodos || []).filter(x => (x.dia + '') === hojeISO);
     const horaDe = iso => { const d = new Date(iso); return d.getHours() + d.getMinutes() / 60; };
+    /* O PISO VEM DO BANCO, não de um 25 escrito aqui. Ele foi medido e mudou
+       em 12/10 (migração 168, era 15), e um número repetido na tela é um
+       número que vai divergir do banco na próxima vez que mudar. */
+    const piso = n(dHoje && dHoje.soc_fundo_seguro_pct);
+    const marca = h => '<div style="position:absolute;top:0;bottom:0;width:1px;background:#0c1118;left:' +
+                       (h / 24 * 100).toFixed(2) + '%"></div>';
+    /* A COR DO SOC É O DIAGNÓSTICO. No piso (ou abaixo) a parada foi a bateria
+       acabando; bem acima dele, a causa foi outra — em 19/09 três poços
+       pararam com 60 a 67% e não foi bateria. Sem a cor, as duas se parecem. */
+    const corSoc = s => s == null ? '#6b7683'
+      : (piso != null && s < piso - 1) ? '#ff4444'
+      : (piso != null && s <= piso + 1) ? '#ffb300' : '#9aa3b0';
+    const socTxt = s => s == null ? '—'
+      : '<b style="color:' + corSoc(s) + '">' + br(s, 0) + '%</b>';
+    const socLinhas = () =>
+      '<div style="color:#9aa3b0;font-size:10px;margin-top:3px;line-height:1.7">' +
+      periodos.map((pz, i) =>
+        (periodos.length > 1 ? '<span style="color:#6b7683">' + (i + 1) + 'ª</span> ' : 'bomba ligada ') +
+        '<b style="color:#dbe9f7">' + fmtHora(horaDe(pz.inicio)) + '</b> ' + socTxt(n(pz.soc_inicio)) +
+        ' <span style="color:#6b7683">→</span> ' +
+        '<b style="color:#dbe9f7">' + (pz.em_aberto ? 'agora' : fmtHora(horaDe(pz.fim))) + '</b> ' +
+        (pz.em_aberto ? '' : socTxt(n(pz.soc_fim)))
+      ).join('<br>') +
+      (piso != null ? '<div style="color:#6b7683;font-size:9px;margin-top:2px">' +
+        'a % é a bateria no minuto · <span style="color:#ffb300">âmbar</span> = parou no piso de ' +
+        br(piso, 0) + '% · <span style="color:#ff4444">vermelho</span> = furou o piso</div>' : '') +
+      '</div>';
     const faixa = periodos.length
       ? '<div style="position:relative;height:11px;border-radius:3px;background:#1b2430;overflow:hidden;margin-top:3px">' +
         periodos.map(pz => {
@@ -1986,12 +2013,16 @@
           const fimAgora = agora.getHours() + agora.getMinutes() / 60;
           const b = Math.min(24, pz.em_aberto ? fimAgora : (horaDe(pz.fim) || 24));
           if (!(b > a)) return '';
-          return '<div title="ligada ' + fmtHora(a) + ' → ' + fmtHora(b) + '" style="position:absolute;top:0;bottom:0;left:' +
-                 (a / 24 * 100).toFixed(2) + '%;width:' + ((b - a) / 24 * 100).toFixed(2) + '%;background:#00c896"></div>';
-        }).join('') + '</div>' +
-        '<div style="color:#9aa3b0;font-size:10px;margin-top:3px">bomba ligada ' +
-        periodos.map(pz => '<b style="color:#dbe9f7">' + fmtHora(horaDe(pz.inicio)) + '</b> → <b style="color:#dbe9f7">' +
-          (pz.em_aberto ? 'agora' : fmtHora(horaDe(pz.fim))) + '</b>').join(' · ') + '</div>'
+          const si = n(pz.soc_inicio), sf = n(pz.soc_fim);
+          return '<div title="ligada ' + fmtHora(a) + (si != null ? ' (' + br(si, 0) + '%)' : '') +
+                 ' → ' + fmtHora(b) + (sf != null ? ' (' + br(sf, 0) + '%)' : '') +
+                 '" style="position:absolute;top:0;bottom:0;left:' +
+                 (a / 24 * 100).toFixed(2) + '%;width:' + ((b - a) / 24 * 100).toFixed(2) + '%;background:#00c896"></div>' +
+                 /* risco nas duas bordas: com 4 partidas no dia (o recorde, em
+                    25/09) as faixas ficam estreitas e sem a marca não se vê
+                    onde uma acabou e a outra começou */
+                 marca(a) + (pz.em_aberto ? '' : marca(b));
+        }).join('') + '</div>' + socLinhas()
       /* sem dado é DIFERENTE de bomba parada, e a tela tem de dizer qual dos
          dois: o extrator só tem CSV a partir de 18/09/2026. */
       : '<div style="color:#6b7683;font-size:10px;margin-top:3px">sem registro de liga/desliga neste dia</div>';
