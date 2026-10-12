@@ -1989,15 +1989,41 @@
       : (piso != null && s <= piso + 1) ? '#ffb300' : '#9aa3b0';
     const socTxt = s => s == null ? '—'
       : '<b style="color:' + corSoc(s) + '">' + br(s, 0) + '%</b>';
+    /* DURAÇÃO EM MINUTOS OU h+min. Horas decimais ("0,75 h") não servem: o
+       dono lê a faixa para saber quanto tempo a bomba ficou fora, e 45 min é
+       uma frase, 0,75 h é uma conta. */
+    const dur = h => {
+      const m = Math.round(h * 60);
+      return m < 60 ? m + ' min' : Math.floor(m / 60) + 'h' + String(m % 60).padStart(2, '0');
+    };
     const socLinhas = () =>
       '<div style="color:#9aa3b0;font-size:10px;margin-top:3px;line-height:1.7">' +
-      periodos.map((pz, i) =>
-        (periodos.length > 1 ? '<span style="color:#6b7683">' + (i + 1) + 'ª</span> ' : 'bomba ligada ') +
-        '<b style="color:#dbe9f7">' + fmtHora(horaDe(pz.inicio)) + '</b> ' + socTxt(n(pz.soc_inicio)) +
-        ' <span style="color:#6b7683">→</span> ' +
-        '<b style="color:#dbe9f7">' + (pz.em_aberto ? 'agora' : fmtHora(horaDe(pz.fim))) + '</b> ' +
-        (pz.em_aberto ? '' : socTxt(n(pz.soc_fim)))
-      ).join('<br>') +
+      periodos.map((pz, i) => {
+        const linha =
+          (periodos.length > 1 ? '<span style="color:#6b7683">' + (i + 1) + 'ª</span> ' : 'bomba ligada ') +
+          '<b style="color:#dbe9f7">' + fmtHora(horaDe(pz.inicio)) + '</b> ' + socTxt(n(pz.soc_inicio)) +
+          ' <span style="color:#6b7683">→</span> ' +
+          '<b style="color:#dbe9f7">' + (pz.em_aberto ? 'agora' : fmtHora(horaDe(pz.fim))) + '</b> ' +
+          (pz.em_aberto ? '' : socTxt(n(pz.soc_fim)));
+        /* O INTERVALO PARADO ENTRE UMA FAIXA E A SEGUINTE (pedido do dono).
+           É o tempo que a bomba ficou fora esperando a bateria — e, com os
+           dois SOC já na tela, ele diz de quebra quanto a bateria subiu nesse
+           tempo. Em 25/09 foram três paradas somando mais de 3 h. */
+        const prox = periodos[i + 1];
+        if (!prox || pz.em_aberto) return linha;
+        const g = horaDe(prox.inicio) - horaDe(pz.fim);
+        if (!(g > 0)) return linha;
+        const sf = n(pz.soc_fim), si = n(prox.soc_inicio);
+        return linha + '<br><span style="color:#6b7683;padding-left:10px">↳ parada ' +
+          '<b style="color:#8ba0bd">' + dur(g) + '</b>' +
+          (sf != null && si != null ? ' · bateria subiu ' + br(si - sf, 0) + ' pontos' : '') +
+          '</span>';
+      }).join('<br>') +
+      (periodos.length > 2
+        ? '<div style="color:#8ba0bd;font-size:10px;margin-top:3px">' + (periodos.length - 1) +
+          ' paradas, <b>' + dur(periodos.slice(0, -1).reduce((a, pz, i) =>
+            a + Math.max(0, horaDe(periodos[i + 1].inicio) - horaDe(pz.fim)), 0)) +
+          '</b> com a bomba fora</div>' : '') +
       (piso != null ? '<div style="color:#6b7683;font-size:9px;margin-top:2px">' +
         'a % é a bateria no minuto · <span style="color:#ffb300">âmbar</span> = parou no piso de ' +
         br(piso, 0) + '% · <span style="color:#ff4444">vermelho</span> = furou o piso</div>' : '') +
