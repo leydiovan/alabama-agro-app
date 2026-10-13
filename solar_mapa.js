@@ -1114,6 +1114,34 @@
      (`p_carga_kw`, que é o consumo medido), não o que acontece dentro. Desenhar
      um número ali seria inventar — e foi inventar número que custou o dia de
      hoje. */
+  /* ALARME ATIVO DO LOGGER — acima das abas, para aparecer em TODAS elas.
+     Migração 170 traduziu 26 bits do manual do SmartLogger; esta é a tela que
+     faltava. Alarme que ninguém olha é o mesmo problema da vigia que era muda:
+     a view existia e não tinha lugar.
+
+     Fica QUIETO quando não há nada — nenhuma faixa, nenhum "tudo ok". Barra
+     verde permanente vira paisagem e, no dia em que ficar vermelha, ninguém
+     repara. E some sozinha se `f.alarmes` não vier (o mobile não busca essa
+     view): ausência de dado não é ausência de alarme, mas também não é motivo
+     para quebrar a janela. */
+  function faixaAlarme(f) {
+    const L = (f && f.alarmes) || [];
+    if (!L.length) return '';
+    const grave = L.some(a => a.severidade === 'Major' || /BLACK START/i.test(a.nome_pt || ''));
+    const cor = grave ? '#ff4444' : '#ffb300';
+    return '<div style="background:' + (grave ? '#2a1414' : '#2a2414') + ';border:1px solid ' + cor +
+      ';border-radius:8px;padding:8px 10px;margin:6px 0 2px;font-size:11.5px;line-height:1.6">' +
+      '<b style="color:' + cor + '">⚠ ' + L.length + (L.length > 1 ? ' alarmes ativos' : ' alarme ativo') + '</b>' +
+      L.map(a => '<div style="color:#dbe9f7;margin-top:3px">' +
+        (a.nome_pt ||
+         /* bit que o manual não documenta — mostra o endereço cru em vez de
+            sumir com ele: o Alarme 7 (50006) vive assim, e esconder seria pior */
+         ('bit ' + a.bit + ' do registrador ' + a.registrador + ' <span style="color:#6b7683">(o manual não documenta)</span>')) +
+        (a.alarme_id ? ' <span style="color:#6b7683">· ' + a.alarme_id + '</span>' : '') +
+        '</div>').join('') +
+      '</div>';
+  }
+
   function abaFluxo(v, inv, strings, estreito, f) {
     /* O CSS DO FLUXO ENTRA AQUI TAMBÉM. Ele era injetado APENAS quando o mapa
        chegava no zoom em que o selo ganha painel (`escala >= PISO_PAINEL`) —
@@ -2732,6 +2760,7 @@
           '<span style="color:' + cor + ';font-weight:700;flex:none">' + v.situacao + '</span>' +
         '</div>' +
         (v.mensagem ? '<div style="color:#9aa3b0;font-size:12px;margin:3px 0 0">' + v.mensagem + '</div>' : '') +
+        faixaAlarme(f) +
         abas +
         '<div style="height:1px;background:#2a3b4d;margin-bottom:' + (estreito ? '10px' : '6px') + '"></div>' +
       '</div>';

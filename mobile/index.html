@@ -325,7 +325,7 @@ th:first-child,td:first-child{text-align:left}
      Sem a versão na URL o jeito era esperar e torcer. QUEM MEXER NESTES DOIS ARQUIVOS
      SOBE A DATA AQUI — é o equivalente, para o mobile, do `alabama-campo-vNN` do sw.js. -->
 <script src="../reservatorio_corte.js?v=20261008g"></script>
-<script src="../solar_mapa.js?v=20261012b"></script>
+<script src="../solar_mapa.js?v=20261012c"></script>
 <script>
 const SB_URL='https://ngdidjtfgmtkdkvqwfjf.supabase.co';
 const SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5nZGlkanRmZ210a2RrdnF3ZmpmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NTU5MDYsImV4cCI6MjA5NjUzMTkwNn0.OW9hGEFTvSYx_THv3DR9pt8xIVC0B9Pw2bTDGD6TBLk';
@@ -456,7 +456,7 @@ async function buscarPaginado(montar, passo){
   }
   return { data: tudo, error: null };
 }
-let SOLAR=[], SOLARCAD={}, SOLARINV=[], SOLARSTR=[], SOLARHORA=[], SOLARDIA=[], SOLARSUG=[], SOLARPER=[];
+let SOLAR=[], SOLARCAD={}, SOLARINV=[], SOLARSTR=[], SOLARHORA=[], SOLARDIA=[], SOLARSUG=[], SOLARPER=[], SOLARALARME=[];
 /* FILTRO DO RASTRO (pedido do dono, 08/08): com/sem rastro, quantos dias e
    quais máquinas. `TRPER='off'` desliga o rastro — e desligar não é enfeite:
    é o modo mais leve da tela, porque nem busca o trajeto. `TMAQS` vazio = todas.
@@ -2711,7 +2711,7 @@ async function carregarTelemetria(){
     if(rc&&rc.data&&window.RESV_UI) rc.data.forEach(r=>{ RESVCAD[r.id]=RESV_UI.prepararCadastro(r, utm2ll); });
     if(rh&&!rh.error) RESVH=rh.data||[];
     /* usinas: mesma regra — cadastro (contorno) uma vez, situação a cada ciclo */
-    const [sv,sc,si,st,sph,spd,sug,per]=await Promise.all([
+    const [sv,sc,si,st,sph,spd,sug,per,sal]=await Promise.all([
       SB.from('solar_vigia').select('*'),
       Object.keys(SOLARCAD).length ? Promise.resolve({data:null})
         : SB.from('solar_sitio').select('id,nome,tipo,geom'),
@@ -2727,11 +2727,18 @@ async function carregarTelemetria(){
         .order('dia').order('sitio_id').order('hora')),
       SB.from('solar_poco_dia').select('*').gte('dia', diaLocalMob(-30)),
       SB.from('solar_poco_sugestao').select('*'),
-      SB.from('solar_bomba_periodo').select('*').gte('dia', diaLocalMob(-21))
+      SB.from('solar_bomba_periodo').select('*').gte('dia', diaLocalMob(-21)),
+      /* ALARMES ATIVOS (migração 170): uma linha por BIT aceso, já traduzido.
+         Barato porque só existe linha quando há alarme. */
+      SB.from('solar_alarme_ativo').select('*')
     ]);
     if(sv&&!sv.error&&sv.data&&sv.data.length) SOLAR=sv.data;
     if(si&&!si.error&&si.data&&si.data.length) SOLARINV=si.data;
     if(st&&!st.error&&st.data&&st.data.length) SOLARSTR=st.data;
+    /* ALARME É A EXCEÇÃO DO OFFLINE-FIRST: aqui lista vazia É a informação
+       (nenhum alarme aceso), e manter o alarme velho depois que ele se apagou
+       seria mentir. O vazio só se recusa quando a BUSCA falhou. */
+    if(sal&&!sal.error) SOLARALARME = sal.data || [];
     /* lista vazia NÃO apaga o que já está na tela (regra do offline-first) */
     if(sph&&!sph.error&&sph.data&&sph.data.length){
       const novos=new Set(sph.data.map(x=>x.sitio_id+'|'+x.dia));
@@ -3004,6 +3011,7 @@ const fonteResv=id=>({ r:RESV.find(x=>x.id===id), c:RESVCAD[id],
 /* a janela das usinas se alimenta daqui: situação, inversores e strings */
 const fonteSolar=id=>({ v:SOLAR.find(x=>x.id===id), inversores:SOLARINV.filter(x=>x.sitio_id===id),
   strings:SOLARSTR.filter(x=>x.sitio_id===id),
+  alarmes:SOLARALARME.filter(x=>x.sitio_id===id),
   horas:SOLARHORA.filter(x=>x.sitio_id===id), dias:SOLARDIA.filter(x=>x.sitio_id===id),
   sugestao:SOLARSUG.find(x=>x.sitio_id===id),
   periodos:SOLARPER.filter(x=>x.sitio_id===id) });
