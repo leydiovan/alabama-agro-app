@@ -3755,7 +3755,7 @@ async function carregarSafra(){
      vínculo com comanda (dono, 06/10/2026). Mesma regra: falha não apaga a lista anterior. */
   try{
     const {data,error}=await SB.from('safra_campo_info').select('*').eq('safra',safraAtual()).order('data',{ascending:false}).range(0,999);
-    if(!error && data && (data.length || SAFRA_OK)) SAFCAMPO=data.map(r=>({id:r.id,lote:r.lote_nome,banda:r.banda||'',dia:safDia(r.data),texto:r.texto||'',estadio:r.estadio||'',
+    if(!error && data && (data.length || SAFRA_OK)) SAFCAMPO=data.map(r=>({id:r.id,lote:r.lote_nome,banda:r.banda||'',dia:safDia(r.data),texto:r.texto||'',estadio:r.estadio||'',variedade:r.variedade||'',
       estM:r.estande_pl_m!=null?+r.estande_pl_m:null,estHa:r.estande_pl_ha!=null?+r.estande_pl_ha:null,estCv:r.estande_cv!=null?+r.estande_cv:null}));
   }catch(e){ console.warn('safra campo',e); }
 }
@@ -3776,7 +3776,10 @@ function safBanda(a){
 }
 function safEstande(a,D){
   const b=safBanda(a);
-  return SAFCAMPO.filter(x=>x.lote===a.lote_nome&&x.estM!=null&&x.dia!=null&&(D==null||x.dia<=D)&&(!b||!x.banda||x.banda.toLowerCase().trim()===b))
+  /* banda com DUAS variedades (P1 leste, migração 172): a contagem que traz variedade só vale
+     para o plantio daquela variedade; a que não traz vale para a banda inteira */
+  const nv=t=>String(t||'').replace(/\s*-\s*(CERTIFICADA|SALVA)\s*$/i,'').trim().toUpperCase(), va=nv(a.plantio&&a.plantio.variedade);
+  return SAFCAMPO.filter(x=>x.lote===a.lote_nome&&x.estM!=null&&x.dia!=null&&(D==null||x.dia<=D)&&(!b||!x.banda||x.banda.toLowerCase().trim()===b)&&(!x.variedade||nv(x.variedade)===va))
                  .sort((p,q)=>(q.dia-p.dia)||((q.id||0)-(p.id||0)))[0]||null;
 }
 let SAFCAMPOAB=false, SAFCAMPOLOTE=null;   // bloco de informação de campo aberto? (por lote)
