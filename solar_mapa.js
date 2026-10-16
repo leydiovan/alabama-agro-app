@@ -32,8 +32,13 @@
      impossível — não é defeito do sistema nem bateria vazia, é o dado que não
      serve. Cor própria, âmbar apagado: não pode se parecer com OK (verde) nem
      gritar como falha (vermelho). Desconhecido é uma terceira coisa. */
+  /* 'SEM CONTATO' entrou na migração 173 e é TÃO VERMELHO quanto 'FALHA':
+     quem depende do dado está igualmente sem ele. O que muda é para onde a
+     pessoa vai olhar — sem contato manda conferir rede e energia, falha manda
+     abrir o aparelho. Pintar de âmbar seria aliviar o que não se aliviou. */
   const COR = { 'OK': '#00c896', 'ALARME': '#ffb300', 'BATERIA BAIXA': '#ffb300',
-                'FALHA': '#ff4444', 'MUDO': '#ff4444', 'LEITURA SUSPEITA': '#c9a227' };
+                'FALHA': '#ff4444', 'SEM CONTATO': '#ff4444', 'MUDO': '#ff4444',
+                'LEITURA SUSPEITA': '#c9a227' };
   const br = (n, d) => (n == null || isNaN(n)) ? '—' : Number(n).toFixed(d).replace('.', ',');
   /* hora decimal -> "7:14". Usado pela faixa de liga/desliga e pela sugestão. */
   const fmtHora = v => { if (v == null || isNaN(v)) return '—';
@@ -861,6 +866,7 @@
        metade. */
     const pctTxt = (v && v.soc_pct != null) ? Math.round(Number(v.soc_pct)) + '%'
                  : (v && v.situacao === 'MUDO') ? 'sem sinal'
+                 : (v && v.situacao === 'SEM CONTATO') ? 'sem contato'
                  : (v && v.situacao === 'FALHA') ? 'falha' : '—';
     const corPct = (v && v.soc_pct != null) ? '#ffffff' : cor;
     const comPct = z >= Z_BLOCO;
