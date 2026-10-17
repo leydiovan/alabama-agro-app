@@ -29,7 +29,7 @@ td:first-child{color:var(--sub);width:42%}
 .ok{color:var(--ok)}.av{color:var(--av)}.ru{color:var(--ru)}.sub{color:var(--sub);font-size:13px}
 .grande{font-size:22px;font-weight:700}
 label{display:block;color:var(--sub);font-size:13px;margin:8px 0 3px}
-input[type=time],input[type=email],input[type=password]{width:100%;padding:10px;border-radius:8px;border:1px solid var(--linha);background:#0f1218;color:var(--txt);font-size:16px}
+input[type=time],input[type=email],input[type=password],input[type=number],input[type=text]{width:100%;padding:10px;border-radius:8px;border:1px solid var(--linha);background:#0f1218;color:var(--txt);font-size:16px}
 .lin{display:flex;gap:10px}.lin>div{flex:1}
 .chave{display:flex;align-items:center;gap:10px;margin-top:12px;font-size:15px}
 .chave input{width:22px;height:22px}
@@ -83,11 +83,12 @@ function esqueleto(){
     <button class="sec" id="sair">Sair</button></header>
   <main>
     <section class="cartao"><h2>Agora</h2><table id="agora"></table></section>
+    <section class="cartao"><h2>Comando</h2><div id="cmd"></div></section>
     <section class="cartao"><h2>Configuração</h2><div id="cfg"></div></section>
     <section class="cartao"><h2>Gerador (DEIF)</h2><table id="deif"></table></section>
-    <section class="cartao"><h2>Bomba na solar (SGV)</h2><table id="sgv"></table></section>
-    <section class="cartao largo"><h2>Corrente da bomba — últimas 12 h</h2><div id="graf" class="sub">…</div>
-      <div class="sub"><span style="color:#fbbf24">■</span> solar (SGV, A) &nbsp; <span style="color:#7cc4ff">■</span> gerador (DEIF L1, A) &nbsp; <span style="color:#f87171">■</span> combustível (%)</div></section>
+    <section class="cartao"><h2>Bomba (SGV)</h2><table id="sgv"></table></section>
+    <section class="cartao largo"><h2>Bomba, bateria e diesel — últimas 12 h</h2><div id="graf" class="sub">…</div>
+      <div class="sub"><span style="color:#fbbf24">■</span> bomba (SGV, A) &nbsp; <span style="color:#7cc4ff">■</span> gerador (DEIF L1, A) &nbsp; <span style="color:#4ade80">■</span> bateria SOC (%) &nbsp; <span style="color:#f87171">■</span> combustível (%)</div></section>
     <section class="cartao largo"><h2>Diário da automação</h2><div id="diario" class="diario sub">…</div></section>
   </main>`;
   el('sair').onclick=async()=>{await SB.auth.signOut(); telaLogin()};
@@ -95,15 +96,16 @@ function esqueleto(){
 
 async function carregar(){
   try{
-    const [est,cfg,am,ev,ser]=await Promise.all([
+    const [est,cfg,am,ev,ser,cm]=await Promise.all([
       SB.from('no_poco_estado').select('*').eq('poco',POCO).maybeSingle(),
       SB.from('no_poco_config').select('*').eq('poco',POCO).maybeSingle(),
       SB.from('no_poco_amostra').select('*').eq('poco',POCO).order('ts',{ascending:false}).limit(1),
       SB.from('no_poco_evento').select('ts,texto').eq('poco',POCO).order('ts',{ascending:false}).limit(60),
-      SB.from('no_poco_amostra').select('ts,sgv_a,i1,comb_pct').eq('poco',POCO)
-        .gte('ts',new Date(Date.now()-12*3600e3).toISOString()).order('ts',{ascending:true}).limit(2000)]);
-    for(const r of [est,cfg,am,ev,ser]) if(r.error) throw r.error;
-    DADOS={est:est.data,cfg:cfg.data,am:(am.data||[])[0],ev:ev.data||[],ser:ser.data||[]};
+      SB.from('no_poco_amostra').select('ts,sgv_a,i1,comb_pct,soc_pct').eq('poco',POCO)
+        .gte('ts',new Date(Date.now()-12*3600e3).toISOString()).order('ts',{ascending:true}).limit(2000),
+      SB.from('no_poco_comando').select('*').eq('poco',POCO).order('id',{ascending:false}).limit(8)]);
+    for(const r of [est,cfg,am,ev,ser,cm]) if(r.error) throw r.error;
+    DADOS={est:est.data,cfg:cfg.data,am:(am.data||[])[0],ev:ev.data||[],ser:ser.data||[],cm:cm.data||[]};
     ultimaOk=Date.now();
     desenhar();
   }catch(e){ console.warn(e); vigia(); }        // falha de rede NÃO apaga o que está na tela
@@ -120,14 +122,18 @@ function vigia(){                                // "PARADO há X": congelamento
 }
 
 function desenhar(){
-  const {est:e,cfg:c,am:a,ev,ser}=DADOS;
+  const {est:e,cfg:c,am:a,ev,ser,cm}=DADOS;
   vigia();
   // AGORA
-  const bomba=e?(e.k3?'<span class="ok">na SOLAR (K3)</span>':e.k4?'<span class="az" style="color:#7cc4ff">no GERADOR (K4)</span>':'<span class="av">parada (K3 e K4 abertos)</span>'):'—';
+  const lado=e?(/II/.test(e.posicao)?'SOLAR':/^I /.test(e.posicao)?'GERADOR':'—'):'—';
+  const bomba=!e?'—':e.bomba_rodando?`<span class="ok">RODANDO no ${lado}</span>`:e.k3?'<span class="ru">K3 fechado mas a bomba NÃO roda</span>':'<span class="av">parada (K3 aberto)</span>';
   el('agora').innerHTML=!e?'<tr><td colspan=2 class="sub">O nó ainda não mandou estado (firmware com telemetria ainda não gravado?).</td></tr>':`
     <tr><td>chave GLOQ4</td><td class="grande">${esc(e.posicao||'—')}</td></tr>
     <tr><td>bomba</td><td>${bomba}</td></tr>
-    <tr><td>automação</td><td class="${e.auto_lig?'ok':'av'}">${e.auto_lig?'LIGADA':'desligada'} · solar ${hm(e.sol_ini)}–${hm(e.sol_fim)}</td></tr>
+    <tr><td>modo</td><td class="${e.modo==='MANUAL'?'av':'ok'}">${esc(e.modo||(e.auto_lig?'AUTOMATICO':'MANUAL'))} · solar ${hm(e.sol_ini)}–${hm(e.sol_fim)}</td></tr>
+    <tr><td>decisão agora</td><td>${esc(e.motivo||'—')}</td></tr>
+    <tr><td>bateria (SOC)</td><td class="grande ${e.soc_ok?(e.soc_pct<=((c&&c.soc_corte)||20)?'ru':''):'av'}">${e.soc_ok?Number(e.soc_pct).toFixed(0)+' %':'sem leitura'}</td></tr>
+    <tr><td>SV · falha SGV</td><td>SV ${e.sv_fechada?'fechada':'<span class="av">aberta</span>'}${c&&c.usar_sv?' (usada)':' (ignorada)'} · ${e.sgv_falha_ativa?'<span class="ru">FALHA (T1)</span>':'<span class="ok">sem falha</span>'}</td></tr>
     <tr><td>combustível</td><td class="${e.comb_bloq?'ru':''}">${a?a.comb_pct+' %':'—'}${e.comb_bloq?' · BLOQUEADO (volta acima de 15 %)':''}</td></tr>
     <tr><td>relógio do nó</td><td class="${e.relogio==='NTP'?'ok':'av'}">${esc(e.relogio||'—')}</td></tr>
     <tr><td>último contato</td><td>${quando(e.atualizado_em)} (há ${ha(e.atualizado_em)})</td></tr>
@@ -141,15 +147,39 @@ function desenhar(){
         <div class="lin"><div><label>Solar de</label><input type="time" id="ini" value="${hm(c.sol_ini)}"></div>
         <div><label>até</label><input type="time" id="fim" value="${hm(c.sol_fim)}"></div></div>
         <div class="sub" style="margin-top:6px">Fora dessa janela a bomba vai para o gerador.</div>
-        <label class="chave"><input type="checkbox" id="lig" ${c.auto_lig?'checked':''}> automação ligada</label>
+        <div class="lin"><div><label>Horário limite</label><input type="time" id="hlim" value="${hm(c.hora_limite)}"></div>
+        <div><label>bateria mínima no limite (%)</label><input type="number" id="slim" min="0" max="100" value="${c.soc_limite}"></div></div>
+        <div class="sub" style="margin-top:4px">Depois do limite, com a bateria abaixo do mínimo, vai para o gerador até a próxima janela.</div>
+        <div class="lin"><div><label>Corta a bomba na solar com (%)</label><input type="number" id="scor" min="0" max="100" value="${c.soc_corte}"></div>
+        <div><label>Volta a ligar com (%)</label><input type="number" id="svol" min="0" max="100" value="${c.soc_volta}"></div></div>
+        <div class="sub" style="margin-top:4px">De manhã só vai para a solar com a bateria acima do "volta".</div>
+        <label class="chave"><input type="checkbox" id="usv" ${c.usar_sv?'checked':''}> usar o sinal da SV na decisão (na solar)</label>
+        <label class="chave"><input type="checkbox" id="lig" ${c.auto_lig?'checked':''}> modo AUTOMÁTICO (desmarcado = MANUAL)</label>
+        <label>IP do logger da bateria</label><input type="text" id="lip" value="${esc(c.logger_ip||'')}" style="width:100%;padding:10px;border-radius:8px;border:1px solid var(--linha);background:#0f1218;color:var(--txt);font-size:16px">
         <button id="grava">Gravar</button>
         <div class="msg" id="cfgmsg"></div>
         <div class="sub" style="margin-top:8px">versão ${c.versao} · ${pend?'<span class="av">aguardando o nó aplicar (ele busca a cada 2 min)</span>':'<span class="ok">aplicada pelo nó'+(c.aplicada_em?' em '+quando(c.aplicada_em):'')+'</span>'}<br>
         última mudança: ${quando(c.alterado_em)} por ${esc(c.alterado_por||'—')}</div>`;
-      for(const id of ['ini','fim','lig']) el(id).addEventListener('focus',()=>editando=true);
+      for(const id of ['ini','fim','lig','hlim','slim','scor','svol','usv','lip']) el(id).addEventListener('focus',()=>editando=true);
       el('grava').onclick=gravar;
     }
   }
+  // COMANDO
+  const manual=e&&e.modo==='MANUAL';
+  const ROT={bomba_liga:'ligar a bomba',bomba_desliga:'desligar a bomba',ir_solar:'ir para a SOLAR',ir_gerador:'ir para o GERADOR',
+             modo_auto:'modo AUTOMÁTICO',modo_manual:'modo MANUAL',reset_falha_sgv:'reset do SGV'};
+  el('cmd').innerHTML=`
+    <div class="sub">Modo agora: <b class="${manual?'av':'ok'}">${e?esc(e.modo||'—'):'—'}</b>. Bomba e trocas só no MANUAL (no automático a lógica desfaria).
+      O nó pega o pedido em até ~10 s; pedido com mais de 5 min expira.</div>
+    <div class="lin" style="margin-top:8px"><button class="sec" style="width:100%" data-c="${manual?'modo_auto':'modo_manual'}">${manual?'voltar ao AUTOMÁTICO':'passar para MANUAL'}</button>
+      <button class="sec" style="width:100%" data-c="reset_falha_sgv">reset do SGV</button></div>
+    <div class="lin" style="margin-top:8px"><button class="sec" style="width:100%" data-c="bomba_liga" ${manual?'':'disabled'}>ligar a bomba</button>
+      <button class="sec" style="width:100%" data-c="bomba_desliga" ${manual?'':'disabled'}>desligar a bomba</button></div>
+    <div class="lin" style="margin-top:8px"><button class="sec" style="width:100%" data-c="ir_solar" ${manual?'':'disabled'}>ir para a SOLAR</button>
+      <button class="sec" style="width:100%" data-c="ir_gerador" ${manual?'':'disabled'}>ir para o GERADOR</button></div>
+    <div class="msg" id="cmdmsg"></div>
+    <div class="diario sub" style="max-height:170px;margin-top:6px">${(cm||[]).map(x=>`<div class="${x.estado==='recusado'||x.estado==='expirado'?'ru':x.estado==='feito'?'':'av'}">${quando(x.criado_em)} ${ROT[x.comando]||x.comando}: <b>${x.estado}</b>${x.resposta?' — '+esc(x.resposta):''}</div>`).join('')||'sem pedidos'}</div>`;
+  el('cmd').querySelectorAll('button[data-c]').forEach(b=>b.onclick=()=>comandar(b.dataset.c,ROT[b.dataset.c]));
   // DEIF
   el('deif').innerHTML=!a?'<tr><td colspan=2 class="sub">sem amostra</td></tr>':!a.deif_ok?'<tr><td colspan=2 class="ru">sem leitura do DEIF</td></tr>':`
     <tr><td>tensão · frequência</td><td>${f1(a.ger_v)} V · ${f1(a.ger_hz)} Hz</td></tr>
@@ -163,7 +193,8 @@ function desenhar(){
   el('sgv').innerHTML=!a?'<tr><td colspan=2 class="sub">sem amostra</td></tr>':!a.sgv_ok?'<tr><td colspan=2 class="ru">sem leitura do SGV</td></tr>':`
     <tr><td>saída</td><td class="grande">${f1(a.sgv_hz)} Hz · ${f1(a.sgv_a)} A</td></tr>
     <tr><td>tensão · potência</td><td>${f1(a.sgv_v)} V · ${f1(a.sgv_kw)} kW</td></tr>
-    <tr><td>status</td><td class="${a.sgv_status===4||a.sgv_status===5?'ru':''}">${a.sgv_status==null?'—':a.sgv_status+' — '+(STATUS_SGV[a.sgv_status]||'?')}</td></tr>`;
+    <tr><td>status</td><td class="${a.sgv_status===4||a.sgv_status===5?'ru':''}">${a.sgv_status==null?'—':a.sgv_status+' — '+(STATUS_SGV[a.sgv_status]||'?')}</td></tr>
+    <tr><td>temperatura · última falha</td><td>${a.sgv_temp==null?'—':f1(a.sgv_temp)+' °C'} · ${a.sgv_falha==null?'—':a.sgv_falha}</td></tr>`;
   // DIÁRIO
   el('diario').innerHTML=!ev.length?'sem eventos':ev.map(x=>{
     const t=x.texto, cls=/ABORT|SEM DIESEL|SECO|COMBUSTIVEL|WATCHDOG|panic|SELETORA|RECUSADA/i.test(t)?'ru':/AVISO|ESPERANDO|nao confirmad/i.test(t)?'av':'';
@@ -181,14 +212,26 @@ function grafico(s){
   el('graf').innerHTML=`<svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none">
     <line x1="30" y1="${H-18}" x2="${W-10}" y2="${H-18}" stroke="#2a2f3a"/>
     <text x="2" y="14" fill="#9aa3b2" font-size="11">${amax.toFixed(0)} A</text>
-    ${linha('comb_pct',100,'#f87171')}${linha('i1',amax,'#7cc4ff')}${linha('sgv_a',amax,'#fbbf24')}${marcas}</svg>`;
+    ${linha('comb_pct',100,'#f87171')}${linha('soc_pct',100,'#4ade80')}${linha('i1',amax,'#7cc4ff')}${linha('sgv_a',amax,'#fbbf24')}${marcas}</svg>`;
 }
 
+async function comandar(c,rot){
+  if(/ir_|bomba_liga/.test(c)&&!confirm('Confirma: '+rot+'?\nO nó executa a sequência completa com as travas.')) return;
+  const m=el('cmdmsg'); m.className='msg sub'; m.textContent='Enviando…';
+  const {error}=await SB.from('no_poco_comando').insert({poco:POCO,comando:c});
+  if(error){m.className='msg ru';m.textContent='Não enviou: '+error.message;return}
+  m.className='msg ok'; m.textContent='Pedido enviado: '+rot+'. O nó pega em até ~10 s.';
+  await carregar();
+}
 async function gravar(){
   const ini=min(el('ini').value), fim=min(el('fim').value), lig=el('lig').checked, m=el('cfgmsg');
-  if(isNaN(ini)||isNaN(fim)||ini===fim){m.className='msg ru';m.textContent='Horário inválido (início e fim diferentes).';return}
+  const hlim=min(el('hlim').value), slim=+el('slim').value, scor=+el('scor').value, svol=+el('svol').value, usv=el('usv').checked, lip=el('lip').value.trim();
+  if(isNaN(ini)||isNaN(fim)||ini===fim||isNaN(hlim)){m.className='msg ru';m.textContent='Horário inválido (início e fim diferentes).';return}
+  if(!(svol>scor)||[slim,scor,svol].some(v=>isNaN(v)||v<0||v>100)){m.className='msg ru';m.textContent='Bateria inválida: 0–100 % e o "volta" maior que o "corta".';return}
+  if(!/^\d+\.\d+\.\d+\.\d+$/.test(lip)){m.className='msg ru';m.textContent='IP do logger inválido.';return}
   el('grava').disabled=true; m.className='msg sub'; m.textContent='Gravando…';
-  const {error}=await SB.from('no_poco_config').update({sol_ini:ini,sol_fim:fim,auto_lig:lig}).eq('poco',POCO);
+  const {error}=await SB.from('no_poco_config').update({sol_ini:ini,sol_fim:fim,auto_lig:lig,hora_limite:hlim,soc_limite:slim,
+    soc_corte:scor,soc_volta:svol,usar_sv:usv,logger_ip:lip}).eq('poco',POCO);
   el('grava').disabled=false;
   if(error){m.className='msg ru';m.textContent='Não gravou: '+error.message;return}
   editando=false; m.className='msg ok'; m.textContent='Gravado. O nó aplica em até 2 min.';
