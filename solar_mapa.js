@@ -908,7 +908,8 @@
            Defeito silencioso clássico de callback com assinatura diferente da
            esperada — o `|| 'geral'` só protege contra nulo, não contra lixo. */
         .on('click', () => aoClicar('geral')).addTo(grupo)
-        .bindTooltip((lig === true ? 'bomba LIGADA' : lig === false ? 'bomba desligada' : 'bomba: sem leitura') +
+        .bindTooltip((lig === true ? 'bomba LIGADA' + (v.lado === 'GERADOR' ? ' no GERADOR' : v.lado === 'SOLAR' ? ' na SOLAR' : '')
+                      : lig === false ? 'bomba desligada' : 'bomba: sem leitura') +
                      ' · carga da bateria ' + pctTxt, { direction: 'top' });
     }
   }
@@ -1130,6 +1131,66 @@
      repara. E some sozinha se `f.alarmes` não vier (o mobile não busca essa
      view): ausência de dado não é ausência de alarme, mas também não é motivo
      para quebrar a janela. */
+  /* O NÓ DO POÇO NA TELEMETRIA (dono, 17/10/2026: *"tem que mostrar não apenas ligado ou desligado,
+     mostra também se é no gerador ou na solar, e os dados do gerador e do SGV ... a lógica que antes era
+     apenas pelo consumo: o SGV fala quanto está consumindo ou se está ligado com precisão"*).
+     Migração 177: com o nó falando, `bomba_ligada` vem dele (SGV) e chegam `lado` + dados do gerador e do
+     SGV. Sem o nó (poço sem nó, ou nó mudo há > 5 min) a faixa some e tudo volta a ser pelo consumo. */
+  const STATUS_SGV = { 0: 'desligado', 1: 'em operação', 2: 'modo de espera', 3: 'proteção de baixa frequência',
+    4: 'proteção contra funcionamento A SECO', 5: 'proteção de sobrecorrente', 6: 'proteção de potência mínima' };
+  function faixaNo(v) {
+    if (!v || v.tipo !== 'poco' || !v.lado) return '';
+    const lig = v.bomba_ligada === true, ger = v.lado === 'GERADOR', sol = v.lado === 'SOLAR';
+    /* DEFEITO É VERMELHO, não cinza. "I e II fechadas juntas" significa gerador
+       e solar amarrados ao mesmo barramento — é a condição mais perigosa que
+       esta chave pode apresentar, e saía com a mesma cor de "bomba parada".
+       Cor de repouso para condição de risco é pior que não mostrar. */
+    const cor = (v.sgv_falha_ativa || v.lado === 'DEFEITO') ? '#ff4444' : lig ? '#00c896' : '#8b949e';
+    const onde = ger ? 'no GERADOR' : sol ? 'na SOLAR' : v.lado === 'DEFEITO' ? '— chave com DEFEITO (I e II juntas)' : '— chave em trânsito';
+    const sgv = v.sgv_ok ? ' · SGV ' + br(v.sgv_hz, 1) + ' Hz · ' + br(v.sgv_a, 1) + ' A · ' + br(v.sgv_kw, 1) + ' kW' : '';
+    return '<div style="background:#14202a;border:1px solid ' + cor + ';border-radius:8px;padding:7px 10px;margin:6px 0 2px;font-size:12px;line-height:1.55">' +
+      '<b style="color:' + cor + '">● bomba ' + (lig ? 'RODANDO' : 'PARADA') + ' ' + onde + '</b>' +
+      '<span style="color:#dbe9f7">' + sgv + '</span>' +
+      (v.sgv_falha_ativa ? '<div style="color:#ff4444;font-weight:700">FALHA no SGV (relé T1)</div>' : '') +
+      (ger && v.ger_ok ? '<div style="color:#dbe9f7">gerador ' + (v.ger_rodando ? 'RODANDO' : 'parado') + ' · ' + br(v.ger_kw, 1) +
+        ' kW · diesel ' + (v.ger_comb_pct == null ? '—' : v.ger_comb_pct + ' %') + (v.no_comb_bloq ? ' <b style="color:#ff4444">· BLOQUEADO por diesel</b>' : '') + '</div>' : '') +
+      '<div style="color:#8ba0bd;font-size:11px">' + (v.no_modo || '') + (v.no_motivo ? ' · ' + v.no_motivo : '') +
+        ' · nó há ' + (v.no_idade_s == null ? '—' : v.no_idade_s < 90 ? v.no_idade_s + ' s' : Math.round(v.no_idade_s / 60) + ' min') + '</div>' +
+      '</div>';
+  }
+  /* A ABA "gerador · SGV": tudo o que o nó do poço lê (amostra de até 20 min). */
+  function abaPoco(v) {
+    const sec = t => '<div style="color:#8ba0bd;font-size:11px;font-weight:700;margin:10px 0 3px">' + t + '</div>';
+    const linha = (r, val) => '<div style="display:flex;justify-content:space-between;gap:12px"><span style="color:#9aa3b0">' + r + '</span><b>' + val + '</b></div>';
+    const ou = (x, u, d) => x == null ? '—' : br(x, d == null ? 1 : d) + (u ? ' ' + u : '');
+    const quando = t => t ? new Date(t).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', second: '2-digit' }) : '—';
+    return sec('nó do poço') +
+      linha('Alimentação da bomba', v.lado === 'GERADOR' ? 'GERADOR (chave em I)' : v.lado === 'SOLAR' ? 'SOLAR (chave em II)' : (v.lado || '—')) +
+      linha('Bomba', v.bomba_ligada == null ? '—' : (v.bomba_ligada ? 'RODANDO' : 'parada') + ' <span style="color:#6b7683;font-weight:400">(' + (v.bomba_fonte || '') + ')</span>') +
+      linha('Modo', v.no_modo || '—') +
+      linha('Decisão agora', v.no_motivo || '—') +
+      sec('bomba — inversor SGV') +
+      (!v.sgv_ok ? '<div style="color:#ffb300">sem leitura do SGV na última amostra</div>' :
+        linha('Saída', ou(v.sgv_hz, 'Hz') + ' · ' + ou(v.sgv_a, 'A')) +
+        linha('Tensão · potência', ou(v.sgv_v, 'V', 0) + ' · ' + ou(v.sgv_kw, 'kW')) +
+        linha('Status', v.sgv_status == null ? '—' : v.sgv_status + ' — ' + (STATUS_SGV[v.sgv_status] || '?')) +
+        linha('Temperatura', ou(v.sgv_temp, '°C')) +
+        /* código 0 = sem falha: mostrar "0" ali vira ruído que parece dado */
+        linha('Falha (T1) · última falha', (v.sgv_falha_ativa ? '<span style="color:#ff4444">ATIVA</span>' : 'não') + ' · ' +
+              (v.sgv_falha == null ? '—' : (Number(v.sgv_falha) === 0 ? 'nenhuma' : 'código ' + v.sgv_falha)))) +
+      sec('gerador — DEIF') +
+      (!v.ger_ok ? '<div style="color:#ffb300">sem leitura do DEIF na última amostra</div>' :
+        linha('Motor', (v.ger_rodando ? 'RODANDO' : 'parado') + ' · ' + (v.ger_rpm == null ? '—' : v.ger_rpm + ' rpm')) +
+        linha('Tensão · frequência', ou(v.ger_v, 'V', 0) + ' · ' + ou(v.ger_hz, 'Hz')) +
+        linha('Correntes', ou(v.ger_i1) + ' / ' + ou(v.ger_i2) + ' / ' + ou(v.ger_i3) + ' A') +
+        linha('Potência', ou(v.ger_kw, 'kW')) +
+        linha('Diesel', (v.ger_comb_pct == null ? '—' : v.ger_comb_pct + ' %') + (v.no_comb_bloq ? ' <span style="color:#ff4444">BLOQUEADO</span>' : '')) +
+        linha('Bateria do gerador', ou(v.ger_bat_v, 'V')) +
+        (v.ger_rodando ? linha('Água · óleo', ou(v.ger_agua_c, '°C') + ' · ' + ou(v.ger_oleo_bar, 'bar')) : '')) +
+      '<div style="margin-top:10px;color:#6b7683;font-size:11px;line-height:1.5">Amostra do nó às ' + quando(v.no_amostra_em) +
+        ' (uma a cada 30 s, sobe a cada minuto). Configuração e comandos ficam na página do próprio nó, pelo túnel.</div>';
+  }
+
   function faixaAlarme(f) {
     const L = (f && f.alarmes) || [];
     if (!L.length) return '';
@@ -1187,7 +1248,9 @@
        consumo não é "casa", é a carga do lugar, e o rótulo muda. */
     const carga = n(v.p_carga_kw) || 0;
     const temBomba = v.bomba_ligada != null;
-    const bombaOn = v.bomba_ligada === true;
+    /* 177: bomba rodando no GERADOR não puxa da usina — o desenho não pode mandar energia das placas
+       para ela; o consumo medido volta a ser só da casa. */
+    const bombaOn = v.bomba_ligada === true && v.lado !== 'GERADOR';
     const bomba = bombaOn ? carga : 0;
     /* Com a bomba tocando NÃO SE SEPARA a casa: há um medidor só, e a casa
        some dentro dos 70 kW da bomba. Mostrar uma fatia estimada ali seria
@@ -2638,7 +2701,8 @@
       (estreito ? '10px 0 4px' : '8px 0 6px') + ';padding-bottom:2px;-webkit-overflow-scrolling:touch">' +
       aba('geral', 'usina') + (ePoco ? aba('objetivo', '10 h/dia') : '') +
       aba('inversores', 'inversores') +
-      aba('bateria', 'bateria') + (strings.length ? aba('string', 'strings') : '') + '</div>';
+      aba('bateria', 'bateria') + (strings.length ? aba('string', 'strings') : '') +
+      (ePoco && v.no_atualizado_em ? aba('poco', 'gerador · SGV') : '') + '</div>';
     const corS = { 'OK': '#00c896', 'FRACA': '#ffb300', 'SEM CORRENTE': '#ff4444', 'SEM SOL': '#6b7683', 'SEM LEITURA': '#8b949e' };
     /* O INVERSOR APARECE PELO NOME, não pelo endereço (dono, 18/09/2026). O
        endereço Modbus (10..17 nos pivôs) é detalhe de fiação: quem está na
@@ -2697,6 +2761,7 @@
 
     const miolo =
       abaAtual === 'objetivo' ? abaObjetivo(v, f) :
+      abaAtual === 'poco' ? abaPoco(v) :
       abaAtual === 'inversores' ? tabela :
       abaAtual === 'bateria' ? (() => {
         /* ABA DA BATERIA, agora com o que as migrações 162/163 trouxeram.
@@ -2767,6 +2832,7 @@
         '</div>' +
         (v.mensagem ? '<div style="color:#9aa3b0;font-size:12px;margin:3px 0 0">' + v.mensagem + '</div>' : '') +
         faixaAlarme(f) +
+        faixaNo(v) +
         abas +
         '<div style="height:1px;background:#2a3b4d;margin-bottom:' + (estreito ? '10px' : '6px') + '"></div>' +
       '</div>';
