@@ -52,7 +52,7 @@ const SB_URL='https://ngdidjtfgmtkdkvqwfjf.supabase.co';
 const SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5nZGlkanRmZ210a2RrdnF3ZmpmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NTU5MDYsImV4cCI6MjA5NjUzMTkwNn0.OW9hGEFTvSYx_THv3DR9pt8xIVC0B9Pw2bTDGD6TBLk';   // chave ANON (pública, a mesma do mobile/); as tabelas do nó exigem login (RLS, migração 174)
 const POCO=parseInt(new URLSearchParams(location.search).get('poco')||'3',10);
 const STATUS_SGV={0:'desligado',1:'em operação',2:'modo de espera',3:'proteção de baixa frequência',4:'proteção contra funcionamento A SECO',5:'proteção de sobrecorrente',6:'proteção de potência mínima'};
-let SB, DADOS={}, ultimaOk=0, editando=false, _TIMERS=false;
+let SB, DADOS={}, ultimaOk=0, editando=false, _TIMERS=false, cmdLiberado=false, liberadoEm=0;
 const el=id=>document.getElementById(id);
 const hm=m=>String(Math.floor(m/60)).padStart(2,'0')+':'+String(m%60).padStart(2,'0');
 const min=t=>{const [h,m]=t.split(':').map(Number);return h*60+m};
@@ -83,14 +83,22 @@ function esqueleto(){
     <button class="sec" id="sair">Sair</button></header>
   <main>
     <section class="cartao"><h2>Agora</h2><table id="agora"></table></section>
-    <section class="cartao"><h2>Comando</h2><div id="cmd"></div></section>
     <section class="cartao"><h2>Configuração</h2><div id="cfg"></div></section>
     <section class="cartao"><h2>Gerador (DEIF)</h2><table id="deif"></table></section>
     <section class="cartao"><h2>Bomba (SGV)</h2><table id="sgv"></table></section>
     <section class="cartao largo"><h2>Bomba, bateria e diesel — últimas 12 h</h2><div id="graf" class="sub">…</div>
       <div class="sub"><span style="color:#fbbf24">■</span> bomba (SGV, A) &nbsp; <span style="color:#7cc4ff">■</span> gerador (DEIF L1, A) &nbsp; <span style="color:#4ade80">■</span> bateria SOC (%) &nbsp; <span style="color:#f87171">■</span> combustível (%)</div></section>
     <section class="cartao largo"><h2>Diário da automação</h2><div id="diario" class="diario sub">…</div></section>
-  </main>`;
+    <section class="cartao largo" id="blocoCmd"><h2 style="display:flex;align-items:center;gap:8px">Comando
+      <label style="margin:0 0 0 auto;display:flex;align-items:center;gap:6px;font-size:13px;color:var(--sub);text-transform:none;letter-spacing:0">
+      <input type="checkbox" id="libera" style="width:20px;height:20px"> liberar comandos</label></h2><div id="cmd"></div></section>
+  </main>
+  <div id="modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.65);z-index:20;align-items:center;justify-content:center;padding:16px">
+    <div class="cartao" style="max-width:420px;width:100%">
+      <h2 id="modalTit">Confirmar</h2><div id="modalTxt" style="font-size:15px;line-height:1.45"></div>
+      <div class="lin" style="margin-top:14px"><button class="sec" id="modalNao" style="width:100%;margin:0">Cancelar</button>
+        <button id="modalSim" style="margin:0">Confirmar</button></div></div></div>`;
+  el('libera').onchange=()=>{ cmdLiberado=el('libera').checked; liberadoEm=Date.now(); desenhar(); };
   el('sair').onclick=async()=>{await SB.auth.signOut(); telaLogin()};
 }
 
@@ -168,15 +176,19 @@ function desenhar(){
   const manual=e&&e.modo==='MANUAL';
   const ROT={bomba_liga:'ligar a bomba',bomba_desliga:'desligar a bomba',ir_solar:'ir para a SOLAR',ir_gerador:'ir para o GERADOR',
              modo_auto:'modo AUTOMÁTICO',modo_manual:'modo MANUAL',reset_falha_sgv:'reset do SGV'};
+  if(cmdLiberado&&Date.now()-liberadoEm>60000) cmdLiberado=false;     // trava sozinha em 60 s
+  if(el('libera')) el('libera').checked=cmdLiberado;
+  const L=cmdLiberado?'':'disabled', LM=cmdLiberado&&manual?'':'disabled';
   el('cmd').innerHTML=`
-    <div class="sub">Modo agora: <b class="${manual?'av':'ok'}">${e?esc(e.modo||'—'):'—'}</b>. Bomba e trocas só no MANUAL (no automático a lógica desfaria).
+    <div class="sub">${cmdLiberado?'<span class="av">Comandos LIBERADOS (travam sozinhos em 60 s).</span>':'Marque <b>liberar comandos</b> no canto para usar os botões.'}
+      Modo agora: <b class="${manual?'av':'ok'}">${e?esc(e.modo||'—'):'—'}</b>. Bomba e trocas só no MANUAL (no automático a lógica desfaria).
       O nó pega o pedido em até ~10 s; pedido com mais de 5 min expira.</div>
-    <div class="lin" style="margin-top:8px"><button class="sec" style="width:100%" data-c="${manual?'modo_auto':'modo_manual'}">${manual?'voltar ao AUTOMÁTICO':'passar para MANUAL'}</button>
-      <button class="sec" style="width:100%" data-c="reset_falha_sgv">reset do SGV</button></div>
-    <div class="lin" style="margin-top:8px"><button class="sec" style="width:100%" data-c="bomba_liga" ${manual?'':'disabled'}>ligar a bomba</button>
-      <button class="sec" style="width:100%" data-c="bomba_desliga" ${manual?'':'disabled'}>desligar a bomba</button></div>
-    <div class="lin" style="margin-top:8px"><button class="sec" style="width:100%" data-c="ir_solar" ${manual?'':'disabled'}>ir para a SOLAR</button>
-      <button class="sec" style="width:100%" data-c="ir_gerador" ${manual?'':'disabled'}>ir para o GERADOR</button></div>
+    <div class="lin" style="margin-top:8px"><button class="sec" style="width:100%" data-c="${manual?'modo_auto':'modo_manual'}" ${L}>${manual?'voltar ao AUTOMÁTICO':'passar para MANUAL'}</button>
+      <button class="sec" style="width:100%" data-c="reset_falha_sgv" ${L}>reset do SGV</button></div>
+    <div class="lin" style="margin-top:8px"><button class="sec" style="width:100%" data-c="bomba_liga" ${LM}>ligar a bomba</button>
+      <button class="sec" style="width:100%" data-c="bomba_desliga" ${LM}>desligar a bomba</button></div>
+    <div class="lin" style="margin-top:8px"><button class="sec" style="width:100%" data-c="ir_solar" ${LM}>ir para a SOLAR</button>
+      <button class="sec" style="width:100%" data-c="ir_gerador" ${LM}>ir para o GERADOR</button></div>
     <div class="msg" id="cmdmsg"></div>
     <div class="diario sub" style="max-height:170px;margin-top:6px">${(cm||[]).map(x=>`<div class="${x.estado==='recusado'||x.estado==='expirado'?'ru':x.estado==='feito'?'':'av'}">${quando(x.criado_em)} ${ROT[x.comando]||x.comando}: <b>${x.estado}</b>${x.resposta?' — '+esc(x.resposta):''}</div>`).join('')||'sem pedidos'}</div>`;
   el('cmd').querySelectorAll('button[data-c]').forEach(b=>b.onclick=()=>comandar(b.dataset.c,ROT[b.dataset.c]));
@@ -215,8 +227,26 @@ function grafico(s){
     ${linha('comb_pct',100,'#f87171')}${linha('soc_pct',100,'#4ade80')}${linha('i1',amax,'#7cc4ff')}${linha('sgv_a',amax,'#fbbf24')}${marcas}</svg>`;
 }
 
+const EXPLICA={
+  bomba_liga:'O nó fecha o K3 (DI2–COM) e confere no SGV se a bomba partiu. Recusa se a bateria estiver no corte ou o gerador não estiver disponível.',
+  bomba_desliga:'O nó abre o K3: a bomba para.',
+  ir_solar:'Sequência completa: desliga a bomba → espera zerar a corrente → troca a chave para II (solar) → para o gerador → religa a bomba se a bateria permitir.',
+  ir_gerador:'Sequência completa: desliga a bomba → espera zerar a corrente → confere o diesel → PARTE o gerador → espera ficar disponível → troca a chave para I → religa a bomba.',
+  modo_auto:'O nó volta a decidir sozinho pelo horário e pela bateria.',
+  modo_manual:'O nó para de decidir sozinho; só executa os comandos daqui. As seguranças (bateria no corte, diesel) continuam valendo.',
+  reset_falha_sgv:'O nó dá um pulso de 1 s no K4 (entrada de reset do SGV) e limpa o bloqueio de falha.'};
+function confirma(tit,txt){
+  return new Promise(ok=>{
+    el('modalTit').textContent=tit; el('modalTxt').textContent=txt; el('modal').style.display='flex';
+    const fecha=v=>{el('modal').style.display='none'; ok(v)};
+    el('modalSim').onclick=()=>fecha(true); el('modalNao').onclick=()=>fecha(false);
+    el('modal').onclick=ev=>{ if(ev.target===el('modal')) fecha(false) };
+  });
+}
 async function comandar(c,rot){
-  if(/ir_|bomba_liga/.test(c)&&!confirm('Confirma: '+rot+'?\nO nó executa a sequência completa com as travas.')) return;
+  if(!cmdLiberado) return;
+  if(!await confirma('Confirmar: '+rot+'?', EXPLICA[c]||'')) return;
+  cmdLiberado=false;                                  // um pedido por vez: trava de novo depois de enviar
   const m=el('cmdmsg'); m.className='msg sub'; m.textContent='Enviando…';
   const {error}=await SB.from('no_poco_comando').insert({poco:POCO,comando:c});
   if(error){m.className='msg ru';m.textContent='Não enviou: '+error.message;return}
