@@ -325,7 +325,7 @@ th:first-child,td:first-child{text-align:left}
      Sem a versão na URL o jeito era esperar e torcer. QUEM MEXER NESTES DOIS ARQUIVOS
      SOBE A DATA AQUI — é o equivalente, para o mobile, do `alabama-campo-vNN` do sw.js. -->
 <script src="../reservatorio_corte.js?v=20261008g"></script>
-<script src="../solar_mapa.js?v=20261017a"></script>
+<script src="../solar_mapa.js?v=20261017b"></script>
 <script>
 const SB_URL='https://ngdidjtfgmtkdkvqwfjf.supabase.co';
 const SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5nZGlkanRmZ210a2RrdnF3ZmpmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NTU5MDYsImV4cCI6MjA5NjUzMTkwNn0.OW9hGEFTvSYx_THv3DR9pt8xIVC0B9Pw2bTDGD6TBLk';
@@ -2722,8 +2722,16 @@ async function carregarTelemetria(){
       /* 21 dias na 1a vez, 2 depois. O Supabase trunca em 1000 linhas sem
          avisar (21×24×5 = 2.520), daí o `.range`; e o passado não muda, então
          não se repuxa a cada 30 s. */
-      buscarPaginado(() => SB.from('solar_poco_hora').select('*')
-        .gte('dia', diaLocalMob(SOLARHORA.length ? -1 : -21))
+      /* 3 DIAS NA ABERTURA, O RESTO EM SEGUNDO PLANO (17/10/2026). Medido: 21
+         dias × 5 sítios × 24 h = 1.958 linhas = **202 KB**, baixados ANTES de a
+         tela pintar, toda vez que a página abre. O dono: *"o sistema tá ficando
+         lento para carregar"*. Agora a abertura pede 3 dias e o passado vem
+         depois, por `completarHistoricoSolar()` — quando ele navegar com as
+         setas, já chegou.
+         E SÓ AS COLUNAS QUE A TELA USA: a view tem 20, a aba usa 9 (mais o
+         `sitio_id`, que é o filtro). As outras 11 viajavam à toa. */
+      buscarPaginado(() => SB.from('solar_poco_hora').select('sitio_id,dia,hora,frac_bomba,frac_teto,frac_excedente,soc_fim_pct,soc_min_pct,min_limitado,bomba_kw')
+        .gte('dia', diaLocalMob(SOLARHORA.length ? -1 : -3))
         .order('dia').order('sitio_id').order('hora')),
       SB.from('solar_poco_dia').select('*').gte('dia', diaLocalMob(-30)),
       SB.from('solar_poco_sugestao').select('*'),
@@ -2749,7 +2757,27 @@ async function carregarTelemetria(){
     if(per&&!per.error&&per.data&&per.data.length) SOLARPER=per.data;
     if(sc&&sc.data&&window.SOLAR_UI) sc.data.forEach(s=>{ SOLARCAD[s.id]=SOLAR_UI.prepararCadastro(s, utm2ll); });
     if(SECAO==='tel' && SUB==='mapa') await carregarRastro();
+    completarHistoricoSolar();      // o passado vem DEPOIS, sem segurar a tela
   }catch(e){ console.warn('[telemetria]',e.message||e); }
+}
+
+/* O PASSADO DO SOLAR, EM SEGUNDO PLANO (17/10/2026)
+   Roda UMA vez por sessão, depois que a tela já pintou, e completa os 21 dias
+   que a aba das 10 h usa nas setas. Se falhar, não é notícia: a aba continua
+   com os 3 dias da abertura e tenta de novo na próxima abertura. */
+let SOLARHIST_FUNDO = false;
+async function completarHistoricoSolar(){
+  if(SOLARHIST_FUNDO) return;
+  SOLARHIST_FUNDO = true;
+  try{
+    const d = await buscarPaginado(() => SB.from('solar_poco_hora').select('sitio_id,dia,hora,frac_bomba,frac_teto,frac_excedente,soc_fim_pct,soc_min_pct,min_limitado,bomba_kw')
+      .gte('dia', diaLocalMob(-21)).lt('dia', diaLocalMob(-3))
+      .order('dia').order('sitio_id').order('hora'));
+    if(d && !d.error && d.data && d.data.length){
+      const novos = new Set(d.data.map(x => x.sitio_id+'|'+x.dia));
+      SOLARHORA = SOLARHORA.filter(x => !novos.has(x.sitio_id+'|'+x.dia)).concat(d.data);
+    }
+  }catch(e){ SOLARHIST_FUNDO = false; }   // falhou: deixa tentar de novo
 }
 function diaLocalMob(off){ const d=new Date(); if(off) d.setDate(d.getDate()+off); const p=n=>String(n).padStart(2,'0'); return d.getFullYear()+'-'+p(d.getMonth()+1)+'-'+p(d.getDate()); }
 async function carregarRastro(){
