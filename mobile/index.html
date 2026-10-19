@@ -411,6 +411,56 @@ let SELETOR=null;
 let ESTSEL=null;                                     // estacao com card aberto                                    // gaveta aberta: null | 'var' | 'per'
 let PERIODO='agora', VARMAPA='chuva';   // abre na chuva (o que mais se consulta)
 let ESTACOES=[], ATUAL=[], HORAS=[], LOTES=[];
+/* LOTES EM CACHE NO NAVEGADOR (19/10/2026 — o dono: "pode fazer o cache dos
+   lotes"). São 46 polígonos, 530 KB de contorno, e só mudam quando um talhão é
+   remedido — mas eram rebaixados A CADA ABERTURA. Depois da migração 181 (a RLS
+   que cobrava 25× da tela) este virou o maior item do tempo de carregar: o piso.
+   Guarda-se o contorno JÁ CONVERTIDO para lat/lon, então a volta do cache não
+   paga nem a conversão dos 46 polígonos.
+   A validade vem da view `lotes_versao` (migração 183): md5 de nome+geometria,
+   50 bytes de resposta contra 530 KB. Pega geometria alterada, lote novo E lote
+   apagado — `criado_em`, que é a única data da tabela, não pegaria nenhum dos
+   dois últimos.
+   ⚠️ A TELA NÃO ESPERA A CONFERÊNCIA: pinta do cache na hora e confere em 2º
+   plano, repintando só se mudou. É o offline-first do projeto. */
+const LOTES_CH='lotes_cache_v1';
+let LOTES_V='';                        // hash do contorno que está dentro de LOTES
+try{ const s=localStorage.getItem(LOTES_CH);
+     if(s){ const o=JSON.parse(s);
+       if(o&&o.v&&Array.isArray(o.lotes)&&o.lotes.length){ LOTES=o.lotes; LOTES_V=o.v; } } }catch(e){}
+/* cota estourada, janela privada ou dado ilegível: segue sem cache e rebaixa o
+   contorno como antes — nunca quebra a tela por causa do cache. */
+function salvarLotesCache(v){
+  try{ localStorage.setItem(LOTES_CH,JSON.stringify({v:v,lotes:LOTES})); }catch(e){}
+}
+function converterLotes(rows){
+  return (rows||[]).map(x=>{ const g=x.geom;
+    if(!g||!Array.isArray(g.ring)||g.ring.length<3) return null;
+    return {nome:x.nome,ring:g.ring.map(p=>utm2ll(+p[0],+p[1]))}; }).filter(Boolean);
+}
+/* Confere DEPOIS da tela pintada se o contorno guardado envelheceu.
+   REGRA DURA DO PROJETO: resposta vazia NÃO apaga o que já está desenhado. Sem
+   versão (rede caída) ou com lista vazia — o RLS de uma conta restrita devolve
+   `[]` COM SUCESSO, não erro — mantém-se o cache e não se mexe em nada. */
+/* Grava o cache na 1ª visita. A versão é buscada aqui, e não reaproveitada de
+   outro lugar, para o hash corresponder ao contorno que acabou de chegar. */
+async function marcarVersaoLotes(){
+  try{ const {data}=await SB.from('lotes_versao').select('v').maybeSingle();
+       if(data&&data.v&&LOTES.length){ LOTES_V=data.v; salvarLotesCache(data.v); } }catch(e){}
+}
+async function conferirLotes(ver){
+  if(!ver||!ver.v||!LOTES.length) return;   // nada guardado, ou não deu para conferir
+  if(ver.v===LOTES_V) return;               // em dia: o caso comum, e custou 50 bytes
+  if(!ver.n) return;                        // n=0 é conta sem permissão, não é "sem lotes"
+  try{
+    const {data,error}=await SB.from('lotes').select('nome,geom').not('referencia','is',true);
+    if(error||!data||!data.length) return;  // falhou: fica valendo o que já estava
+    const novos=converterLotes(data);
+    if(!novos.length) return;
+    LOTES=novos; LOTES_V=ver.v; salvarLotesCache(ver.v);
+    pinta();
+  }catch(e){}
+}
 /* TELEMETRIA — `TELE` é a última posição de cada caixa (telemetria_atual, 1 linha
    por device); `MAQS` é a identificação (view `maquinas_identificacao`: frota,
    nome, modelo — SEM patrimônio, ver migração 103); `TRAILS` é o rastro do dia,
@@ -2560,21 +2610,33 @@ async function carregar(){
        — e a de clima carrega os `lotes`, 530 KB de contorno. O dono: *"a tela
        carregando tá demorando cerca de 8 a 10 seg"*. Nada aqui depende de
        nada: dispara-se os dois e espera-se os dois. */
+    const semLotes = !LOTES.length;   // 1ª visita, ou cache ilegível/vazio
     const pClima = Promise.all([
       SB.from('clima_estacoes').select('*').order('id'),
       SB.from('clima_atual').select('*'),
       SB.from('clima_horario').select('*').gte('hora',new Date(Date.now()-DIAS_HIST*864e5).toISOString()).order('hora'),
-      LOTES.length?Promise.resolve({data:null}):SB.from('lotes').select('nome,geom').not('referencia','is',true)
+      /* SEM CACHE o contorno é preciso de qualquer jeito, então vai junto. COM
+         cache vai só o resumo de 50 bytes, e a conferência fica para depois da
+         tela pintar. */
+      semLotes?SB.from('lotes').select('nome,geom').not('referencia','is',true):Promise.resolve({data:null}),
+      semLotes?Promise.resolve({data:null}):SB.from('lotes_versao').select('n,v').maybeSingle()
     ]);
     const pTel = carregarTelemetria();
-    const [e,a,h,l]=await pClima;
+    const [e,a,h,l,lv]=await pClima;
     ESTACOES=e.data||[]; ATUAL=a.data||[]; HORAS=h.data||[];
     await pTel;
     if(SECAO==='safra') await carregarSafra();   // só busca a safra se alguém está olhando
-    if(l&&l.data) LOTES=(l.data||[]).map(x=>{ const g=x.geom;
-      if(!g||!Array.isArray(g.ring)||g.ring.length<3) return null;
-      return {nome:x.nome,ring:g.ring.map(p=>utm2ll(+p[0],+p[1]))}; }).filter(Boolean);
+    /* 1ª visita: converte, pinta e grava. O hash vem da consulta que partiu
+       JUNTO com esta — se um talhão for remedido exatamente nesse intervalo, o
+       hash guardado é o de antes e a próxima abertura rebaixa o contorno uma vez
+       à toa. Erro do lado seguro, de propósito: o contrário seria desenhar
+       contorno velho para sempre. */
+    if(l&&l.data&&l.data.length){
+      const novos=converterLotes(l.data);
+      if(novos.length){ LOTES=novos; marcarVersaoLotes(); }
+    }
     pinta();
+    if(lv) conferirLotes(lv.data);   // 2º plano: ninguém espera por isto
   }catch(err){ el('app').innerHTML=`<div class="vazio">${err.message}</div>`; }
 }
 
