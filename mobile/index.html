@@ -325,7 +325,7 @@ th:first-child,td:first-child{text-align:left}
      Sem a versão na URL o jeito era esperar e torcer. QUEM MEXER NESTES DOIS ARQUIVOS
      SOBE A DATA AQUI — é o equivalente, para o mobile, do `alabama-campo-vNN` do sw.js. -->
 <script src="../reservatorio_corte.js?v=20261008g"></script>
-<script src="../solar_mapa.js?v=20261017b"></script>
+<script src="../solar_mapa.js?v=20261019a"></script>
 <script>
 const SB_URL='https://ngdidjtfgmtkdkvqwfjf.supabase.co';
 const SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5nZGlkanRmZ210a2RrdnF3ZmpmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NTU5MDYsImV4cCI6MjA5NjUzMTkwNn0.OW9hGEFTvSYx_THv3DR9pt8xIVC0B9Pw2bTDGD6TBLk';
@@ -2556,14 +2556,20 @@ async function carregar(){
     }
     CONTA=(s.session.user&&s.session.user.email)||'';
     ADMIN=CONTA.toLowerCase()==='leydiovan@gmail.com';
-    const [e,a,h,l]=await Promise.all([
+    /* CLIMA E TELEMETRIA CORREM JUNTOS (19/10/2026). Eram DUAS esperas em fila
+       — e a de clima carrega os `lotes`, 530 KB de contorno. O dono: *"a tela
+       carregando tá demorando cerca de 8 a 10 seg"*. Nada aqui depende de
+       nada: dispara-se os dois e espera-se os dois. */
+    const pClima = Promise.all([
       SB.from('clima_estacoes').select('*').order('id'),
       SB.from('clima_atual').select('*'),
       SB.from('clima_horario').select('*').gte('hora',new Date(Date.now()-DIAS_HIST*864e5).toISOString()).order('hora'),
       LOTES.length?Promise.resolve({data:null}):SB.from('lotes').select('nome,geom').not('referencia','is',true)
     ]);
+    const pTel = carregarTelemetria();
+    const [e,a,h,l]=await pClima;
     ESTACOES=e.data||[]; ATUAL=a.data||[]; HORAS=h.data||[];
-    await carregarTelemetria();
+    await pTel;
     if(SECAO==='safra') await carregarSafra();   // só busca a safra se alguém está olhando
     if(l&&l.data) LOTES=(l.data||[]).map(x=>{ const g=x.geom;
       if(!g||!Array.isArray(g.ring)||g.ring.length<3) return null;
@@ -2692,26 +2698,18 @@ async function carregarTelemetria(){
     const ps=[SB.from('telemetria_atual').select('*'), SB.from('telemetria_vigia').select('*')];
     ps.push(Object.keys(MAQS).length ? Promise.resolve({data:null})
           : SB.from('maquinas_identificacao').select('id,id_frota,nome,marca,modelo,categoria'));
-    const [t,v,m]=await Promise.all(ps);
-    /* Regra do offline-first: lista vazia só substitui o que está na tela quando
-       veio DA REDE com sucesso. Aqui a chamada respondeu, então vale. */
-    if(t&&!t.error) TELE=t.data||[];
-    if(v&&!v.error){ VIGIA=v.data||[]; ULTIMA_OK=Date.now(); }
-    if(m&&m.data) m.data.forEach(x=>MAQS[x.id]=x);
-    /* reservatório: o cadastro (contorno) vem uma vez; situação e série a cada ciclo.
-       Mesma regra do offline-first: só substitui quando a chamada não deu erro. */
-    const [rv,rc,rh]=await Promise.all([
+    /* UMA ONDA SÓ (19/10/2026): telemetria, reservatório e solar eram três
+       `Promise.all` em FILA, cada uma esperando a anterior. São 15 buscas
+       independentes — a fila só somava latência, que no 4G da fazenda é o que
+       mais custa. */
+    const pResv = [
       SB.from('reservatorio_vigia').select('*'),
       Object.keys(RESVCAD).length ? Promise.resolve({data:null})
         : SB.from('reservatorio').select('id,nome,geom,nivel_max_m,offset_fundo_m'),
       SB.from('reservatorio_horario').select('reservatorio_id,hora,nivel_m')
         .gte('hora',new Date(Date.now()-24*3600e3).toISOString()).order('hora')
-    ]);
-    if(rv&&!rv.error) RESV=rv.data||[];
-    if(rc&&rc.data&&window.RESV_UI) rc.data.forEach(r=>{ RESVCAD[r.id]=RESV_UI.prepararCadastro(r, utm2ll); });
-    if(rh&&!rh.error) RESVH=rh.data||[];
-    /* usinas: mesma regra — cadastro (contorno) uma vez, situação a cada ciclo */
-    const [sv,sc,si,st,sph,spd,sug,per,sal]=await Promise.all([
+    ];
+    const pSolar = [
       SB.from('solar_vigia').select('*'),
       Object.keys(SOLARCAD).length ? Promise.resolve({data:null})
         : SB.from('solar_sitio').select('id,nome,tipo,geom'),
@@ -2739,7 +2737,21 @@ async function carregarTelemetria(){
       /* ALARMES ATIVOS (migração 170): uma linha por BIT aceso, já traduzido.
          Barato porque só existe linha quando há alarme. */
       SB.from('solar_alarme_ativo').select('*')
-    ]);
+    ];
+    const [t,v,m]=await Promise.all(ps);
+    /* Regra do offline-first: lista vazia só substitui o que está na tela quando
+       veio DA REDE com sucesso. Aqui a chamada respondeu, então vale. */
+    if(t&&!t.error) TELE=t.data||[];
+    if(v&&!v.error){ VIGIA=v.data||[]; ULTIMA_OK=Date.now(); }
+    if(m&&m.data) m.data.forEach(x=>MAQS[x.id]=x);
+    /* reservatório: o cadastro (contorno) vem uma vez; situação e série a cada ciclo.
+       Mesma regra do offline-first: só substitui quando a chamada não deu erro. */
+    const [rv,rc,rh]=await Promise.all(pResv);
+    if(rv&&!rv.error) RESV=rv.data||[];
+    if(rc&&rc.data&&window.RESV_UI) rc.data.forEach(r=>{ RESVCAD[r.id]=RESV_UI.prepararCadastro(r, utm2ll); });
+    if(rh&&!rh.error) RESVH=rh.data||[];
+    /* usinas: mesma regra — cadastro (contorno) uma vez, situação a cada ciclo */
+    const [sv,sc,si,st,sph,spd,sug,per,sal]=await Promise.all(pSolar);
     if(sv&&!sv.error&&sv.data&&sv.data.length) SOLAR=sv.data;
     if(si&&!si.error&&si.data&&si.data.length) SOLARINV=si.data;
     if(st&&!st.error&&st.data&&st.data.length) SOLARSTR=st.data;
