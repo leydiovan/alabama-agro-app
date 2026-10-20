@@ -423,7 +423,12 @@ let ESTACOES=[], ATUAL=[], HORAS=[], LOTES=[];
    dois últimos.
    ⚠️ A TELA NÃO ESPERA A CONFERÊNCIA: pinta do cache na hora e confere em 2º
    plano, repintando só se mudou. É o offline-first do projeto. */
-const LOTES_CH='lotes_cache_v1';
+/* CONTORNO SIMPLIFICADO (migração 188, 0,3 m aprovados pelo dono): a view
+   `lotes_contorno` devolve 1.273 vértices no lugar de 21.832 — 529 KB viram
+   31 KB, e o Leaflet desenha 17× menos ponto. A área e todo cálculo continuam
+   saindo de `lotes.geom` original; isto é só o DESENHO.
+   A view já filtra `referencia is not true`, então a busca não repete o filtro. */
+const LOTES_CH='lotes_cache_v2';   // v2: o conteudo mudou (contorno leve), o cache velho nao serve
 let LOTES_V='';                        // hash do contorno que está dentro de LOTES
 try{ const s=localStorage.getItem(LOTES_CH);
      if(s){ const o=JSON.parse(s);
@@ -453,7 +458,7 @@ async function conferirLotes(ver){
   if(ver.v===LOTES_V) return;               // em dia: o caso comum, e custou 50 bytes
   if(!ver.n) return;                        // n=0 é conta sem permissão, não é "sem lotes"
   try{
-    const {data,error}=await SB.from('lotes').select('nome,geom').not('referencia','is',true);
+    const {data,error}=await SB.from('lotes_contorno').select('nome,geom');
     if(error||!data||!data.length) return;  // falhou: fica valendo o que já estava
     const novos=converterLotes(data);
     if(!novos.length) return;
@@ -2618,7 +2623,7 @@ async function carregar(){
       /* SEM CACHE o contorno é preciso de qualquer jeito, então vai junto. COM
          cache vai só o resumo de 50 bytes, e a conferência fica para depois da
          tela pintar. */
-      semLotes?SB.from('lotes').select('nome,geom').not('referencia','is',true):Promise.resolve({data:null}),
+      semLotes?SB.from('lotes_contorno').select('nome,geom'):Promise.resolve({data:null}),
       semLotes?Promise.resolve({data:null}):SB.from('lotes_versao').select('n,v').maybeSingle()
     ]);
     const pTel = carregarTelemetria();
