@@ -830,6 +830,10 @@
        quem dizia FALHA/MUDO era o contorno do polígono, e em z 14 ele tem 5 px
        e fica DEBAIXO da rosca — uma usina em falha viraria rosca igual às sãs. */
     const sitRuim = v && v.situacao && v.situacao !== 'OK';
+    /* 20/10/2026 (migração 189): FALTA DE FASE na alimentação do inversor acende o
+       mesmo anel, em vermelho, mesmo com a situação OK — o SGV segue rodando em 2
+       fases (P6.1.00 = 0), então a situação do logger não acusa nada. */
+    const faseRuim = v && v.fase_alerta === true;
 
     /* ================= AS TRÊS FAIXAS, revistas em 04/10/2026 ===============
        Pedido do dono: *"o segundo estágio de zoom pode deixar a rosca em vez de
@@ -876,7 +880,7 @@
       '<svg width="26" height="' + ALT + '" viewBox="0 0 26 ' + ALT + '" ' +
       'style="display:block;overflow:visible;filter:drop-shadow(0 1px 3px #000)">' +
         '<circle cx="13" cy="13" r="11.4" fill="rgba(11,18,27,.85)"/>' +
-        (sitRuim ? '<circle cx="13" cy="13" r="12.2" fill="none" stroke="' + cor + '" stroke-width="1.6"/>' : '') +
+        (sitRuim || faseRuim ? '<circle cx="13" cy="13" r="12.2" fill="none" stroke="' + (faseRuim ? '#ff4444' : cor) + '" stroke-width="1.6"/>' : '') +
         '<circle cx="13" cy="13" r="' + RAIO + '" fill="none" stroke="rgba(255,255,255,.16)" stroke-width="' + GROSSO + '"/>' +
         (frac == null ? '' :
           '<circle cx="13" cy="13" r="' + RAIO + '" fill="none" stroke="' + corS2 + '" stroke-width="' + GROSSO + '"' +
@@ -1191,6 +1195,24 @@
         ' (uma a cada 30 s, sobe a cada minuto). Configuração e comandos ficam na página do próprio nó, pelo túnel.</div>';
   }
 
+  /* AS FASES QUE ALIMENTAM O INVERSOR DA BOMBA (dono, 20/10/2026: *"deu problema numa das passagens da solar
+     para o inversor e o inversor ainda ligava só com 2 fases, temos que monitorar isso"*). O SGV não mede por
+     fase e sai de fábrica sem a proteção de falta de fase na entrada (P6.1.00 = 0) — quem enxerga é o logger
+     solar (i_a/i_b/i_c, v_ab/v_bc/v_ca) e, no gerador do poço 03, o DEIF. O CRITÉRIO MORA NO BANCO
+     (`fase_alerta`/`fase_texto`, migração 189): a tela só pinta. Normal = uma linha discreta (é o retrato que
+     mostra que está sendo vigiado); falta de fase = vermelho, acima de tudo menos dos alarmes do logger. */
+  function faixaFase(v) {
+    if (!v || v.tipo !== 'poco') return '';
+    if (v.fase_alerta === true)
+      return '<div style="background:#2a1414;border:1px solid #ff4444;border-radius:8px;padding:7px 10px;margin:6px 0 2px;font-size:12px;line-height:1.55">' +
+        '<b style="color:#ff4444">⚡ ' + (v.fase_texto || 'FALTA DE FASE') + '</b>' +
+        '<div style="color:#dbe9f7">O SGV não para sozinho (proteção P6.1.00 desligada): a bomba pode estar rodando em 2 fases. ' +
+        'Conferir bornes, fusíveis e contator entre o solar e o inversor.</div></div>';
+    if (v.i_a == null || (v.idade_s != null && v.idade_s > 1200)) return '';
+    const n = x => x == null ? '—' : br(x, 0);
+    return '<div style="color:#8ba0bd;font-size:11px;margin:4px 0 0">fases solar → inversor: ' +
+      n(v.i_a) + ' / ' + n(v.i_b) + ' / ' + n(v.i_c) + ' A · ' + n(v.v_ab) + ' / ' + n(v.v_bc) + ' / ' + n(v.v_ca) + ' V</div>';
+  }
   function faixaAlarme(f) {
     const L = (f && f.alarmes) || [];
     if (!L.length) return '';
@@ -2832,6 +2854,7 @@
         '</div>' +
         (v.mensagem ? '<div style="color:#9aa3b0;font-size:12px;margin:3px 0 0">' + v.mensagem + '</div>' : '') +
         faixaAlarme(f) +
+        faixaFase(v) +
         faixaNo(v) +
         abas +
         '<div style="height:1px;background:#2a3b4d;margin-bottom:' + (estreito ? '10px' : '6px') + '"></div>' +
