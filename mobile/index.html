@@ -3326,7 +3326,11 @@ function desenharPainel(){
 
 /* SAÚDE DA TECU (28/10/2026, pedido do dono: "saúde da tecu, % de bateria, voltagem da célula,
    consumo, voltagem de entrada"). O que a placa rev B MEDE e o que NÃO mede:
-     - célula (V) e corrente de CARGA (mA): o ESP32-C6 da placa, firmware S1.26;
+     - célula (V) e a corrente que SAI DO CARREGADOR (mA): o ESP32-C6 da placa, firmware S1.26.
+       ATENÇÃO (corrigido em 28/10, mesmo dia): o resistor de medição R11 fica entre o carregador
+       e o nó VCELL, onde estão JUNTAS a célula e a entrada da caixa. Então o número é CAIXA +
+       CÉLULA (com a caixa acordada, ~230 mA são dela), e não só a carga da célula. Mede um
+       sentido só: sem 12 V, dá 0. O que ele diz com certeza: > ~50 mA = 12 V entrando e NTC ok;
      - % da bateria: ESTIMADO pela tensão. A LiFePO4 é quase plana entre 20 e 90 %, então é
        aproximado; durante a carga a tensão sobe e o % fica otimista (o rótulo diz);
      - entrada e CONSUMO da caixa: a rev B não mede (não há medida do 12 V na placa, e o sensor
@@ -3348,7 +3352,7 @@ function blocoSaudeTecu(c, num, card){
   const tit = '<div style="font-size:10px;color:#8ba0bd;text-transform:uppercase;letter-spacing:.06em;margin:12px 0 6px">saúde da TECU</div>';
   if(!c) return tit+'<div style="font-size:12px;color:#8ba0bd">sem leitura da célula (caixa sem o firmware S1.26, ou placa antiga sem o C6)</div>';
   const v = c.celula_v==null ? null : +c.celula_v, ma = c.carga_ma==null ? null : +c.carga_ma;
-  const carregando = ma!=null && ma > 50;
+  const comEntrada = ma!=null && ma > 50;   // carregador entregando = 12 V entrando e NTC liberado
   let alerta = '';
   if(v!=null && v < 1)        alerta = '<span style="color:#ff5d5d">célula desconectada ou fusível aberto</span>';
   else if(v!=null && v < 3.0) alerta = '<span style="color:#e8a33d">célula baixa</span>';
@@ -3357,11 +3361,11 @@ function blocoSaudeTecu(c, num, card){
   return tit+
     '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">'+
       card('Bateria da caixa', soc==null ? '—' : '<span style="color:'+corSoc+'">'+soc+' %</span>',
-           carregando ? 'estimada; carregando, fica otimista' : 'estimada pela tensão')+
+           comEntrada ? 'estimada; com 12 V entrando fica otimista' : 'estimada pela tensão')+
       card('Tensão da célula', num(v,2,' V'), alerta || haQuanto(c.recebido_em))+
-      /* a corrente É NA CÉLULA (3,3 V): ~0,7 A aqui equivalem a ~0,25 A na fonte de 12 V (mesma potência) */
-      card('Carga da célula', ma==null ? '—' : ma+' mA',
-           ma==null ? '' : carregando ? '<span style="color:#00c896">carregando</span> · na célula' : 'parada')+
+      /* CAIXA + CÉLULA, do lado de 3,3 V: ~0,7 A aqui equivalem a ~0,25 A na fonte de 12 V (mesma potência) */
+      card('Saída do carregador', ma==null ? '—' : ma+' mA',
+           ma==null ? '' : comEntrada ? '<span style="color:#00c896">12 V entrando</span> · caixa + célula' : 'sem 12 V (caixa pela célula)')+
     '</div>';
 }
 
