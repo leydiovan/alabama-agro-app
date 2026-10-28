@@ -3150,7 +3150,7 @@ function posVelha(t){
 
    "—" quer dizer SEM LEITURA, e não zero. Com a máquina desligada o barramento morre
    e não há rotação nenhuma para mostrar; zero seria invenção. */
-let _painelDev = null, _painelTimer = null, _painelMotor = {};
+let _painelDev = null, _painelTimer = null, _painelMotor = {}, _painelCel = {};
 
 function fecharPainel(){
   _painelDev = null;
@@ -3175,6 +3175,12 @@ async function carregarMotor(dev){
     const {data,error} = await SB.from('telemetria_motor').select('*')
       .eq('device_id',dev).order('recebido_em',{ascending:false}).limit(1);
     if(!error && data && data.length) _painelMotor[dev] = data[0];
+    /* SAÚDE DA TECU (28/10/2026, firmware S1.26 + migração 191): a célula só vem com o
+       ESP32-C6 da placa de pé; nos despertares do sono a linha mais nova vem SEM ela. Então
+       busca a última linha COM célula — e mostra a idade dela, nunca "—" por estar dormindo. */
+    const c = await SB.from('telemetria_motor').select('celula_v,carga_ma,recebido_em')
+      .eq('device_id',dev).not('celula_v','is',null).order('recebido_em',{ascending:false}).limit(1);
+    if(!c.error && c.data && c.data.length) _painelCel[dev] = c.data[0];
   }catch(e){ console.warn('[motor]',e.message||e); }
 }
 /* mostrador redondo de rotação: arco de 240°, agulha e o número no meio */
@@ -3299,6 +3305,8 @@ function desenharPainel(){
        card('Pressão atmosférica', num(m.baro_kpa,1,' kPa'))+
      '</div>'+
 
+     blocoSaudeTecu(_painelCel[_painelDev], num, card)+
+
      '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px">'+
        card('Satélites', t.sats==null?'—':String(t.sats), t.hdop!=null?('HDOP '+num(t.hdop,1)):'')+
        card('Atraso de entrega', t.atraso_s==null?'—':num(t.atraso_s,0,' s'))+
@@ -3314,6 +3322,47 @@ function desenharPainel(){
        (m.rpm==null&&m.ignicao!=null?' · sem barramento (máquina desligada)':'')+
      '</div>'+
    '</div>';
+}
+
+/* SAÚDE DA TECU (28/10/2026, pedido do dono: "saúde da tecu, % de bateria, voltagem da célula,
+   consumo, voltagem de entrada"). O que a placa rev B MEDE e o que NÃO mede:
+     - célula (V) e corrente de CARGA (mA): o ESP32-C6 da placa, firmware S1.26;
+     - % da bateria: ESTIMADO pela tensão. A LiFePO4 é quase plana entre 20 e 90 %, então é
+       aproximado; durante a carga a tensão sobe e o % fica otimista (o rótulo diz);
+     - entrada e CONSUMO da caixa: a rev B não mede (não há medida do 12 V na placa, e o sensor
+       só vê a corrente que ENTRA na célula). Não aparecem, para não ser número inventado — o
+       dono decidiu "só a célula mesmo"; o 12 V do trator (CAN) já está em "motor e transmissão".
+   Célula perto de 0 V com a caixa de pé = célula desconectada ou fusível aberto (visto na bancada
+   em 28/10: fusível fora do porta-fusível, a placa lia 0,014 V). */
+const SOC_LFP = [[2.50,0],[3.00,5],[3.20,15],[3.25,30],[3.28,45],[3.30,60],[3.32,75],[3.34,90],[3.40,100]];
+function socLfp(v){
+  if(v==null) return null;
+  if(v<=SOC_LFP[0][0]) return 0;
+  for(let i=1;i<SOC_LFP.length;i++){
+    const [v1,p1]=SOC_LFP[i], [v0,p0]=SOC_LFP[i-1];
+    if(v<=v1) return Math.round(p0+(p1-p0)*(v-v0)/(v1-v0));
+  }
+  return 100;
+}
+function blocoSaudeTecu(c, num, card){
+  const tit = '<div style="font-size:10px;color:#8ba0bd;text-transform:uppercase;letter-spacing:.06em;margin:12px 0 6px">saúde da TECU</div>';
+  if(!c) return tit+'<div style="font-size:12px;color:#8ba0bd">sem leitura da célula (caixa sem o firmware S1.26, ou placa antiga sem o C6)</div>';
+  const v = c.celula_v==null ? null : +c.celula_v, ma = c.carga_ma==null ? null : +c.carga_ma;
+  const carregando = ma!=null && ma > 50;
+  let alerta = '';
+  if(v!=null && v < 1)        alerta = '<span style="color:#ff5d5d">célula desconectada ou fusível aberto</span>';
+  else if(v!=null && v < 3.0) alerta = '<span style="color:#e8a33d">célula baixa</span>';
+  const soc = (v!=null && v >= 1) ? socLfp(v) : null;
+  const corSoc = soc==null ? '#e8edf5' : soc < 20 ? '#ff5d5d' : soc < 40 ? '#e8a33d' : '#00c896';
+  return tit+
+    '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">'+
+      card('Bateria da caixa', soc==null ? '—' : '<span style="color:'+corSoc+'">'+soc+' %</span>',
+           carregando ? 'estimada; carregando, fica otimista' : 'estimada pela tensão')+
+      card('Tensão da célula', num(v,2,' V'), alerta || haQuanto(c.recebido_em))+
+      /* a corrente É NA CÉLULA (3,3 V): ~0,7 A aqui equivalem a ~0,25 A na fonte de 12 V (mesma potência) */
+      card('Carga da célula', ma==null ? '—' : ma+' mA',
+           ma==null ? '' : carregando ? '<span style="color:#00c896">carregando</span> · na célula' : 'parada')+
+    '</div>';
 }
 
 function folhaMaquinas(){
