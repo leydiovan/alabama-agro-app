@@ -4101,7 +4101,10 @@ function cartaoSafra(){
   const pl=ops.filter(a=>a.tipo_ativ==='Plantio'&&safFeita(a,D));
   const linhasPl=pl.map(a=>{ const v=a.plantio&&a.plantio.variedade, sm=a.plantio&&a.plantio.sementes_m;
     return `<div class="cl"><span>🌱 ${safDM(a.dia)} · ${safBR(a.area,1)} ha${v?' · '+safEsc(v.replace(/\s*-\s*(CERTIFICADA|SALVA)$/i,'')):''}${sm?' · '+safEsc(sm)+' sem/m':''}${(e=>e?' · <i style="font-style:normal;color:#2ecc71">estande '+safBR(e.estM,1)+' pl/m</i>':'')(safEstande(a,D))}${safAprovar(a)?' <span style="color:var(--gold)">(a aprovar)</span>':''}</span>
-      <b>${safDap(a,D)} DAP${(x=>x!=null?' · '+x+' DAE':'')(safDae(a,D))}${(e=>e?` · <span style="color:${safCorEvol(e.pct)}">${safBR(e.pct,0)}%</span>`:'')(safEvol(a,D))}${(s=>s?` · <span style="color:var(--gold)">${safEsc(s.e)}</span>`:'')(safEstadio(a.plantio||{},D))}</b></div>`; }).join('');
+      <b style="text-align:right;line-height:1.3">${safDap(a,D)} DAP${(x=>x!=null?'<br>'+x+' DAE':'')(safDae(a,D))}${(ex=>ex?'<br>'+ex:'')([(e=>e?`<span style="color:${safCorEvol(e.pct)}">${safBR(e.pct,0)}%</span>`:'')(safEvol(a,D)),(s=>s?`<span style="color:var(--gold)">${safEsc(s.e)}</span>`:'')(safEstadio(a.plantio||{},D))].filter(Boolean).join(' · '))}</b></div>`; }).join('');
+  /* DAP e DAE EMPILHADOS (dono, 02/11/2026): numa linha só ("33 DAP · 32 DAE · 29% · R1-V8")
+     o bloco da direita ficava largo e espremia a descrição do plantio à esquerda. Agora cada
+     informação desce para a linha de baixo: DAP / DAE / % do ciclo · estádio. */
   /* só a ÚLTIMA informação fica à vista; tocar no bloco abre as anteriores (dono, 06/10/2026) */
   const campo=SAFCAMPO.filter(x=>x.lote===SAFSEL&&x.dia!=null&&x.dia<=D).sort((a,b)=>(b.dia-a.dia)||((b.id||0)-(a.id||0)));
   if(SAFCAMPOLOTE!==SAFSEL){ SAFCAMPOLOTE=SAFSEL; SAFCAMPOAB=false; }
