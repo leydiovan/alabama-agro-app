@@ -3862,6 +3862,12 @@ const safCurto=n=>String(n).replace(/^Pivo\s*/i,'P').replace(/^Lote\s*/i,'');
 const safCentro=r=>{ let a=0,b=0; r.forEach(p=>{a+=p[0];b+=p[1];}); return [a/r.length,b/r.length]; };
 const safGeo=a=>a.poli||((LOTES.find(l=>l.nome===a.lote_nome)||{}).ring)||null;
 const safDap=(a,D)=>Math.floor((D-a.dia)/864e5);
+/* DAE — dias após a emergência (pedido do dono, 02/11/2026: "hoje aparece apenas o DAP,
+   pode colocar também o DAE"). Conta da MESMA data que o ciclo usa (safEmerRef: o meio do
+   período quando a emergência se arrasta), para DAE e % do ciclo nunca discordarem.
+   Sem emergência registrada (ou antes dela, na linha do tempo) não há DAE: devolve null. */
+const safDae=(a,D)=>{ const r=safEmerRef((a&&a.plantio)||{}); if(r==null) return null;
+  const d=Math.floor(((D==null?safFimHoje():D)-r)/864e5); return d<0?null:d; };
 function safDose(p){
   const n=safN(p.dose), un=String(p.un||'').toLowerCase();
   if(n==null) return '';
@@ -4095,7 +4101,7 @@ function cartaoSafra(){
   const pl=ops.filter(a=>a.tipo_ativ==='Plantio'&&safFeita(a,D));
   const linhasPl=pl.map(a=>{ const v=a.plantio&&a.plantio.variedade, sm=a.plantio&&a.plantio.sementes_m;
     return `<div class="cl"><span>🌱 ${safDM(a.dia)} · ${safBR(a.area,1)} ha${v?' · '+safEsc(v.replace(/\s*-\s*(CERTIFICADA|SALVA)$/i,'')):''}${sm?' · '+safEsc(sm)+' sem/m':''}${(e=>e?' · <i style="font-style:normal;color:#2ecc71">estande '+safBR(e.estM,1)+' pl/m</i>':'')(safEstande(a,D))}${safAprovar(a)?' <span style="color:var(--gold)">(a aprovar)</span>':''}</span>
-      <b>${safDap(a,D)} DAP${(e=>e?` · <span style="color:${safCorEvol(e.pct)}">${safBR(e.pct,0)}%</span>`:'')(safEvol(a,D))}${(s=>s?` · <span style="color:var(--gold)">${safEsc(s.e)}</span>`:'')(safEstadio(a.plantio||{},D))}</b></div>`; }).join('');
+      <b>${safDap(a,D)} DAP${(x=>x!=null?' · '+x+' DAE':'')(safDae(a,D))}${(e=>e?` · <span style="color:${safCorEvol(e.pct)}">${safBR(e.pct,0)}%</span>`:'')(safEvol(a,D))}${(s=>s?` · <span style="color:var(--gold)">${safEsc(s.e)}</span>`:'')(safEstadio(a.plantio||{},D))}</b></div>`; }).join('');
   /* só a ÚLTIMA informação fica à vista; tocar no bloco abre as anteriores (dono, 06/10/2026) */
   const campo=SAFCAMPO.filter(x=>x.lote===SAFSEL&&x.dia!=null&&x.dia<=D).sort((a,b)=>(b.dia-a.dia)||((b.id||0)-(a.id||0)));
   if(SAFCAMPOLOTE!==SAFSEL){ SAFCAMPOLOTE=SAFSEL; SAFCAMPOAB=false; }
@@ -4371,6 +4377,7 @@ function crqCartaoVariedades(){
             e.estCv!=null?'CV '+safBR(e.estCv,0)+'%':''].filter(Boolean).join(' · ')+'</span>'):'')(safEstande(a,D))}
     ${(e=>e?lin('Estádio', '<span style="color:var(--gold)">'+safEsc(e.e)+'</span> <span class="fraco" style="font-size:11px">em '+safDM(e.dia)+(e.obs?' · '+safEsc(e.obs):'')+'</span>'):'')(safEstadio(pl))}
     ${lin('Dias após o plantio', safDap(a,D)+' DAP')}
+    ${lin('Dias após a emergência', (x=>x!=null?x+' DAE':'<span class="fraco">aguardando emergência</span>')(safDae(a,D)))}
     ${(()=>{ const c=safColheita(a);
       if(!c) return lin('Colheita prevista','<span class="fraco">sem ciclo cadastrado</span>');
       if(c.aguarda) return lin('Evolução do ciclo','0% <span class="fraco" style="font-size:11px">aguardando emergência</span>')
