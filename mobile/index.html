@@ -410,6 +410,13 @@ let ADMIN=false;
 let SELETOR=null;
 let ESTSEL=null;                                     // estacao com card aberto                                    // gaveta aberta: null | 'var' | 'per'
 let PERIODO='agora', VARMAPA='chuva';   // abre na chuva (o que mais se consulta)
+/* CONTRASTE do mapa de calor (03/11/2026, pedido do dono: "o mapa de calor entre as estações
+   funciona no computador mas no mobile não"). Ligado = a escala de cor vai da MENOR à MAIOR
+   leitura entre as estações (como o módulo de clima do computador): mostra ONDE está mais
+   quente, mesmo com 0,6 °C de diferença. Desligado = a escala FIXA de VARS.esc: a cor diz se
+   está quente ou frio por si só. Abre ligado; a escolha fica guardada NESTE aparelho. */
+let CONTRASTE=true;
+try{ if(localStorage.getItem('clima_contraste')==='0') CONTRASTE=false; }catch(e){}
 let ESTACOES=[], ATUAL=[], HORAS=[], LOTES=[];
 /* LOTES EM CACHE NO NAVEGADOR (19/10/2026 — o dono: "pode fazer o cache dos
    lotes"). São 46 polígonos, 530 KB de contorno, e só mudam quando um talhão é
@@ -2519,6 +2526,18 @@ const VARS={
 };
 function escalaDe(k){
   const c=VARS[k];
+  if(CONTRASTE){
+    /* mesma regra do módulo do computador (desenharHeat): menor e maior leitura entre as
+       estações; com 1 estação (ou todas iguais) ±1, que dá campo uniforme. Chuva e umidade
+       não existem abaixo de zero — o ±1 não pode inventar negativo. */
+    const vs=valores(k).map(p=>p.v).filter(v=>v!==null&&isFinite(v));
+    if(vs.length){
+      let mn=Math.min(...vs), mx=Math.max(...vs);
+      if(mn===mx){ mn-=1; mx+=1; }
+      if((k==='chuva'||k==='umid') && mn<0) mn=0;
+      return [mn,mx];
+    }
+  }
   if(c.escPer) return [0, c.escPer[PERIODO]||30];
   return c.esc;
 }
@@ -3565,7 +3584,7 @@ function desenhaMapa(){
   }
   pararVento();
   if(pts.length&&bb){
-    const [mn,mx]=escalaDe(VARMAPA);   // escala ABSOLUTA — ver comentário em VARS
+    const [mn,mx]=escalaDe(VARMAPA);   // contraste (menor→maior leitura) ou escala FIXA — ver CONTRASTE e VARS
     const CW=180,CH=180,cv=document.createElement('canvas'); cv.width=CW; cv.height=CH;
     const cx=cv.getContext('2d'),img=cx.createImageData(CW,CH);
     for(let i=0;i<CH;i++){ const lat=bb.maxLat-(i/(CH-1))*(bb.maxLat-bb.minLat);
@@ -4560,6 +4579,9 @@ function pinta(){
       <div class="faixa p1">
         <button class="chip sel ${SELETOR==='var'?'on':''}" data-abrir="var">${VARS[VARMAPA].lbl} ▾</button>
         <button class="chip sel ${SELETOR==='per'?'on':''}" data-abrir="per">${PERIODOS[PERIODO].lbl} ▾</button>
+        ${VARS[VARMAPA].sopro?'':`<button class="chip ${CONTRASTE?'on':''}" id="contrbtn"
+           title="${CONTRASTE?'Contraste: a cor vai da menor à maior leitura entre as estações. Toque para a escala fixa.':'Escala fixa: a cor diz se está quente/frio. Toque para realçar a diferença entre as estações.'}"
+           >${CONTRASTE?'◐ Contraste':'◐ Escala fixa'}</button>`}
       </div>
       ${SELETOR?`<div class="gaveta">${
         (SELETOR==='var'
@@ -4687,6 +4709,9 @@ function pinta(){
     await carregarRastro(); try{ desenhaTelemetria(); }catch(e){} });
   document.querySelectorAll('[data-vm]').forEach(b=>b.onclick=()=>{
     VARMAPA=b.dataset.vm; SELETOR=null; pinta(); });
+  const bcon=el('contrbtn'); if(bcon) bcon.onclick=()=>{
+    CONTRASTE=!CONTRASTE; try{ localStorage.setItem('clima_contraste',CONTRASTE?'1':'0'); }catch(e){}
+    SELETOR=null; pinta(); };
 
   if(el('crqres')) el('crqres').onclick=()=>{ CRQSEL=CRQSEL===CRQ_RESUMO?null:CRQ_RESUMO; desenhaCroqui(); };
   document.querySelectorAll('[data-croq]').forEach(b=>b.onclick=()=>{
