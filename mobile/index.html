@@ -3171,7 +3171,7 @@ function posVelha(t){
 
    "—" quer dizer SEM LEITURA, e não zero. Com a máquina desligada o barramento morre
    e não há rotação nenhuma para mostrar; zero seria invenção. */
-let _painelDev = null, _painelTimer = null, _painelMotor = {}, _painelCel = {};
+let _painelDev = null, _painelTimer = null, _painelMotor = {}, _painelCel = {}, _painelRota = {};
 
 function fecharPainel(){
   _painelDev = null;
@@ -3202,6 +3202,10 @@ async function carregarMotor(dev){
     const c = await SB.from('telemetria_motor').select('celula_v,carga_ma,recebido_em')
       .eq('device_id',dev).not('celula_v','is',null).order('recebido_em',{ascending:false}).limit(1);
     if(!c.error && c.data && c.data.length) _painelCel[dev] = c.data[0];
+    /* 03/11/2026 (firmware S1.27 + migração 201): a rota até o gateway e por que não dorme */
+    const r = await SB.from('telemetria_motor').select('rota_via,rota_saltos,rota_snr,sono_motivo,wifi_estado,ignicao,recebido_em')
+      .eq('device_id',dev).not('rota_via','is',null).order('recebido_em',{ascending:false}).limit(1);
+    if(!r.error && r.data && r.data.length) _painelRota[dev] = r.data[0];
   }catch(e){ console.warn('[motor]',e.message||e); }
 }
 /* mostrador redondo de rotação: arco de 240°, agulha e o número no meio */
@@ -3326,7 +3330,7 @@ function desenharPainel(){
        card('Pressão atmosférica', num(m.baro_kpa,1,' kPa'))+
      '</div>'+
 
-     blocoSaudeTecu(_painelCel[_painelDev], num, card)+
+     blocoSaudeTecu(_painelCel[_painelDev], num, card, _painelRota[_painelDev])+
 
      '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px">'+
        card('Satélites', t.sats==null?'—':String(t.sats), t.hdop!=null?('HDOP '+num(t.hdop,1)):'')+
@@ -3369,9 +3373,32 @@ function socLfp(v){
   }
   return 100;
 }
-function blocoSaudeTecu(c, num, card){
+/* endereços da malha (src_mesh no Pi, 03/11/2026) */
+const MALHA_NOMES = {dbfc:'gateway', fb14:'TECU-01', eea0:'TECU-02', '2c0c':'TECU-04', '3210':'TECU-05'};
+const SONO_MOTIVOS = {1:'chave ligada', 2:'alerta de movimento sem chave', 3:'mandando o pacote do despertar', 4:'WiFi conectado (OTA aberto)',
+  5:'C6 em simulação', 6:'primeira meia hora depois da chave', 7:'o C6 recusou dormir (sinal no pós-chave?)', 8:'esvaziando a fila',
+  9:'sem rota até o gateway', 10:'mandando a fila', 11:'esperando a confirmação do gateway', 12:'acabou de acordar', 0:'indo dormir'};
+function blocoRotaTecu(r, card){
+  if(!r) return '';
+  const via = r.rota_via;
+  const val = via==='sem rota' ? '<span style="color:#ff5d5d">sem rota</span>'
+            : via==='dbfc' ? '<span style="color:#00c896">direto ao gateway</span>'
+            : 'via '+(MALHA_NOMES[via]||('nó '+via));
+  const sub = (via!=='sem rota' && r.rota_saltos!=null ? r.rota_saltos+' salto(s)' : '')
+            + (r.rota_snr!=null ? ' · sinal '+r.rota_snr+' dB' : '') + ' · '+haQuanto(r.recebido_em);
+  let html = card('Rota até o gateway', val, sub);
+  /* só interessa com a chave DESLIGADA: aí ela deveria estar dormindo (a bateria some se não dorme) */
+  if(r.ignicao===false && r.sono_motivo!=null && r.sono_motivo!==0){
+    const ruim = [4,7,8,9].includes(+r.sono_motivo);
+    html += card('Acordada por quê?', '<span style="font-size:14px;color:'+(ruim?'#e8a33d':'#e8edf5')+'">'+(SONO_MOTIVOS[r.sono_motivo]||('código '+r.sono_motivo))+'</span>',
+                 r.wifi_estado===2 ? 'WiFi conectado à HELTEC-BR' : (r.wifi_estado===1 ? 'procurando WiFi' : 'WiFi desligado'));
+  }
+  return html;
+}
+function blocoSaudeTecu(c, num, card, rota){
   const tit = '<div style="font-size:10px;color:#8ba0bd;text-transform:uppercase;letter-spacing:.06em;margin:12px 0 6px">saúde da TECU</div>';
-  if(!c) return tit+'<div style="font-size:12px;color:#8ba0bd">sem leitura da célula (caixa sem o firmware S1.26, ou placa antiga sem o C6)</div>';
+  if(!c) return tit+'<div style="font-size:12px;color:#8ba0bd">sem leitura da célula (caixa sem o firmware S1.26, ou placa antiga sem o C6)</div>'
+               + (rota ? '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px">'+blocoRotaTecu(rota, card)+'</div>' : '');
   const v = c.celula_v==null ? null : +c.celula_v, ma = c.carga_ma==null ? null : +c.carga_ma;
   const comEntrada = ma!=null && ma > 50;   // carregador entregando = 12 V entrando e NTC liberado
   let alerta = '';
@@ -3387,6 +3414,7 @@ function blocoSaudeTecu(c, num, card){
       /* CAIXA + CÉLULA, do lado de 3,3 V: ~0,7 A aqui equivalem a ~0,25 A na fonte de 12 V (mesma potência) */
       card('Saída do carregador', ma==null ? '—' : ma+' mA',
            ma==null ? '' : comEntrada ? '<span style="color:#00c896">12 V entrando</span> · caixa + célula' : 'sem 12 V (caixa pela célula)')+
+      blocoRotaTecu(rota, card)+
     '</div>';
 }
 
