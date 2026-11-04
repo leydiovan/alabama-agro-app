@@ -16,7 +16,7 @@
     · A TELA É DO CONTEÚDO. Celular não tem espaço para moldura: o mapa ocupa
       tudo e a navegação flutua por cima, em dois botões ao alcance do polegar.
     · ESQUERDA = seção (Clima · Relatórios · Telemetria · Safra).
-      DIREITA  = submenu da seção atual (no Clima: Mapa · Agora · Histórico).
+      DIREITA  = submenu da seção atual (no Clima: Mapa · Agora · Histórico · Previsão).
       Duas listas curtas em vez de uma longa e carregada.
     · Estados honestos: "sem dado" e "em construção" aparecem como tal.
 
@@ -274,6 +274,33 @@ svg{display:block}
 .grid{display:grid;grid-template-columns:1fr 1fr;gap:11px;margin-top:11px}
 .card{background:var(--bg2);border:1px solid var(--border);border-radius:16px;padding:14px}
 .card.w{grid-column:1/-1}
+/* PREVISÃO (04/11/2026) — prefixo pv- para não colidir com o resto */
+.pv{display:flex;flex-direction:column;gap:12px}
+.pv-topo{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:8px}
+.pv-tit{font-size:17px;font-weight:800}
+.pv-sub{font-size:11.5px;color:var(--muted);margin-top:2px}
+.pv-seg{display:flex;border:1px solid var(--border2);border-radius:9px;overflow:hidden}
+.pv-seg button{background:transparent;color:var(--muted);border:0;padding:7px 11px;font-size:12.5px;font-weight:700}
+.pv-seg button.on{background:var(--bg4);color:var(--text)}
+.pv-erro{font-size:12px;color:var(--warn);background:rgba(255,179,0,.08);border:1px solid rgba(255,179,0,.3);border-radius:10px;padding:8px 10px}
+.card.pv-card{padding:12px 10px;display:flex;flex-direction:column;gap:8px;min-width:0;overflow:hidden}
+.pv-h{font-size:13.5px;font-weight:700;padding:0 2px}
+.pv-nota{font-size:11.5px;color:var(--muted);line-height:1.45;margin:0;padding:0 2px}
+.pv-leg{display:flex;flex-wrap:wrap;gap:6px 12px;font-size:10.5px;color:var(--muted);padding:0 2px}
+.pv-leg i{display:inline-block;width:9px;height:9px;border-radius:2px;margin-right:4px;vertical-align:-1px}
+.pv-lista{display:flex;flex-direction:column;gap:6px;font-size:12.5px;padding:0 2px}
+.pv-lista div{display:flex;gap:7px;align-items:baseline}
+.pv-pill{font-size:10.5px;font-weight:700;padding:2px 7px;border-radius:10px;white-space:nowrap}
+.pv-pill.ok{background:rgba(0,200,150,.15);color:var(--ok)}.pv-pill.av{background:rgba(255,179,0,.15);color:var(--warn)}.pv-pill.er{background:rgba(255,68,68,.15);color:#ff8080}
+.pv-kpis{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:7px}
+.pv-kpi{background:var(--bg3);border-radius:9px;padding:8px}
+.pv-kpi b{display:block;font-size:18px;font-variant-numeric:tabular-nums}
+.pv-kpi span{font-size:10.5px;color:var(--muted)}
+.pv-tab{border-collapse:collapse;font-size:12px;width:100%;font-variant-numeric:tabular-nums}
+.pv-tab th,.pv-tab td{padding:5px 4px;text-align:right;border-bottom:1px solid var(--border)}
+.pv-tab th:first-child,.pv-tab td:first-child{text-align:left}
+.pv-tab th{color:var(--muted);font-weight:600}
+.pv-melhor{color:var(--ok);font-weight:700}
 .card .lb{font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;font-weight:700}
 .card .vl{font-size:26px;font-weight:800;margin-top:6px;line-height:1.05;font-variant-numeric:tabular-nums}
 .card .vl .u{font-size:12px;font-weight:500;color:var(--muted);margin-left:2px}
@@ -376,6 +403,10 @@ const IC={
     <path d="M9 4v14"/><path d="M15 6v14"/></svg>`,
   agora:`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
     stroke-linecap="round"><circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/></svg>`,
+  // nuvem com gotas (previsão)
+  prev:`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"
+    stroke-linecap="round" stroke-linejoin="round"><path d="M6.8 15.5A4.3 4.3 0 0 1 6.4 7a5.9 5.9 0 0 1 11.3-1.4 3.9 3.9 0 0 1 .4 7.8"/>
+    <path d="M8.5 18l-.8 2.2"/><path d="M12.5 18l-.8 2.2"/><path d="M16.5 18l-.8 2.2"/></svg>`,
   hist:`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"
     stroke-linecap="round" stroke-linejoin="round"><path d="M4 15.5 9 10l3.5 3.5L20 6"/></svg>`,
   obra:`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"
@@ -393,7 +424,7 @@ const IC={
 
 const SECOES=[['clima','Clima',IC.clima],['rel','Relatórios',IC.rel],
               ['tel','Telemetria',IC.tel],['safra','Safra',IC.safra]];
-const SUBS={ clima:[['mapa','Mapa',IC.mapa],['agora','Agora',IC.agora],['hist','Histórico',IC.hist]],
+const SUBS={ clima:[['mapa','Mapa',IC.mapa],['agora','Agora',IC.agora],['hist','Histórico',IC.hist],['prev','Previsão',IC.prev]],
              tel:[['mapa','Mapa',IC.mapa],['agora','Máquinas',IC.agora],['vigia','Vigia',IC.vigia]],
              /* 'ativ' e não 'hist': a faixa de período do Histórico do clima
                 pega qualquer SUB==='hist' fora do mapa */
@@ -4550,6 +4581,307 @@ function avisoVigia(){
   if(!n) return '';
   return `<span class="tag err" id="avvigia" style="cursor:pointer">⚠ ${n} caixa${n>1?'s':''}</span>`;
 }
+/* =====================================================================
+   PREVISÃO DO TEMPO — item "Previsão" do menu da direita do Clima (04/11/2026)
+   Pedido do dono: os 15 dias "no modelo de barra" (como o meteoblue que aparece
+   no app da METOS), mais os cartões sugeridos, TODOS aprovados por ele. As barras
+   têm de CABER na tela, sem rolar para o lado; a data fica EMBAIXO.
+   DADO: Supabase `clima_previsao` (migração 202) — 1 linha por estação × modelo,
+   série horária em jsonb, escrita pelo Pi (aba Node-RED "Previsão do tempo").
+   A rodada completa de todos os modelos fica no Pi (tabela `previsao`).
+   Tudo dentro deste bloco: nomes curtos como `el`/`med` já existem no app.
+   Doc: Chat Claude estação e telemetria/docs/previsao-gravacao-04nov2026.md
+   ===================================================================== */
+window.PREV_UI = (function(){
+  const MOD = ['ecmwf_ifs','ecmwf_aifs025_single','gfs_seamless','icon_seamless'];
+  const NOME = {ecmwf_ifs:'IFS',ecmwf_aifs025_single:'AIFS',gfs_seamless:'GFS',icon_seamless:'ICON'};
+  const COR = {ecmwf_ifs:'#ff9f43',ecmwf_aifs025_single:'#00c896',gfs_seamless:'#a78bfa',icon_seamless:'#4aa8ff'};
+  const SEM = ['dom','seg','ter','qua','qui','sex','sáb'];
+  const C = {texto:'#e8edf5',mudo:'#7796bb',mudo2:'#3d5a80',borda:'#1f3354',ok:'#00c896',aviso:'#ffb300',erro:'#ff4444',
+             quente:'#ff6b5b',frio:'#4aa8ff',chuva:'#2f7bff',chuva2:'#8fb6ff',medido:'#5d7ea8',
+             faixaq:'rgba(0,200,150,.28)',faixaf:'rgba(74,168,255,.25)'};
+  const NS = 'http://www.w3.org/2000/svg';
+  const loc = t => new Date((t - 3*3600)*1000);           // hora da Bahia = UTC-3 fixo
+  const dkey = t => loc(t).toISOString().slice(0,10);
+  const med = a => { const b=a.filter(v=>v!=null).sort((x,y)=>x-y); if(!b.length) return null; const m=b.length>>1; return b.length%2?b[m]:(b[m-1]+b[m])/2; };
+  const sv = (n,a={},txt) => { const e=document.createElementNS(NS,n); for(const k in a) e.setAttribute(k,a[k]); if(txt!=null) e.textContent=txt; return e; };
+  const q = id => document.getElementById(id);
+
+  let LINHAS = null;      // linhas de clima_previsao (null = nunca carregou)
+  let BUSCA = 0;          // quando buscou (ms) — recarrega com mais de 20 min
+  let ERRO = '';
+  let EST = 1;
+  try { const s = localStorage.getItem('prev_est'); if (s) EST = +s || 1; } catch(e){}
+  let _carregando = null;
+
+  async function carregar(forcar){
+    if (_carregando) return _carregando;
+    if (!forcar && LINHAS && Date.now()-BUSCA < 20*60e3) return;
+    _carregando = (async()=>{
+      try{
+        const r = await SB.from('clima_previsao').select('estacao_id,modelo,rodada,atualizado_em,serie');
+        if (r.error) throw r.error;
+        /* offline-first: lista vazia NÃO apaga o que já está desenhado */
+        if (r.data && r.data.length){ LINHAS = r.data; BUSCA = Date.now(); ERRO=''; }
+        else if (!LINHAS) ERRO = 'Ainda não há previsão gravada.';
+      }catch(e){ ERRO = 'Sem conexão com a previsão (' + (e.message||e) + ')'; }
+      finally{ _carregando = null; }
+    })();
+    return _carregando;
+  }
+
+  function prepara(est){
+    const dias = {}, horas = {}; let rod = 0, atu = 0;
+    for (const L of (LINHAS||[]).filter(l=>l.estacao_id===est)){
+      const m = L.modelo, s = L.serie, R = Date.parse(L.rodada)/1000;
+      rod = Math.max(rod,R); atu = Math.max(atu, Date.parse(L.atualizado_em)||0);
+      s.t.forEach((t,i)=>{
+        const T=s.temp[i],U=s.umidade[i],P=s.chuva_mm[i],V=s.vento_kmh[i],G=s.rajada_kmh[i],N=s.nuvens[i],E=s.et0_mm[i],K=s.cape[i];
+        const kd = dkey(t-3600);  // chuva e ET0 = hora ANTERIOR ao instante
+        const x = ((dias[kd] ??= {})[m] ??= {mm:0,et0:0,tx:-99,tn:99,nuv:[],cape:0,raj:0,n:0,et0n:0});
+        x.mm += P||0; x.n++; if (E!=null){x.et0+=E;x.et0n++;}
+        const y = ((dias[dkey(t)] ??= {})[m] ??= {mm:0,et0:0,tx:-99,tn:99,nuv:[],cape:0,raj:0,n:0,et0n:0});
+        if (T!=null){y.tx=Math.max(y.tx,T);y.tn=Math.min(y.tn,T);}
+        const hl = loc(t).getUTCHours();
+        if (N!=null && hl>=7 && hl<=17) y.nuv.push(N);
+        if (K!=null) y.cape=Math.max(y.cape,K);
+        if (G!=null) y.raj=Math.max(y.raj,G);
+        (horas[t] ??= {})[m] = {T,U,P,V,G};
+      });
+    }
+    const hoje = dkey(Date.now()/1000);
+    const chaves = Object.keys(dias).sort().filter(k=>k>=hoje).slice(0,15);
+    const D = chaves.map((k,i)=>{
+      const ms = MOD.filter(m=>dias[k][m] && dias[k][m].tx>-99 && dias[k][m].n>=(i===0?1:20));
+      if (!ms.length) return null;
+      const g = f => ms.map(m=>f(dias[k][m]));
+      const mm = g(x=>x.mm), tx = g(x=>x.tx), tn = g(x=>x.tn);
+      const sd = a => { const mu=a.reduce((s,v)=>s+v,0)/a.length; return Math.sqrt(a.reduce((s,v)=>s+(v-mu)**2,0)/a.length); };
+      const pr = mm.filter(v=>v>=1).length/ms.length;
+      let conc = 100 - 8*sd(tx) - 60*Math.min(pr,1-pr) - Math.min(25, sd(mm)*1.2);
+      conc = Math.max(10, Math.min(98, Math.round(conc/5)*5));
+      return {k,i,ms,mmMed:med(mm),mmMin:Math.min(...mm),mmMax:Math.max(...mm),porM:Object.fromEntries(ms.map(m=>[m,dias[k][m].mm])),
+        txMed:med(tx),txMin:Math.min(...tx),txMax:Math.max(...tx),tnMed:med(tn),tnMin:Math.min(...tn),tnMax:Math.max(...tn),
+        prob:Math.round(100*pr),conc,nuv:med(ms.map(m=>med(dias[k][m].nuv))),
+        et0:med(ms.filter(m=>dias[k][m].et0n>=20).map(m=>dias[k][m].et0)),cape:Math.max(...g(x=>x.cape)),raj:Math.max(...g(x=>x.raj))};
+    }).filter(Boolean);
+    return {D, horas, rod, atu};
+  }
+
+  const largura = id => Math.max(240, (q(id)&&q(id).clientWidth)||320);
+  const svgNovo = (W,H,rot) => sv('svg',{width:'100%',height:H,viewBox:`0 0 ${W} ${H}`,role:'img','aria-label':rot,style:'display:block'});
+
+  function icone(g,x,y,d){
+    const sol=(cx,cy,r)=>{ g.appendChild(sv('circle',{cx,cy,r,fill:'#ffc94a'})); for(let a=0;a<8;a++){const an=a*Math.PI/4;g.appendChild(sv('line',{x1:cx+Math.cos(an)*(r+1.6),y1:cy+Math.sin(an)*(r+1.6),x2:cx+Math.cos(an)*(r+4),y2:cy+Math.sin(an)*(r+4),stroke:'#ffc94a','stroke-width':1.3,'stroke-linecap':'round'}));} };
+    const nuvem=(cx,cy,c)=>{ for(const [dx,dy,r] of [[-4,2,4],[1,-1,5.5],[5.5,2,4]]) g.appendChild(sv('circle',{cx:cx+dx,cy:cy+dy,r,fill:c})); g.appendChild(sv('rect',{x:cx-8,y:cy+1,width:17.5,height:5,rx:2.5,fill:c})); };
+    const chove=d.mmMed>=1, temporal=chove&&d.cape>=1500;
+    if(!chove&&(d.nuv??0)<25) sol(x,y,5);
+    else if(!chove&&(d.nuv??0)<60){ sol(x-3,y-3,4); nuvem(x+2,y+2,'#c9d6ea'); }
+    else nuvem(x,y,chove?'#9fb3d1':'#c9d6ea');
+    if(chove) for(let i=-1;i<=1;i++) g.appendChild(sv('line',{x1:x+i*4,y1:y+8,x2:x+i*4-1.6,y2:y+12,stroke:'#4aa8ff','stroke-width':1.4,'stroke-linecap':'round'}));
+    if(temporal) g.appendChild(sv('path',{d:`M${x+1} ${y+5} l-3 5 h2.5 l-1.5 5 l5 -6.5 h-2.5 l1.5 -3.5z`,fill:'#ffd400'}));
+  }
+
+  /* 15 DIAS — cabe na largura: a coluna é largura/15, sem mínimo. A data vai EMBAIXO. */
+  function grafico15(P){
+    const box=q('pv15'); box.textContent='';
+    const D=P.D, n=D.length, W=largura('pv15'), cw=W/n, H=478, fs=cw<26?9.5:11;
+    const svg=svgNovo(W,H,'Previsão de 15 dias');
+    D.forEach((d,i)=>{ if(i>=5) svg.appendChild(sv('rect',{x:i*cw,y:0,width:cw,height:H,fill:'rgba(255,255,255,.03)'})); if(i>0) svg.appendChild(sv('line',{x1:i*cw,y1:0,x2:i*cw,y2:H-30,stroke:C.borda,'stroke-width':.6})); });
+    const xs=D.map((d,i)=>i*cw+cw/2);
+    // topo: dia da semana, ícone, máx/mín
+    D.forEach((d,i)=>{ const cx=xs[i], dt=new Date(d.k+'T12:00:00Z'), fds=dt.getUTCDay()%6===0;
+      const g=sv('g',{opacity:i>=5?.62:1}); svg.appendChild(g);
+      g.appendChild(sv('text',{x:cx,y:12,'text-anchor':'middle','font-size':fs,fill:i===0?C.ok:(fds?'#ff8f80':C.texto),'font-weight':i===0?800:600},(i===0&&cw>=28)?'hoje':SEM[dt.getUTCDay()]));
+      icone(g,cx,29,d);
+      g.appendChild(sv('text',{x:cx,y:58,'text-anchor':'middle','font-size':fs+1,'font-weight':700,fill:C.quente},Math.round(d.txMed)+(cw>=24?'°':'')));
+      g.appendChild(sv('text',{x:cx,y:72,'text-anchor':'middle','font-size':fs+1,'font-weight':700,fill:C.frio},Math.round(d.tnMed)+(cw>=24?'°':'')));
+    });
+    // concordância
+    svg.appendChild(sv('text',{x:3,y:89,'font-size':9.5,fill:C.mudo},'Concordância entre modelos (%)'));
+    D.forEach((d,i)=>{ const cx=xs[i], cor=d.conc>=70?C.ok:d.conc>=50?C.aviso:'#ff8a5c', w=Math.min(cw-4,22);
+      svg.appendChild(sv('rect',{x:cx-w/2,y:94,width:w*d.conc/100,height:4,fill:cor}));
+      svg.appendChild(sv('rect',{x:cx-w/2+w*d.conc/100,y:94,width:w*(1-d.conc/100),height:4,fill:C.mudo2}));
+      svg.appendChild(sv('text',{x:cx,y:110,'text-anchor':'middle','font-size':fs-.5,fill:C.texto},d.conc)); });
+    // temperatura
+    const t0=124,t1=236, lo=Math.min(15,Math.floor(Math.min(...D.map(d=>d.tnMin))/5)*5), hi=Math.max(40,Math.ceil(Math.max(...D.map(d=>d.txMax))/5)*5);
+    const ty=v=>t1-(v-lo)/(hi-lo)*(t1-t0);
+    svg.appendChild(sv('text',{x:3,y:t0-3,'font-size':9.5,fill:C.mudo},'Temperatura (°C)'));
+    for(let v=lo+5;v<=hi;v+=10){ svg.appendChild(sv('line',{x1:0,y1:ty(v),x2:W,y2:ty(v),stroke:C.borda,'stroke-dasharray':'2 3'})); svg.appendChild(sv('text',{x:2,y:ty(v)-2,'font-size':8.5,fill:C.mudo},v)); }
+    const faixa=(a,b,cor)=>svg.appendChild(sv('path',{d:'M'+xs.map((x,i)=>x+' '+ty(a[i])).join(' L')+' L'+xs.map((x,i)=>x+' '+ty(b[i])).reverse().join(' L')+'Z',fill:cor}));
+    const linha=(a,cor)=>svg.appendChild(sv('polyline',{points:xs.map((x,i)=>x+','+ty(a[i])).join(' '),fill:'none',stroke:cor,'stroke-width':2,'stroke-linejoin':'round'}));
+    faixa(D.map(d=>d.txMin),D.map(d=>d.txMax),C.faixaq); faixa(D.map(d=>d.tnMin),D.map(d=>d.tnMax),C.faixaf);
+    linha(D.map(d=>d.txMed),C.quente); linha(D.map(d=>d.tnMed),C.frio);
+    // chuva
+    const c0=266,c1=404, cmax=Math.max(40,Math.ceil(Math.max(...D.map(d=>d.mmMax))/20)*20), cy=v=>c1-Math.min(v,cmax)/cmax*(c1-c0);
+    svg.appendChild(sv('text',{x:3,y:c0-10,'font-size':9.5,fill:C.mudo},'Chuva (mm) · embaixo, chance de chuva (%)'));
+    for(let v=0;v<=cmax;v+=cmax/4){ svg.appendChild(sv('line',{x1:0,y1:cy(v),x2:W,y2:cy(v),stroke:C.borda,'stroke-dasharray':v?'2 3':''})); if(v) svg.appendChild(sv('text',{x:2,y:cy(v)-2,'font-size':8.5,fill:C.mudo},v)); }
+    D.forEach((d,i)=>{ const cx=xs[i], w=Math.min(cw*.62,20), g=sv('g',{opacity:i>=5?.62:1}); svg.appendChild(g);
+      if(d.mmMed>0.2) g.appendChild(sv('rect',{x:cx-w/2,y:cy(d.mmMed),width:w,height:c1-cy(d.mmMed),fill:C.chuva,rx:1.5}));
+      if(d.mmMax>=1){ g.appendChild(sv('line',{x1:cx,y1:cy(Math.max(d.mmMin,0)),x2:cx,y2:cy(d.mmMax),stroke:C.texto,'stroke-width':1.1,opacity:.7}));
+                      g.appendChild(sv('line',{x1:cx-3.5,y1:cy(d.mmMax),x2:cx+3.5,y2:cy(d.mmMax),stroke:C.texto,'stroke-width':1.1,opacity:.7})); }
+      if(d.mmMed>=1) g.appendChild(sv('text',{x:cx+(d.mmMax>=1?4.5:0),y:cy(d.mmMed)-3,'text-anchor':d.mmMax>=1?'start':'middle','font-size':fs-1,'font-weight':700,fill:C.chuva2},Math.round(d.mmMed)));
+      const pc=d.prob>=75?C.chuva2:d.prob>=50?'#7fb0ff':C.mudo;
+      g.appendChild(sv('text',{x:cx,y:c1+14,'text-anchor':'middle','font-size':fs-.5,'font-weight':d.prob>=50?700:400,fill:pc},d.prob));
+    });
+    // DATA EMBAIXO (pedido do dono, 04/11)
+    svg.appendChild(sv('line',{x1:0,y1:c1+22,x2:W,y2:c1+22,stroke:C.borda}));
+    D.forEach((d,i)=>{ const cx=xs[i], dt=new Date(d.k+'T12:00:00Z'), fds=dt.getUTCDay()%6===0;
+      svg.appendChild(sv('text',{x:cx,y:c1+36,'text-anchor':'middle','font-size':fs,'font-weight':700,fill:fds?'#ff8f80':C.texto,opacity:i>=5?.7:1},d.k.slice(8,10)));
+      svg.appendChild(sv('text',{x:cx,y:c1+48,'text-anchor':'middle','font-size':fs-1.5,fill:C.mudo,opacity:i>=5?.7:1},'/'+d.k.slice(5,7)));
+    });
+    box.appendChild(svg);
+  }
+
+  function medidoPrevisto(P){
+    const box=q('pvmed'); box.textContent='';
+    const hoje=dkey(Date.now()/1000), por={};
+    for(const h of (typeof HORAS!=='undefined'?HORAS:[])){ if(h.estacao_id!==EST) continue; const t=Date.parse(h.hora)/1000; if(isNaN(t)) continue; const k=dkey(t); por[k]=(por[k]||0)+(+h.chuva_mm||0); }
+    const passados=Object.keys(por).sort().filter(k=>k<hoje).slice(-7).map(k=>({k,mm:por[k],tipo:'m'}));
+    const fut=P.D.slice(0,7).map(d=>({k:d.k,mm:d.mmMed,tipo:'p'}));
+    const A=[...passados,...fut], n=A.length; if(!n) return;
+    const W=largura('pvmed'), cw=W/n, H=162, c0=18, c1=124, mx=Math.max(20,...A.map(a=>a.mm)), y=v=>c1-v/mx*(c1-c0), fs=cw<26?9:10;
+    const svg=svgNovo(W,H,'Chuva medida e prevista');
+    A.forEach((a,i)=>{ const cx=i*cw+cw/2, w=Math.min(cw*.6,20);
+      if(a.mm>0.2) svg.appendChild(sv('rect',{x:cx-w/2,y:y(a.mm),width:w,height:c1-y(a.mm),rx:1.5,fill:a.tipo==='m'?C.medido:C.chuva}));
+      if(a.mm>=0.5) svg.appendChild(sv('text',{x:cx,y:y(a.mm)-3,'text-anchor':'middle','font-size':fs,'font-weight':700,fill:a.tipo==='m'?'#a9c2e4':C.chuva2},a.mm<10?a.mm.toFixed(1):Math.round(a.mm)));
+      const dt=new Date(a.k+'T12:00:00Z');
+      svg.appendChild(sv('text',{x:cx,y:c1+14,'text-anchor':'middle','font-size':fs,fill:a.k===hoje?C.texto:C.mudo,'font-weight':a.k===hoje?700:400},a.k===hoje?'hoje':SEM[dt.getUTCDay()]));
+      svg.appendChild(sv('text',{x:cx,y:c1+27,'text-anchor':'middle','font-size':fs-.5,fill:C.mudo},a.k.slice(8,10)));
+    });
+    const xh=passados.length*cw;
+    svg.appendChild(sv('line',{x1:xh,y1:4,x2:xh,y2:c1,stroke:C.texto,'stroke-dasharray':'3 3',opacity:.5}));
+    svg.appendChild(sv('text',{x:xh-4,y:12,'text-anchor':'end','font-size':10,fill:C.mudo},'medido'));
+    svg.appendChild(sv('text',{x:xh+4,y:12,'font-size':10,fill:C.mudo},'previsto'));
+    svg.appendChild(sv('line',{x1:0,y1:c1,x2:W,y2:c1,stroke:C.borda}));
+    box.appendChild(svg);
+  }
+
+  // Delta T: bulbo úmido pela fórmula de Stull (2011)
+  const deltaT=(T,U)=>T-(T*Math.atan(0.151977*Math.sqrt(U+8.313659))+Math.atan(T+U)-Math.atan(U-1.676331)+0.00391838*Math.pow(U,1.5)*Math.atan(0.023101*U)-4.686035);
+
+  function pulverizacao(P){
+    const box=q('pvpul'), lista=q('pvpull'); box.textContent=''; lista.textContent='';
+    const agora=Date.now()/1000, ts=Object.keys(P.horas).map(Number).filter(t=>t>=agora-3600).sort((a,b)=>a-b).slice(0,72);
+    const H=ts.map(t=>{ const h=P.horas[t], ms=Object.keys(h), g=f=>med(ms.map(m=>h[m][f])); const v=g('V'); return {t,T:g('T'),U:g('U'),V:v!=null?v*0.75:null,P:g('P')}; })
+              .filter(h=>h.T!=null&&h.U!=null&&h.V!=null);
+    H.forEach((h,i)=>{ const prox=(h.P||0)+[H[i+1],H[i+2]].filter(Boolean).reduce((s,x)=>s+(x.P||0),0); h.dt=deltaT(h.T,h.U);
+      const mot=[]; let nv=0; const sobe=v=>{nv=Math.max(nv,v)};
+      if(prox>=0.2){sobe(2);mot.push('chuva');}
+      if(h.V<3){sobe(2);mot.push('calmaria/inversão');} else if(h.V>15){sobe(2);mot.push('vento forte');} else if(h.V>10){sobe(1);mot.push('vento');}
+      if(h.dt>10){sobe(2);mot.push('Delta T alto');} else if(h.dt>8||h.dt<2){sobe(1);mot.push('Delta T');}
+      if(h.T>32){sobe(2);mot.push('calor');} else if(h.T>=30){sobe(1);mot.push('calor');}
+      if(h.U<40){sobe(2);mot.push('ar seco');} else if(h.U<50){sobe(1);mot.push('umidade');}
+      h.nv=nv; h.mot=mot; });
+    if(!H.length) return;
+    const W=largura('pvpul'), cw=W/H.length, Ht=74, cores=[C.ok,C.aviso,C.erro];
+    const svg=svgNovo(W,Ht,'Semáforo de pulverização por hora');
+    H.forEach((h,i)=>{ const hl=loc(h.t).getUTCHours();
+      svg.appendChild(sv('rect',{x:i*cw+.3,y:18,width:Math.max(cw-.6,.5),height:28,fill:cores[h.nv],opacity:.85}));
+      if(hl===0){ svg.appendChild(sv('line',{x1:i*cw,y1:2,x2:i*cw,y2:60,stroke:C.texto,opacity:.5})); const dt=loc(h.t);
+        svg.appendChild(sv('text',{x:i*cw+3,y:12,'font-size':10,fill:C.texto,'font-weight':700},SEM[dt.getUTCDay()]+' '+String(dt.getUTCDate()).padStart(2,'0'))); }
+      if(hl%6===0&&hl) svg.appendChild(sv('text',{x:i*cw+cw/2,y:60,'text-anchor':'middle','font-size':9,fill:C.mudo},hl+'h'));
+    });
+    box.appendChild(svg);
+    const jan=[]; let ini=null;
+    H.forEach((h,i)=>{ if(h.nv===0&&ini===null) ini=i; if((h.nv!==0||i===H.length-1)&&ini!==null){ const fim=h.nv===0?i:i-1; if(fim-ini+1>=2) jan.push([ini,fim]); ini=null; } });
+    const fmt=t=>{const d=loc(t);return SEM[d.getUTCDay()]+' '+String(d.getUTCHours()).padStart(2,'0')+'h';};
+    let html='';
+    if(!jan.length) html+='<div><span class="pv-pill er">sem janela</span><span>nenhuma faixa de 2 h ou mais toda verde nas próximas 72 h</span></div>';
+    jan.slice(0,4).forEach(([a,b])=>{ const hs=H.slice(a,b+1);
+      html+=`<div><span class="pv-pill ok">${b-a+1} h</span><span>${fmt(H[a].t)} – ${fmt(H[b].t+3600)} · vento ${Math.round(Math.min(...hs.map(h=>h.V)))}–${Math.round(Math.max(...hs.map(h=>h.V)))} km/h · Delta T ${Math.min(...hs.map(h=>h.dt)).toFixed(0)}–${Math.max(...hs.map(h=>h.dt)).toFixed(0)}</span></div>`; });
+    const cont={}; H.filter(h=>h.nv===2).forEach(h=>h.mot.forEach(m=>cont[m]=(cont[m]||0)+1));
+    const top=Object.entries(cont).sort((a,b)=>b[1]-a[1]).slice(0,3).map(([m,c])=>m+' ('+c+' h)').join(', ');
+    if(top) html+=`<div><span class="pv-pill er">vermelho</span><span class="pv-nota">o que mais trava: ${top}</span></div>`;
+    lista.innerHTML=html;
+  }
+
+  function plantio(P){
+    const D=P.D; let par=null; for(let i=0;i<D.length-1;i++){ const s=D[i].mmMed+D[i+1].mmMed; if(s>=20){par=[i,s];break;} }
+    const tot=D.reduce((s,d)=>s+d.mmMed,0), tot7=D.slice(0,7).reduce((s,d)=>s+d.mmMed,0), fd=k=>k.slice(8,10)+'/'+k.slice(5,7);
+    q('pvkpl').innerHTML=`<div class="pv-kpi"><b>${Math.round(tot7)} mm</b><span>7 dias</span></div><div class="pv-kpi"><b>${Math.round(tot)} mm</b><span>15 dias</span></div><div class="pv-kpi"><b>${par?fd(D[par[0]].k):'—'}</b><span>${par?'≥ 20 mm em 2 dias':'sem 20 mm em 2 dias'}</span></div>`;
+    const box=q('pvacu'); box.textContent='';
+    const n=D.length, W=largura('pvacu'), H=158, c0=12, c1=128, padL=24, cw=(W-padL)/n;
+    const ac={}; MOD.forEach(m=>{ let s=0; ac[m]=D.map(d=>{ if(d.porM[m]==null) return null; s+=d.porM[m]; return s; }); });
+    const vals=Object.values(ac).flat().filter(v=>v!=null), mx=Math.max(40,...vals), y=v=>c1-v/mx*(c1-c0), passo=Math.max(10,Math.ceil(mx/4/10)*10);
+    const svg=svgNovo(W,H,'Chuva acumulada prevista por modelo');
+    for(let v=0;v<=mx;v+=passo){ svg.appendChild(sv('line',{x1:padL,y1:y(v),x2:W,y2:y(v),stroke:C.borda,'stroke-dasharray':v?'2 3':''})); svg.appendChild(sv('text',{x:padL-3,y:y(v)+3,'text-anchor':'end','font-size':8.5,fill:C.mudo},v)); }
+    svg.appendChild(sv('line',{x1:padL,y1:y(20),x2:W,y2:y(20),stroke:C.aviso,'stroke-dasharray':'5 3',opacity:.8}));
+    MOD.forEach(m=>{ const pts=ac[m].map((v,i)=>v==null?null:(padL+i*cw+cw/2)+','+y(v)).filter(Boolean); if(!pts.length) return;
+      svg.appendChild(sv('polyline',{points:pts.join(' '),fill:'none',stroke:COR[m],'stroke-width':2}));
+      const iu=ac[m].map((v,i)=>v==null?-1:i).filter(i=>i>=0).pop();
+      svg.appendChild(sv('text',{x:Math.min(padL+iu*cw+cw/2+3,W-28),y:y(ac[m][iu])-3,'font-size':9.5,fill:COR[m],'font-weight':700},NOME[m])); });
+    D.forEach((d,i)=>{ if(i%3===0) svg.appendChild(sv('text',{x:padL+i*cw+cw/2,y:c1+14,'text-anchor':'middle','font-size':8.5,fill:C.mudo},fd(d.k))); });
+    box.appendChild(svg);
+  }
+
+  function pivos(P){
+    const D=P.D.slice(0,7), et0=D.reduce((s,d)=>s+(d.et0||0),0), etc=et0*1.15, ch=D.reduce((s,d)=>s+d.mmMed,0), saldo=ch-etc;
+    q('pvkpi').innerHTML=`<div class="pv-kpi"><b>${etc.toFixed(0)} mm</b><span>consumo da lavoura</span></div><div class="pv-kpi"><b>${ch.toFixed(0)} mm</b><span>chuva prevista</span></div><div class="pv-kpi"><b style="color:${saldo<0?'#ff8080':C.ok}">${saldo>0?'+':''}${saldo.toFixed(0)} mm</b><span>${saldo<0?'a repor no pivô':'sobra'}</span></div>`;
+  }
+
+  function temporal(P){
+    const fd=k=>{const dt=new Date(k+'T12:00:00Z');return SEM[dt.getUTCDay()]+' '+k.slice(8,10)+'/'+k.slice(5,7);};
+    const al=P.D.filter(d=>(d.cape>=1500&&d.mmMax>=5)||d.raj>=50);
+    q('pvtem').innerHTML = !al.length ? '<div><span class="pv-pill ok">ok</span><span>nenhum dia com sinal de temporal nos 15 dias</span></div>'
+      : al.map(d=>{ const forte=d.cape>=2500||d.raj>=60; return `<div><span class="pv-pill ${forte?'er':'av'}">${forte?'forte':'atenção'}</span><span>${fd(d.k)} · CAPE ${Math.round(d.cape)} J/kg · rajada até ${Math.round(d.raj)} km/h · chuva ${Math.round(d.mmMed)} mm (até ${Math.round(d.mmMax)})${d.i>=5?' · <i>tendência</i>':''}</span></div>`; }).join('');
+  }
+
+  function acerto(){
+    // avaliação de 04/11/2026 (Estação 01, 01/08–03/11, previsão de 1 dia, corrigida). Vira automática depois.
+    const T=[['AIFS','1,00','4,1','2,6','7 de 8'],['ICON','1,11','5,4','2,6','5 de 8'],['IFS','1,09','4,9','3,3','7 de 8'],['GFS','1,34','6,1','2,9','4 de 8'],['ontem','1,59','9,0','2,7','—']];
+    const mins=[1,2,3].map(c=>Math.min(...T.slice(0,4).map(r=>parseFloat(r[c].replace(',','.')))));
+    q('pvace').innerHTML='<tr><th>modelo</th><th>temp</th><th>umid.</th><th>vento</th><th>chuva</th></tr>'+
+      T.map(r=>'<tr>'+r.map((v,i)=>`<td class="${i>=1&&i<=3&&parseFloat(v.replace(',','.'))===mins[i-1]?'pv-melhor':''}">${v}</td>`).join('')+'</tr>').join('');
+  }
+
+  function cabecalho(){
+    const ests=[...new Set((LINHAS||[]).map(l=>l.estacao_id))].sort((a,b)=>a-b);
+    if(ests.length && !ests.includes(EST)) EST=ests[0];
+    return ests;
+  }
+
+  function folha(){
+    const ests = cabecalho();
+    const nome = id => { const e=(typeof ESTACOES!=='undefined'?ESTACOES:[]).find(x=>x.id===id); return (e&&e.nome)||('Estação '+String(id).padStart(2,'0')); };
+    return `<div class="pv">
+      <div class="pv-topo"><div><div class="pv-tit">Previsão do tempo</div><div class="pv-sub" id="pvsub">${LINHAS?'':(ERRO||'carregando…')}</div></div>
+        ${ests.length>1?`<div class="pv-seg">${ests.map(id=>`<button data-pvest="${id}" class="${id===EST?'on':''}">${nome(id).replace('Estação','Est.')}</button>`).join('')}</div>`:''}</div>
+      ${ERRO&&LINHAS?`<div class="pv-erro">${ERRO} — mostrando a última previsão recebida.</div>`:''}
+      <div class="card pv-card"><div class="pv-h">15 dias</div><div id="pv15"></div>
+        <div class="pv-leg"><span><i style="background:${C.chuva}"></i>chuva do dia</span><span><i style="background:${C.texto};width:2px"></i>de quanto a quanto os modelos dão</span><span><i style="background:${C.faixaq}"></i>faixa entre os modelos</span></div>
+        <p class="pv-nota">Até o 5º dia dá para decidir; do 6º em diante (mais apagado) é tendência. % de chuva = modelos que dão ≥ 1 mm.</p></div>
+      <div class="card pv-card"><div class="pv-h">Chuva medida × prevista</div><div id="pvmed"></div>
+        <p class="pv-nota">Últimos 7 dias do pluviômetro da estação e os próximos 7 previstos.</p></div>
+      <div class="card pv-card"><div class="pv-h">Janela de pulverização · 72 h</div><div id="pvpul"></div><div class="pv-lista" id="pvpull"></div>
+        <p class="pv-nota">Verde: vento 3–10 km/h, Delta T 2–8, umidade ≥ 50 %, &lt; 30 °C e sem chuva nas 2 h seguintes. Abaixo de 3 km/h = risco de inversão. Vento do modelo × 0,75 (altura do bico).</p></div>
+      <div class="card pv-card"><div class="pv-h">Plantio: chegada da chuva</div><div class="pv-kpis" id="pvkpl"></div><div id="pvacu"></div>
+        <p class="pv-nota">Acumulado previsto por modelo. Tracejado = 20 mm (início das chuvas pelo ZARC: ≥ 20 mm em 1–2 dias).</p></div>
+      <div class="card pv-card"><div class="pv-h">Pivôs: demanda × chuva · 7 dias</div><div class="pv-kpis" id="pvkpi"></div>
+        <p class="pv-nota">Consumo = ET0 do modelo × Kc 1,15 (soja/algodão em pleno desenvolvimento). Negativo = o que o pivô teria de repor.</p></div>
+      <div class="card pv-card"><div class="pv-h">Alerta de temporal</div><div class="pv-lista" id="pvtem"></div>
+        <p class="pv-nota">CAPE ≥ 1.500 J/kg com chuva, ou rajada ≥ 50 km/h em algum modelo.</p></div>
+      <div class="card pv-card"><div class="pv-h">Qual modelo acerta aqui</div><table class="pv-tab" id="pvace"></table>
+        <p class="pv-nota">Erro médio da previsão de 1 dia contra a Estação 01 (°C, %, km/h; dias de chuva acertados), 01/08–03/11/2026, já corrigida pelas estações.</p></div>
+    </div>`;
+  }
+
+  function desenhar(){
+    if(!q('pv15')) return;
+    document.querySelectorAll('[data-pvest]').forEach(b=>b.onclick=()=>{ EST=+b.dataset.pvest; try{localStorage.setItem('prev_est',String(EST));}catch(e){}
+      document.querySelectorAll('[data-pvest]').forEach(x=>x.classList.toggle('on',+x.dataset.pvest===EST)); desenhar(); });
+    if(!LINHAS){ carregar().then(()=>{ if(q('pv15')) { const f=q('folha'); if(f){ f.innerHTML=folha(); desenhar(); } } }); return; }
+    if(Date.now()-BUSCA>20*60e3) carregar(true).then(()=>{ if(q('pv15')) desenhar(); });
+    const P=prepara(EST); if(!P.D.length){ q('pvsub').textContent='Sem previsão para esta estação.'; return; }
+    const r=new Date(P.rod*1000), hh=Math.round((Date.now()-P.atu)/36e5);
+    q('pvsub').textContent=`rodada ${String(r.getUTCDate()).padStart(2,'0')}/${String(r.getUTCMonth()+1).padStart(2,'0')} ${String(r.getUTCHours()).padStart(2,'0')}h UTC · recebida ${hh<1?'há menos de 1 h':'há '+hh+' h'}`;
+    grafico15(P); medidoPrevisto(P); pulverizacao(P); plantio(P); pivos(P); temporal(P); acerto();
+  }
+
+  let _rz; window.addEventListener('resize',()=>{ clearTimeout(_rz); _rz=setTimeout(()=>{ if(q('pv15')) desenhar(); },150); });
+  return {folha, desenhar, carregar};
+})();
+
 let _modo=null;   // 'mapa' | 'folha' — só remonta a estrutura quando o modo muda
 
 function pinta(){
@@ -4563,6 +4895,7 @@ function pinta(){
   else if(SECAO!=='clima') corpo=emObra(SECOES.find(s=>s[0]===SECAO)[1]);
   else if(SUB==='agora') corpo=folhaAgora();
   else if(SUB==='hist') corpo=folhaHist();
+  else if(SUB==='prev') corpo=PREV_UI.folha();
 
   /* O #mapa é criado UMA vez e sobrevive às repinturas. Trocar variável ou
      período refaz só a moldura (#chrome) — se o innerHTML inteiro fosse
@@ -4578,6 +4911,7 @@ function pinta(){
   const faixaHist = !noMapa && SUB==='hist';
   if(!noMapa){
     el('folha').innerHTML=corpo;
+    if(SECAO==='clima' && SUB==='prev') PREV_UI.desenhar();
     // a faixa flutua sobre o conteúdo; sem folga extra ela taparia o 1º título
     el('folha').classList.toggle('comfaixa', faixaHist);
   }
