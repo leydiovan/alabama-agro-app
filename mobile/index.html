@@ -2820,7 +2820,10 @@ function mascara(bb,W,H){
    telemetria está aberto: são milhares de pontos por máquina, e celular paga. */
 async function carregarTelemetria(){
   try{
-    const ps=[SB.from('telemetria_atual').select('*'), SB.from('telemetria_vigia').select('*')];
+    /* UMA LINHA POR MÁQUINA (dono, 04/11/2026: "tem 2 TRA-007 … ele só pode aparecer um"): a view
+       `telemetria_atual_maquina` (migração 203) fica com a caixa que mandou por último. A caixa trocada
+       (ex.: TECU-07 → TECU-02 no TRA-007) some sozinha, da lista e do Vigia. */
+    const ps=[SB.from('telemetria_atual_maquina').select('*'), SB.from('telemetria_vigia').select('*')];
     ps.push(Object.keys(MAQS).length ? Promise.resolve({data:null})
           : SB.from('maquinas_identificacao').select('id,id_frota,nome,marca,modelo,categoria'));
     /* UMA ONDA SÓ (19/10/2026): telemetria, reservatório e solar eram três
@@ -2867,7 +2870,11 @@ async function carregarTelemetria(){
     /* Regra do offline-first: lista vazia só substitui o que está na tela quando
        veio DA REDE com sucesso. Aqui a chamada respondeu, então vale. */
     if(t&&!t.error) TELE=t.data||[];
-    if(v&&!v.error){ VIGIA=v.data||[]; ULTIMA_OK=Date.now(); }
+    if(v&&!v.error){
+      /* o Vigia é por caixa: fica só a que vale para a máquina (a mesma da lista acima) */
+      const valem=new Set((TELE||[]).map(x=>x.device_id));
+      VIGIA=(v.data||[]).filter(x=>!x.maquina_id || !TELE.length || valem.has(x.device_id)); ULTIMA_OK=Date.now();
+    }
     if(m&&m.data) m.data.forEach(x=>MAQS[x.id]=x);
     /* reservatório: o cadastro (contorno) vem uma vez; situação e série a cada ciclo.
        Mesma regra do offline-first: só substitui quando a chamada não deu erro. */
