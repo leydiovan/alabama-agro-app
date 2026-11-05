@@ -3417,8 +3417,11 @@ function socLfp(v){
   }
   return 100;
 }
-/* endereços da malha (src_mesh no Pi, 03/11/2026) */
-const MALHA_NOMES = {dbfc:'gateway', fb14:'TECU-01', eea0:'TECU-02', '2c0c':'TECU-04', '3210':'TECU-05'};
+/* endereços da malha = 2 últimos bytes do MAC (docs/ARQUITETURA.md e src_mesh no Pi). 05/11/2026: + estação e
+   reservatório — a TECU-02 mandou via 2a3c (Estação 1) e o cartão dizia só "nó 2a3c". A Heltec do fb14 já foi o nível
+   do reservatório e a TECU-07; desde out/2026 é a TECU-01. */
+const MALHA_NOMES = {dbfc:'gateway', fb14:'TECU-01', eea0:'TECU-02', '2c0c':'TECU-04', '3210':'TECU-05',
+                     '2a3c':'Estação 1', '421c':'nível do reservatório', '4484':'Heltec #3'};
 const SONO_MOTIVOS = {1:'chave ligada', 2:'alerta de movimento sem chave', 3:'mandando o pacote do despertar', 4:'WiFi conectado (OTA aberto)',
   5:'C6 em simulação', 6:'primeira meia hora depois da chave', 7:'o C6 recusou dormir (sinal no pós-chave?)', 8:'esvaziando a fila',
   9:'sem rota até o gateway', 10:'mandando a fila', 11:'esperando a confirmação do gateway', 12:'acabou de acordar', 0:'indo dormir'};
