@@ -3251,7 +3251,7 @@ async function carregarMotor(dev){
       .eq('device_id',dev).not('celula_v','is',null).order('recebido_em',{ascending:false}).limit(1);
     if(!c.error && c.data && c.data.length) _painelCel[dev] = c.data[0];
     /* 03/11/2026 (firmware S1.27 + migração 201): a rota até o gateway e por que não dorme */
-    const r = await SB.from('telemetria_motor').select('rota_via,rota_saltos,rota_snr,sono_motivo,wifi_estado,ignicao,recebido_em')
+    const r = await SB.from('telemetria_motor').select('rota_via,rota_saltos,rota_snr,sono_motivo,wifi_estado,ignicao,recebido_em,fila,motivo_reset,boot_id')
       .eq('device_id',dev).not('rota_via','is',null).order('recebido_em',{ascending:false}).limit(1);
     if(!r.error && r.data && r.data.length) _painelRota[dev] = r.data[0];
   }catch(e){ console.warn('[motor]',e.message||e); }
@@ -3438,6 +3438,21 @@ function blocoRotaTecu(r, card){
   const sub = (via!=='sem rota' && r.rota_saltos!=null ? r.rota_saltos+' salto(s)' : '')
             + (r.rota_snr!=null ? ' · sinal '+r.rota_snr+' dB' : '') + ' · '+haQuanto(r.recebido_em);
   let html = card('Rota até o gateway', val, sub);
+  /* 05/11/2026 (firmware S1.29 + migração 204): quantos pacotes a caixa SEGURA. Na queda do gateway de 05/11 o
+     buraco do rastro ficou horas sem se saber se estava na caixa; com isto, aparece aqui. ~1 pacote = 15 s de rastro. */
+  if(r.fila!=null){
+    const f=+r.fila;
+    html += card('Fila na caixa', f===0 ? '<span style="color:#00c896">vazia</span>'
+                                        : '<span style="color:#e8a33d">'+f+' pacotes</span>',
+                 f===0 ? 'tudo entregue' : 'guardados, saindo aos poucos (~'+Math.max(1,Math.round(f/4))+' min de rastro)');
+  }
+  /* motivo do último reinício (vai no pacote desde a S1.14): pânico = defeito de programa; energia = alimentação */
+  if(r.motivo_reset!=null){
+    const MR={1:'ligou (energia)',3:'software (OTA)',4:'TRAVOU (pânico)',5:'travou (vigia)',6:'travou (vigia)',7:'travou (vigia)',9:'tensão baixa',8:'acordou do sono'};
+    const ruim=[4,5,6,7,9].includes(+r.motivo_reset);
+    html += card('Último reinício', '<span style="font-size:14px;color:'+(ruim?'#e8a33d':'#e8edf5')+'">'+(MR[r.motivo_reset]||('código '+r.motivo_reset))+'</span>',
+                 r.boot_id!=null ? 'boot '+r.boot_id : '');
+  }
   /* só interessa com a chave DESLIGADA: aí ela deveria estar dormindo (a bateria some se não dorme) */
   if(r.ignicao===false && r.sono_motivo!=null && r.sono_motivo!==0){
     const ruim = [4,7,8,9].includes(+r.sono_motivo);
