@@ -2425,7 +2425,11 @@ function rotuloTMaqs(){
   if(TMAQS.length===1) return maqLbl(TMAQS[0],'');
   return TMAQS.length+' máq.';
 }
-const VIVO_S=180;   // sem reportar há mais de 3 min = sem sinal (a caixa manda a cada 15 s)
+/* 05/11/2026: era 180 s ("a caixa manda a cada 15 s") — mas o que a tela lê é a cópia do Pi no Supabase, feita
+   de 5 em 5 min. A idade de medido_em vai de 0 a ~5 min a cada ciclo, e com 3 min o trator trabalhando ficava
+   cinza 2 min de cada 5 (dono: "hora volta, hora fica cinza"; no módulo do PC, que tolera até 1 h, ficava vermelho).
+   7 min = 5 min da cópia + 2 de folga. Se a cópia do Pi mudar de cadência, este número muda junto. */
+const VIVO_S=420;
 /* ... MAS com a chave desligada (firmware S1.3) ela manda a cada 5 min de proposito.
    Sem esta janela maior, maquina no patio a noite apareceria como 'sem sinal' em vez de
    'desligada', que e justamente o que o dono pediu para ver. */
