@@ -2451,6 +2451,14 @@ function estadoTele(t){
   return (+t.vel_kmh||0)>1 ? {k:'and', txt:'em movimento', cor:'#00c896'}
                            : {k:'par', txt:'parada',       cor:'#ffc107'};
 }
+/* FONTE DO GPS (05/11/2026, dono: "dá de identificar se o sinal é do tracker ou do trator?"). Pela cascata do
+   firmware (barramento > GPS da caixa): o receptor do trator NÃO informa satélites e a caixa manda sats = 0; o GPS
+   da própria caixa (UC6580 do Tracker, ou o M8N das placas de teste) manda o número de verdade. Sem coordenada no
+   último pacote = "sem posição agora" (a tela segue no último ponto bom, ver posição velha). */
+function fonteGPS(t){
+  if(!t || t.fix===false || t.lat==null) return 'sem posição agora';
+  return (+t.sats||0)>0 ? 'Tracker (GPS da caixa)' : 'trator (barramento)';
+}
 function haQuanto(ts){
   const s=Math.max(0,(Date.now()-new Date(ts||0).getTime())/1000);
   if(s<90) return 'agora';
@@ -3381,7 +3389,7 @@ function desenharPainel(){
      blocoSaudeTecu(_painelCel[_painelDev], num, card, _painelRota[_painelDev])+
 
      '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px">'+
-       card('Satélites', t.sats==null?'—':String(t.sats), t.hdop!=null?('HDOP '+num(t.hdop,1)):'')+
+       card('Fonte do GPS', '<span style="font-size:14px">'+fonteGPS(t)+'</span>', (+t.sats||0)>0 ? (t.sats+' satélites'+(t.hdop!=null?' · HDOP '+num(t.hdop,1):'')) : '')+
        card('Atraso de entrega', t.atraso_s==null?'—':num(t.atraso_s,0,' s'))+
      '</div>'+
 
