@@ -5051,7 +5051,7 @@ window.PLUV_UI = (function(){
     if (!pronto()){ carregar().then(()=>{ if (SECAO==='clima' && SUB==='pluv') pinta(); }); return; }
     if (Date.now()-BUSCA > 10*60e3) carregar(true).then(()=>{ if (SECAO==='clima' && SUB==='pluv') pinta(); });
     const J = janela(); if (!J) return;
-    const S = somas(J), EST = estacoesJanela(J), bb = bbox();
+    const S = somas(J), bb = bbox();
     const pts = PL.filter(p=>S[p.id]).map(p=>({e:{lat:p.lat,lon:p.lon}, v:S[p.id].mm}));
     const cfg = VARS.chuva, lg = el('legenda');
     if (pts.length && bb){
@@ -5091,10 +5091,8 @@ window.PLUV_UI = (function(){
       L.circleMarker([p.lat,p.lon],{radius:4,color:'#0b1220',weight:1.2,fillColor:s?'#ffffff':'#3d5a80',fillOpacity:.95}).on('click',abrir).addTo(grp);
       if (s) L.marker([p.lat,p.lon],{icon:rot((s.est?'~':'')+fmm(s.mm), s.est?'#ffd27a':'#fff', s.est), interactive:false}).addTo(grp);
     }
-    for (const e of EST){
-      L.circleMarker([e.lat,e.lon],{radius:5,color:'#fff',weight:1.4,fillColor:'#00c896',fillOpacity:.95,interactive:false}).addTo(grp);
-      L.marker([e.lat,e.lon],{icon:rot('E'+String(e.id).padStart(2,'0')+' '+fmm(e.mm)+(e.parcial?'*':''),'#7ff0cf'),interactive:false}).addTo(grp);
-    }
+    /* as estações automáticas NÃO aparecem neste mapa (dono, 10/11/2026: "tira as duas estações
+       lá dos pluviômetros") — a comparação com a Estação 01 fica no resumo do item Coletas */
     _estL = grp.addTo(_map);
     if (SEL) cartao(J);
   }
