@@ -4987,35 +4987,55 @@ window.PLUV_UI = (function(){
   const pronto = () => !!(PL && CO);
   const datas = () => [...new Set((CO||[]).map(c=>c.data))].sort();
 
-  /* janela: 'c:AAAA-MM-DD' = uma coleta; 'd7'/'d30'/'tudo' = soma das coletas no período */
+  /* JANELAS (pedido do dono, 10/11/2026: "não coloca todos os dias, vai carregar demais"):
+     'h24'  = a coleta mais recente (o copo é lido toda manhã: é a chuva das últimas 24 h)
+     'd7'   = soma das coletas dos últimos 7 dias
+     'm:AAAA-MM' = um mês da safra — outubro a abril ("começa em outubro mesmo, abril já é do
+                  próximo ano"); só os meses que já começaram
+     'safra' = total da safra (de 1º de outubro até hoje) */
+  const MESES = ['jan','fev','mar','abr','mai','jun','jul','ago','set','out','nov','dez'];
+  function safraIni(){ const ult = datas().slice(-1)[0] || new Date().toISOString().slice(0,10);
+    const a = +ult.slice(0,4), m = +ult.slice(5,7); return (m>=10 ? a : a-1) + '-10-01'; }
+  function mesesSafra(){
+    const ini = safraIni(), a = +ini.slice(0,4), hoje = new Date().toISOString().slice(0,7), out = [];
+    for (let k=0; k<7; k++){ const m = 10+k, ano = m>12 ? a+1 : a, mm = ((m-1)%12)+1;
+      const chave = ano+'-'+String(mm).padStart(2,'0'); if (chave > hoje) break; out.push(chave); }
+    return out;
+  }
+  const rotMes = k => MESES[+k.slice(5,7)-1]+'/'+k.slice(2,4);
   function janela(){
     const ds = datas(); if (!ds.length) return null;
-    let j = JAN; if (!j || (j.startsWith('c:') && !ds.includes(j.slice(2)))) j = 'c:'+ds[ds.length-1];
+    let j = JAN; const ms = mesesSafra();
+    if (!j || !(j==='h24' || j==='d7' || j==='safra' || (j.startsWith('m:') && ms.includes(j.slice(2))))) j = 'h24';
     const ult = ds[ds.length-1];
-    if (j.startsWith('c:')){
-      const d = j.slice(2), i = ds.indexOf(d);
-      return {j, rot:'Coleta '+fd(d), sel:[d], ini: i>0?ds[i-1]:null, fim:d};
-    }
-    const dias = j==='d7'?7:j==='d30'?30:null;
-    const lim = dias ? new Date(Date.parse(ult+'T12:00:00Z')-dias*864e5).toISOString().slice(0,10) : '0000';
-    const sel = ds.filter(d=>d>lim), i0 = ds.indexOf(sel[0]);
-    return {j, rot: dias?('Últimos '+dias+' dias'):'Todas as coletas', sel, ini: i0>0?ds[i0-1]:null, fim:ult};
+    let sel, rot;
+    if (j==='h24'){ sel = [ult]; rot = '24h · coleta '+fd(ult); }
+    else if (j==='d7'){ const lim = new Date(Date.parse(ult+'T12:00:00Z')-7*864e5).toISOString().slice(0,10); sel = ds.filter(d=>d>lim); rot = '7 dias'; }
+    else if (j==='safra'){ const ini = safraIni(); sel = ds.filter(d=>d>=ini); rot = 'Safra '+ini.slice(2,4)+'/'+String(+ini.slice(2,4)+1).padStart(2,'0'); }
+    else { const k = j.slice(2); sel = ds.filter(d=>d.startsWith(k)); rot = rotMes(k).replace(/^./,c=>c.toUpperCase()); }
+    if (!sel.length) return {j, rot, sel:[], ini:null, fim:ult, vazio:true};
+    const i0 = ds.indexOf(sel[0]);
+    return {j, rot, sel, ini: i0>0?ds[i0-1]:null, fim: sel[sel.length-1]};
   }
   function setJan(v){ JAN = v; SEL = null; try{ localStorage.setItem('pluv_jan', v); }catch(e){} }
   function rotulo(){ const J = pronto() && janela(); return J ? J.rot : (ERRO ? 'sem dados' : 'carregando…'); }
-  function opcoes(){
+  function botoes(chip){
     const J = pronto() && janela(); if (!J) return '';
-    return datas().slice(-8).reverse().map(d=>`<button data-pljan="c:${d}" class="${J.j==='c:'+d?'on':''}">Coleta ${fd(d)}</button>`).join('')
-      + ['d7','d30','tudo'].map(k=>`<button data-pljan="${k}" class="${J.j===k?'on':''}">${k==='d7'?'Últimos 7 dias':k==='d30'?'Últimos 30 dias':'Todas as coletas'}</button>`).join('');
+    const op = [['h24','24h'],['d7','7 dias'], ...mesesSafra().map(k=>['m:'+k, rotMes(k)]), ['safra','Safra']];
+    return op.map(([k,n])=>`<button ${chip?'class="chip '+(J.j===k?'on':'')+'"':'class="'+(J.j===k?'on':'')+'"'} data-pljan="${k}">${n}</button>`).join('');
   }
+  function opcoes(){ return botoes(false); }
   function somas(J){
     const s = {};
-    for (const c of CO) if (J.sel.includes(c.data)){ const x = (s[c.pluviometro_id] ??= {mm:0,est:false}); x.mm += c.mm; if (c.estimado) x.est = true; }
+    for (const c of CO) if (J.sel.includes(c.data)){ const x = (s[c.pluviometro_id] ??= {mm:0,est:false,emm:0,nest:0,n:0}); x.mm += c.mm; x.n++; if (c.estimado){ x.emm += c.mm; x.nest++; } }
+    /* na soma de vários dias, "~" só quando a estimativa pesa: mais de 20 % dos mm (ou tudo estimado).
+       Com qualquer estimada marcando a soma, no total da safra quase todo copo ficava amarelo (10/11). */
+    for (const k in s){ const x = s[k]; x.est = x.nest===x.n || (x.mm>0 && x.emm/x.mm > 0.2); }
     return s;
   }
   /* chuva das estações automáticas na MESMA janela: das 7h da coleta anterior às 7h da coleta */
   function estacoesJanela(J){
-    if (typeof HORAS==='undefined' || typeof ESTACOES==='undefined' || !HORAS.length) return [];
+    if (!J.sel.length || typeof HORAS==='undefined' || typeof ESTACOES==='undefined' || !HORAS.length) return [];
     const t1 = Date.parse(J.fim+'T10:00:00Z');
     const t0 = J.ini ? Date.parse(J.ini+'T10:00:00Z') : Date.parse(J.sel[0]+'T10:00:00Z') - 864e5;
     const minH = Math.min(...HORAS.map(h=>Date.parse(h.hora)));
@@ -5121,11 +5141,7 @@ window.PLUV_UI = (function(){
       <div class="pv-topo"><div><div class="pv-tit">Coletas dos pluviômetros</div>
         <div class="pv-sub">${J.rot}${J.ini?' · chuva de '+fd(J.ini)+' a '+fd(J.fim):''}</div></div></div>
       ${ERRO?`<div class="pv-erro">${ERRO} — mostrando a última leitura recebida.</div>`:''}
-      <div class="pl-chips">
-        ${ds.slice(-6).reverse().map(d=>`<button class="chip ${J.j==='c:'+d?'on':''}" data-pljan="c:${d}">${fd(d)}</button>`).join('')}
-        <button class="chip ${J.j==='d7'?'on':''}" data-pljan="d7">7 dias</button>
-        <button class="chip ${J.j==='d30'?'on':''}" data-pljan="d30">30 dias</button>
-        <button class="chip ${J.j==='tudo'?'on':''}" data-pljan="tudo">tudo</button></div>
+      <div class="pl-chips">${botoes(true)}</div>
       <div class="pv-kpis">
         <div class="pv-kpi"><b>${f(media,1)} mm</b><span>média dos ${todos.length} copos</span></div>
         <div class="pv-kpi"><b>${mx?fmm(mx[1].mm):'—'} / ${mn?fmm(mn[1].mm):'—'}</b><span>maior (${mx?mx[0]:''}) / menor (${mn?mn[0]:''})</span></div>
