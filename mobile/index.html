@@ -5033,19 +5033,7 @@ window.PLUV_UI = (function(){
     for (const k in s){ const x = s[k]; x.est = x.nest===x.n || (x.mm>0 && x.emm/x.mm > 0.2); }
     return s;
   }
-  /* chuva das estações automáticas na MESMA janela: das 7h da coleta anterior às 7h da coleta */
-  function estacoesJanela(J){
-    if (!J.sel.length || typeof HORAS==='undefined' || typeof ESTACOES==='undefined' || !HORAS.length) return [];
-    const t1 = Date.parse(J.fim+'T10:00:00Z');
-    const t0 = J.ini ? Date.parse(J.ini+'T10:00:00Z') : Date.parse(J.sel[0]+'T10:00:00Z') - 864e5;
-    const minH = Math.min(...HORAS.map(h=>Date.parse(h.hora)));
-    return ESTACOES.filter(e=>e.instalada && e.lat && e.lon).map(e=>{
-      let mm = 0, n = 0;
-      for (const h of HORAS){ if (h.estacao_id!==e.id) continue; const t = Date.parse(h.hora); if (t>=t0 && t<t1){ mm += +h.chuva_mm||0; n++; } }
-      return {id:e.id, nome:e.nome, lat:+e.lat, lon:+e.lon, mm, n, parcial: t0<minH};
-    }).filter(e=>e.n>0);
-  }
-
+  /* estações automáticas: fora do mapa e das Coletas desde 10/11/2026 (pedido do dono) */
   /* ---------- MAPA: chamado pelo desenhaMapa() do app, com o _map já de pé ---------- */
   function mapa(){
     if (!pronto()){ carregar().then(()=>{ if (SECAO==='clima' && SUB==='pluv') pinta(); }); return; }
@@ -5119,10 +5107,9 @@ window.PLUV_UI = (function(){
     if (Date.now()-BUSCA > 10*60e3) carregar(true).then(()=>{ if (SECAO==='clima' && SUB==='pcol') pinta(); });
     const J = janela(), ds = datas();
     if (!J) return `<div class="pv"><div class="pv-tit">Coletas dos pluviômetros</div><div class="pv-sub">Nenhuma coleta lançada.</div></div>`;
-    const S = somas(J), EST = estacoesJanela(J);
+    const S = somas(J);
     const todos = Object.values(S).map(s=>s.mm), media = todos.length ? todos.reduce((a,b)=>a+b,0)/todos.length : 0;
     const ord = Object.entries(S).sort((a,b)=>b[1].mm-a[1].mm), mx = ord[0], mn = ord[ord.length-1];
-    const e1 = EST.find(e=>e.id===1);
     const dt = ds.slice(-6), val = (id,d) => CO.find(c=>c.pluviometro_id===id && c.data===d);
     let tab = '<table class="pv-tab"><tr><th>copo</th>'+dt.map(d=>`<th>${fd(d)}</th>`).join('')+'<th>soma</th></tr>';
     for (const gnm of [...new Set(PL.map(p=>p.grupo))]){
@@ -5140,10 +5127,9 @@ window.PLUV_UI = (function(){
         <div class="pv-sub">${J.rot}${J.ini?' · chuva de '+fd(J.ini)+' a '+fd(J.fim):''}</div></div></div>
       ${ERRO?`<div class="pv-erro">${ERRO} — mostrando a última leitura recebida.</div>`:''}
       <div class="pl-chips">${botoes(true)}</div>
-      <div class="pv-kpis">
+      <div class="pv-kpis" style="grid-template-columns:repeat(2,minmax(0,1fr))">
         <div class="pv-kpi"><b>${f(media,1)} mm</b><span>média dos ${todos.length} copos</span></div>
-        <div class="pv-kpi"><b>${mx?fmm(mx[1].mm):'—'} / ${mn?fmm(mn[1].mm):'—'}</b><span>maior (${mx?mx[0]:''}) / menor (${mn?mn[0]:''})</span></div>
-        <div class="pv-kpi"><b>${e1?f(e1.mm,1)+' mm':'—'}</b><span>Estação 01 na mesma janela${e1&&e1.parcial?' (parcial)':''}</span></div></div>
+        <div class="pv-kpi"><b>${mx?fmm(mx[1].mm):'—'} / ${mn?fmm(mn[1].mm):'—'}</b><span>maior (${mx?mx[0]:''}) / menor (${mn?mn[0]:''})</span></div></div>
       <div class="card pv-card" style="overflow-x:auto">${tab}
         <p class="pv-nota">mm acumulados no copo desde a coleta anterior, lidos de manhã. <i style="color:var(--warn)">~itálico</i> = estimado (sem leitura, média ponderada dos 3 copos mais próximos). A coluna destacada é a janela escolhida; "soma" é a soma dela.</p></div>
     </div>`;
