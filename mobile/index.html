@@ -2676,6 +2676,23 @@ function utm2ll(E,N){
   const lon=l0+(D-(1+2*T1+C1)*D**3/6+(5-2*C1+28*T1-3*C1*C1+8*ep2+24*T1*T1)*D**5/120)/Math.cos(p1);
   return [lat*180/Math.PI,lon*180/Math.PI];
 }
+/* PAGINADO (15/11/2026): o PostgREST entrega no MAXIMO 1.000 linhas por consulta, sem avisar.
+   Com a Estacao 02 (desde 30/10) os 31 dias de clima_horario passaram de 1.000 (1.077 em 15/11)
+   e o app recebia so as 1.000 MAIS ANTIGAS: tudo depois de 13/11 20h sumia e o Historico dizia
+   "sem leitura" justamente no periodo recente. Ordena por hora E estacao para a virada de pagina
+   nao pular nem repetir linha (as duas estacoes tem a mesma hora). */
+async function horasPaginado(desdeIso){
+  let todas=[], de=0;
+  for(;;){
+    const r=await SB.from('clima_horario').select('*').gte('hora',desdeIso)
+      .order('hora').order('estacao_id').range(de,de+999);
+    if(r.error) return {data:todas.length?todas:null, error:r.error};
+    todas=todas.concat(r.data||[]);
+    if(!r.data||r.data.length<1000) break;
+    de+=1000;
+  }
+  return {data:todas};
+}
 async function carregar(){
   if(DESLOGADO) return;
   try{
@@ -2699,7 +2716,7 @@ async function carregar(){
     const pClima = Promise.all([
       SB.from('clima_estacoes').select('*').order('id'),
       SB.from('clima_atual').select('*'),
-      SB.from('clima_horario').select('*').gte('hora',new Date(Date.now()-DIAS_HIST*864e5).toISOString()).order('hora'),
+      horasPaginado(new Date(Date.now()-DIAS_HIST*864e5).toISOString()),
       /* SEM CACHE o contorno é preciso de qualquer jeito, então vai junto. COM
          cache vai só o resumo de 50 bytes, e a conferência fica para depois da
          tela pintar. */
